@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/backup"
-	"github.com/nself-org/cli/internal/reconcile"
 )
 
 var runtimeRunID = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
@@ -27,6 +26,7 @@ var runtimeRunID = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
 var runtimeBackupCreate = backup.Create
 var runtimeBackupVerify = backup.Verify
 var runtimeBackupCountRows = backup.CountRows
+var runtimeBackupRestore = backup.Restore
 
 // Backup snapshots immutable old images and creates a newly named full dump.
 func (r *Runtime) Backup(ctx context.Context, j *Journal) error {
@@ -63,7 +63,9 @@ func (r *Runtime) createRunBackup(ctx context.Context, j *Journal) error {
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return fmt.Errorf("draw backup attempt identity: %w", err)
 	}
-	tag := "stack-" + j.RunID + "-" + hex.EncodeToString(nonce[:])
+	// The keep- prefix holds the dump out of `nself backup prune` (see
+	// isKeepTag in internal/backup); the operator releases it by renaming.
+	tag := "keep-stack-" + j.RunID + "-" + hex.EncodeToString(nonce[:])
 	if err := runtimeBackupCreate(ctx, r.cfg, backup.CreateOptions{Type: backup.BackupTypeFull, Tag: tag}); err != nil {
 		return fmt.Errorf("create stack backup: %w", err)
 	}
@@ -208,13 +210,15 @@ func (r *Runtime) VerifyBackup(ctx context.Context, j *Journal) error {
 
 // Restore refuses production independently of caller policy and restores only pg.
 func (r *Runtime) Restore(ctx context.Context, j *Journal) error {
-	if j.Prod || reconcile.EnvClass(r.cfg.Env) == reconcile.ClassProd {
-		return fmt.Errorf("automatic restore is forbidden on production-class environments")
+	if err := r.refuseProd(j, "restore"); err != nil {
+		return err
 	}
 	if err := r.VerifyBackup(ctx, j); err != nil {
 		return err
 	}
-	if err := backup.Restore(ctx, r.cfg, backup.RestoreOptions{BackupID: j.BackupID, Only: []string{"pg"}, Yes: true}); err != nil {
+	// Strict: any pg_restore error line fails, whatever the compat mode, because
+	// the row-count check cannot see a DROP blocked by a new dependency.
+	if err := runtimeBackupRestore(ctx, r.cfg, backup.RestoreOptions{BackupID: j.BackupID, Only: []string{"pg"}, Yes: true, Strict: true}); err != nil {
 		return fmt.Errorf("restore step-one backup: %w", err)
 	}
 	return nil

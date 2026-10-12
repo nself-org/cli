@@ -100,7 +100,7 @@ func runUpdateStack(cmd *cobra.Command, _ []string) (err error) {
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, release()) }()
+	defer func() { err = settleStackRelease(cmd, err, release()) }()
 	j, err := stack.Execute(cmd.Context(), stack.Options{ProjectDir: dir, Prod: reconcile.EnvClass(cfg.Env) == reconcile.ClassProd, Yes: true}, stackBackend(dir, cfg, cmd.ErrOrStderr()))
 	if err != nil {
 		return err
@@ -115,9 +115,35 @@ func finishStackInvocation(cmd *cobra.Command, journal *stack.Journal, jsonOn bo
 	if err == nil && journal != nil {
 		dry, _ := cmd.Flags().GetBool("dry-run")
 		preview, _ := cmd.Flags().GetBool("plan")
-		err = emitStackResult(journal, dry || preview, jsonOn)
+		if emitErr := emitStackResult(journal, dry || preview, jsonOn); emitErr != nil {
+			return reportStackEmitFailure(emitErr)
+		}
 	}
 	return finishStackError(cmd, err)
+}
+
+// settleStackRelease folds a lock-release failure into the run outcome.
+// Inputs: run error and release error. Outputs: the error to return.
+// Constraints: after a successful run the stack is upgraded and the journal says
+// complete, so a release failure is a warning; after a failed run it joins the error.
+func settleStackRelease(cmd *cobra.Command, runErr, releaseErr error) error {
+	if releaseErr == nil {
+		return runErr
+	}
+	if runErr != nil {
+		return errors.Join(runErr, releaseErr)
+	}
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: the stack update finished, but releasing the project lock failed: %v\n", releaseErr)
+	return nil
+}
+
+// reportStackEmitFailure reports a failed result write on stderr only.
+// Inputs: the write error. Outputs: a reported error. Constraints: a second
+// JSON document would follow a partly written first one, so none is emitted.
+func reportStackEmitFailure(emitErr error) error {
+	err := stack.WithExitClass(fmt.Errorf("emit update stack result: %w", emitErr))
+	output.RenderError(pilotWriter().Err, err)
+	return stackReportedError{cause: err}
 }
 
 // stackReportedError preserves the error chain after command-owned reporting.

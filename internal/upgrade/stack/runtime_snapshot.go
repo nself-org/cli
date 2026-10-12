@@ -15,7 +15,6 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/docker"
-	"github.com/nself-org/cli/internal/reconcile"
 )
 
 // privateState refuses symlinked state ancestors before creating recovery artifacts.
@@ -151,21 +150,6 @@ func pinSnapshot(data []byte, images map[string]string) ([]byte, error) {
 		return nil, fmt.Errorf("encode previous compose: %w", err)
 	}
 	return out, nil
-}
-
-// RestartPrevious starts only the immutable snapshot, retaining every volume.
-func (r *Runtime) RestartPrevious(ctx context.Context, j *Journal) error {
-	if j.Prod || reconcile.EnvClass(r.cfg.Env) == reconcile.ClassProd {
-		return fmt.Errorf("automatic restart recovery is forbidden on production-class environments")
-	}
-	if err := r.verifySnapshot(j); err != nil {
-		return err
-	}
-	c := docker.NewCompose(j.PreviousCompose)
-	if err := c.ComposeUp(ctx, r.dir); err != nil {
-		return fmt.Errorf("restart previous images: %w", err)
-	}
-	return r.healthCompose(ctx, c)
 }
 
 // verifySnapshot binds retained private bytes and immutable images to this journal.

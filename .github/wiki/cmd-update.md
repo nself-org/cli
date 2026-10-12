@@ -78,26 +78,63 @@ before pulling or changing the stack. Changing the environment class while a run
 is unfinished is also refused. A terminal confirmation or `--yes` is required
 before any step; unattended execution without `--yes` returns E403.
 
-On a non-production migration failure, recovery restores the step-one backup,
-restarts the saved immutable previous image set, and compares every table's exact
-row count with the counts captured immediately after creating the dump, before
-pulling images. Concurrent writes during the dump or between the dump and count
-can still cause a mismatch; quiesce writers for an exact recovery comparison.
+On a non-production migration failure, recovery runs in this order and stops at
+the first failure:
+
+1. Check that every pinned previous image still exists (`docker image inspect`).
+   If one is missing, nothing is stopped or restored, the database is untouched,
+   and the run ends `rollback-failed`.
+2. Stop the app services with `docker compose stop`. Postgres stays up. No
+   container, volume or backup is removed.
+3. Restore the step-one backup. Any `pg_restore` error line fails the restore,
+   whatever the compat mode.
+4. Start the saved immutable previous image set with
+   `docker compose -f <snapshot> up -d --remove-orphans`, which removes services
+   the update added (containers only, never volumes), then wait for health.
+5. Compare every table's exact row count with the counts captured immediately
+   after creating the dump, before pulling images.
+
+Concurrent writes during the dump or between the dump and count can still cause a
+mismatch; quiesce writers for an exact recovery comparison.
 Recovery has its own 30-minute timeout, tied to the migration timeout, covering
-restore, restart of the previous images, and row counts together. It runs independently
+all of the above together. It runs independently
 of the failed operation's cancellation or deadline.
 The backup and volumes remain retained. After successful recovery (`rolled-back`),
 the next run atomically archives the old journal as
 `.nself/state/update-stack.<run_id>.json` and starts a fresh update.
 `rollback-running` and `rollback-failed` remain blocked: inspect the retained
 backup, restored table counts, and previous image health, then archive the journal
-before a new update. A failed recovery also prints the step-one restore command.
+before a new update. A failed recovery, and every blocked resume, prints the
+step-one restore command, the pinned snapshot path
+(`.nself/state/update-stack-previous-*.json`) and the exact restart command.
 
-Production and staging never restore automatically. A failed later step records
-`awaiting-operator`, returns E139 (exit 2), and prints an exact
-`nself backup restore '<backup-id>'` command only when step one completed with
-a verified backup. A failed backup verification returns E403 without a restore
-instruction when no later step has failed.
+Production and staging never restore automatically. A failed `start`, `migrate`,
+`readiness` or `health` step records `awaiting-operator`, returns E139 (exit 2),
+and prints the exact `nself backup restore '<backup-id>'` command plus the
+snapshot restart command, because the database may have changed. A failed `pull`
+or `build` changes nothing: the message says so, tells you to retry, and prints no
+restore command. If a resume cannot re-verify the step-one backup (digest changed,
+file missing or truncated), it returns E403 and prints `nself backup verify
+'<backup-id>'` and a warning that the backup can no longer be trusted. It never
+prints a restore command for a backup it could not verify.
+
+If step-one verification fails, the journal's backup evidence is cleared (the
+dump file stays on disk) and the message names the backup, so the next
+`nself update stack --yes` takes a fresh dump.
+
+The run backup is tagged `keep-stack-<run_id>-<nonce>`. `nself backup prune`
+never deletes a backup tagged `keep` or `keep-*`, so it survives while a journal
+references it. nself never deletes it. To release it after a complete run, rename
+the file in the backup directory, replacing the `keep-` prefix of the tag with
+`stack-`; normal retention then applies.
+
+After the readiness step, the run tracks the manifest tables of the active plugins
+that apply migrations at boot in Hasura (`database.TrackPluginTables`, which
+retries once if Hasura metadata changes concurrently). A tracking failure fails
+the readiness step with E139.
+
+If releasing the project lock fails after a complete run, the command prints a
+warning and still succeeds; after a failed run both errors are reported.
 Inspect the failed step before retrying; a retry re-verifies the backup first.
 Successful JSON output contains `data.steps[]` with `name`, `result`, and
 `duration_ms`. Failures use the standard error envelope; detailed step results

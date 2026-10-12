@@ -91,7 +91,7 @@ func TestStackIntegration(t *testing.T) {
 				if j.Status != "awaiting-operator" || b.restores != 0 || rows["np_fixture"] != 0 {
 					t.Fatalf("production restored: %+v rows=%v restores=%d", j, rows, b.restores)
 				}
-				if coded.Fix != RestoreCommand(j.BackupID) {
+				if !strings.Contains(coded.Fix, RestoreCommand(j.BackupID)) {
 					t.Fatalf("missing exact restore command: %v", err)
 				}
 				b.assertImage(t, ctx, "nplus1")
@@ -100,6 +100,10 @@ func TestStackIntegration(t *testing.T) {
 					t.Fatalf("rollback counts mismatch before=%v after=%v actual=%v", j.BeforeRows, j.AfterRows, rows)
 				}
 				b.assertImage(t, ctx, "n")
+				// M2: the new-image worker was stopped before the restore ran.
+				if b.workerUpAtRestore {
+					t.Fatal("restore ran while the new-image worker was still running")
+				}
 			}
 		})
 	}
@@ -176,6 +180,9 @@ type integrationBackend struct {
 	compose                 *docker.Compose
 	blockStart, failMigrate bool
 	restores                int
+	// workerUpAtRestore is set when Restore ran while the new-image worker was
+	// still running (the M2 hazard).
+	workerUpAtRestore bool
 }
 
 // newIntegrationBackend creates only test-owned Docker resources and refuses skips.
@@ -359,9 +366,28 @@ func (b *integrationBackend) Run(ctx context.Context, step string, j *Journal) e
 	}
 }
 
+// CheckPreviousImages proves the old worker image still exists before recovery.
+func (b *integrationBackend) CheckPreviousImages(ctx context.Context, _ *Journal) error {
+	name, err := b.name()
+	if err != nil {
+		return err
+	}
+	return b.compose.Run(ctx, b.dir, "image", "inspect", name+":n")
+}
+
+// StopServices stops the new-image worker; the database service stays up.
+func (b *integrationBackend) StopServices(ctx context.Context, _ *Journal) error {
+	return b.compose.ComposeStop(ctx, b.dir, "worker")
+}
+
 // Restore reapplies the retained real dump without removing backup artifacts.
 func (b *integrationBackend) Restore(ctx context.Context, j *Journal) error {
 	b.restores++
+	if name, err := b.name(); err == nil {
+		if info, err := docker.InspectContainer(ctx, name+"-worker"); err == nil && info.State == "running" {
+			b.workerUpAtRestore = true
+		}
+	}
 	dump, err := os.ReadFile(filepath.Join(b.dir, j.BackupID))
 	if err != nil {
 		return err

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"strings"
 
 	"github.com/nself-org/cli/internal/errs"
 )
@@ -39,33 +38,27 @@ func failedStep(ctx context.Context, o Options, b Backend, j *Journal, i int, ca
 		cause = errors.Join(cause, err)
 	}
 	e := errs.Wrap(code, fmt.Sprintf("Stack update step %s failed", j.Steps[i].Name), cause)
-	if (o.Prod && verifiedBackupWithFailedStep(j)) || (j.BackupID != "" && j.Status == "rollback-failed") {
-		e = e.WithFix(RestoreCommand(j.BackupID))
+	if fix := failureFix(o, j, cause); fix != "" {
+		e = e.WithFix(fix)
 	}
 	return e
 }
 
-// verifiedBackupWithFailedStep gates manual restore guidance on durable evidence.
-// Inputs: journal. Outputs: whether a verified backup preceded a failed later step.
-// Constraints: a backup identifier alone never authorizes restore guidance.
-func verifiedBackupWithFailedStep(j *Journal) bool {
-	if j.BackupID == "" || len(j.Steps) == 0 || j.Steps[0].Result != "ok" {
-		return false
-	}
-	for _, step := range j.Steps[1:] {
-		if step.Result == "failed" {
-			return true
-		}
-	}
-	return false
-}
-
 // rollback restores data and the exact previous image set, then proves row equality.
 // Inputs: step-one backup and pre-update row counts. Outputs: restored row evidence.
-// Constraints: no volume or backup deletion, and no recovery in production.
+// Constraints: no volume or backup deletion, and no recovery in production. Order:
+// (1) every pinned previous image must exist, before anything is touched; (2) stop
+// the new-image app services, postgres stays up; (3) restore; (4) start the pinned
+// snapshot and remove orphans; (5) compare row counts.
 func rollback(ctx context.Context, b Backend, j *Journal) error {
 	if j.Prod || j.BackupID == "" || j.BeforeRows == nil {
 		return fmt.Errorf("automatic rollback lacks non-production backup evidence")
+	}
+	if err := b.CheckPreviousImages(ctx, j); err != nil {
+		return &imagesMissingError{cause: fmt.Errorf("previous images are not available, nothing was stopped or restored: %w", err)}
+	}
+	if err := b.StopServices(ctx, j); err != nil {
+		return fmt.Errorf("stop new-image services before restore: %w", err)
 	}
 	if err := b.Restore(ctx, j); err != nil {
 		return fmt.Errorf("restore step-one backup: %w", err)
@@ -84,9 +77,13 @@ func rollback(ctx context.Context, b Backend, j *Journal) error {
 	return nil
 }
 
-// RestoreCommand quotes an exact retained backup id for an operator shell command.
-// Inputs: backup id. Outputs: executable restore guidance.
-// Constraints: shell metacharacters in backup identifiers cannot execute commands.
-func RestoreCommand(backupID string) string {
-	return "nself backup restore '" + strings.ReplaceAll(backupID, "'", "'\"'\"'") + "'"
-}
+// imagesMissingError marks a rollback that stopped before touching data or services.
+// Inputs: the preflight cause. Outputs: an error that guidance can recognize.
+// Constraints: unwraps to the cause so errors.Is and As keep working.
+type imagesMissingError struct{ cause error }
+
+// Error returns the preflight message.
+func (e *imagesMissingError) Error() string { return e.cause.Error() }
+
+// Unwrap exposes the docker or snapshot error.
+func (e *imagesMissingError) Unwrap() error { return e.cause }

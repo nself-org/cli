@@ -47,14 +47,15 @@ func TestStackUpdateUnverifiedBackupNeverSuggestsRestore(t *testing.T) {
 			b.fail, b.noProof, b.oldBackup = fault, fault == "missing-proof", fault == "old-backup"
 			j, err := Execute(context.Background(), Options{ProjectDir: t.TempDir(), Prod: true, Yes: true}, b)
 			assertCode(t, err, "E403")
-			if j.BackupID == "" || j.Steps[0].Result != "failed" || strings.Contains(cliFix(t, err), "backup restore") {
-				t.Fatalf("unverified dump suggested for restore: %+v %v", j, err)
+			// S3: the unusable evidence is cleared (the file stays) and named.
+			if j.BackupID != "" || j.PreviousCompose != "" || j.Steps[0].Result != "failed" || strings.Contains(cliFix(t, err), "backup restore") || !strings.Contains(cliFix(t, err), "backup verify 'step-one-backup'") {
+				t.Fatalf("unverified dump suggested for restore or evidence kept: %+v %v", j, err)
 			}
 		})
 	}
 }
 
-func TestStackUpdateResumeRestoreGuidanceRequiresLaterFailure(t *testing.T) {
+func TestStackUpdateResumeVerifyFailureNeverSuggestsRestore(t *testing.T) {
 	for _, result := range []string{"failed", "running"} {
 		t.Run(result, func(t *testing.T) {
 			b := newFixture()
@@ -74,8 +75,10 @@ func TestStackUpdateResumeRestoreGuidanceRequiresLaterFailure(t *testing.T) {
 			b.fail = "verify"
 			j, err := Execute(context.Background(), o, b)
 			assertCode(t, err, "E403")
-			if j.Steps[0].Result != "ok" || strings.Contains(cliFix(t, err), "backup restore") != (result == "failed") {
-				t.Fatalf("resume guidance contradicts durable failure evidence: %+v %v", j, err)
+			// M1: this run could not re-verify the dump, so restore is never offered.
+			fix := cliFix(t, err)
+			if j.Steps[0].Result != "ok" || strings.Contains(fix, "backup restore") || !strings.Contains(fix, "nself backup verify 'step-one-backup'") || !strings.Contains(fix, "no longer be trusted") {
+				t.Fatalf("resume guidance offers an unverified restore: %+v %q", j, fix)
 			}
 		})
 	}
@@ -88,7 +91,8 @@ func TestStackUpdateFailedRecoverySuggestsStepOneRestore(t *testing.T) {
 			b.fail = "migrate"
 			j, err := Execute(context.Background(), Options{ProjectDir: t.TempDir(), Yes: true}, b)
 			assertCode(t, err, "E139")
-			if j.Status != "rollback-failed" || cliFix(t, err) != RestoreCommand("step-one-backup") {
+			fix := cliFix(t, err)
+			if j.Status != "rollback-failed" || !strings.Contains(fix, RestoreCommand("step-one-backup")) || !strings.Contains(fix, RestartCommand("images=N")) || !strings.Contains(fix, "images=N") {
 				t.Fatalf("missing step-one recovery guidance: %+v %v", j, err)
 			}
 		})

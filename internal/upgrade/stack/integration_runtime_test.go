@@ -42,6 +42,8 @@ func TestStackIntegrationRuntime(t *testing.T) {
 	// this tmpfs fixture's database container. Production persists data in volumes.
 	doc := strings.ReplaceAll(string(data), name+"-db", name+"_postgres")
 	doc = strings.Replace(doc, "image: postgres:16", "image: "+dbInfo.Image+"\n    pull_policy: never", 1)
+	// The shipped stack names its database service postgres; StopServices keeps it up.
+	doc = strings.Replace(doc, "\n  db:\n", "\n  postgres:\n", 1)
 	for _, file := range []string{"compose.yaml", "docker-compose.yml"} {
 		if err := os.WriteFile(filepath.Join(b.dir, file), []byte(doc), 0600); err != nil {
 			t.Fatal(err)
@@ -101,6 +103,27 @@ func TestStackIntegrationRuntime(t *testing.T) {
 	if reflect.DeepEqual(before, changed) {
 		t.Fatal("fault did not change real row counts")
 	}
+	// M2: the pinned images exist, and the new-image worker is stopped (postgres
+	// stays up) before the restore touches the database.
+	if err := r.CheckPreviousImages(ctx, j); err != nil {
+		t.Fatal(err)
+	}
+	assertRunning := func(container string, want bool) {
+		t.Helper()
+		info, err := docker.InspectContainer(ctx, container)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if (info.State == "running") != want {
+			t.Fatalf("%s state=%q, want running=%v", container, info.State, want)
+		}
+	}
+	assertRunning(name+"-worker", true)
+	if err := r.StopServices(ctx, j); err != nil {
+		t.Fatal(err)
+	}
+	assertRunning(name+"-worker", false)
+	assertRunning(name+"_postgres", true)
 	if err := r.Restore(ctx, j); err != nil {
 		t.Fatal(err)
 	}

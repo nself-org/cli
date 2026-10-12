@@ -21,6 +21,10 @@ type fixtureBackend struct {
 	backupRows map[string]int64
 	image      string
 	badRestore bool
+	// appsStopped is set by StopServices; runningAtRestore records that Restore
+	// ran while new-image services were still up (the M2 hazard).
+	appsStopped      bool
+	runningAtRestore bool
 }
 
 func newFixture() *fixtureBackend {
@@ -69,10 +73,23 @@ func (b *fixtureBackend) Run(_ context.Context, name string, _ *Journal) error {
 	return b.called(name)
 }
 
+func (b *fixtureBackend) CheckPreviousImages(_ context.Context, _ *Journal) error {
+	return b.called("check-images")
+}
+
+func (b *fixtureBackend) StopServices(_ context.Context, _ *Journal) error {
+	if err := b.called("stop-services"); err != nil {
+		return err
+	}
+	b.appsStopped = true
+	return nil
+}
+
 func (b *fixtureBackend) Restore(_ context.Context, _ *Journal) error {
 	if err := b.called("restore"); err != nil {
 		return err
 	}
+	b.runningAtRestore = !b.appsStopped
 	b.rows = cloneRows(b.backupRows)
 	if b.badRestore {
 		b.rows["public.accounts"]++

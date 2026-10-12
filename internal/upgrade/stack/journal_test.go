@@ -134,8 +134,10 @@ func TestProdResumeFailedVerificationPersistsOperatorState(t *testing.T) {
 	if loadErr != nil || stored.Status != "awaiting-operator" {
 		t.Fatalf("production refusal not persisted: %+v %v", stored, loadErr)
 	}
-	if got := err.Error(); !strings.Contains(got, RestoreCommand(j.BackupID)) {
-		t.Fatalf("production refusal omitted recovery command: %s", got)
+	// M1: a dump this run could not re-verify is never offered for restore.
+	fix := cliFix(t, err)
+	if strings.Contains(err.Error(), RestoreCommand(j.BackupID)) || strings.Contains(fix, "backup restore") || !strings.Contains(fix, VerifyCommand(j.BackupID)) {
+		t.Fatalf("production refusal offered an unverified restore: %s", fix)
 	}
 }
 

@@ -26,6 +26,8 @@ type Backend interface {
 	Backup(context.Context, *Journal) error
 	VerifyBackup(context.Context, *Journal) error
 	Run(context.Context, string, *Journal) error
+	CheckPreviousImages(context.Context, *Journal) error
+	StopServices(context.Context, *Journal) error
 	Restore(context.Context, *Journal) error
 	RestartPrevious(context.Context, *Journal) error
 	CountRows(context.Context) (map[string]int64, error)

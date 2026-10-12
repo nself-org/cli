@@ -227,14 +227,52 @@ func TestStackCommandFailureJSON(t *testing.T) {
 	}
 }
 
-// TestStackCommandReleaseFailureJSON proves cleanup errors replace staged success.
-func TestStackCommandReleaseFailureJSON(t *testing.T) {
+// TestStackCommandReleaseFailureAfterSuccessIsWarning proves a lock-release
+// failure after a complete run warns and leaves the success envelope intact.
+func TestStackCommandReleaseFailureAfterSuccessIsWarning(t *testing.T) {
 	c, out := stackTestCommand(t)
+	var errOut bytes.Buffer
+	c.SetErr(&errOut)
 	dir := t.TempDir()
 	oldDir, oldCfg, oldBackend := stackProjectDir, stackLoadConfig, stackBackend
 	stackProjectDir = func() (string, error) { return dir, nil }
 	stackLoadConfig = func(string) (*config.Config, error) { return &config.Config{Env: "dev"}, nil }
 	stackBackend = func(string, *config.Config, io.Writer) stack.Backend { return stackCommandBackend{} }
+	t.Cleanup(func() { stackProjectDir, stackLoadConfig, stackBackend = oldDir, oldCfg, oldBackend })
+	releaseFailure := errors.New("injected lock-release failure")
+	stackLock = func(*cobra.Command, string) (func() error, error) { return func() error { return releaseFailure }, nil }
+	for _, flag := range []string{"yes", "json"} {
+		if err := c.Flags().Set(flag, "true"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := runUpdateStack(c, nil); err != nil {
+		t.Fatalf("release failure after success must not fail the run: %v", err)
+	}
+	var envelope map[string]json.RawMessage
+	decoder := json.NewDecoder(out)
+	if err := decoder.Decode(&envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope["data"] == nil || envelope["error"] != nil {
+		t.Fatalf("expected the success envelope: %s", out.String())
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		t.Fatalf("more than one envelope: %v", err)
+	}
+	if !strings.Contains(errOut.String(), "warning") || !strings.Contains(errOut.String(), "injected lock-release failure") {
+		t.Fatalf("release failure was not surfaced as a warning: %q", errOut.String())
+	}
+}
+
+// TestStackCommandReleaseFailureAfterFailureJoins proves a failed run keeps both errors.
+func TestStackCommandReleaseFailureAfterFailureJoins(t *testing.T) {
+	c, out := stackTestCommand(t)
+	dir := t.TempDir()
+	oldDir, oldCfg, oldBackend := stackProjectDir, stackLoadConfig, stackBackend
+	stackProjectDir = func() (string, error) { return dir, nil }
+	stackLoadConfig = func(string) (*config.Config, error) { return &config.Config{Env: "dev"}, nil }
+	stackBackend = func(string, *config.Config, io.Writer) stack.Backend { return stackFailedBackup{} }
 	t.Cleanup(func() { stackProjectDir, stackLoadConfig, stackBackend = oldDir, oldCfg, oldBackend })
 	releaseFailure := errors.New("injected lock-release failure")
 	stackLock = func(*cobra.Command, string) (func() error, error) { return func() error { return releaseFailure }, nil }
@@ -257,10 +295,56 @@ func TestStackCommandReleaseFailureJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	if envelope["error"] == nil || envelope["data"] != nil {
-		t.Fatalf("cleanup failure emitted success: %s", out.String())
+		t.Fatalf("failure emitted success: %s", out.String())
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
-		t.Fatalf("more than one cleanup envelope: %v", err)
+		t.Fatalf("more than one envelope: %v", err)
+	}
+}
+
+// partialWriter accepts the first bytes of a document, then fails.
+type partialWriter struct {
+	buf   bytes.Buffer
+	limit int
+}
+
+func (w *partialWriter) Write(p []byte) (int, error) {
+	room := w.limit - w.buf.Len()
+	if room <= 0 {
+		return 0, errors.New("injected short write")
+	}
+	if len(p) > room {
+		w.buf.Write(p[:room])
+		return room, errors.New("injected short write")
+	}
+	w.buf.Write(p)
+	return len(p), nil
+}
+
+// TestStackCommandEmitFailureWritesNoSecondDocument proves a result write that
+// fails partway is reported on stderr and no error envelope follows it.
+func TestStackCommandEmitFailureWritesNoSecondDocument(t *testing.T) {
+	c, _ := stackTestCommand(t)
+	pw := &partialWriter{limit: 20}
+	var errOut bytes.Buffer
+	pilotWriter = func() output.Writer { return output.Writer{Out: pw, Err: &errOut} }
+	dir := t.TempDir()
+	oldDir, oldCfg, oldBackend := stackProjectDir, stackLoadConfig, stackBackend
+	stackProjectDir = func() (string, error) { return dir, nil }
+	stackLoadConfig = func(string) (*config.Config, error) { return &config.Config{Env: "dev"}, nil }
+	stackBackend = func(string, *config.Config, io.Writer) stack.Backend { return stackCommandBackend{} }
+	t.Cleanup(func() { stackProjectDir, stackLoadConfig, stackBackend = oldDir, oldCfg, oldBackend })
+	for _, flag := range []string{"yes", "json"} {
+		if err := c.Flags().Set(flag, "true"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	err := runUpdateStack(c, nil)
+	if err == nil || !strings.Contains(err.Error(), "injected short write") {
+		t.Fatalf("emit failure not reported: %v", err)
+	}
+	if pw.buf.Len() != 20 || strings.Contains(pw.buf.String(), `"error"`) || !strings.Contains(errOut.String(), "emit update stack result") {
+		t.Fatalf("second document or silent failure: out=%q err=%q", pw.buf.String(), errOut.String())
 	}
 }
 
@@ -396,9 +480,11 @@ func (stackCommandBackend) VerifyBackup(_ context.Context, j *stack.Journal) err
 	j.BackupVerifiedAt = time.Now()
 	return nil
 }
-func (stackCommandBackend) Run(context.Context, string, *stack.Journal) error     { return nil }
-func (stackCommandBackend) Restore(context.Context, *stack.Journal) error         { return nil }
-func (stackCommandBackend) RestartPrevious(context.Context, *stack.Journal) error { return nil }
+func (stackCommandBackend) Run(context.Context, string, *stack.Journal) error         { return nil }
+func (stackCommandBackend) CheckPreviousImages(context.Context, *stack.Journal) error { return nil }
+func (stackCommandBackend) StopServices(context.Context, *stack.Journal) error        { return nil }
+func (stackCommandBackend) Restore(context.Context, *stack.Journal) error             { return nil }
+func (stackCommandBackend) RestartPrevious(context.Context, *stack.Journal) error     { return nil }
 func (stackCommandBackend) CountRows(context.Context) (map[string]int64, error) {
 	return map[string]int64{"public.np_rows": 3}, nil
 }

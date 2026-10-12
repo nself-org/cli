@@ -80,7 +80,10 @@ func (r *Runtime) Run(ctx context.Context, name string, j *Journal) error {
 		_, err := runtimeMigrateUp(ctx, r.cfg, "")
 		return err
 	case "readiness":
-		return r.readiness(ctx)
+		if err := r.readiness(ctx); err != nil {
+			return err
+		}
+		return r.trackTables(ctx)
 	case "health":
 		return r.health(ctx)
 	case "pull", "start":

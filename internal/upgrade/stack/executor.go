@@ -52,7 +52,7 @@ func execute(ctx context.Context, o Options, b Backend) (*Journal, error) {
 		return j, errs.New("E403", "Stack update environment differs from its journal")
 	}
 	if j.Status == "rollback-running" || j.Status == "rollback-failed" {
-		return j, errs.New("E139", "Stack update recovery requires operator reconciliation").WithFix("Check that restoring the step-one backup, restarting the previous images, and per-table row counts all succeeded; then archive .nself/state/update-stack.json before starting a new update.")
+		return j, errs.New("E139", "Stack update recovery requires operator reconciliation").WithFix(blockedFix(j))
 	}
 	if b == nil {
 		return j, errs.New("E139", "Stack update backend is unavailable")
@@ -64,11 +64,9 @@ func execute(ctx context.Context, o Options, b Backend) (*Journal, error) {
 				if saveErr := saveJournal(o.ProjectDir, j); saveErr != nil {
 					err = fmt.Errorf("%w; persist production backup refusal: %v", err, saveErr)
 				}
+				// This run could not re-verify the dump: never offer it for restore.
 				e := errs.Wrap("E403", "Stack update backup verification failed on resume", err)
-				if verifiedBackupWithFailedStep(j) {
-					e = e.WithFix(RestoreCommand(j.BackupID))
-				}
-				return j, e
+				return j, e.WithFix(fmt.Sprintf("The step-one backup can no longer be trusted. Check it with: %s. Restore only a backup that verifies.", VerifyCommand(j.BackupID)))
 			}
 			return j, backupError(false, err)
 		}
@@ -148,14 +146,14 @@ func runStep(ctx context.Context, b Backend, j *Journal, name string) error {
 	}
 	if j.BackupID == "" {
 		if err := b.Backup(ctx, j); err != nil {
-			return fmt.Errorf("create update backup: %w", err)
+			return resetBackupEvidence(j, fmt.Errorf("create update backup: %w", err))
 		}
 	}
 	if err := verifyProof(ctx, b, j); err != nil {
-		return err
+		return resetBackupEvidence(j, err)
 	}
 	if j.PreviousCompose == "" {
-		return fmt.Errorf("backup lacks previous image set evidence")
+		return resetBackupEvidence(j, fmt.Errorf("backup lacks previous image set evidence"))
 	}
 	if j.BeforeRows != nil {
 		return nil
@@ -169,6 +167,21 @@ func runStep(ctx context.Context, b Backend, j *Journal, name string) error {
 	}
 	j.BeforeRows = rows
 	return nil
+}
+
+// resetBackupEvidence drops unusable step-one evidence so a retry takes a fresh dump.
+// Inputs: journal and the failure. Outputs: the failure, tagged with the cleared backup id.
+// Constraints: only journal fields change; the dump and snapshot files stay on disk.
+func resetBackupEvidence(j *Journal, cause error) error {
+	if j.BackupID == "" {
+		return cause
+	}
+	id := j.BackupID
+	j.BackupID, j.BackupSHA256 = "", ""
+	j.BackupCreatedAt, j.BackupVerifiedAt = time.Time{}, time.Time{}
+	j.PreviousCompose, j.PreviousComposeSHA256 = "", ""
+	j.BeforeRows = nil
+	return &evidenceReset{id: id, cause: cause}
 }
 
 // verifyProof re-verifies the retained backup in this invocation.

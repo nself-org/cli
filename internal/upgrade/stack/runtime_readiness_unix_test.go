@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/database"
 	"github.com/nself-org/cli/internal/plugin/readiness"
 )
 
@@ -55,8 +56,19 @@ func TestUpdateStackRuntimeReadinessActivePlugin(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("STACK_TEST_PS", fmt.Sprintf(`[{"ID":"fixture","Service":"plugin_fixture-full","State":"running","Ports":"127.0.0.1:%s->3999/tcp"}]`, port))
+	// S4: readiness is followed by Hasura table tracking of the active plugin.
+	var tracked []database.PluginTables
+	oldTrack := runtimeTrackTables
+	runtimeTrackTables = func(_ context.Context, _ *config.Config, p []database.PluginTables) (database.TrackResult, error) {
+		tracked = p
+		return database.TrackResult{}, nil
+	}
+	t.Cleanup(func() { runtimeTrackTables = oldTrack })
 	if err := r.Run(context.Background(), "readiness", &Journal{}); err != nil {
 		t.Fatal(err)
+	}
+	if len(tracked) != 1 || tracked[0].Plugin != "fixture-full" || len(tracked[0].Tables) != 1 || tracked[0].Tables[0] != "np_fixture_full_items" {
+		t.Fatalf("readiness did not track the plugin tables: %+v", tracked)
 	}
 	t.Setenv(readiness.EnvTimeout, "invalid")
 	if err := r.readiness(context.Background()); err == nil || !strings.Contains(err.Error(), "plugin readiness timeout") {
