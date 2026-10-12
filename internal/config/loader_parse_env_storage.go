@@ -7,7 +7,11 @@ package config
 // Outputs: none — mutates cfg in place.
 // Constraints: pure os.Getenv reads only, same rules as loader_parse_env.go.
 
-import "os"
+import (
+	"os"
+
+	"github.com/nself-org/cli/internal/compat"
+)
 
 // parseEnvStorage fills the MinIO/Mailpit/Functions/MLflow/Admin/Search fields.
 func parseEnvStorage(cfg *Config) {
@@ -25,6 +29,10 @@ func parseEnvStorage(cfg *Config) {
 		"MINIO_ROOT_USER", "MINIO_ROOT_PASSWORD",
 		"MINIO_ACCESS_KEY", "MINIO_SECRET_KEY",
 		"S3_ACCESS_KEY", "S3_SECRET_KEY",
+	}
+	// compat.V15(P7-PLUG-60): S3 keys infer MinIO intent -> core object storage keys do not enable MinIO
+	if compat.V15() && getEnvBool("OBJECT_STORAGE_ENABLED", false) {
+		minioIntentVars = minioIntentVars[:4]
 	}
 	hasMinioIntent := false
 	for _, k := range minioIntentVars {
