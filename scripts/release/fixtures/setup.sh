@@ -31,6 +31,7 @@ seed_cli() { # <with-facts 0|1>
     printf 'on:\n  push:\n    tags:\n      - "v*"\n  workflow_dispatch:\n    inputs:\n      version:\n        required: false\n' | put ".github/workflows/$f.yml"
   done
   printf 'on:\n  push:\n    tags:\n      - "v*"\n' | put .github/workflows/sdk-manual-publish.yml
+  printf 'on:\n  push:\n    tags:\n      - "v*"\n  workflow_dispatch:\n    inputs:\n      version:\n        required: false\n' | put .github/workflows/sdk-publish-go.yml
   if [ "$1" = 1 ]; then
     mkdir -p "$SD/tools" "$SD/vendor"; cp -R "$FIXTURES/facts" "$SD/tools/facts"; : > "$SD/vendor/modules.txt"
     printf 'module fixture\n\ngo 1.21\n' | put go.mod
@@ -69,10 +70,11 @@ mk_env() { # <with-facts 0|1>
   git clone -q "$FIX/cli.git" "$T/cwd"
 }
 
-# bump_mains: commit the 1.5.0 bump straight onto admin and cli main (as if S2/S3 had merged).
+# bump_mains [admin|cli]: commit the 1.5.0 bump straight onto admin and/or cli main
+# (as if S2/S3 had merged). No PR record is made, so S4/S9 take their no-PR path.
 bump_mains() {
   local r
-  for r in admin cli; do
+  for r in ${1:-admin cli}; do
     git clone -q "$FIX/$r.git" "$T/bm-$r"
     if [ "$r" = admin ]; then
       echo '{"name":"admin","version":"1.5.0"}' > "$T/bm-$r/package.json"
@@ -83,11 +85,24 @@ bump_mains() {
   done
 }
 
-# bump_brew: the homebrew formula on main already carries 1.5.0 (as if S6 had merged).
+# fake_merged_pr <repo> <branch> <sha>: a merged PR record, as admin-merge would leave.
+fake_merged_pr() {
+  local n=$(( $(cat "$ST/prcount" 2>/dev/null || echo 0) + 1 ))
+  echo "$n" > "$ST/prcount"; mkdir -p "$ST/pr/$1"
+  printf '%s' "$2" > "$ST/pr/$1/$n.head"; echo MERGED > "$ST/pr/$1/$n.state"; echo "$3" > "$ST/pr/$1/$n.sha"
+}
+
+# bump_brew [good]: the homebrew formula on main already carries 1.5.0; with "good"
+# also the fixture checksums' hashes, otherwise the old 1.4.13 hashes.
 bump_brew() {
+  local f="$T/bm-brew/Formula/nself.rb"
   git clone -q "$FIX/homebrew-nself.git" "$T/bm-brew"
-  sed 's/version "1.4.13"/version "1.5.0"/' "$T/bm-brew/Formula/nself.rb" > "$T/bm-brew/f.new"
-  mv "$T/bm-brew/f.new" "$T/bm-brew/Formula/nself.rb"
+  sed 's/version "1.4.13"/version "1.5.0"/' "$f" > "$f.new"; mv "$f.new" "$f"
+  if [ "${1:-}" = good ]; then
+    sed -e 's/73432f349295c10e6f28621d92fdc7736284ecb8287b5df697f98d5289acd138/554a93c77f0a4d50fabbdc3ed7bd01638f092ce082f2d54d866d659d662bfd77/' \
+      -e 's/eda10ee8bd97ae6707c92bef4a77624fa26883e5bea39efb2c413c18cf2aa809/6f823864cb70bb06e0d87f751db0fafcf96375da658da2b281b0fb1d9a4deeba/' "$f" > "$f.new"
+    mv "$f.new" "$f"
+  fi
   git -C "$T/bm-brew" commit -q -am bump && git -C "$T/bm-brew" push -q origin HEAD:main
 }
 

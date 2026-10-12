@@ -46,7 +46,9 @@ for r in admin cli homebrew-nself; do
 done
 check "plan shows facts regeneration" out_has 'tools/facts -readme README.md'
 check "plan shows the web update-lock PR" grep -q '^S7 release-wait web .*update-lock.mjs cli v9.9.9' "$T/out"
-check "plan shows the three tag-time denylist checks" test "$(grep -c -E '^S4 tag cli .*DENY-00[345]' "$T/out")" -eq 3
+check "plan shows the tag-time denylist checks" test "$(grep -c -E '^S4 tag cli .*DENY-00[345]' "$T/out")" -eq 4
+check "plan shows the admin tag" grep -q '^S9 admin-image admin .*tag -a v9.9.9 .*push origin refs/tags/v9.9.9' "$T/out"
+check "plan shows the release gate before the formula merge" grep -q '^S6 homebrew-formula cli .*Sign and publish' "$T/out"
 check "plan shows the annotated tag push" grep -q "^S4 tag cli .*tag -a v9.9.9 .*push origin refs/tags/v9.9.9" "$T/out"
 check "plan never mentions release-create" test -z "$(grep 'release-create' "$T/out")"
 check "plan shows the checksums-file formula command" out_has 'update-formula.sh --version v9.9.9 --checksums-file'
@@ -104,8 +106,13 @@ check "formula hashes differ" test "$(formula_hash arm)" != "$(formula_hash inte
 check "formula step needed no release download" test -z "$(grep 'releases/download' "$CURL_LOG")"
 check "lockstep job re-run" grep -q 'run rerun 5551 -R nself-org/cli --failed' "$GH_LOG"
 check "cli image dispatched" grep -q "workflow run docker-publish.yml -R nself-org/cli -f version=$V" "$GH_LOG"
-check "admin image dispatched" grep -q "workflow run docker-publish.yml -R nself-org/admin -f version=$V" "$GH_LOG"
-check "sdk ts dispatched on the tag" grep -q "workflow run sdk-ts-publish.yml -R nself-org/cli --ref v$V -f version=$V" "$GH_LOG"
+check "admin tagged on its lockstep merge commit" test "$(git --git-dir="$FIX/admin.git" rev-parse "refs/tags/v$V^{commit}")" = "$(git --git-dir="$FIX/admin.git" rev-parse main)"
+check "admin tag is annotated" test "$(git --git-dir="$FIX/admin.git" cat-file -t "refs/tags/v$V")" = tag
+check "admin image came from the tag push, not a dispatch" test -z "$(grep 'workflow run docker-publish.yml -R nself-org/admin' "$GH_LOG")"
+check "sdk ts dispatched on the tag with no version input" grep -q "workflow run sdk-ts-publish.yml -R nself-org/cli --ref v$V\$" "$GH_LOG"
+check "sdk py dispatched on the tag with no version input" grep -q "workflow run sdk-py-publish.yml -R nself-org/cli --ref v$V\$" "$GH_LOG"
+check "sdk go dispatched with the cli version" grep -q "workflow run sdk-publish-go.yml -R nself-org/cli --ref v$V -f version=$V" "$GH_LOG"
+check "S8 waited for the Release-started publish run" out_has "a docker-publish.yml run on cli (9/9)"
 check "sdk without workflow_dispatch is manual" out_has "sdk-manual-publish.yml has no workflow_dispatch"
 check "web lock PR branch pushed" git --git-dir="$FIX/web.git" rev-parse -q --verify "refs/heads/release/cli-v$V"
 check "web lock pins the tag" test "$(git --git-dir="$FIX/web.git" show "release/cli-v$V:org/sources.lock.json" | jq -r .cli)" = "v$V"
@@ -131,18 +138,18 @@ rm -rf "$T"
 
 # 5. --from S6 skips S1-S5 -------------------------------------------------------------
 mk_env "$HAVE_GO"
-git --git-dir="$FIX/cli.git" tag "v$V" main
+git --git-dir="$FIX/cli.git" tag "v$V" main; bump_mains admin
 run_pty --version "$V" --from S6 --yes
 check "--from S6 exits 0" test "$RC" -eq 0
 check "--from S6 prints no S1-S5 step" test -z "$(grep -E '^S[1-5] ' "$T/out")"
 check "--from S6 merged only homebrew" test "$(sed 's/ pr=.*//' "$ADMIN_LOG" | tr '\n' ' ')" = "repo=homebrew-nself "
-check "--from S6 cloned only what it needs" test -z "$(grep -E 'repo clone nself-org/(admin|cli) ' "$GH_LOG")"
+check "--from S6 did not clone cli" test -z "$(grep -E 'repo clone nself-org/cli ' "$GH_LOG")"
 check "--from S6 formula on_arm" test "$(formula_hash arm)" = "$ARM"
 check "--from S6 formula on_intel" test "$(formula_hash intel)" = "$INTEL"
 rm -rf "$T"
 
 # 6. facts absent: S3 skips regeneration -----------------------------------------------
-mk_env 0
+mk_env 0; bump_mains admin
 run_pty --version "$V" --from S3 --yes
 check "no-facts run exits 0" test "$RC" -eq 0
 check "no-facts run says so" out_has "tools/facts absent"
@@ -161,113 +168,10 @@ check "red checks never called admin-merge" test ! -s "$ADMIN_LOG"
 check "red checks left admin main alone" test "$(show admin package.json | jq -r .version)" = 1.4.13
 rm -rf "$T"
 
-# 8. required checks that never report: nothing merges; none required: proceeds ------
-mk_env "$HAVE_GO"
-mkdir -p "$ST/required"; touch "$ST/nochecks" "$ST/required/admin"
-run_pty --version "$V" --from S2 --yes
-check "unreported required checks exit 1" test "$RC" -eq 1
-check "unreported required checks name the step" out_has "S2 admin-lockstep failed"
-check "unreported required checks never called admin-merge" test ! -s "$ADMIN_LOG"
-check "unreported required checks left admin main alone" test "$(show admin package.json | jq -r .version)" = 1.4.13
-rm -rf "$T"
-mk_env "$HAVE_GO"
-touch "$ST/nochecks"
-run_pty --version "$V" --from S2 --yes
-check "no required checks: run proceeds" test "$RC" -eq 0
-check "no required checks: says so" out_has "requires no status checks"
-check "no required checks: three merges" test "$(nlines "$ADMIN_LOG")" -eq 3
-rm -rf "$T"
-
-mk_env "$HAVE_GO"
-mkdir -p "$ST/required"; touch "$ST/required/admin" "$ST/missing_ctx"
-run_pty --version "$V" --from S2 --yes
-check "green but a required context missing exits 1" test "$RC" -eq 1
-check "missing context is named" out_has "(ci )"
-check "missing context never called admin-merge" test ! -s "$ADMIN_LOG"
-rm -rf "$T"
-mk_env "$HAVE_GO"
-mkdir -p "$ST/required"; touch "$ST/required/admin"
-run_pty --version "$V" --from S2 --yes
-check "green with every required context present proceeds" test "$RC" -eq 0
-check "required context present: three merges" test "$(nlines "$ADMIN_LOG")" -eq 3
-rm -rf "$T"
-
-# 9. S2/S3 done-detection; tag-time denylist and the tag guard ---------------------------
-mk_env "$HAVE_GO"
-bump_mains
-run_pty --version "$V" --from S2 --yes
-check "bumped mains: run exits 0" test "$RC" -eq 0
-check "bumped mains: S2 done" grep -q "S2 admin-lockstep.* done" "$T/out"
-check "bumped mains: S3 done" grep -q "S3 cli-version.* done" "$T/out"
-check "bumped mains: only homebrew merged" test "$(sed 's/ pr=.*//' "$ADMIN_LOG" | tr '\n' ' ')" = "repo=homebrew-nself "
-check "bumped mains: tag created" git --git-dir="$FIX/cli.git" rev-parse -q --verify "refs/tags/v$V"
-rm -rf "$T"
-mk_env "$HAVE_GO"; bump_mains
-git --git-dir="$FIX/cli.git" tag v1.4.99 main
-run_pty --version "$V" --from S4 --yes
-check "DENY-003 stops the tag" test "$RC" -eq 1 -a -z "$(git --git-dir="$FIX/cli.git" tag -l "v$V")"
-check "DENY-003 is named" out_has "DENY-003"
-rm -rf "$T"
-mk_env "$HAVE_GO"; bump_mains; touch "$ST/license_fail"
-run_pty --version "$V" --from S4 --yes
-check "DENY-004 stops the tag" test "$RC" -eq 1 -a -z "$(git --git-dir="$FIX/cli.git" tag -l "v$V")"
-check "DENY-004 is named" out_has "DENY-004"
-rm -rf "$T"
-mk_env "$HAVE_GO"; bump_mains; touch "$ST/no_milestone"
-run_pty --version "$V" --from S4 --yes
-check "DENY-005 stops the tag" test "$RC" -eq 1 -a -z "$(git --git-dir="$FIX/cli.git" tag -l "v$V")"
-check "DENY-005 is named" out_has "DENY-005"
-rm -rf "$T"
-mk_env "$HAVE_GO"; bump_mains
-old=$(git --git-dir="$FIX/cli.git" rev-parse main~1)
-git --git-dir="$FIX/cli.git" tag "v$V" "$old"
-run_pty --version "$V" --from S4 --yes
-check "a tag on another commit is refused" test "$RC" -eq 1
-check "a refused tag was not moved" test "$(git --git-dir="$FIX/cli.git" rev-parse "refs/tags/v$V")" = "$old"
-rm -rf "$T"
-
-mk_env "$HAVE_GO"; bump_mains; touch "$ST/only_bare_milestone"
-run_pty --version "$V" --from S4 --yes
-check "milestone without the v prefix does not pass DENY-005" test "$RC" -eq 1 -a -z "$(git --git-dir="$FIX/cli.git" tag -l "v$V")"
-check "bare milestone names DENY-005" out_has "DENY-005"
-rm -rf "$T"
-mk_env "$HAVE_GO"; bump_mains; touch "$ST/license_fail"
-run_pty --version "$V" --from S4 --yes
-check "DENY-004 message gives the recovery command" out_has "gh workflow run license-audit.yml -R nself-org/cli --ref main"
-rm -rf "$T"
-
-# 10. S6 done path still re-runs a failed lockstep job; S8 waits on an in-flight publish -
-mk_env "$HAVE_GO"
-git --git-dir="$FIX/cli.git" tag "v$V" main; bump_brew
-run_pty --version "$V" --from S6 --yes
-check "S6 done path exits 0" test "$RC" -eq 0
-check "S6 done path says done" grep -q "S6 homebrew-formula.* done" "$T/out"
-check "S6 done path re-ran the lockstep job" grep -q 'run rerun 5551 -R nself-org/cli --failed' "$GH_LOG"
-check "S6 done path merged nothing" test ! -s "$ADMIN_LOG"
-rm -rf "$T"
-mk_env "$HAVE_GO"
-git --git-dir="$FIX/cli.git" tag "v$V" main; touch "$ST/inflight@cli"
-run_pty --version "$V" --from S8 --yes
-check "in-flight publish: run exits 0" test "$RC" -eq 0
-check "in-flight publish: cli image not dispatched again" test -z "$(grep 'workflow run docker-publish.yml -R nself-org/cli' "$GH_LOG")"
-check "in-flight publish: admin image still dispatched" grep -q 'workflow run docker-publish.yml -R nself-org/admin' "$GH_LOG"
-rm -rf "$T"
-
-# 11. leftovers from an earlier attempt stop with a recovery line, not a raw git error -----
-mk_env "$HAVE_GO"
-git clone -q "$FIX/admin.git" "$T/lo"; echo x > "$T/lo/stray"; git -C "$T/lo" add stray
-git -C "$T/lo" commit -q -m stray; git -C "$T/lo" push -q origin "HEAD:refs/heads/release/v$V-lockstep"
-run_pty --version "$V" --from S2 --yes
-check "stale remote branch exits 1" test "$RC" -eq 1
-check "stale remote branch gives the delete command" out_has "gh api -X DELETE repos/nself-org/admin/git/refs/heads/release/v$V-lockstep"
-check "stale remote branch never reached admin-merge" test ! -s "$ADMIN_LOG"
-rm -rf "$T"
-mk_env "$HAVE_GO"
-mkdir -p "$TMPDIR/nself-release-$V/cli"; touch "$TMPDIR/nself-release-$V/cli/junk"
-run_pty --version "$V" --from S2 --yes
-check "non-clone work dir exits 1" test "$RC" -eq 1
-check "non-clone work dir says what to remove" out_has "is not a git clone"
-rm -rf "$T"
+# shellcheck disable=SC1091
+. "$FIXTURES/cases2.sh"
+# shellcheck disable=SC1091
+. "$FIXTURES/cases3.sh"
 fi
 
 echo "---- $PASS passed, $FAILN failed"

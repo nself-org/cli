@@ -28,6 +28,10 @@ ADMIN_MERGE="$SCRIPT_DIR/../admin-merge.sh"
 . "$SCRIPT_DIR/lib/steps2.sh"
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/lib/steps3.sh"
+for _lib in checks hashes tag publish sdk; do
+  # shellcheck disable=SC1090,SC1091
+  . "$SCRIPT_DIR/lib/$_lib.sh"
+done
 
 VERSION=""; PLAN=0; YES=0; FROM_N=1
 

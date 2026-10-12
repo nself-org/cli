@@ -11,10 +11,11 @@ POLL_SECONDS=20
 say() { printf '%s\n' "$*"; }
 err() { printf 'release: %s\n' "$*" >&2; }
 
-# die_step <S#> <id> <what failed>: exit 1 naming the step and how to resume.
+# die_step <S#> <id> <what failed> [resume-step]: exit 1 naming the step and how to
+# resume (default: the same step).
 die_step() {
   err "$1 $2 failed: $3"
-  err "recovery: fix the cause, then run: scripts/release/release.sh --version ${VERSION} --from $1"
+  err "recovery: fix the cause, then run: scripts/release/release.sh --version ${VERSION} --from ${4:-$1}"
   exit 1
 }
 
@@ -98,6 +99,25 @@ tag_exists() {
   exit 1
 }
 
+# repo_tag_sha <repo> <tag>: 0 and TAG_SHA = the commit the tag points at (GET);
+# 1 when the tag is absent. Any other failure stops the run (call it outside $(...)).
+TAG_SHA=""
+repo_tag_sha() {
+  # shellcheck disable=SC2034  # TAG_SHA is read by the callers
+  if gh_try api "repos/nself-org/$1/commits/$2" --jq .sha; then TAG_SHA=$GH_OUT; return 0; fi
+  if is_404 || printf '%s' "$GH_ERR" | grep -q -E '422|No commit found'; then return 1; fi
+  err "cannot resolve $2 on $1: $GH_ERR"
+  exit 1
+}
+
+# gh_need <what> <gh args...>: gh whose failure ends the step with a recovery line.
+# The value is left in GH_OUT. Use it instead of a bare x=$(gh ...).
+gh_need() {
+  local what=$1
+  shift
+  gh_try "$@" || die_step "$CUR_S" "$CUR_ID" "cannot read $what: ${GH_ERR:-gh failed}"
+}
+
 # --- clones: sibling layout under $WORK so cli/scripts/bump-version.sh finds ../admin ---
 # CUR_S / CUR_ID name the running step for error messages (set by release.sh).
 CUR_S="S?"; CUR_ID="?"
@@ -140,11 +160,18 @@ commit_all() {
 bump_all() { (cd "$WORK/cli" && bash scripts/bump-version.sh "$VERSION") >/dev/null; }
 
 # --- pull requests ---
-pr_info() { # <repo> <branch> -> "<n> <STATE>" or nothing
-  gh pr list -R "nself-org/$1" --head "$2" --state all --json number,state \
+# pr_info <repo> <branch>: PR_INFO = "<n> <STATE>" for the branch, or empty.
+PR_INFO=""
+pr_info() {
+  gh_need "the PRs of $1" pr list -R "nself-org/$1" --head "$2" --state all --json number,state \
     --jq '.[0] | select(.) | "\(.number) \(.state)"'
+  PR_INFO=$GH_OUT
 }
-pr_state() { gh pr view "$2" -R "nself-org/$1" --json state --jq .state; }
+# pr_merged <repo> <n>: success when the PR is merged.
+pr_merged() {
+  gh_need "PR $1#$2" pr view "$2" -R "nself-org/$1" --json state --jq .state
+  [ "$GH_OUT" = MERGED ]
+}
 
 # open_pr <S#> <id> <repo> <branch> <title> <body>: commit is already made in
 # $WORK/<repo>; push the branch and open the PR; prints the PR number.
@@ -164,128 +191,30 @@ open_pr() {
   printf '%s\n' "${url##*/}"
 }
 
-# required_contexts <repo>: names of the status checks main's protection requires
-# (GET), one per line. Nothing for a 404 (no protection, or none required); "?" when
-# the answer cannot be read.
-required_contexts() {
-  if gh_try api "repos/nself-org/$1/branches/main/protection/required_status_checks" \
-    --jq '((.contexts // []) + [(.checks // [])[].context]) | unique | .[]'; then
-    { printf '%s\n' "$GH_OUT" | grep . || true; }
-  elif ! is_404; then printf '?\n'; fi
-}
-
-# missing_required <repo> <n>: required contexts not reported as passing on the PR
-# (by name), space separated; "?" if unreadable; nothing when all are present.
-missing_required() {
-  local ctx got
-  ctx=$(required_contexts "$1")
-  if [ -z "$ctx" ]; then return 0; fi
-  if [ "$ctx" = "?" ]; then printf '?\n'; return 0; fi
-  got=$(gh pr checks "$2" -R "nself-org/$1" --required --json name,bucket \
-    --jq '.[] | select(.bucket == "pass") | .name') || { printf '?\n'; return 0; }
-  printf '%s\n' "$ctx" | while IFS= read -r c; do
-    printf '%s\n' "$got" | grep -qxF -- "$c" || printf '%s ' "$c"
-  done
-}
-
-# wait_checks <S#> <id> <repo> <n>: block until required checks are green.
-# Red stops the run. Green must also name every required context from branch
-# protection as passing (--watch can return early when only some checks exist yet).
-# "No checks reported" is accepted only when protection requires none. Missing or
-# unreported required checks are retried six times, then the run stops. Nothing
-# reaches admin-merge.sh on an unverified PR.
-wait_checks() {
-  local s=$1 id=$2 repo=$3 n=$4 i=0 out rc ctx miss
-  out=$(mktemp "${TMPDIR:-/tmp}/nself-release-checks.XXXXXX")
-  while :; do
-    set +e
-    gh pr checks "$n" -R "nself-org/$repo" --required --watch --interval 30 2>&1 | tee "$out"
-    rc=${PIPESTATUS[0]}
-    set -e
-    if [ "$rc" -eq 0 ]; then
-      miss=$(missing_required "$repo" "$n")
-      if [ -z "$miss" ]; then rm -f "$out"; return 0; fi
-      if [ "$miss" = "?" ]; then
-        rm -f "$out"; die_step "$s" "$id" "cannot read the required checks of $repo#$n; nothing was merged"
-      fi
-    elif grep -q -i -E 'no (required )?checks' "$out"; then
-      ctx=$(required_contexts "$repo")
-      if [ -z "$ctx" ]; then
-        say "$s $id: $repo requires no status checks on main; continuing to the owner prompt"
-        rm -f "$out"; return 0
-      fi
-      if [ "$ctx" = "?" ]; then
-        rm -f "$out"; die_step "$s" "$id" "cannot read the required checks of $repo; nothing was merged"
-      fi
-      miss=$(printf '%s' "$ctx" | tr '\n' ' ')
-    else
-      rm -f "$out"
-      die_step "$s" "$id" "required checks on $repo#$n are not green; nothing was merged"
-    fi
-    i=$((i + 1))
-    if [ "$i" -ge 6 ]; then
-      rm -f "$out"
-      die_step "$s" "$id" "$repo#$n: required checks not reported as passing after 6 tries (${miss}); nothing was merged"
-    fi
-    sleep "$POLL_SECONDS"
-  done
-}
-
 # merge_pr <S#> <id> <repo> <n>: green checks, then admin-merge.sh with the
 # owner's terminal. No stdin redirect, no pre-answer, and --yes never applies here.
 merge_pr() {
   local s=$1 id=$2 repo=$3 n=$4
-  if [ "$(pr_state "$repo" "$n")" = MERGED ]; then return 0; fi
+  if pr_merged "$repo" "$n"; then return 0; fi
   wait_checks "$s" "$id" "$repo" "$n"
   say "$s $id: handing the terminal to admin-merge.sh for $repo#$n (answer its prompt)"
   (cd "$WORK/$repo" && bash "$ADMIN_MERGE" --repo "nself-org/$repo" --pr "$n") \
     || die_step "$s" "$id" "admin-merge.sh failed on $repo#$n (check branch protection: it restores itself; see its audit log)"
-  if [ "$(pr_state "$repo" "$n")" != MERGED ]; then
-    die_step "$s" "$id" "$repo#$n is not merged after admin-merge.sh (declined at its prompt?)"
-  fi
+  pr_merged "$repo" "$n" || die_step "$s" "$id" "$repo#$n is not merged after admin-merge.sh (declined at its prompt?)"
 }
 
 # pr_flow <S#> <id> <repo> <branch> <state-key> <title> <body>: reuse an open PR
 # or open one from the commit already made; then merge it.
 pr_flow() {
-  local s=$1 id=$2 repo=$3 br=$4 key=$5 info n
-  info=$(pr_info "$repo" "$br")
-  if [ -n "$info" ]; then
-    n=${info%% *}
-    say "$s $id: reusing $repo#$n (${info##* })"
+  local s=$1 id=$2 repo=$3 br=$4 key=$5 n
+  pr_info "$repo" "$br"
+  if [ -n "$PR_INFO" ]; then
+    n=${PR_INFO%% *}
+    say "$s $id: reusing $repo#$n (${PR_INFO##* })"
   else
     n=$(open_pr "$s" "$id" "$repo" "$br" "$6" "$7")
     say "$s $id: opened $repo#$n"
   fi
   state_set "$key" "$n"
   merge_pr "$s" "$id" "$repo" "$n"
-}
-
-# release_run_id: the release.yml run for the tag (state cache, then GitHub).
-release_run_id() {
-  local id
-  id=$(state_get run)
-  if [ -z "$id" ]; then
-    id=$(gh run list -R nself-org/cli --workflow release.yml --branch "$TAG" --limit 1 \
-      --json databaseId --jq '.[0].databaseId // empty')
-  fi
-  if [ -n "$id" ]; then state_set run "$id"; fi
-  printf '%s\n' "$id"
-}
-
-# ensure_checksums: checksums.txt from the build artifact; after the release is
-# published (artifact retention is 1 day) fall back to the release asset.
-ensure_checksums() {
-  local f="$WORK/checksums/checksums.txt" id
-  if [ -s "$f" ]; then printf '%s\n' "$f"; return 0; fi
-  mkdir -p "$WORK/checksums"
-  id=$(release_run_id)
-  if [ -n "$id" ] && gh run download "$id" -R nself-org/cli -n release-checksums -D "$WORK/checksums" >/dev/null 2>&1 && [ -s "$f" ]; then
-    :
-  else
-    gh release download "$TAG" -R nself-org/cli -p checksums.txt -D "$WORK/checksums" --clobber >/dev/null 2>&1 || true
-  fi
-  if [ ! -s "$f" ]; then return 1; fi
-  state_set checksums "$f"
-  printf '%s\n' "$f"
 }

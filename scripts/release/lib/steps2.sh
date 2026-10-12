@@ -1,152 +1,121 @@
 # shellcheck shell=bash
-# Purpose: release steps S5-S7 (build wait + checksums, homebrew formula PR,
-#          release wait + web lock PR).
-# Inputs:  helpers from common.sh and steps1.sh; globals VERSION TAG PLAN WORK
+# Purpose: release steps S5-S6 (build wait + checksums, homebrew formula PR).
+# Inputs:  helpers from common.sh, checks.sh, hashes.sh; globals VERSION TAG PLAN WORK
 # Outputs: step_* functions. release.yml is the engine; this only waits on it.
 # Constraints: the formula is written by homebrew-nself's own update-formula.sh from
-#          the build's checksums file (both darwin hashes, no release download).
+#          the release's checksums file (both darwin hashes) and is merged only
+#          while the release can still publish.
 
-RUN_ID=""
+BUILD_ST=""; REL_ST=""
 
-run_present() { [ -n "$(release_run_id)" ]; }
-
-# build_state <run-id>: success | failure | pending for the build job.
+# build_state <run-id>: BUILD_ST = success | failure | pending for the build job.
 build_state() {
-  gh run view "$1" -R nself-org/cli --json jobs --jq '
+  gh_need "the jobs of run $1" run view "$1" -R nself-org/cli --json jobs --jq '
     [.jobs[] | select(.name == "Build release artifacts" or .name == "build")][0]
     | if . == null or .status != "completed" then "pending" else .conclusion end'
+  BUILD_ST=$GH_OUT
 }
-build_finished() { [ "$(build_state "$RUN_ID")" != pending ]; }
+build_finished() { build_state "$RUN_ID"; [ "$BUILD_ST" != pending ]; }
 
-# release_state <run-id>: success | failure | pending for the whole run.
+# release_state <run-id>: REL_ST = success | failure | pending for the whole run.
 release_state() {
-  gh run view "$1" -R nself-org/cli --json status,conclusion \
+  gh_need "run $1" run view "$1" -R nself-org/cli --json status,conclusion \
     --jq 'if .status != "completed" then "pending" else .conclusion end'
+  REL_ST=$GH_OUT
 }
-release_finished() { [ "$(release_state "$RUN_ID")" != pending ]; }
+release_finished() { release_state "$RUN_ID"; [ "$REL_ST" != pending ]; }
+
+no_checksums() {
+  die_step "$CUR_S" "$CUR_ID" "no checksums.txt: the release-checksums artifact of run ${RUN_ID:-?} has expired (retention is 1 day) and the release is not published. Re-run the WHOLE run (gh run rerun ${RUN_ID:-ID} -R nself-org/cli, not --failed), wait for its build to finish (checksums are fetched fresh each time, nothing cached to clear)" S5
+}
 
 step_build_wait() {
-  local s early=0 f
+  local early=0
   if [ "$PLAN" = 1 ]; then
-    plan_line S5 build-wait cli "gh run list -R nself-org/cli --workflow release.yml --branch $TAG"
-    plan_line S5 build-wait cli "gh run view <run-id> -R nself-org/cli --json jobs (wait for the build job)"
-    plan_line S5 build-wait cli "gh run download <run-id> -R nself-org/cli -n release-checksums -D $WORK/checksums"
+    plan_line S5 build-wait cli "gh run list -R nself-org/cli --workflow release.yml --branch $TAG (the run whose headSha is the tag commit)"
+    plan_line S5 build-wait cli "gh run view RUN_ID -R nself-org/cli --json jobs (wait for the build job)"
+    plan_line S5 build-wait cli "gh run download RUN_ID -R nself-org/cli -n release-checksums -D $WORK/checksums"
     return 0
   fi
   poll "release.yml run for $TAG" 30 run_present \
     || die_step S5 build-wait "no release.yml run appeared for $TAG (check the Actions tab of nself-org/cli)"
-  RUN_ID=$(release_run_id)
-  s=$(build_state "$RUN_ID")
-  if [ "$s" = success ]; then
+  build_state "$RUN_ID"
+  if [ "$BUILD_ST" = success ]; then
     early=1
-  elif [ "$s" = pending ]; then
+  elif [ "$BUILD_ST" = pending ]; then
     poll "build job of run $RUN_ID" 120 build_finished || die_step S5 build-wait "build job still running after the wait budget"
-    s=$(build_state "$RUN_ID")
   fi
-  [ "$s" = success ] || die_step S5 build-wait "build job concluded '$s' in run $RUN_ID; fix it, then re-run the failed jobs"
-  f=$(ensure_checksums) || die_step S5 build-wait "could not fetch checksums.txt (artifact release-checksums and release asset both missing)"
-  if [ "$early" = 1 ]; then step_done S5 build-wait; else say "S5 build-wait: build ok, checksums at $f"; fi
-}
-
-formula_version() {
-  gh_raw homebrew-nself Formula/nself.rb | sed -n 's/^[[:space:]]*version "\([^"]*\)".*/\1/p' | head -1
+  build_state "$RUN_ID"
+  [ "$BUILD_ST" = success ] || die_step S5 build-wait "build job concluded '$BUILD_ST' in run $RUN_ID; fix it, then re-run the failed jobs"
+  ensure_checksums || no_checksums
+  if [ "$early" = 1 ]; then step_done S5 build-wait; else say "S5 build-wait: build ok, checksums from $CHECKSUMS_SRC"; fi
 }
 
 # rerun_lockstep <wait 0|1>: with the formula on main, re-run the lockstep job of
 # the release run if that job failed and the run is not successful. With wait=0 a
 # run still in progress is left alone.
 rerun_lockstep() {
-  local id c j
-  id=$(release_run_id)
-  if [ -z "$id" ]; then return 0; fi
-  RUN_ID=$id
-  if [ "$1" = 1 ]; then poll "run $id to settle" 60 release_finished || return 0; fi
-  c=$(release_state "$id")
+  local c
+  find_run
+  if [ -z "$RUN_ID" ]; then return 0; fi
+  if [ "$1" = 1 ]; then poll "run $RUN_ID to settle" 60 release_finished || return 0; fi
+  release_state "$RUN_ID"; c=$REL_ST
   if [ "$c" = success ] || [ "$c" = pending ]; then return 0; fi
-  j=$(gh run view "$id" -R nself-org/cli --json jobs \
-    --jq '[.jobs[] | select(.name | test("Homebrew"; "i")) | .conclusion] | first // empty')
-  if [ "$j" = failure ]; then
-    gh run rerun "$id" -R nself-org/cli --failed || die_step S6 homebrew-formula "could not re-run the failed jobs of run $id"
-    say "S6 homebrew-formula: re-ran failed jobs of run $id"
+  gh_need "the jobs of run $RUN_ID" run view "$RUN_ID" -R nself-org/cli --json jobs \
+    --jq '[.jobs[] | select(.name | test("Homebrew"; "i")) | .conclusion] | first // empty'
+  if [ "$GH_OUT" = failure ]; then
+    gh run rerun "$RUN_ID" -R nself-org/cli --failed || die_step S6 homebrew-formula "could not re-run the failed jobs of run $RUN_ID"
+    say "S6 homebrew-formula: re-ran failed jobs of run $RUN_ID"
     sleep "$POLL_SECONDS"
   else
-    say "S6 homebrew-formula: run $id concluded '$c' but its lockstep job did not fail; not re-running"
+    say "S6 homebrew-formula: run $RUN_ID concluded '$c' but its lockstep job did not fail; not re-running"
   fi
 }
 
 step_homebrew_formula() {
-  local br="release/nself-v${VERSION}" info f
+  local br arm intel
   if [ "$PLAN" = 1 ]; then
-    plan_line S6 homebrew-formula homebrew-nself "bash .github/scripts/update-formula.sh --version $TAG --checksums-file $WORK/checksums/checksums.txt (cwd $WORK/homebrew-nself; writes on_arm and on_intel)"
-    plan_line S6 homebrew-formula homebrew-nself "git checkout -b $br; git commit; git push origin $br; gh pr create -R nself-org/homebrew-nself --base main --head $br"
-    plan_line S6 homebrew-formula homebrew-nself "gh pr checks <n> -R nself-org/homebrew-nself --required --watch"
+    plan_line S6 homebrew-formula cli "gh run view RUN_ID -R nself-org/cli --json jobs (wait until every job except Homebrew lockstep and Sign and publish succeeded)"
+    plan_line S6 homebrew-formula homebrew-nself "bash .github/scripts/update-formula.sh --version $TAG --checksums-file $WORK/checksums/checksums.txt (cwd $WORK/homebrew-nself; writes on_arm and on_intel; the published checksums win once the release exists)"
+    plan_line S6 homebrew-formula homebrew-nself "git checkout -B release/nself-v${VERSION}-ARM8; git commit; git push origin release/nself-v${VERSION}-ARM8; gh pr create -R nself-org/homebrew-nself --base main --head release/nself-v${VERSION}-ARM8"
+    plan_line S6 homebrew-formula homebrew-nself "gh pr checks N -R nself-org/homebrew-nself --required (polled, 45 min budget)"
     plan_line S6 homebrew-formula homebrew-nself "scripts/admin-merge.sh --repo nself-org/homebrew-nself --pr N"
-    plan_line S6 homebrew-formula cli "gh run rerun <run-id> -R nself-org/cli --failed (the verify-homebrew-lockstep job)"
+    plan_line S6 homebrew-formula cli "gh run rerun RUN_ID -R nself-org/cli --failed (the verify-homebrew-lockstep job)"
     return 0
   fi
-  if [ "$(formula_version)" = "$VERSION" ]; then
-    step_done S6 homebrew-formula
-    rerun_lockstep 0
-    return 0
+  load_formula
+  if ensure_checksums; then
+    arm=$(sums_hash "$CHECKSUMS_FILE" arm64); intel=$(sums_hash "$CHECKSUMS_FILE" amd64)
+    [ -n "$arm" ] && [ -n "$intel" ] || die_step S6 homebrew-formula "checksums.txt has no darwin arm64/amd64 lines"
+    if [ "$F_VER" = "$VERSION" ] && [ "$F_ARM" = "$arm" ] && [ "$F_INTEL" = "$intel" ]; then
+      step_done S6 homebrew-formula; rerun_lockstep 0; return 0
+    fi
+    [ "$F_VER" != "$VERSION" ] || say "S6 homebrew-formula: formula is at $VERSION but its hashes differ from $CHECKSUMS_SRC; rewriting"
+  else
+    if [ "$F_VER" = "$VERSION" ]; then
+      say "S6 homebrew-formula: formula is at $VERSION; checksums are gone so the hashes cannot be re-checked here (S7 checks them against the published file)"
+      step_done S6 homebrew-formula; rerun_lockstep 0; return 0
+    fi
+    no_checksums
   fi
-  info=$(pr_info homebrew-nself "$br")
-  case "$info" in *CLOSED) die_step S6 homebrew-formula "PR ${info%% *} was closed unmerged; delete branch $br and retry" ;; esac
+  br="release/nself-v${VERSION}-${arm:0:8}"
+  pr_info homebrew-nself "$br"
+  case "$PR_INFO" in
+    *CLOSED) die_step S6 homebrew-formula "PR ${PR_INFO%% *} was closed unmerged; delete branch $br (gh api -X DELETE repos/nself-org/homebrew-nself/git/refs/heads/$br) and retry" ;;
+    *MERGED) die_step S6 homebrew-formula "PR ${PR_INFO%% *} for these hashes is merged but Formula/nself.rb on main does not carry them (reverted?); restore the formula by hand, then --from S6" ;;
+  esac
+  release_gate
   step_confirm S6 homebrew-formula
-  if [ -z "$info" ]; then
-    f=$(ensure_checksums) || die_step S6 homebrew-formula "no checksums.txt (run S5 first)"
+  if [ -z "$PR_INFO" ]; then
     ensure_clone homebrew-nself; reset_clone homebrew-nself
     git -C "$WORK/homebrew-nself" checkout -q -B "$br" || die_step S6 homebrew-formula "could not create branch $br"
-    (cd "$WORK/homebrew-nself" && bash .github/scripts/update-formula.sh --version "$TAG" --checksums-file "$f") \
+    (cd "$WORK/homebrew-nself" && bash .github/scripts/update-formula.sh --version "$TAG" --checksums-file "$CHECKSUMS_FILE") \
       || die_step S6 homebrew-formula "update-formula.sh refused the checksums"
     commit_all homebrew-nself "chore(formula): nself ${TAG}" || die_step S6 homebrew-formula "formula unchanged"
   else
     checkout_branch homebrew-nself "$br"
   fi
   pr_flow S6 homebrew-formula homebrew-nself "$br" brew_pr "chore(formula): nself ${TAG}" \
-    "Formula for cli ${TAG}, written by .github/scripts/update-formula.sh from the build run's checksums.txt (both darwin hashes). Opened by scripts/release/release.sh in the cli repo."
+    "Formula for cli ${TAG}, written by .github/scripts/update-formula.sh from ${CHECKSUMS_SRC} (both darwin hashes). Opened by scripts/release/release.sh in the cli repo."
   rerun_lockstep 1
-}
-
-web_pr() {
-  local br="release/cli-v${VERSION}" info url
-  info=$(pr_info web "$br")
-  if [ -n "$info" ]; then say "S7 release-wait web done (PR #${info%% *}, ${info##* })"; return 0; fi
-  command -v node >/dev/null 2>&1 || die_step S7 release-wait "node is not installed (needed for update-lock.mjs)"
-  step_confirm S7 release-wait
-  ensure_clone web; reset_clone web
-  git -C "$WORK/web" checkout -q -B "$br" || die_step S7 release-wait "could not create branch $br"
-  (cd "$WORK/web" && node org/scripts/sources/update-lock.mjs cli "$TAG") \
-    || die_step S7 release-wait "update-lock.mjs failed in the web clone"
-  if ! commit_all web "chore(sources): pin cli ${TAG}"; then
-    say "S7 release-wait web done (lock already pins $TAG)"; return 0
-  fi
-  git -C "$WORK/web" push -q origin "$br" || die_step S7 release-wait "push of $br to web was refused"
-  url=$(gh pr create -R nself-org/web --base main --head "$br" --title "chore(sources): pin cli ${TAG}" \
-    --body "Pins the public cli source to ${TAG} (update-lock.mjs). The owner merges; no deploy.") \
-    || die_step S7 release-wait "gh pr create failed on web"
-  say "S7 release-wait web: opened $url (owner merges; no deploy)"
-}
-
-step_release_wait() {
-  local s early=0 assets
-  if [ "$PLAN" = 1 ]; then
-    plan_line S7 release-wait cli "gh run view <run-id> -R nself-org/cli --json status,conclusion (wait for success); gh release view $TAG -R nself-org/cli --json assets"
-    plan_line S7 release-wait web "node org/scripts/sources/update-lock.mjs cli $TAG (fresh web clone); gh pr create -R nself-org/web --head release/cli-v${VERSION} (owner merges; no deploy)"
-    return 0
-  fi
-  RUN_ID=$(release_run_id)
-  [ -n "$RUN_ID" ] || die_step S7 release-wait "no release.yml run found for $TAG"
-  s=$(release_state "$RUN_ID")
-  if [ "$s" = success ]; then early=1; fi
-  if [ "$s" = pending ]; then
-    poll "release run $RUN_ID" 120 release_finished || die_step S7 release-wait "release run $RUN_ID still running after the wait budget"
-    s=$(release_state "$RUN_ID")
-  fi
-  [ "$s" = success ] || die_step S7 release-wait "release run $RUN_ID concluded '$s' (after S6, re-run failed jobs: gh run rerun $RUN_ID -R nself-org/cli --failed)"
-  assets=$(gh release view "$TAG" -R nself-org/cli --json assets --jq '.assets[].name')
-  printf '%s\n' "$assets" | grep -qx 'checksums.txt' || die_step S7 release-wait "release $TAG has no checksums.txt asset"
-  if [ "$early" = 1 ]; then step_done S7 release-wait; else
-    say "S7 release-wait: published with $(printf '%s\n' "$assets" | wc -l | tr -d ' ') assets"
-  fi
-  web_pr
 }

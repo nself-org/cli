@@ -1,14 +1,14 @@
 # shellcheck shell=bash
-# Purpose: release steps S8-S10 (cli image check, admin image dispatch + check, SDK
-#          publish dispatches).
-# Inputs:  helpers from common.sh; globals VERSION TAG PLAN
-# Outputs: step_* functions. Images are checked on Docker Hub with curl (no login);
-#          dispatches go through gh and run only when the artifact is absent.
-# Constraints: docker-publish.yml in cli takes input `version` (blank = latest, with
-#          or without v); admin's takes `version` without v. Both need a published
-#          GitHub release (cli S7 guarantees it). Match scripts/ci/docker-publish-version.sh.
+# Purpose: release steps S8-S9 (cli image check; admin tag, image wait and check).
+# Inputs:  helpers from common.sh; globals VERSION TAG PLAN WORK
+# Outputs: step_docker_verify, step_admin_image. Images are checked on Docker Hub with
+#          curl (no login); a dispatch happens only when no publish run is on the way.
+# Constraints: cli's docker-publish.yml starts from the Release run (workflow_run) and
+#          takes input `version`. Admin's starts on a `v*` tag push (also repository_dispatch
+#          and workflow_dispatch with `version`, no v), so S9 tags admin and waits for that
+#          run instead of dispatching a second publish. Both need the cli release (S7).
 
-IMG_S=""; IMG_ID=""; IMG_REPO=""; IMG_HUB=""; IMG_BEFORE=""
+IMG_S=""; IMG_ID=""; IMG_REPO=""; IMG_HUB=""; IMG_BEFORE=""; PUB=""; ADMIN_SHA=""
 HUB_API="https://hub.docker.com/v2/repositories"
 
 # hub_ok <hub-repo>: the X.Y.Z tag exists with linux/amd64 and linux/arm64.
@@ -17,49 +17,59 @@ hub_ok() {
   j=$(curl -fsS "$HUB_API/$1/tags/$VERSION" 2>/dev/null) || return 1
   printf '%s' "$j" | jq -e '[.images[]? | "\(.os)/\(.architecture)"] | contains(["linux/amd64","linux/arm64"])' >/dev/null 2>&1
 }
-
-newest_dispatch() { # <repo> <field-expr>
-  gh run list -R "nself-org/$IMG_REPO" --workflow docker-publish.yml --event workflow_dispatch --limit 1 \
-    --json databaseId,status,conclusion --jq "$1"
-}
+hub_ok_img() { hub_ok "$IMG_HUB"; }
 
 # image_ready: the image is up, or the dispatch we made has failed (then die).
 image_ready() {
   local st
   if hub_ok "$IMG_HUB"; then return 0; fi
-  st=$(newest_dispatch '.[0] | if . == null or (.databaseId|tostring) == "'"${IMG_BEFORE:-0}"'" then "none" elif .status != "completed" then "pending" else .conclusion end')
+  gh_need "the docker-publish.yml dispatches" run list -R "nself-org/$IMG_REPO" --workflow docker-publish.yml \
+    --event workflow_dispatch --limit 1 --json databaseId,status,conclusion \
+    --jq '.[0] | if . == null or (.databaseId|tostring) == "'"${IMG_BEFORE:-0}"'" then "none" elif .status != "completed" then "pending" else .conclusion end'
+  st=$GH_OUT
   case "$st" in
     failure|cancelled|timed_out) die_step "$IMG_S" "$IMG_ID" "docker-publish.yml run for $IMG_REPO concluded '$st'; fix it, then re-run from $IMG_S" ;;
   esac
   return 1
 }
 
-hub_ok_img() { hub_ok "$IMG_HUB"; }
+# publish_run_present: a docker-publish.yml run on IMG_REPO created after the cli release.
+publish_run_present() {
+  gh_try run list -R "nself-org/$IMG_REPO" --workflow docker-publish.yml --limit 1 --json createdAt \
+    --jq '.[0].createdAt // ""' || return 1
+  [ -n "$GH_OUT" ] && ! [[ "$GH_OUT" < "$PUB" ]]
+}
 
-# image_step <S#> <id> <repo> <hub-repo>: done if the image is up; wait on a
-# docker-publish.yml run that is in flight or finished since the release; dispatch
-# only when none exists.
+# image_step <S#> <id> <repo> <hub-repo>: done if the image is up; otherwise wait
+# (about 3 min) for the publish run the release or the tag push starts, wait on it
+# while it runs, and dispatch only when there is none.
 image_step() {
   IMG_S=$1; IMG_ID=$2; IMG_REPO=$3; IMG_HUB=$4
-  local pending pub recent
+  local pending recent
   if hub_ok "$IMG_HUB"; then step_done "$IMG_S" "$IMG_ID"; return 0; fi
-  pending=$(gh run list -R "nself-org/$IMG_REPO" --workflow docker-publish.yml --limit 5 --json status \
-    --jq '[.[] | select(.status != "completed")] | length')
+  gh_need "the cli release $TAG" release view "$TAG" -R nself-org/cli --json publishedAt --jq .publishedAt
+  PUB=$GH_OUT
+  poll "a docker-publish.yml run on $IMG_REPO" 9 publish_run_present || true
+  gh_need "the docker-publish.yml runs of $IMG_REPO" run list -R "nself-org/$IMG_REPO" --workflow docker-publish.yml \
+    --limit 5 --json status --jq '[.[] | select(.status != "completed")] | length'
+  pending=$GH_OUT
   if [ "${pending:-0}" -gt 0 ]; then
     say "$IMG_S $IMG_ID: a docker-publish.yml run is in flight on $IMG_REPO; waiting for $IMG_HUB:$VERSION"
     poll "$IMG_HUB:$VERSION" 90 hub_ok_img \
       || die_step "$IMG_S" "$IMG_ID" "the in-flight run on $IMG_REPO did not publish $IMG_HUB:$VERSION; check it, then --from $IMG_S"
     say "$IMG_S $IMG_ID: $IMG_HUB:$VERSION is up"; return 0
   fi
-  pub=$(gh release view "$TAG" -R nself-org/cli --json publishedAt --jq .publishedAt) \
-    || die_step "$IMG_S" "$IMG_ID" "cannot read the cli release $TAG (is S7 finished?); fix it, then --from $IMG_S"
-  recent=$(gh run list -R "nself-org/$IMG_REPO" --workflow docker-publish.yml --limit 5 --json createdAt,conclusion \
-    --jq "[.[] | select(.conclusion == \"success\" and .createdAt >= \"$pub\")] | length")
+  gh_need "the docker-publish.yml runs of $IMG_REPO" run list -R "nself-org/$IMG_REPO" --workflow docker-publish.yml \
+    --limit 5 --json createdAt,conclusion \
+    --jq "[.[] | select(.conclusion == \"success\" and .createdAt >= \"$PUB\")] | length"
+  recent=$GH_OUT
   if [ "${recent:-0}" -gt 0 ] && poll "$IMG_HUB:$VERSION after a recent run" 6 hub_ok_img; then
     say "$IMG_S $IMG_ID: $IMG_HUB:$VERSION is up"; return 0
   fi
   step_confirm "$IMG_S" "$IMG_ID"
-  IMG_BEFORE=$(newest_dispatch '.[0].databaseId // 0')
+  gh_need "the docker-publish.yml dispatches" run list -R "nself-org/$IMG_REPO" --workflow docker-publish.yml \
+    --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId // 0'
+  IMG_BEFORE=$GH_OUT
   gh workflow run docker-publish.yml -R "nself-org/$IMG_REPO" -f "version=$VERSION" \
     || die_step "$IMG_S" "$IMG_ID" "could not dispatch docker-publish.yml on $IMG_REPO"
   say "$IMG_S $IMG_ID: dispatched docker-publish.yml on $IMG_REPO"
@@ -72,73 +82,51 @@ image_step() {
 step_docker_verify() {
   if [ "$PLAN" = 1 ]; then
     plan_line S8 docker-verify cli "curl -fsS $HUB_API/nself/nself/tags/$VERSION (need linux/amd64 and linux/arm64)"
-    plan_line S8 docker-verify cli "gh workflow run docker-publish.yml -R nself-org/cli -f version=$VERSION (once, only if the tag is absent), then wait and re-check"
+    plan_line S8 docker-verify cli "gh run list -R nself-org/cli --workflow docker-publish.yml (wait about 3 min for the run the Release starts, then for it to finish)"
+    plan_line S8 docker-verify cli "gh workflow run docker-publish.yml -R nself-org/cli -f version=$VERSION (once, only if no run publishes the tag), then wait and re-check"
     return 0
   fi
   image_step S8 docker-verify cli nself/nself
 }
 
+# admin_tag: annotated tag vX.Y.Z on admin's S2 merge commit, pushed from the admin
+# clone. admin's hygiene release-tag-drift check fails 6 h after the bump without it.
+# An existing tag on another commit stops the run; a tag is never moved.
+admin_tag() {
+  gh_need "the admin lockstep PR" pr list -R nself-org/admin --head "release/v${VERSION}-lockstep" --state merged \
+    --json mergeCommit --jq '.[0].mergeCommit.oid // empty'
+  ADMIN_SHA=$GH_OUT
+  if [ -z "$ADMIN_SHA" ]; then
+    gh_need "admin package.json" api -H 'Accept: application/vnd.github.raw' repos/nself-org/admin/contents/package.json
+    [ "$(printf '%s' "$GH_OUT" | jq -r .version 2>/dev/null || true)" = "$VERSION" ] \
+      || die_step S9 admin-image "admin main is not at $VERSION and no merged lockstep PR was found; run S2" S2
+    gh_need "admin main" api repos/nself-org/admin/commits/main --jq .sha
+    ADMIN_SHA=$GH_OUT
+  fi
+  if repo_tag_sha admin "$TAG"; then
+    [ "$TAG_SHA" = "$ADMIN_SHA" ] || die_step S9 admin-image "admin tag $TAG is at $TAG_SHA but the lockstep release commit is $ADMIN_SHA; tags are never moved, inspect by hand"
+    say "S9 admin-image: admin tag $TAG already at $ADMIN_SHA"; return 0
+  fi
+  step_confirm S9 admin-image
+  ensure_clone admin; reset_clone admin
+  git -C "$WORK/admin" merge-base --is-ancestor "$ADMIN_SHA" origin/main \
+    || die_step S9 admin-image "the admin release commit $ADMIN_SHA is not in origin/main's history; inspect before tagging"
+  if [ "$(git -C "$WORK/admin" rev-parse -q --verify "refs/tags/$TAG^{commit}" || true)" != "$ADMIN_SHA" ]; then
+    git -C "$WORK/admin" tag -a "$TAG" -m "$TAG" "$ADMIN_SHA" || die_step S9 admin-image "could not create the admin tag (a stale $TAG in $WORK/admin, or git user.name / user.email unset?)"
+  fi
+  git -C "$WORK/admin" push -q origin "refs/tags/$TAG" || die_step S9 admin-image "push of the admin tag $TAG was refused"
+  say "S9 admin-image: tagged admin $TAG -> $ADMIN_SHA (this starts admin's docker-publish.yml)"
+}
+
 step_admin_image() {
   if [ "$PLAN" = 1 ]; then
-    plan_line S9 admin-image admin "gh workflow run docker-publish.yml -R nself-org/admin -f version=$VERSION (only if the tag is absent)"
+    plan_line S9 admin-image admin "gh pr list -R nself-org/admin --head release/v${VERSION}-lockstep --state merged --json mergeCommit (the S2 merge commit)"
+    plan_line S9 admin-image admin "git -C $WORK/admin tag -a $TAG -m $TAG SHA && git -C $WORK/admin push origin refs/tags/$TAG (admin's docker-publish.yml starts on a v* tag; hygiene's release-tag-drift check needs the tag)"
+    plan_line S9 admin-image admin "gh run list -R nself-org/admin --workflow docker-publish.yml (wait about 3 min for the tag-push run, then for it to finish)"
+    plan_line S9 admin-image admin "gh workflow run docker-publish.yml -R nself-org/admin -f version=$VERSION (only if no run publishes the tag)"
     plan_line S9 admin-image admin "curl -fsS $HUB_API/nself/nself-admin/tags/$VERSION (need linux/amd64 and linux/arm64)"
     return 0
   fi
+  admin_tag
   image_step S9 admin-image admin nself/nself-admin
-}
-
-# sdk_files <ref>: names of the sdk publish workflows on that ref.
-sdk_files() {
-  gh api "repos/nself-org/cli/contents/.github/workflows?ref=$1" --jq '.[].name' \
-    | grep -E '^sdk-.*publish.*\.yml$' || true
-}
-sdk_file_text() { gh api -H 'Accept: application/vnd.github.raw' "repos/nself-org/cli/contents/.github/workflows/$1?ref=$2"; }
-
-# sdk_run_state <file>: success | pending | failure | none for runs on the tag.
-sdk_run_state() {
-  # shellcheck disable=SC2016
-  gh run list -R nself-org/cli --workflow "$1" --branch "$TAG" --limit 10 --json status,conclusion --jq '
-    (map(select(.conclusion == "success")) | length) as $ok
-    | (map(select(.status != "completed")) | length) as $p
-    | if $ok > 0 then "success" elif $p > 0 then "pending" elif length > 0 then "failure" else "none" end'
-}
-SDK_F=""
-sdk_settled() { [ "$(sdk_run_state "$SDK_F")" != pending ]; }
-sdk_ok() { [ "$(sdk_run_state "$SDK_F")" = success ]; }
-
-step_sdk_publish() {
-  local ref=$TAG f txt st args n=0
-  if [ "$PLAN" = 1 ]; then ref=main; fi
-  for f in $(sdk_files "$ref"); do
-    n=$((n + 1))
-    txt=$(sdk_file_text "$f" "$ref")
-    if ! printf '%s\n' "$txt" | grep -q '^[[:space:]]*workflow_dispatch:'; then
-      if [ "$PLAN" = 1 ]; then plan_line S10 sdk-publish cli "manual: $f has no workflow_dispatch; publish it by hand"; else
-        say "S10 sdk-publish: $f has no workflow_dispatch; publish by hand if its tag run failed"; fi
-      continue
-    fi
-    args="--ref $TAG"
-    if printf '%s\n' "$txt" | grep -q '^[[:space:]]*version:[[:space:]]*$'; then args="$args -f version=$VERSION"; fi
-    if [ "$PLAN" = 1 ]; then
-      plan_line S10 sdk-publish cli "gh workflow run $f -R nself-org/cli $args (skipped when a run on $TAG already succeeded)"
-      continue
-    fi
-    SDK_F=$f
-    st=$(sdk_run_state "$f")
-    if [ "$st" = pending ]; then
-      poll "$f run on $TAG" 90 sdk_settled || die_step S10 sdk-publish "$f still running after the wait budget"
-      st=$(sdk_run_state "$f")
-    fi
-    if [ "$st" = success ]; then step_done S10 "sdk-publish $f"; continue; fi
-    step_confirm S10 "sdk-publish $f"
-    # shellcheck disable=SC2086
-    gh workflow run "$f" -R nself-org/cli $args || die_step S10 sdk-publish "could not dispatch $f"
-    sleep "$POLL_SECONDS"
-    poll "$f success on $TAG" 90 sdk_ok || die_step S10 sdk-publish "$f has no successful run on $TAG (registry secrets set? P7-PROD-61)"
-    say "S10 sdk-publish: $f succeeded"
-  done
-  if [ "$n" = 0 ]; then
-    if [ "$PLAN" = 1 ]; then plan_line S10 sdk-publish cli "no sdk-*publish*.yml workflow found on $ref"; else
-      say "S10 sdk-publish: no sdk-*publish*.yml workflow on $ref; nothing to dispatch"; fi
-  fi
 }

@@ -6,7 +6,7 @@ url=""; for a in "$@"; do url=$a; done
 r=""
 case "$url" in
   https://hub.docker.com/v2/repositories/nself/nself/tags/*) r=cli ;;
-  https://hub.docker.com/v2/repositories/nself/nself-admin/tags/*) r=admin ;;
+  https://hub.docker.com/v2/repositories/nself/nself-admin/tags/*) r="admin" ;;
   */releases/download/*) exit 22 ;;
   */archive/refs/tags/*) printf 'fixture source archive' ;;
   *) exit 22 ;;
@@ -18,5 +18,10 @@ if [ -n "$r" ]; then
     [ "$c" -ge 2 ] && { cat "$FIXTURES/hub-tag.json"; exit 0; }
   fi
   [ -f "$ST/dispatch/docker-publish.yml@$r" ] && { cat "$FIXTURES/hub-tag.json"; exit 0; }
+  if [ "$r" = admin ] && [ ! -f "$ST/admin_tagrun_fail" ] && [ -n "$(git --git-dir="$FIX/admin.git" tag -l 'v*')" ]; then
+    # the v* tag push started admin's publish; the image shows on the fourth lookup
+    c=$(cat "$ST/hubadmin" 2>/dev/null || echo 0); echo $((c + 1)) > "$ST/hubadmin"
+    [ "$c" -ge 3 ] && { cat "$FIXTURES/hub-tag.json"; exit 0; }
+  fi
   exit 22
 fi

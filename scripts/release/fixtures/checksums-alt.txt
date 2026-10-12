@@ -1,0 +1,2 @@
+639ecc2daad4e41e102743725f3369010658cbdd72a1343a675af421ee99b664  nself-1.5.0-darwin-arm64.tar.gz
+f565bd646fe9a91c7ee7121fa790c1d54dd0775ef72d9ff48e2056b4671e3bc2  nself-1.5.0-darwin-amd64.tar.gz
