@@ -41,7 +41,7 @@ func markFrontPrevious(set *deploy.ArtifactSet, workdir, target string) {
 		return
 	}
 	set.Front.Previous = map[string][]string{} // per host: a host prunes only what its own record says
-	for host, paths := range st.FrontChanged {
+	for host, paths := range st.FrontShipped { // shipped, not pruned: an old record has none, so nothing is pruned
 		set.Front.Previous[host] = append([]string{}, paths...)
 	}
 }
@@ -57,6 +57,10 @@ func recordFront(st *deploy.StrategyState, res deploy.ApplyResult) {
 	if st.FrontTars == nil {
 		st.FrontTars, st.FrontChanged, st.FrontAbsent = map[string]string{}, map[string][]string{}, map[string][]string{}
 	}
+	if st.FrontShipped == nil {
+		st.FrontShipped = map[string][]string{}
+	}
+	st.FrontShipped[res.BackupHost] = res.FrontShipped
 	st.FrontTars[res.BackupHost] = res.FrontTar
 	st.FrontChanged[res.BackupHost], st.FrontAbsent[res.BackupHost] = res.FrontChanged, res.FrontAbsent
 }

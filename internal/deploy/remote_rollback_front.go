@@ -53,12 +53,13 @@ func prepareFrontRollback(ctx context.Context, o RollbackOptions) (*frontRollbac
 	if err != nil {
 		return nil, err
 	}
-	if _, err = ResolveFrontDirs(ctx, r, front, o.FrontChanged); err != nil {
+	linked, err := ResolveFrontDirs(ctx, r, front, o.FrontChanged)
+	if err != nil {
 		return nil, err
 	}
 	ctr, err := resolveFrontContainer(ctx, r, front, realFront)
 	if err == nil {
-		err = ctr.checkMounts(ctx, r, front, realFront)
+		err = ctr.checkMounts(ctx, r, front, realFront, linked)
 	}
 	if err != nil {
 		return nil, rollbackFix(err, front)

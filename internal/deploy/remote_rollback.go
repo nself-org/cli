@@ -86,10 +86,19 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 			}
 		}
 	}
-	if err := reapplyRestored(ctx, o); err != nil {
-		return err
+	// The front files are back: the live fronting nginx is tested and reloaded even
+	// when the re-apply failed, else it keeps serving the rolled-back confs.
+	aerr := reapplyRestored(ctx, o)
+	ferr := fb.reload(ctx, o)
+	switch {
+	case aerr != nil && ferr != nil:
+		return fmt.Errorf("%w; the fronting nginx reload also failed: %v", aerr, ferr)
+	case aerr != nil && fb != nil:
+		return fmt.Errorf("%w; the fronting nginx was tested and reloaded with the restored files", aerr)
+	case aerr != nil:
+		return aerr
 	}
-	return fb.reload(ctx, o)
+	return ferr
 }
 
 // reapplyRestored re-applies the restored artifact set: the pull, the services

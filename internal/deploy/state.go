@@ -83,6 +83,9 @@ type StrategyState struct {
 	FrontTars    map[string]string   `json:"front_tars,omitempty"`
 	FrontChanged map[string][]string `json:"front_changed,omitempty"`
 	FrontAbsent  map[string][]string `json:"front_absent,omitempty"`
+	// FrontShipped is, per host, the front files that deploy shipped (not the pruned
+	// ones): the only paths the next deploy may prune there. Without it nothing is.
+	FrontShipped map[string][]string `json:"front_shipped,omitempty"`
 	// DBRestoredAt is set (RFC 3339) right after `nself backup restore` succeeded,
 	// before the re-apply, so a retried rollback never restores the database twice.
 	DBRestoredAt string `json:"db_restored_at,omitempty"`

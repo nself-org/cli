@@ -38,6 +38,9 @@ type FrontRecord struct {
 	FrontTar     string
 	FrontChanged []string
 	FrontAbsent  []string
+	// FrontShipped are the front files this deploy shipped (not the pruned ones):
+	// the only paths the next deploy may prune.
+	FrontShipped []string
 }
 
 // frontPathRe is the only shape of path that ships from or is pruned in the front root.
@@ -85,10 +88,11 @@ func prepareFront(ctx context.Context, o ApplyOptions) (*frontApply, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err = ResolveFrontDirs(ctx, r, front, append(append([]string{}, fr.Files...), fa.prev...)); err != nil {
+	linked, err := ResolveFrontDirs(ctx, r, front, append(append([]string{}, fr.Files...), fa.prev...))
+	if err != nil {
 		return nil, err
 	}
-	if err = CheckNotOverwritingForeign(ctx, r, front, fr.Files, fa.prev); err != nil {
+	if err = checkFrontForeign(ctx, r, front, fr.StageDir, fr.Files, fa.prev); err != nil {
 		return nil, err
 	}
 	if o.Expected != nil {
@@ -103,7 +107,7 @@ func prepareFront(ctx context.Context, o ApplyOptions) (*frontApply, error) {
 	if fa.ctr, err = resolveFrontContainer(ctx, r, front, realFront); err != nil {
 		return nil, err
 	}
-	if err = fa.ctr.checkMounts(ctx, r, front, realFront); err != nil {
+	if err = fa.ctr.checkMounts(ctx, r, front, realFront, linked); err != nil {
 		return nil, err
 	}
 	return fa, nil
@@ -160,7 +164,7 @@ func (fa *frontApply) makeTar(ctx context.Context, o ApplyOptions, id string, re
 	tar := path.Join(o.RemotePath, BackupDir, "pre-deploy-"+id+"-front.tar.gz")
 	script := fmt.Sprintf(`set -e; umask 077; out=%s; mkdir -p "$(dirname "$out")"; cd %s; set --
 for p in %s; do if [ -e "$p" ]; then set -- "$@" "$p"; fi; done
-if [ "$#" -eq 0 ]; then e="$out.empty"; mkdir -p "$e"; tar -czf "$out" -C "$e" .; rmdir "$e"; else tar -hczf "$out" "$@"; fi
+if [ "$#" -eq 0 ]; then e="$out.empty"; mkdir -p "$e"; tar -czf "$out" -C "$e" .; rmdir "$e"; else tar -czf "$out" "$@"; fi
 tar -tzf "$out" >/dev/null
 for p in %s; do if [ ! -e "$p" ] && [ ! -L "$p" ]; then printf 'ABSENT %%s\n' "$p"; fi; done`,
 		q(tar), q(fa.fr.RemotePath), strings.Join(quoteAll(uniq), " "), strings.Join(quoteAll(fa.fr.Files), " "))
@@ -179,6 +183,7 @@ for p in %s; do if [ ! -e "$p" ] && [ ! -L "$p" ]; then printf 'ABSENT %%s\n' "$
 	}
 	fa.tar, fa.changed = tar, append([]string{}, fa.fr.Files...)
 	res.FrontTar, res.FrontChanged, res.FrontAbsent = fa.tar, fa.changed, fa.absent
+	res.FrontShipped = append([]string{}, fa.fr.Files...)
 	return nil
 }
 
@@ -201,7 +206,7 @@ func (fa *frontApply) sync(ctx context.Context, o ApplyOptions, res *ApplyResult
 			cand = append(cand, p)
 		}
 	}
-	pruned, err := PruneMarked(ctx, r, front, cand)
+	pruned, err := pruneFrontMarked(ctx, r, front, cand)
 	for _, f := range pruned {
 		emit(o.Out, "  [pruned] %s/%s (generated file the new set dropped)", front, f)
 		fa.changed = append(fa.changed, f)
@@ -225,6 +230,7 @@ func (fa *frontApply) restore(ctx context.Context, o ApplyOptions, rerr error) e
 	err := restoreIn(ctx, o.Remote, fa.fr.RemotePath, o.RemotePath, fa.tar, RestoreSpec{Changed: fa.changed, Absent: fa.absent})
 	if err == nil {
 		fa.synced = false
+		emit(o.Out, "  [restored] the fronting stack's nginx/sites; the front root has no lock, so if anything reloaded the fronting nginx since the sync, reload it again")
 		return rerr
 	}
 	err = fmt.Errorf("restoring the fronting stack's files from %s: %w", fa.tar, err)

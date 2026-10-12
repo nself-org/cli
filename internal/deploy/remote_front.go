@@ -108,7 +108,7 @@ func describeRows(rows []psRow) string {
 
 // checkMounts requires a bind mount of <front>/nginx or <front>/nginx/sites
 // (given or real path), so a file shipped there is the file the container reads.
-func (c frontContainer) checkMounts(ctx context.Context, r Remote, front, realFront string) error {
+func (c frontContainer) checkMounts(ctx context.Context, r Remote, front, realFront string, linked map[string]string) error {
 	out, err := r.Run(ctx, shScript(fmt.Sprintf(`docker inspect --format %s %s`, q(`{{range .Mounts}}{{.Type}}|{{.Source}}|{{.Destination}}{{"\n"}}{{end}}`), q(c.ID))))
 	if err != nil {
 		return fmt.Errorf("reading the mounts of the fronting nginx container on %s: %w", r.Label(), err)
@@ -119,16 +119,42 @@ func (c frontContainer) checkMounts(ctx context.Context, r Remote, front, realFr
 			ok[path.Join(root, "nginx")], ok[path.Join(root, "nginx", "sites")] = true, true
 		}
 	}
-	var seen []string
+	var seen, roots []string
+	found := false
 	for _, line := range strings.Split(string(out), "\n") {
 		parts := strings.Split(strings.TrimSpace(line), "|")
 		if len(parts) != 3 || parts[0] != "bind" {
 			continue
 		}
-		if ok[path.Clean(parts[1])] {
-			return nil
-		}
+		src := path.Clean(parts[1])
 		seen = append(seen, safeText(parts[1])+" -> "+safeText(parts[2]))
+		roots = append(roots, src)
+		found = found || ok[src]
+		for _, d := range frontDirs { // a mounted source that is itself a link reaches that link's real dir
+			if real, l := linked[d]; l && (src == path.Join(front, d) || src == path.Join(realFront, d)) {
+				roots = append(roots, real)
+			}
+		}
+	}
+	// A nginx or nginx/sites that is a symlink inside the front root reaches the
+	// container only when the mount covers the link's real path.
+	for _, d := range frontDirs {
+		real, l := linked[d]
+		if !l || !found {
+			continue
+		}
+		covered := false
+		for _, root := range roots {
+			covered = covered || real == root || strings.HasPrefix(real, root+"/")
+		}
+		if !covered {
+			return errs.New("E485", fmt.Sprintf("%s/%s is a symlink to %s, which the fronting nginx container %s (%s) does not mount, so files shipped there would not reach it (bind mounts seen: %s)",
+				safeText(front), d, safeText(real), safeText(c.Name), safeText(c.ID), strings.Join(seen, ", "))).
+				WithFix("mount the link's real directory into the fronting nginx container or replace the link with a real directory, then deploy again; nothing was sent")
+		}
+	}
+	if found {
+		return nil
 	}
 	return errs.New("E485", fmt.Sprintf("the fronting nginx container %s (%s) does not bind-mount %s/nginx or %s/nginx/sites, so files shipped there would not reach it (bind mounts seen: %s)",
 		safeText(c.Name), safeText(c.ID), safeText(front), safeText(front), strings.Join(seen, ", "))).

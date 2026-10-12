@@ -6,6 +6,7 @@ package deploy
 // temp dirs; docker is answered by frontDocker.
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -206,7 +207,10 @@ func TestApplyShipsFrontRoot(t *testing.T) {
 		if strings.Contains(c, x.front+"/.env") || strings.Contains(c, x.front+"/docker-compose") || strings.Contains(c, x.front+"/ssl") {
 			t.Errorf("a command names the fronting stack's own files: %q", c)
 		}
-		if strings.Contains(c, "-front.tar.gz") && strings.Contains(c, "tar -hczf") {
+		if strings.Contains(c, "-front.tar.gz") && strings.Contains(c, "tar -czf") {
+			if strings.Contains(c, "tar -hczf") {
+				t.Errorf("the front tar follows symlinks: %q", c)
+			}
 			for _, bad := range []string{".env", "compose", "ssl"} {
 				if strings.Contains(c, bad) {
 					t.Errorf("the front tar script names %q: %q", bad, c)
@@ -248,7 +252,7 @@ func TestFrontNginxContainerByLabels(t *testing.T) {
 			f.handler = d.handler(func(string) (string, bool) { return "", false })
 			ctr, err := resolveFrontContainer(context.Background(), f, front, real)
 			if err == nil {
-				err = ctr.checkMounts(context.Background(), f, front, real)
+				err = ctr.checkMounts(context.Background(), f, front, real, nil)
 			}
 			if c.want != "" {
 				if err != nil || ctr.ID != c.want {
@@ -281,7 +285,7 @@ func TestFrontNginxContainerByLabels(t *testing.T) {
 func (x *frontFx) nothingSent(t *testing.T) {
 	t.Helper()
 	for _, c := range x.f.commands() {
-		if strings.Contains(c, "deploy.lock") || strings.HasPrefix(c, "rsync ") || strings.Contains(c, "tar -hczf") || strings.Contains(c, "docker exec") {
+		if strings.Contains(c, "deploy.lock") || strings.HasPrefix(c, "rsync ") || strings.Contains(c, "tar -hczf") || strings.Contains(c, "-front.tar.gz") || strings.Contains(c, "docker exec") {
 			t.Errorf("a refused deploy sent %q", c)
 		}
 	}
@@ -324,6 +328,30 @@ func TestFrontRefusalsBeforeLock(t *testing.T) {
 				t.Fatal(err)
 			}
 		}, "symlink outside"},
+		{"a shipped front file is a symlink that stays inside the fronting stack", func(x *frontFx) {
+			p := filepath.Join(x.front, "nginx", "sites", "api.conf")
+			if err := os.Remove(p); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink("../../docker-compose.yml", p); err != nil {
+				t.Fatal(err)
+			}
+		}, "regular files"},
+		{"a shipped front file is a dangling symlink", func(x *frontFx) {
+			p := filepath.Join(x.front, "nginx", "sites", "api.conf")
+			if err := os.Remove(p); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink("/nonexistent/x.conf", p); err != nil {
+				t.Fatal(err)
+			}
+		}, "regular files"},
+		{"a prune candidate is a symlink", func(x *frontFx) {
+			if err := os.Symlink("../../.env", filepath.Join(x.front, "nginx", "sites", "old.conf")); err != nil {
+				t.Fatal(err)
+			}
+			x.o.Set.Front.Previous = map[string][]string{"fake-host": {"nginx/sites/old.conf"}}
+		}, "regular files"},
 		{"front paths other than nginx/sites", func(x *frontFx) { x.o.Set.Front.Files = []string{"nginx/sites/api.conf", ".env"} }, "unsafe path"},
 		{"front root is not the directory of remote_path", func(x *frontFx) { x.o.Set.Front.RemotePath = filepath.Dir(x.front) }, "is not the directory of remote_path"},
 	}
@@ -399,11 +427,16 @@ func TestFrontNginxTestFailureRestores(t *testing.T) {
 	}
 	t.Run("nginx -t fails", func(t *testing.T) {
 		x := frontFixture(t)
+		var out bytes.Buffer
+		x.o.Out = &out
 		x.f.fail["nginx -t"] = errBoom
 		res, err := ApplyRemote(context.Background(), x.o)
 		check(t, x, res, err)
 		if !strings.Contains(err.Error(), "nginx -t failed in the fronting container") {
 			t.Errorf("err = %v", err)
+		}
+		if !strings.Contains(out.String(), "[restored] the fronting stack's nginx/sites") || !strings.Contains(out.String(), "reload it again") {
+			t.Errorf("the restore did not say to reload the fronting nginx if something did:\n%s", out.String())
 		}
 	})
 	t.Run("the container stopped before step 8", func(t *testing.T) {

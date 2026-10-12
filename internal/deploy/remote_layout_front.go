@@ -8,8 +8,9 @@ package deploy
 //          readlinked.
 // Inputs:  a Remote, the front root, the relative front file paths.
 // Outputs: dir -> real path for the dirs reached through a symlink that stays
-//          inside the real front root; E485 for a dir or a front file whose real
-//          path leaves it.
+//          inside the real front root; E485 for a dir whose real path leaves it
+//          and for any front file that is a symlink, dangling or not (a link is
+//          neither tarred nor replaced; Debian-style links are not supported).
 // Constraints: one quoted remote script per call. The same output grammar and
 //              the same E485 as ResolveDirs (parseResolved).
 
@@ -28,13 +29,12 @@ var frontDirs = []string{"nginx", "nginx/sites"}
 // ResolveFrontDirs resolves frontDirs and the files (relative to front) on the host.
 func ResolveFrontDirs(ctx context.Context, r Remote, front string, files []string) (map[string]string, error) {
 	script := fmt.Sprintf(`rp=%s; cd -P "$rp" 2>/dev/null || exit 0; base=$(pwd -P)
-res() { readlink -f -- "$1" 2>/dev/null || realpath -- "$1" 2>/dev/null; }
 safe() { case "$1" in *[[:cntrl:]]*) return 1;; esac; return 0; }
 san() { printf '%%s' "$1" | tr -c '[:print:]' '?'; }
 bad() { printf 'OUTSIDE %%s\t%%s\n' "$(san "$1")" "$(san "$2")"; }
 inside() { case "$1/" in "$base/"*) return 0;; esac; return 1; }
 for d in %s; do if [ -d "$d" ]; then x=$(cd -P "$d" 2>/dev/null && pwd -P && echo X) || x=; x=${x%%X}; x=${x%%?}; if ! safe "$x"; then bad "$d" "$x"; elif inside "$x"; then [ "$x" = "$base/$d" ] || printf 'LINK %%s\t%%s\n' "$d" "$x"; else bad "$d" "${x:-?}"; fi; fi; done
-for l in %s; do if [ -L "$l" ]; then x=$(res "$l"); inside "$x" || bad "$l" "${x:-?}"; fi; done
+for l in %s; do if [ -L "$l" ]; then bad "$l" "(a symlink: front files must be regular files)"; fi; done
 exit 0`, q(front), strings.Join(quoteAll(frontDirs), " "), strings.Join(quoteAll(append([]string{}, files...)), " "))
 	raw, err := r.Run(ctx, shScript(script))
 	if err != nil {

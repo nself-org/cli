@@ -149,14 +149,15 @@ func TestRecordFrontAndPreviousRoundTrip(t *testing.T) {
 	}
 	var res deploy.ApplyResult
 	res.BackupHost, res.FrontTar = "h1", "/srv/a/backend/.nself/backups/pre-deploy-x-front.tar.gz"
-	res.FrontChanged, res.FrontAbsent = []string{"nginx/sites/a.conf", "nginx/sites/b.conf"}, []string{"nginx/sites/b.conf"}
+	res.FrontChanged, res.FrontAbsent = []string{"nginx/sites/a.conf", "nginx/sites/b.conf", "nginx/sites/pruned.conf"}, []string{"nginx/sites/b.conf"}
+	res.FrontShipped = []string{"nginx/sites/a.conf", "nginx/sites/b.conf"} // pruned.conf was pruned, not shipped
 	recordFront(&st, res)
 	st.Target = "prod"
 	if err := deploy.SaveDeployState(proj, st); err != nil {
 		t.Fatal(err)
 	}
 	// A second host with a different record: each host sees only its own paths.
-	res.BackupHost, res.FrontChanged, res.FrontAbsent = "h2", []string{"nginx/sites/c.conf"}, nil
+	res.BackupHost, res.FrontChanged, res.FrontAbsent, res.FrontShipped = "h2", []string{"nginx/sites/c.conf"}, nil, []string{"nginx/sites/c.conf"}
 	recordFront(&st, res)
 	// A host whose deploy changed nothing in the front root records no front part.
 	recordFront(&st, deploy.ApplyResult{BackupHost: "h3", FrontRecord: deploy.FrontRecord{FrontTar: "/srv/a/backend/.nself/backups/pre-deploy-y-front.tar.gz"}})
@@ -170,6 +171,18 @@ func TestRecordFrontAndPreviousRoundTrip(t *testing.T) {
 	markFrontPrevious(&set, proj, "prod")
 	if strings.Join(set.Front.Previous["h1"], ",") != "nginx/sites/a.conf,nginx/sites/b.conf" || strings.Join(set.Front.Previous["h2"], ",") != "nginx/sites/c.conf" || len(set.Front.Previous) != 2 {
 		t.Errorf("previous = %v", set.Front.Previous)
+	}
+	// A record from before front_shipped existed (front_changed only): nothing is pruned.
+	old := st
+	old.FrontShipped = nil
+	oldProj := t.TempDir()
+	if err := deploy.SaveDeployState(oldProj, old); err != nil {
+		t.Fatal(err)
+	}
+	oldSet := deploy.ArtifactSet{Front: &deploy.FrontRoot{}}
+	markFrontPrevious(&oldSet, oldProj, "prod")
+	if len(oldSet.Front.Previous) != 0 {
+		t.Errorf("an old record without front_shipped fed the prune: %v", oldSet.Front.Previous)
 	}
 	other := deploy.ArtifactSet{Front: &deploy.FrontRoot{}}
 	markFrontPrevious(&other, proj, "staging") // another target's record is not this deploy's
