@@ -349,7 +349,19 @@ func TestDeployStreamRequiresJSON(t *testing.T) {
 	t.Run("promote in v1.4", func(t *testing.T) {
 		compattest.Set(t, false)
 		promoteFixture(t)
-		wantE401(t, runDeployPromote(streamPromoteCmd(&bytes.Buffer{}, true, true, true), []string{"ls", "prodsim"}), "<source> <target>")
+		dest := streamDest(t)
+		var err error
+		stdout, _ := captureStd(t, func() {
+			err = runDeployPromote(streamPromoteCmd(&bytes.Buffer{}, true, true, true), []string{"ls", "prodsim"})
+		})
+		wantE401(t, err, "<source> <target>")
+		if stdout != "" {
+			t.Errorf("stdout must stay empty, got %q", stdout)
+		}
+		// The stream had started, so it still ends with a result line.
+		if events, _ := checkStream(t, dest.String(), "deploy promote", "failed"); len(events) != 0 {
+			t.Errorf("events = %+v, want none", events)
+		}
 	})
 }
 

@@ -178,6 +178,9 @@ func init() {
 func runDeployPromoteBody(cmd *cobra.Command, args []string) error {
 	// compat.V15(P7-DEPL-15): deploy promote ignored args as a canary flip -> two args promote environments
 	if !compat.V15() || len(args) == 0 {
+		if streaming(cmd.Context()) {
+			return errStreamNeedsEnvs()
+		}
 		return runDeployCanaryPromote(cmd, args)
 	}
 	if len(args) != 2 {

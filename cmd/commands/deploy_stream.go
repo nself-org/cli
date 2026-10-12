@@ -24,7 +24,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/controlplane"
 	cpromote "github.com/nself-org/cli/internal/controlplane/promote"
 	dprog "github.com/nself-org/cli/internal/deploy/progress"
@@ -62,9 +61,8 @@ func runDeployPromote(cmd *cobra.Command, args []string) error {
 	if !jsonRequested(cmd) {
 		return errStreamNeedsJSON("deploy promote")
 	}
-	if len(args) != 2 || !compat.V15() {
-		return errs.New("E401", "deploy promote --stream needs <source> <target> (v1.5); the canary flip has no progress stream").
-			WithFix("Run: nself deploy promote <source> <target> --json --stream")
+	if len(args) != 2 {
+		return errStreamNeedsEnvs()
 	}
 	return runStreamed(cmd, "deploy promote", args[1], run)
 }
@@ -77,6 +75,14 @@ func streamRequested(cmd *cobra.Command) bool {
 func jsonRequested(cmd *cobra.Command) bool {
 	on, _ := cmd.Flags().GetBool("json")
 	return on
+}
+
+// errStreamNeedsEnvs is the E401 for --stream on a promote that has no stream:
+// the canary flip, or the two environment form in v1.4 mode (which does not
+// exist there).
+func errStreamNeedsEnvs() error {
+	return errs.New("E401", "deploy promote --stream needs <source> <target> in v1.5 mode (NSELF_V15=1); the canary flip has no progress stream").
+		WithFix("Run: nself deploy promote <source> <target> --json --stream")
 }
 
 func errStreamNeedsJSON(command string) error {
@@ -131,14 +137,10 @@ func runStreamed(cmd *cobra.Command, command, env string, run func() error) erro
 	return err
 }
 
-// reportStreamError writes err to stderr the way main would.
-func reportStreamError(err error) {
-	if compat.V15() {
-		output.RenderError(os.Stderr, err)
-		return
-	}
-	_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-}
+// reportStreamError writes err to stderr as main would in v1.5 mode: the coded
+// block for an E-code, else "Error: <message>". --stream is new, so v1.4 mode
+// has no older rendering to keep.
+func reportStreamError(err error) { output.RenderError(os.Stderr, err) }
 
 // streaming reports whether ctx carries a progress stream.
 func streaming(ctx context.Context) bool { return dprog.FromContext(ctx) != nil }
