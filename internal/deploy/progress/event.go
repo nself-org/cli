@@ -69,7 +69,17 @@ type Step struct {
 	Status string `json:"status"`
 }
 
-// Result is the data of the last line. Steps is never null.
+// ResultBody is the data of the last line without its type member:
+// output.StreamEnd adds {"type":"result"} in front. Steps is never null.
+type ResultBody struct {
+	// Result is one of Results.
+	Result string `json:"result"`
+	// Steps lists each step with its last known status, in first-seen order.
+	Steps []Step `json:"steps"`
+}
+
+// Result is the whole data of the last line as a reader sees it (tests and
+// consumers decode into it). Steps is never null.
 type Result struct {
 	// Type is always TypeResult.
 	Type string `json:"type"`

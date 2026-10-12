@@ -6,7 +6,6 @@ package commands
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -14,7 +13,6 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/maintenance"
 	"github.com/nself-org/cli/internal/ui"
-	"github.com/nself-org/cli/sdk/go/v2/remote"
 
 	"github.com/spf13/cobra"
 )
@@ -251,48 +249,7 @@ func runDeployBody(cmd *cobra.Command, args []string) error {
 	// --follow: stream container logs until Ctrl-C (staging/prod only).
 	// Not supported for dry-run or local (local already has foreground start).
 	if follow && !dryRun && target != "local" {
-		if !jsonOut {
-			ui.Info("Following container logs (Ctrl-C to stop)...")
-		}
-		host := legacyDeployHost(target)
-		if host != "" {
-			// Remote follow: tail logs on the remote host via SSH.
-			spec, err := remote.ParseHostSpec(host)
-			if err != nil {
-				return finalizeFor(cmd.Context(), jsonOut, target, strategy, start, steps, err)
-			}
-			remotePath := spec.LegacyPath
-			sshKey := sshKeyPath()
-			logsCmd := "docker compose logs -f --tail=50"
-			if remotePath != "" {
-				logsCmd = fmt.Sprintf("cd %s && docker compose logs -f --tail=50", remote.ShellQuote(remotePath))
-			}
-			sshArgs := []string{
-				"-i", sshKey,
-				"-o", "ForwardAgent=no",
-			}
-			tier := controlplane.TierLocalServers
-			if prodClassFn(gateInv, target) {
-				tier = controlplane.TierProd
-			}
-			keyOpts, err := controlplane.HostKeyOptions(cmd.Context(), target, "primary", tier, host, false)
-			if err != nil {
-				return err
-			}
-			sshArgs = append(sshArgs, keyOpts...)
-			sshArgs = append(sshArgs, spec.SSHArgs()...)
-			sc := exec.CommandContext(cmd.Context(), "ssh", append(sshArgs, logsCmd)...)
-			sc.Stdout = os.Stdout
-			sc.Stderr = os.Stderr
-			_ = sc.Run() // Ctrl-C exits; non-zero exit is not an error from user perspective.
-		} else {
-			// Local host: stream logs directly.
-			lc := exec.CommandContext(cmd.Context(), "docker", "compose", "logs", "-f", "--tail=50")
-			lc.Dir = workdir
-			lc.Stdout = os.Stdout
-			lc.Stderr = os.Stderr
-			_ = lc.Run()
-		}
+		return followDeployLogs(cmd, workdir, target, strategy, start, steps, jsonOut, gateInv)
 	}
 
 	return nil

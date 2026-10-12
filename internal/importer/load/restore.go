@@ -110,6 +110,11 @@ func Apply(ctx context.Context, cfg *config.Config, r *portable.Reader, opts Opt
 	if err = TypeFunctionCollisions(ctx, db, toc, m.DB.Schemas); err != nil {
 		return nil, err
 	}
+	// An invalid skip list is refused here, before the first write.
+	skip, err := SkipKinds(r)
+	if err != nil {
+		return nil, errs.New("E521", "restore skip list invalid; nothing was written")
+	}
 	// Every read-only check is done; compat.sql is the first write when the bundle has one.
 	if verify.HasMember(r, "db/compat.sql") {
 		if err = copyMember(r, "db/compat.sql", filepath.Join(work, "compat.sql")); err != nil {
@@ -128,6 +133,7 @@ func Apply(ctx context.Context, cfg *config.Config, r *portable.Reader, opts Opt
 	if err != nil {
 		return nil, err
 	}
+	filtered = dropEntries(filtered, skip)
 	if os.WriteFile(filepath.Join(work, "restore.list"), []byte(filtered), 0o600) != nil {
 		return nil, errs.New("E521", "restore list write failed")
 	}

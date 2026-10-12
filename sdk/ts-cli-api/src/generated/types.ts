@@ -2582,6 +2582,7 @@ export interface DbImportNhostRequest {
 export type DbImportNselfArgs = [string];
 
 export interface DbImportNselfData {
+  compat_shims: null | Array<string>;
   detection?: null | {
     kind: string;
     notes: null | Array<string>;
@@ -2659,6 +2660,7 @@ export interface DbImportNselfRequest {
 export type DbImportPostgresArgs = [];
 
 export interface DbImportPostgresData {
+  compat_shims: null | Array<string>;
   detection?: null | {
     kind: string;
     notes: null | Array<string>;
@@ -2744,10 +2746,22 @@ export interface DbImportSupabaseData {
 }
 
 export type DbImportSupabaseFlags = {
+  /** Supabase API URL for storage (default https://<project-ref>.supabase.co) (v1.5 import) */
+  "api-url"?: string;
+  /** Environment variable containing the Supabase direct database URL (v1.5 import) */
+  "db-url-env"?: string;
+  /** Keep the private portable bundle after a successful import (v1.5 import) */
+  "keep-stage"?: boolean;
   /** Output directory for generated files (default: current dir) */
   out?: string;
+  /** Check source and target and print the import plan without writing (v1.5 import) */
+  plan?: boolean;
   /** Supabase project reference ID (required) */
   "project-ref"?: string;
+  /** Environment variable containing the service_role key (storage API) (v1.5 import) */
+  "service-key-env"?: string;
+  /** Exempt each storage object from this import (v1.5 import) */
+  "skip-storage"?: boolean;
   /** Supabase service_role key (required) */
   "supabase-key"?: string;
 };
@@ -3744,6 +3758,446 @@ export interface DbVerifyRequest {
   flags?: DbVerifyFlags;
 }
 
+export type DeployAccessArgs = [];
+
+export interface DeployAccessData {
+  subcommands: null | Array<{
+    name: string;
+    summary: string;
+  }>;
+}
+
+export type DeployAccessFlags = Record<string, never>;
+
+export type DeployAccessGrantArgs = [];
+
+export interface DeployAccessGrantData {
+  dry_run: boolean;
+  ok: boolean;
+  target: string;
+}
+
+export type DeployAccessGrantFlags = {
+  /** record docker-group access as the intended privilege level */
+  docker?: boolean;
+  /** print the resulting authorized_keys diff, change nothing */
+  "dry-run"?: boolean;
+  /** Select hosts in an inventory environment */
+  env?: string;
+  /** optional expiry date, YYYY-MM-DD */
+  expires?: string;
+  /** SSH connection target, [user@]host (required) */
+  host?: string;
+  /** local SSH private key used to connect (default: ~/.ssh/id_ed25519) */
+  identity?: string;
+  /** public key material, or @path/to/file (required) */
+  key?: string;
+  /** Select an inventory server by name */
+  server?: string;
+  /** record sudo as the intended privilege level */
+  sudo?: boolean;
+  /** Select hosts in an inventory tier */
+  tier?: string;
+  /** label identifying whose key this is (required) */
+  user?: string;
+};
+
+/** Grant a person SSH key access to a host */
+export interface DeployAccessGrantRequest {
+  args?: DeployAccessGrantArgs;
+  flags?: DeployAccessGrantFlags;
+  confirm?: string;
+}
+
+export type DeployAccessListArgs = [];
+
+export interface DeployAccessListData {
+  hosts: null | Array<{
+    entries: null | Array<{
+      docker: boolean;
+      expired: boolean;
+      expires?: string;
+      fingerprint: string;
+      granted: string;
+      sudo: boolean;
+      user: string;
+    }>;
+    env: string;
+    foreign_count: number;
+    host: string;
+    reason?: string;
+    server: string;
+    status: string;
+  }>;
+}
+
+export type DeployAccessListFlags = {
+  /** Select hosts in an inventory environment */
+  env?: string;
+  /** SSH connection target, [user@]host (required) */
+  host?: string;
+  /** local SSH private key used to connect (default: ~/.ssh/id_ed25519) */
+  identity?: string;
+  /** Select an inventory server by name */
+  server?: string;
+  /** Select hosts in an inventory tier */
+  tier?: string;
+};
+
+/** List who has SSH key access to a host */
+export interface DeployAccessListRequest {
+  args?: DeployAccessListArgs;
+  flags?: DeployAccessListFlags;
+}
+
+/** Manage SSH key access on an already-deployed server */
+export interface DeployAccessRequest {
+  args?: DeployAccessArgs;
+  flags?: DeployAccessFlags;
+}
+
+export type DeployAccessRevokeArgs = [];
+
+export interface DeployAccessRevokeData {
+  dry_run: boolean;
+  ok: boolean;
+  target: string;
+}
+
+export type DeployAccessRevokeFlags = {
+  /** print the resulting authorized_keys diff, change nothing */
+  "dry-run"?: boolean;
+  /** Select hosts in an inventory environment */
+  env?: string;
+  /** allow removing the last remaining key on the host */
+  force?: boolean;
+  /** SSH connection target, [user@]host (required) */
+  host?: string;
+  /** local SSH private key used to connect (default: ~/.ssh/id_ed25519) */
+  identity?: string;
+  /** Select an inventory server by name */
+  server?: string;
+  /** Select hosts in an inventory tier */
+  tier?: string;
+  /** label identifying whose key to remove (required) */
+  user?: string;
+};
+
+/** Revoke a person's SSH key access to a host */
+export interface DeployAccessRevokeRequest {
+  args?: DeployAccessRevokeArgs;
+  flags?: DeployAccessRevokeFlags;
+  confirm?: string;
+}
+
+export type DeployArgs = [string?];
+
+export type DeployCheckAccessArgs = [];
+
+export interface DeployCheckAccessData {
+  all_ok: boolean;
+  servers: null | Array<{
+    capability: string;
+    env: string;
+    reason?: string;
+    server: string;
+  }>;
+}
+
+export type DeployCheckAccessFlags = Record<string, never>;
+
+/** Verify access to configured deploy targets (deprecated: use 'nself env target probe') */
+export interface DeployCheckAccessRequest {
+  args?: DeployCheckAccessArgs;
+  flags?: DeployCheckAccessFlags;
+}
+
+export interface DeployData {
+  dry_run: boolean;
+  duration_ms: number;
+  servers: null | Array<{
+    capability?: string;
+    env: string;
+    reason?: string;
+    role?: string;
+    server: string;
+    status: string;
+  }>;
+  steps: null | Array<{
+    name: string;
+    status: string;
+  }>;
+  strategy: string;
+  success: boolean;
+  target: string;
+}
+
+export type DeployEnvironmentsArgs = [];
+
+export interface DeployEnvironmentsData {
+  environments: null | Array<{
+    kind: string;
+    name: string;
+    servers: null | Array<{
+      capability: string;
+      name: string;
+      reason?: string;
+      role: string;
+    }>;
+  }>;
+}
+
+export type DeployEnvironmentsFlags = Record<string, never>;
+
+/** List configured deploy environments and server capabilities */
+export interface DeployEnvironmentsRequest {
+  args?: DeployEnvironmentsArgs;
+  flags?: DeployEnvironmentsFlags;
+}
+
+export type DeployFlags = {
+  /** Start a canary deploy at N%% traffic to green (0 = full flip) */
+  canary?: number;
+  /** Preview the deploy without executing */
+  "dry-run"?: boolean;
+  /** Target environment: local, or any inventory environment such as staging, prod or qa (overrides positional arg; required env vars: NSELF_DEPLOY_HOST, NSELF_DEPLOY_USER, NSELF_DEPLOY_KEY_PATH) */
+  env?: string;
+  /** Exclude frontend apps from the deploy */
+  "exclude-frontends"?: boolean;
+  /** Skip confirmation prompts (prod requires --confirm or --force) */
+  force?: boolean;
+  /** Force deploy even with backward-incompatible migrations (disables canary) */
+  "force-migration"?: boolean;
+  /** Include frontend apps in the deploy */
+  "include-frontends"?: boolean;
+  /** Compose build profile: full or ops */
+  profile?: string;
+  /** Alias for --strategy=rolling */
+  rolling?: boolean;
+  /** Deploy to a specific server only (name from control-plane inventory) */
+  server?: string;
+  /** Skip canary phase and flip directly to 100% green */
+  "skip-canary"?: boolean;
+  /** Skip post-deploy health checks */
+  "skip-health"?: boolean;
+  /** Deploy strategy: rolling|blue-green|canary|preview */
+  strategy?: string;
+};
+
+export type DeployHealthArgs = [string?];
+
+export interface DeployHealthData {
+  dry_run: boolean;
+  ok: boolean;
+  target: string;
+}
+
+export type DeployHealthFlags = {
+  /** Run health check on a specific server via SSH */
+  server?: string;
+};
+
+/** Run health checks against a target deployment */
+export interface DeployHealthRequest {
+  args?: DeployHealthArgs;
+  flags?: DeployHealthFlags;
+}
+
+export type DeployOpsArgs = [];
+
+export interface DeployOpsData {
+  dry_run: boolean;
+  ok: boolean;
+  target: string;
+}
+
+export type DeployOpsFlags = {
+  /** Preview deploy steps without executing */
+  "dry-run"?: boolean;
+};
+
+/** Deploy with the ops profile to the ops server */
+export interface DeployOpsRequest {
+  args?: DeployOpsArgs;
+  flags?: DeployOpsFlags;
+  confirm?: string;
+}
+
+export type DeployPromoteArgs = [string?];
+
+export interface DeployPromoteData {
+  backup_id?: string;
+  digests?: null | Array<{
+    detail?: string;
+    service: string;
+    source: string;
+    status: string;
+    target: string;
+  }>;
+  dry_run?: boolean;
+  failed_step?: string;
+  snapshot_tag?: string;
+  source: string;
+  status: string;
+  steps: null | Array<{
+    detail?: string;
+    name: string;
+    status: string;
+  }>;
+  target: string;
+}
+
+export type DeployPromoteEnvArgs = [string, string];
+
+export interface DeployPromoteEnvData {
+  backup_id?: string;
+  digests?: null | Array<{
+    detail?: string;
+    service: string;
+    source: string;
+    status: string;
+    target: string;
+  }>;
+  dry_run?: boolean;
+  failed_step?: string;
+  snapshot_tag?: string;
+  source: string;
+  status: string;
+  steps: null | Array<{
+    detail?: string;
+    name: string;
+    status: string;
+  }>;
+  target: string;
+}
+
+export type DeployPromoteEnvFlags = {
+  /** Approval ticket ID */
+  "approve-id"?: string;
+  /** Confirmation target (required for prod) */
+  confirm?: string;
+  /** Preview changes without applying */
+  "dry-run"?: boolean;
+};
+
+/** Promote one environment to another (e.g. staging to prod) */
+export interface DeployPromoteEnvRequest {
+  args: DeployPromoteEnvArgs;
+  flags?: DeployPromoteEnvFlags;
+  confirm?: string;
+}
+
+export type DeployPromoteEnvRollbackArgs = [];
+
+export interface DeployPromoteEnvRollbackData {
+  dry_run: boolean;
+  ok: boolean;
+  target: string;
+}
+
+export type DeployPromoteEnvRollbackFlags = {
+  /** Specific backup tag to restore (default: latest pre-promote) */
+  tag?: string;
+};
+
+/** Rollback to pre-promotion backup */
+export interface DeployPromoteEnvRollbackRequest {
+  args?: DeployPromoteEnvRollbackArgs;
+  flags?: DeployPromoteEnvRollbackFlags;
+  confirm?: string;
+}
+
+export type DeployPromoteFlags = {
+  /** Print the promotion plan without remote writes */
+  "dry-run"?: boolean;
+};
+
+/** Promote a canary or an environment */
+export interface DeployPromoteRequest {
+  args?: DeployPromoteArgs;
+  flags?: DeployPromoteFlags;
+  confirm?: string;
+}
+
+/** Deploy the stack to a target environment */
+export interface DeployRequest {
+  args?: DeployArgs;
+  flags?: DeployFlags;
+  confirm?: string;
+}
+
+export type DeployRollbackArgs = [string?];
+
+export interface DeployRollbackData {
+  dry_run: boolean;
+  ok: boolean;
+  target: string;
+}
+
+export type DeployRollbackFlags = {
+  /** Record operator verification that an uncertain database restore completed */
+  "db-restore-done"?: boolean;
+};
+
+/** Roll back the last deployment for a target */
+export interface DeployRollbackRequest {
+  args?: DeployRollbackArgs;
+  flags?: DeployRollbackFlags;
+  confirm?: string;
+}
+
+export type DeploySecuritySetupArgs = [];
+
+export interface DeploySecuritySetupData {
+  applied: boolean;
+  dry_run: boolean;
+  failed: null | Array<string>;
+  steps: null | Array<{
+    command: null | Array<string>;
+    name: string;
+  }>;
+  supported: boolean;
+}
+
+export type DeploySecuritySetupFlags = Record<string, never>;
+
+/** Apply baseline server hardening */
+export interface DeploySecuritySetupRequest {
+  args?: DeploySecuritySetupArgs;
+  flags?: DeploySecuritySetupFlags;
+  confirm?: string;
+}
+
+export type DeployStatusArgs = [];
+
+export interface DeployStatusData {
+  servers: null | Array<{
+    capability: string;
+    env: string;
+    latency_ms?: number;
+    reason?: string;
+    role: string;
+    server: string;
+  }>;
+  state: string;
+  target: string;
+}
+
+export type DeployStatusFlags = {
+  /** Show blue/green state alongside deployment status */
+  "blue-green"?: boolean;
+  /** Environment to check */
+  env?: string;
+  /** Filter status output to a specific server */
+  server?: string;
+};
+
+/** Show deployment status for a target */
+export interface DeployStatusRequest {
+  args?: DeployStatusArgs;
+  flags?: DeployStatusFlags;
+}
+
 export type DeployTargetsArgs = [];
 
 export interface DeployTargetsData {
@@ -3771,6 +4225,32 @@ export type DeployTargetsFlags = Record<string, never>;
 export interface DeployTargetsRequest {
   args?: DeployTargetsArgs;
   flags?: DeployTargetsFlags;
+}
+
+export type DeployWebArgs = [string?, ...Array<string>];
+
+export interface DeployWebData {
+  dry_run: boolean;
+  ok: boolean;
+  target: string;
+}
+
+export type DeployWebFlags = {
+  /** Print the vercel commands without executing */
+  "dry-run"?: boolean;
+  /** Promote deploy to production (adds --prod to 'vercel deploy') */
+  prod?: boolean;
+  /** Vercel API token (overrides VERCEL_TOKEN env var) */
+  token?: string;
+  /** Path to the web Turborepo root (default: auto-detected sibling '../web') */
+  "web-dir"?: string;
+};
+
+/** Build web apps locally and deploy prebuilt output to Vercel */
+export interface DeployWebRequest {
+  args?: DeployWebArgs;
+  flags?: DeployWebFlags;
+  confirm?: string;
 }
 
 export type DoctorArgs = [];
@@ -3913,6 +4393,47 @@ export interface DoctorReportRequest {
 export interface DoctorRequest {
   args?: DoctorArgs;
   flags?: DoctorFlags;
+}
+
+export type DoctorSecurityAuditArgs = [];
+
+export interface DoctorSecurityAuditData {
+  failed: number;
+  findings: null | Array<{
+    detail: string;
+    name: string;
+    ok: boolean;
+  }>;
+  passed: number;
+}
+
+export type DoctorSecurityAuditFlags = Record<string, never>;
+
+/** Run a read-only security audit */
+export interface DoctorSecurityAuditRequest {
+  args?: DoctorSecurityAuditArgs;
+  flags?: DoctorSecurityAuditFlags;
+}
+
+export type DoctorSecurityStatusArgs = [];
+
+export interface DoctorSecurityStatusData {
+  findings: null | Array<{
+    detail: string;
+    name: string;
+    ok: boolean;
+  }>;
+  percent: number;
+  score: number;
+  total: number;
+}
+
+export type DoctorSecurityStatusFlags = Record<string, never>;
+
+/** Show current security posture */
+export interface DoctorSecurityStatusRequest {
+  args?: DoctorSecurityStatusArgs;
+  flags?: DoctorSecurityStatusFlags;
 }
 
 export interface ErrorDetail {
@@ -4475,9 +4996,31 @@ export type UpdateFlags = {
   restart?: boolean;
   /** Download a specific version (e.g. v1.2.3) */
   version?: string;
-  /** Apply the image and plugin pins, rebuild, then update the CLI last (--cli=false skips the CLI) */
-  yes?: boolean;
 };
+
+export type UpdateImagesArgs = [];
+
+export interface UpdateImagesData {
+  dry_run: boolean;
+  failed: null | Array<string>;
+  images: null | Array<{
+    digest: string;
+    service: string;
+    status: string;
+  }>;
+  saved: boolean;
+}
+
+export type UpdateImagesFlags = {
+  /** Show digest changes without writing */
+  "dry-run"?: boolean;
+};
+
+/** Refresh Docker image digests from registries */
+export interface UpdateImagesRequest {
+  args?: UpdateImagesArgs;
+  flags?: UpdateImagesFlags;
+}
 
 export type UpdateProjectDetectArgs = [];
 
@@ -4579,6 +5122,7 @@ export interface UpdateProjectRunRequest {
 export interface UpdateRequest {
   args?: UpdateArgs;
   flags?: UpdateFlags;
+  confirm?: string;
 }
 
 export type UpdateStackArgs = [];
@@ -4607,5 +5151,56 @@ export interface UpdateStackRequest {
   args?: UpdateStackArgs;
   flags?: UpdateStackFlags;
   confirm?: string;
+}
+
+export type UpdateUpgradeArgs = [];
+
+export interface UpdateUpgradeData {
+  action: string;
+  current_version: string;
+  ok: boolean;
+  target_version?: string;
+}
+
+export type UpdateUpgradeFlags = {
+  /** Operator-supplied SHA-256 digest for --binary-url (skips checksums.txt fetch) */
+  "binary-sha256"?: string;
+  /** Install from a specific binary URL (HTTPS only; .tar.gz/.tgz; operator use) */
+  "binary-url"?: string;
+  /** Release channel: stable or canary */
+  channel?: string;
+  /** Check for updates without installing */
+  check?: boolean;
+  /** Revert to the previously installed version */
+  rollback?: boolean;
+  /** Upgrade to a specific version (e.g. 1.2.3) */
+  version?: string;
+};
+
+/** Upgrade the nSelf CLI (detects install method) */
+export interface UpdateUpgradeRequest {
+  args?: UpdateUpgradeArgs;
+  flags?: UpdateUpgradeFlags;
+}
+
+export type UpdateVerifySbomArgs = [];
+
+export interface UpdateVerifySbomData {
+  repo: string;
+  verified: boolean;
+  version: string;
+}
+
+export type UpdateVerifySbomFlags = {
+  /** GitHub repo (owner/name) */
+  repo?: string;
+  /** Release version to verify (e.g. v1.0.9) */
+  version?: string;
+};
+
+/** Verify the SBOM signature for a CLI release */
+export interface UpdateVerifySbomRequest {
+  args?: UpdateVerifySbomArgs;
+  flags?: UpdateVerifySbomFlags;
 }
 

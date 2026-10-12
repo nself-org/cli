@@ -1,0 +1,19 @@
+{
+  "schema_version": "1",
+  "command": "deploy environments",
+  "data": {
+    "environments": [
+      {
+        "name": "staging",
+        "kind": "remote",
+        "servers": [
+          {
+            "name": "staging-app",
+            "role": "app",
+            "capability": "manage"
+          }
+        ]
+      }
+    ]
+  }
+}

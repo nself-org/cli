@@ -22,6 +22,7 @@
       "diffs": []
     },
     "untranslated_policies": [],
+    "compat_shims": [],
     "exemptions": [],
     "mismatches": [],
     "wrote": false

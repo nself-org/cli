@@ -81,6 +81,7 @@ internal/importer/nhost 30  # measured 41.7 2026-10-12
 internal/importer/nself 75  # measured 77.6 2026-10-12
 internal/importer/postgres 8  # measured 10.8 2026-10-12
 internal/importer/scratch 37  # measured 39.2 2026-10-12
+internal/importer/supabase 50  # measured 52.5 2026-10-12
 internal/importer/testkit 60  # measured 62.5 2026-10-12
 internal/importer/verify 26  # measured 28.4 2026-10-12
 internal/installer 11  # measured 13.2 2026-10-05

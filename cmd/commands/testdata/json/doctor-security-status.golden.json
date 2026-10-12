@@ -1,0 +1,16 @@
+{
+  "schema_version": "1",
+  "command": "doctor security status",
+  "data": {
+    "findings": [
+      {
+        "name": "firewall",
+        "ok": true,
+        "detail": "ufw active"
+      }
+    ],
+    "score": 1,
+    "total": 1,
+    "percent": 100
+  }
+}

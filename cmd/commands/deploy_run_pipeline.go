@@ -15,12 +15,12 @@ package commands
 // Constraints: pure move, same checks/output/errors, no behavior change.
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/errs"
@@ -142,6 +142,7 @@ func runDeployControlPlanePipeline(cmd *cobra.Command, workdir, target, strategy
 		return false, nil
 	}
 
+	start := time.Now()
 	inv, loadErr := controlplane.Load(workdir)
 	if loadErr != nil {
 		return true, fmt.Errorf("deploy: load inventory: %w", loadErr)
@@ -182,24 +183,9 @@ func runDeployControlPlanePipeline(cmd *cobra.Command, workdir, target, strategy
 				}
 				fmt.Println()
 			}
-		} else {
-			type dryRow struct {
-				Env        string `json:"env"`
-				Server     string `json:"server"`
-				Capability string `json:"capability"`
-				Reason     string `json:"reason,omitempty"`
-			}
-			var rows []dryRow
-			for _, ts := range statuses {
-				if ts.Capability == controlplane.CapHidden {
-					continue
-				}
-				rows = append(rows, dryRow{Env: ts.Env, Server: ts.Server, Capability: string(ts.Capability), Reason: ts.Reason})
-			}
-			b, _ := json.MarshalIndent(map[string]interface{}{"dry_run": true, "topology": rows}, "", "  ")
-			fmt.Println(string(b))
+			return true, nil
 		}
-		return true, nil
+		return true, emitTopologyDoc(target, strategy, statuses)
 	}
 
 	// A remote pipeline deploy ships a fresh remote build and the validated env
@@ -241,31 +227,30 @@ func runDeployControlPlanePipeline(cmd *cobra.Command, workdir, target, strategy
 	if result.PrimarySkipped {
 		if !jsonOut {
 			ui.Warn("Primary server was skipped (read-only capability) — deploy incomplete")
-		} else if !streaming(cmd.Context()) {
-			b, _ := json.MarshalIndent(result.Servers, "", "  ")
-			fmt.Println(string(b))
 		}
-		return true, fmt.Errorf("deploy: primary server skipped (read-only capability); re-run once SSH access is restored")
+		skipErr := fmt.Errorf("deploy: primary server skipped (read-only capability); re-run once SSH access is restored")
+		if jsonOut && !streaming(cmd.Context()) {
+			_ = emitDeployDoc("deploy", result.Servers, nil, skipErr)
+		}
+		return true, skipErr
 	}
 
 	failedErr := failedServersError(result)
 	if jsonOut && !streaming(cmd.Context()) {
-		b, _ := json.MarshalIndent(result.Servers, "", "  ")
-		fmt.Println(string(b))
-	} else {
-		for _, sr := range result.Servers {
-			switch sr.Status {
-			case "ok":
-				ui.Success(fmt.Sprintf("  [ok] %s/%s", sr.Env, sr.Server))
-			case "skipped":
-				ui.Warn(fmt.Sprintf("  [skipped] %s/%s (read-only)", sr.Env, sr.Server))
-			case "failed":
-				ui.Error(fmt.Sprintf("  [failed] %s/%s: %v", sr.Env, sr.Server, sr.Err))
-			}
+		return true, emitDeployDoc("deploy", result.Servers, deployPipelineData(target, strategy, start, result), failedErr)
+	}
+	for _, sr := range result.Servers {
+		switch sr.Status {
+		case "ok":
+			ui.Success(fmt.Sprintf("  [ok] %s/%s", sr.Env, sr.Server))
+		case "skipped":
+			ui.Warn(fmt.Sprintf("  [skipped] %s/%s (read-only)", sr.Env, sr.Server))
+		case "failed":
+			ui.Error(fmt.Sprintf("  [failed] %s/%s: %v", sr.Env, sr.Server, sr.Err))
 		}
-		if failedErr == nil {
-			ui.Success(fmt.Sprintf("Deploy %s (pipeline) complete", target))
-		}
+	}
+	if failedErr == nil {
+		ui.Success(fmt.Sprintf("Deploy %s (pipeline) complete", target))
 	}
 	return true, failedErr
 }

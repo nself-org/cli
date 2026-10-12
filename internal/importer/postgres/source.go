@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/jackc/pgx/v5"
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/importer"
 	"github.com/nself-org/cli/internal/importer/load"
@@ -24,6 +25,12 @@ func connect(ctx context.Context, in importer.Input) (*pgx.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
+	return Dial(ctx, value)
+}
+
+// Dial opens the source connection for a URL taken from an environment variable. Errors carry
+// fixed texts only, never the URL.
+func Dial(ctx context.Context, value string) (*pgx.Conn, error) {
 	cfg, err := pgx.ParseConfig(value)
 	if err != nil {
 		return nil, errs.New("E517", "source connection configuration invalid")
@@ -35,6 +42,33 @@ func connect(ctx context.Context, in importer.Input) (*pgx.Conn, error) {
 	}
 	return db, nil
 }
+
+// Version reads the source server version and refuses a source the target cannot restore
+// (E518). It is shared by every source that snapshots a Postgres database.
+func Version(ctx context.Context, db *pgx.Conn, target *config.Config) (string, error) {
+	var version string
+	var num int
+	if db.QueryRow(ctx, "SHOW server_version").Scan(&version) != nil || db.QueryRow(ctx, "SELECT current_setting('server_version_num')::int").Scan(&num) != nil {
+		return version, errs.New("E517", "source version unavailable")
+	}
+	// server_version_num is exact for betas ("17beta1") and for the pre-10 numbering.
+	major := num / 10000
+	targetMajor := major
+	if target != nil {
+		targetDB, e := load.Connect(ctx, target)
+		if e != nil {
+			return version, e
+		}
+		var tv int
+		e = targetDB.QueryRow(ctx, "SELECT current_setting('server_version_num')::int").Scan(&tv)
+		_ = targetDB.Close(ctx)
+		if e != nil {
+			return version, errs.New("E521", "target version unavailable")
+		}
+		targetMajor = tv / 10000
+	}
+	return version, CheckVersion(major, targetMajor)
+}
 func (Source) Detect(ctx context.Context, in importer.Input) (importer.Detection, error) {
 	db, err := connect(ctx, in)
 	if err != nil {
@@ -42,27 +76,7 @@ func (Source) Detect(ctx context.Context, in importer.Input) (importer.Detection
 	}
 	defer func() { _ = db.Close(ctx) }()
 	detection := importer.Detection{Kind: "postgres", Notes: []string{}}
-	var num int
-	if db.QueryRow(ctx, "SHOW server_version").Scan(&detection.Version) != nil || db.QueryRow(ctx, "SELECT current_setting('server_version_num')::int").Scan(&num) != nil {
-		return detection, errs.New("E517", "source version unavailable")
-	}
-	// server_version_num is exact for betas ("17beta1") and for the pre-10 numbering.
-	major := num / 10000
-	target := major
-	if in.Target != nil {
-		targetDB, e := load.Connect(ctx, in.Target)
-		if e != nil {
-			return detection, e
-		}
-		var version int
-		e = targetDB.QueryRow(ctx, "SELECT current_setting('server_version_num')::int").Scan(&version)
-		_ = targetDB.Close(ctx)
-		if e != nil {
-			return detection, errs.New("E521", "target version unavailable")
-		}
-		target = version / 10000
-	}
-	if err = CheckVersion(major, target); err != nil {
+	if detection.Version, err = Version(ctx, db, in.Target); err != nil {
 		return detection, err
 	}
 	rows, err := db.Query(ctx, `SELECT nspname::text FROM pg_namespace WHERE left(nspname,3) <> 'pg_' AND left(nspname,3) <> 'np_' AND nspname NOT IN ('information_schema','hdb_catalog','nself_ops','auth') ORDER BY nspname`)

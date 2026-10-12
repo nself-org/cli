@@ -1,0 +1,25 @@
+{
+  "schema_version": "1",
+  "command": "deploy",
+  "data": {
+    "target": "staging",
+    "strategy": "rolling",
+    "dry_run": false,
+    "steps": [
+      {
+        "name": "Build images",
+        "status": "done"
+      }
+    ],
+    "servers": [
+      {
+        "env": "staging",
+        "server": "staging-app",
+        "role": "app",
+        "status": "ok"
+      }
+    ],
+    "duration_ms": 1200,
+    "success": true
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "schema_version": "1",
+  "command": "deploy status",
+  "data": {
+    "target": "staging",
+    "state": "running",
+    "servers": [
+      {
+        "env": "staging",
+        "server": "staging-app",
+        "role": "app",
+        "capability": "manage",
+        "latency_ms": 12
+      }
+    ]
+  }
+}

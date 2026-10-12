@@ -4,7 +4,6 @@ package commands
 // Constraints: split out of deploy.go (CLI-R12) as a pure move, no behavior change.
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -56,15 +55,7 @@ func runDeployStatus(cmd *cobra.Command, args []string) error {
 				prober := controlplane.NewSSHProber(root, false)
 				statuses := controlplane.Resolve(inv, prober)
 
-				type serverStatus struct {
-					Env        string `json:"env"`
-					Server     string `json:"server"`
-					Role       string `json:"role"`
-					Capability string `json:"capability"`
-					Reason     string `json:"reason,omitempty"`
-					LatencyMS  int    `json:"latency_ms,omitempty"`
-				}
-				var rows []serverStatus
+				var rows []deployStatusServer
 				for _, ts := range statuses {
 					if ts.Capability == controlplane.CapHidden {
 						continue
@@ -82,7 +73,7 @@ func runDeployStatus(cmd *cobra.Command, args []string) error {
 							}
 						}
 					}
-					rows = append(rows, serverStatus{
+					rows = append(rows, deployStatusServer{
 						Env:        ts.Env,
 						Server:     ts.Server,
 						Role:       role,
@@ -93,13 +84,8 @@ func runDeployStatus(cmd *cobra.Command, args []string) error {
 				}
 
 				if jsonOut {
-					b, _ := json.MarshalIndent(map[string]interface{}{
-						"target":  env,
-						"state":   state,
-						"servers": rows,
-					}, "", "  ")
-					fmt.Println(string(b))
-					return nil
+					legacy := map[string]interface{}{"target": env, "state": state, "servers": rows}
+					return emitDeployDoc("deploy status", legacy, newDeployStatusData(env, state, rows), nil)
 				}
 				fmt.Printf("target=%s state=%s\n", env, state)
 				for _, row := range rows {
@@ -123,9 +109,7 @@ func runDeployStatus(cmd *cobra.Command, args []string) error {
 		"state":  state,
 	}
 	if jsonOut {
-		b, _ := json.MarshalIndent(status, "", "  ")
-		fmt.Println(string(b))
-		return nil
+		return emitDeployDoc("deploy status", status, newDeployStatusData(env, state, nil), nil)
 	}
 	fmt.Printf("target=%s state=%s\n", status["target"], status["state"])
 	return nil

@@ -7,7 +7,6 @@ package commands
 // Constraints: split out of deploy.go (CLI-R12) as a pure move, no behavior change.
 
 import (
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -49,9 +48,7 @@ func finalize(jsonOut bool, target, strategy string, start time.Time, steps []de
 		if err != nil {
 			res.Error = err.Error()
 		}
-		b, _ := json.MarshalIndent(res, "", "  ")
-		fmt.Println(string(b))
-		return err
+		return emitDeployDoc("deploy", res, deployDataOf(res), err)
 	}
 	if success {
 		ui.Success(fmt.Sprintf("Deploy %s (%s) finished in %dms", target, strategy, duration))

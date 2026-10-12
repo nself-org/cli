@@ -5,7 +5,9 @@ package postgres
 // Constraints: pg_dump uses target image, EnvPass credentials, host uid:gid, same snapshot.
 import (
 	"context"
+	"errors"
 	"github.com/jackc/pgx/v5"
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/database"
 	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/errs"
@@ -35,6 +37,26 @@ func (s Source) Extract(ctx context.Context, in importer.Input, stage string) (i
 	db, err := connect(ctx, in)
 	if err != nil {
 		return importer.Extracted{}, err
+	}
+	return Snapshot(ctx, db, detection, in.Target, stage, Options{Source: "postgres"})
+}
+
+// Options lets another Postgres-backed source reuse the snapshot extractor.
+// Source names the manifest producer. InTx runs inside the snapshot transaction once the dump
+// members are in the bundle (work holds the pg_dump outputs); it replaces the hasura-auth user
+// export. Finish runs after the snapshot commits and before the manifest is written.
+type Options struct {
+	Source string
+	InTx   func(ctx context.Context, tx pgx.Tx, w *portable.Writer, m *portable.Manifest, work string) error
+	Finish func(ctx context.Context, w *portable.Writer, m *portable.Manifest) error
+}
+
+// Snapshot exports detection.Schemas from db inside one REPEATABLE READ snapshot into a portable
+// bundle at stage. It closes db. Errors are fixed credential-free texts.
+func Snapshot(ctx context.Context, db *pgx.Conn, detection importer.Detection, target *config.Config, stage string, opt Options) (importer.Extracted, error) {
+	if target == nil {
+		_ = db.Close(ctx)
+		return importer.Extracted{}, errs.New("E520", "target config required for snapshot extraction")
 	}
 	defer func() { _ = db.Close(ctx) }()
 	tx, err := db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
@@ -70,7 +92,7 @@ func (s Source) Extract(ctx context.Context, in importer.Input, stage string) (i
 		return importer.Extracted{}, errs.New("E520", "source table hashing failed")
 	}
 	major := majorOf(detection.Version)
-	m := portable.Manifest{Producer: portable.Producer{Tool: "nself", Version: "1", Source: "postgres"}, Postgres: portable.PostgresInfo{ServerVersion: detection.Version, Major: major}, DB: portable.DB{Schemas: detection.Schemas}}
+	m := portable.Manifest{Producer: portable.Producer{Tool: "nself", Version: "1", Source: opt.Source}, Postgres: portable.PostgresInfo{ServerVersion: detection.Version, Major: major}, DB: portable.DB{Schemas: detection.Schemas}}
 	for _, h := range hashed {
 		t := portable.Table{Schema: h.Table.Schema, Name: h.Table.Name, Rows: h.Rows, Hash: h.Hash}
 		t.PK, err = primaryKey(ctx, tx, t.Schema, t.Name)
@@ -86,7 +108,7 @@ func (s Source) Extract(ctx context.Context, in importer.Input, stage string) (i
 		}
 		m.SourceCounts = append(m.SourceCounts, portable.SourceCount{Kind: "table", ID: t.Schema + "." + t.Name, Count: count, Method: "independent count(*)"})
 	}
-	image, err := load.Image(ctx, in.Target)
+	image, err := load.Image(ctx, target)
 	if err != nil {
 		return importer.Extracted{}, err
 	}
@@ -122,11 +144,22 @@ func (s Source) Extract(ctx context.Context, in importer.Input, stage string) (i
 			return importer.Extracted{}, errs.New("E520", "dump member write failed")
 		}
 	}
-	if err = exportUsers(ctx, tx, writer, &m); err != nil {
-		return importer.Extracted{}, errs.New("E520", "auth snapshot extraction failed")
+	if opt.InTx != nil {
+		err = opt.InTx(ctx, tx, writer, &m, work)
+	} else {
+		err = exportUsers(ctx, tx, writer, &m)
+	}
+	if err != nil {
+		return importer.Extracted{}, publicSourceError(err, "E520", "auth snapshot extraction failed")
 	}
 	if tx.Commit(ctx) != nil {
 		return importer.Extracted{}, errs.New("E520", "snapshot commit failed")
+	}
+	if opt.Finish != nil {
+		_ = db.Close(ctx) // the source stays idle while Finish may download for a long time
+		if err = opt.Finish(ctx, writer, &m); err != nil {
+			return importer.Extracted{}, publicSourceError(err, "E520", "source extraction failed")
+		}
 	}
 	if _, err = writer.Finish(m); err != nil {
 		return importer.Extracted{}, errs.New("E520", "bundle manifest write failed")
@@ -175,4 +208,14 @@ func primaryKey(ctx context.Context, tx pgx.Tx, schema, name string) ([]string, 
 		out = append(out, col)
 	}
 	return out, rows.Err()
+}
+
+// publicSourceError keeps a hook's own coded error (its text is fixed and credential-free by
+// the hook's contract) and turns anything else into the generic one.
+func publicSourceError(err error, code, message string) error {
+	var cli *errs.CLIError
+	if errors.As(err, &cli) {
+		return cli
+	}
+	return errs.New(code, message)
 }

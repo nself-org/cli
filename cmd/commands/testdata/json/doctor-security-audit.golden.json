@@ -1,0 +1,15 @@
+{
+  "schema_version": "1",
+  "command": "doctor security audit",
+  "data": {
+    "findings": [
+      {
+        "name": "firewall",
+        "ok": true,
+        "detail": "ufw active"
+      }
+    ],
+    "passed": 1,
+    "failed": 0
+  }
+}

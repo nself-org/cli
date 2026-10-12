@@ -14,6 +14,17 @@ nself migrate supabase --project-ref <ref> --supabase-key <key> [flags]
 
 Unlike `nself migrate firebase`, this command requires live access to your Supabase project. Use `NSELF_SUPABASE_SKIP=1` to skip live connectivity in CI environments.
 
+## v1.5 mode
+
+With `NSELF_V15=1` this command is `nself db import supabase`: it imports the project into a started nSelf project through a direct database connection, moves the auth users with their bcrypt hashes and the storage objects, translates simple row level security policies to Hasura permissions, and verifies the result. The flags below marked v1.5 apply only there; `--project-ref` and `--supabase-key` are then optional and `--supabase-key` and `--out` are unused. See [[Come-Home-Supabase]].
+
+| Flag (v1.5) | Description |
+|---|---|
+| `--db-url-env` | Environment variable holding the direct database URL |
+| `--api-url` | Storage API URL (default `https://<project-ref>.supabase.co`) |
+| `--service-key-env` | Environment variable holding the `service_role` key |
+| `--plan`, `--keep-stage`, `--skip-storage` | As for `nself db import` |
+
 ## Flags
 
 | Flag | Default | Description |

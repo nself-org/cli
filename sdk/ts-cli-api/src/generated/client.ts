@@ -320,8 +320,40 @@ export interface Operations {
   dbVerify(request?: T.DbVerifyRequest, options?: CallOptions): Promise<T.DbVerifyData>;
   /** Verify migration file checksums against stored values (POST /v1/commands/db/verify-checksums) */
   dbVerifyChecksums(request?: T.DbVerifyChecksumsRequest, options?: CallOptions): Promise<T.DbVerifyChecksumsData>;
+  /** Deploy the stack to a target environment (POST /v1/commands/deploy) */
+  deploy(request?: T.DeployRequest, options?: CallOptions): Promise<T.DeployData>;
+  /** Manage SSH key access on an already-deployed server (POST /v1/commands/deploy/access) */
+  deployAccess(request?: T.DeployAccessRequest, options?: CallOptions): Promise<T.DeployAccessData>;
+  /** Grant a person SSH key access to a host (POST /v1/commands/deploy/access/grant) */
+  deployAccessGrant(request?: T.DeployAccessGrantRequest, options?: CallOptions): Promise<T.DeployAccessGrantData>;
+  /** List who has SSH key access to a host (POST /v1/commands/deploy/access/list) */
+  deployAccessList(request?: T.DeployAccessListRequest, options?: CallOptions): Promise<T.DeployAccessListData>;
+  /** Revoke a person's SSH key access to a host (POST /v1/commands/deploy/access/revoke) */
+  deployAccessRevoke(request?: T.DeployAccessRevokeRequest, options?: CallOptions): Promise<T.DeployAccessRevokeData>;
+  /** Verify access to configured deploy targets (deprecated: use 'nself env target probe') (POST /v1/commands/deploy/check-access) */
+  deployCheckAccess(request?: T.DeployCheckAccessRequest, options?: CallOptions): Promise<T.DeployCheckAccessData>;
+  /** List configured deploy environments and server capabilities (POST /v1/commands/deploy/environments) */
+  deployEnvironments(request?: T.DeployEnvironmentsRequest, options?: CallOptions): Promise<T.DeployEnvironmentsData>;
+  /** Run health checks against a target deployment (POST /v1/commands/deploy/health) */
+  deployHealth(request?: T.DeployHealthRequest, options?: CallOptions): Promise<T.DeployHealthData>;
+  /** Deploy with the ops profile to the ops server (POST /v1/commands/deploy/ops) */
+  deployOps(request?: T.DeployOpsRequest, options?: CallOptions): Promise<T.DeployOpsData>;
+  /** Promote a canary or an environment (POST /v1/commands/deploy/promote) */
+  deployPromote(request?: T.DeployPromoteRequest, options?: CallOptions): Promise<T.DeployPromoteData>;
+  /** Promote one environment to another (e.g. staging to prod) (POST /v1/commands/deploy/promote-env) */
+  deployPromoteEnv(request: T.DeployPromoteEnvRequest, options?: CallOptions): Promise<T.DeployPromoteEnvData>;
+  /** Rollback to pre-promotion backup (POST /v1/commands/deploy/promote-env/rollback) */
+  deployPromoteEnvRollback(request?: T.DeployPromoteEnvRollbackRequest, options?: CallOptions): Promise<T.DeployPromoteEnvRollbackData>;
+  /** Roll back the last deployment for a target (POST /v1/commands/deploy/rollback) */
+  deployRollback(request?: T.DeployRollbackRequest, options?: CallOptions): Promise<T.DeployRollbackData>;
+  /** Apply baseline server hardening (POST /v1/commands/deploy/security/setup) */
+  deploySecuritySetup(request?: T.DeploySecuritySetupRequest, options?: CallOptions): Promise<T.DeploySecuritySetupData>;
+  /** Show deployment status for a target (POST /v1/commands/deploy/status) */
+  deployStatus(request?: T.DeployStatusRequest, options?: CallOptions): Promise<T.DeployStatusData>;
   /** List deploy targets without connecting to them (POST /v1/commands/deploy/targets) */
   deployTargets(request?: T.DeployTargetsRequest, options?: CallOptions): Promise<T.DeployTargetsData>;
+  /** Build web apps locally and deploy prebuilt output to Vercel (POST /v1/commands/deploy/web) */
+  deployWeb(request?: T.DeployWebRequest, options?: CallOptions): Promise<T.DeployWebData>;
   /** Run comprehensive system diagnostics (POST /v1/commands/doctor) */
   doctor(request?: T.DoctorRequest, options?: CallOptions): Promise<T.DoctorData>;
   /** Run targeted self-healing routines for nSelf components (POST /v1/commands/doctor/heal) */
@@ -330,6 +362,10 @@ export interface Operations {
   doctorImages(request?: T.DoctorImagesRequest, options?: CallOptions): Promise<T.DoctorImagesData>;
   /** Write a redacted support bundle (tar.gz) to share in an issue (POST /v1/commands/doctor/report) */
   doctorReport(request?: T.DoctorReportRequest, options?: CallOptions): Promise<T.DoctorReportData>;
+  /** Run a read-only security audit (POST /v1/commands/doctor/security/audit) */
+  doctorSecurityAudit(request?: T.DoctorSecurityAuditRequest, options?: CallOptions): Promise<T.DoctorSecurityAuditData>;
+  /** Show current security posture (POST /v1/commands/doctor/security/status) */
+  doctorSecurityStatus(request?: T.DoctorSecurityStatusRequest, options?: CallOptions): Promise<T.DoctorSecurityStatusData>;
   /** Browse help topics (quickstart, plugins, license, envs, doctor, errors) (POST /v1/commands/help/topics) */
   helpTopics(request?: T.HelpTopicsRequest, options?: CallOptions): Promise<T.HelpTopicsData>;
   /** Browse and publish full-stack app templates (POST /v1/commands/init/template) */
@@ -364,6 +400,8 @@ export interface Operations {
   statusUrls(request?: T.StatusUrlsRequest, options?: CallOptions): Promise<T.StatusUrlsData>;
   /** Update the nSelf CLI and admin UI (POST /v1/commands/update) */
   update(request?: T.UpdateRequest, options?: CallOptions): Promise<T.UpdateData>;
+  /** Refresh Docker image digests from registries (POST /v1/commands/update/images) */
+  updateImages(request?: T.UpdateImagesRequest, options?: CallOptions): Promise<T.UpdateImagesData>;
   /** Detect v1 artifacts in the current project (POST /v1/commands/update/project/detect) */
   updateProjectDetect(request?: T.UpdateProjectDetectRequest, options?: CallOptions): Promise<T.UpdateProjectDetectData>;
   /** Migrate a v0.9.9 Bash-era project to the current nSelf CLI (POST /v1/commands/update/project/from-bash) */
@@ -376,6 +414,10 @@ export interface Operations {
   updateProjectRun(request?: T.UpdateProjectRunRequest, options?: CallOptions): Promise<T.UpdateProjectRunData>;
   /** Upgrade the stack with a verified backup and resumable steps (POST /v1/commands/update/stack) */
   updateStack(request?: T.UpdateStackRequest, options?: CallOptions): Promise<T.UpdateStackData>;
+  /** Upgrade the nSelf CLI (detects install method) (POST /v1/commands/update/upgrade) */
+  updateUpgrade(request?: T.UpdateUpgradeRequest, options?: CallOptions): Promise<T.UpdateUpgradeData>;
+  /** Verify the SBOM signature for a CLI release (POST /v1/commands/update/verify-sbom) */
+  updateVerifySbom(request?: T.UpdateVerifySbomRequest, options?: CallOptions): Promise<T.UpdateVerifySbomData>;
 }
 
 export function createOperations(transport: Transport): Operations {
@@ -538,11 +580,29 @@ export function createOperations(transport: Transport): Operations {
     dbSoftDeleteGenerate: (request, options) => transport.call<T.DbSoftDeleteGenerateData>("/v1/commands/db/soft-delete/generate", request, options),
     dbVerify: (request, options) => transport.call<T.DbVerifyData>("/v1/commands/db/verify", request, options),
     dbVerifyChecksums: (request, options) => transport.call<T.DbVerifyChecksumsData>("/v1/commands/db/verify-checksums", request, options),
+    deploy: (request, options) => transport.call<T.DeployData>("/v1/commands/deploy", request, options),
+    deployAccess: (request, options) => transport.call<T.DeployAccessData>("/v1/commands/deploy/access", request, options),
+    deployAccessGrant: (request, options) => transport.call<T.DeployAccessGrantData>("/v1/commands/deploy/access/grant", request, options),
+    deployAccessList: (request, options) => transport.call<T.DeployAccessListData>("/v1/commands/deploy/access/list", request, options),
+    deployAccessRevoke: (request, options) => transport.call<T.DeployAccessRevokeData>("/v1/commands/deploy/access/revoke", request, options),
+    deployCheckAccess: (request, options) => transport.call<T.DeployCheckAccessData>("/v1/commands/deploy/check-access", request, options),
+    deployEnvironments: (request, options) => transport.call<T.DeployEnvironmentsData>("/v1/commands/deploy/environments", request, options),
+    deployHealth: (request, options) => transport.call<T.DeployHealthData>("/v1/commands/deploy/health", request, options),
+    deployOps: (request, options) => transport.call<T.DeployOpsData>("/v1/commands/deploy/ops", request, options),
+    deployPromote: (request, options) => transport.call<T.DeployPromoteData>("/v1/commands/deploy/promote", request, options),
+    deployPromoteEnv: (request, options) => transport.call<T.DeployPromoteEnvData>("/v1/commands/deploy/promote-env", request, options),
+    deployPromoteEnvRollback: (request, options) => transport.call<T.DeployPromoteEnvRollbackData>("/v1/commands/deploy/promote-env/rollback", request, options),
+    deployRollback: (request, options) => transport.call<T.DeployRollbackData>("/v1/commands/deploy/rollback", request, options),
+    deploySecuritySetup: (request, options) => transport.call<T.DeploySecuritySetupData>("/v1/commands/deploy/security/setup", request, options),
+    deployStatus: (request, options) => transport.call<T.DeployStatusData>("/v1/commands/deploy/status", request, options),
     deployTargets: (request, options) => transport.call<T.DeployTargetsData>("/v1/commands/deploy/targets", request, options),
+    deployWeb: (request, options) => transport.call<T.DeployWebData>("/v1/commands/deploy/web", request, options),
     doctor: (request, options) => transport.call<T.DoctorData>("/v1/commands/doctor", request, options),
     doctorHeal: (request, options) => transport.call<T.DoctorHealData>("/v1/commands/doctor/heal", request, options),
     doctorImages: (request, options) => transport.call<T.DoctorImagesData>("/v1/commands/doctor/images", request, options),
     doctorReport: (request, options) => transport.call<T.DoctorReportData>("/v1/commands/doctor/report", request, options),
+    doctorSecurityAudit: (request, options) => transport.call<T.DoctorSecurityAuditData>("/v1/commands/doctor/security/audit", request, options),
+    doctorSecurityStatus: (request, options) => transport.call<T.DoctorSecurityStatusData>("/v1/commands/doctor/security/status", request, options),
     helpTopics: (request, options) => transport.call<T.HelpTopicsData>("/v1/commands/help/topics", request, options),
     initTemplate: (request, options) => transport.call<T.InitTemplateData>("/v1/commands/init/template", request, options),
     initTemplateInfo: (request, options) => transport.call<T.InitTemplateInfoData>("/v1/commands/init/template/info", request, options),
@@ -560,11 +620,14 @@ export function createOperations(transport: Transport): Operations {
     statusHealthService: (request, options) => transport.call<T.StatusHealthServiceData>("/v1/commands/status/health/service", request, options),
     statusUrls: (request, options) => transport.call<T.StatusUrlsData>("/v1/commands/status/urls", request, options),
     update: (request, options) => transport.call<T.UpdateData>("/v1/commands/update", request, options),
+    updateImages: (request, options) => transport.call<T.UpdateImagesData>("/v1/commands/update/images", request, options),
     updateProjectDetect: (request, options) => transport.call<T.UpdateProjectDetectData>("/v1/commands/update/project/detect", request, options),
     updateProjectFromBash: (request, options) => transport.call<T.UpdateProjectFromBashData>("/v1/commands/update/project/from-bash", request, options),
     updateProjectFromV099: (request, options) => transport.call<T.UpdateProjectFromV099Data>("/v1/commands/update/project/from-v099", request, options),
     updateProjectRollback: (request, options) => transport.call<T.UpdateProjectRollbackData>("/v1/commands/update/project/rollback", request, options),
     updateProjectRun: (request, options) => transport.call<T.UpdateProjectRunData>("/v1/commands/update/project/run", request, options),
     updateStack: (request, options) => transport.call<T.UpdateStackData>("/v1/commands/update/stack", request, options),
+    updateUpgrade: (request, options) => transport.call<T.UpdateUpgradeData>("/v1/commands/update/upgrade", request, options),
+    updateVerifySbom: (request, options) => transport.call<T.UpdateVerifySbomData>("/v1/commands/update/verify-sbom", request, options),
   };
 }

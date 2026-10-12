@@ -12177,11 +12177,79 @@
       "args": [],
       "flags": [
         {
+          "name": "api-url",
+          "shorthand": null,
+          "type": "string",
+          "default": "",
+          "usage": "Supabase API URL for storage (default https://<project-ref>.supabase.co) (v1.5 import)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        },
+        {
+          "name": "db-url-env",
+          "shorthand": null,
+          "type": "string",
+          "default": "",
+          "usage": "Environment variable containing the Supabase direct database URL (v1.5 import)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        },
+        {
+          "name": "keep-stage",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Keep the private portable bundle after a successful import (v1.5 import)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        },
+        {
           "name": "out",
           "shorthand": null,
           "type": "string",
           "default": ".",
           "usage": "Output directory for generated files (default: current dir)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        },
+        {
+          "name": "plan",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Check source and target and print the import plan without writing (v1.5 import)",
           "hidden": false,
           "deprecated": null,
           "required": false,
@@ -12202,6 +12270,40 @@
           "hidden": false,
           "deprecated": null,
           "required": true,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        },
+        {
+          "name": "service-key-env",
+          "shorthand": null,
+          "type": "string",
+          "default": "",
+          "usage": "Environment variable containing the service_role key (storage API) (v1.5 import)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        },
+        {
+          "name": "skip-storage",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Exempt each storage object from this import (v1.5 import)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
           "persistent": false,
           "env": null,
           "side_effect": null,
@@ -14824,10 +14926,15 @@
       "target": null,
       "side_effect": "remote",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -14846,8 +14953,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-access.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -15073,10 +15180,15 @@
       "target": null,
       "side_effect": "remote",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-access-grant.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -15198,8 +15310,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-access-list.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -15374,10 +15486,15 @@
       "target": null,
       "side_effect": "remote",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-access-revoke.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -15414,8 +15531,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-check-access.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -15436,8 +15553,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-environments.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -15500,8 +15617,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-health.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -15604,10 +15721,13 @@
       "target": null,
       "side_effect": "remote",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-ops.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -15705,7 +15825,12 @@
       "json": "envelope",
       "data_schema": "schemas/commands/deploy-promote.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -15823,10 +15948,15 @@
       "target": null,
       "side_effect": "remote",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-promote-env.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -15880,10 +16010,15 @@
       "target": null,
       "side_effect": "destructive",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-promote-env-rollback.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -15944,10 +16079,15 @@
       "target": null,
       "side_effect": "destructive",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-rollback.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -16006,10 +16146,15 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-security-setup.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "apply"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -16097,8 +16242,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-status.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -16235,10 +16380,13 @@
       "target": null,
       "side_effect": "remote",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-web.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -16843,8 +16991,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/doctor-security-audit.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -16865,8 +17013,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/doctor-security-status.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -23000,7 +23148,12 @@
       "json": "envelope",
       "data_schema": "schemas/commands/update.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -23037,8 +23190,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/update-images.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -23500,8 +23653,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/update-upgrade.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -23557,8 +23710,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/update-verify-sbom.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -23673,7 +23826,7 @@
     "deprecated_shims": 47,
     "plugin": 11,
     "core_missing": [],
-    "json_envelope": 200,
-    "json_legacy": 33
+    "json_envelope": 220,
+    "json_legacy": 27
   }
 }

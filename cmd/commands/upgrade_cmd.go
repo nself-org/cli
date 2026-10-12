@@ -45,6 +45,7 @@ system package) and uses the appropriate upgrade strategy.
 		binaryURL, _ := cmd.Flags().GetString("binary-url")
 		binarySHA, _ := cmd.Flags().GetString("binary-sha256")
 
+		setData(cmd, newUpdateUpgradeData(check, doRollback, binaryURL != "", targetVersion))
 		if doRollback {
 			return rollbackBinary()
 		}
