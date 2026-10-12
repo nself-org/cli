@@ -45,7 +45,7 @@ commands:
   config secrets: {side_effect: read}
   # cmd/commands/secrets_audit.go:86 RunE path changes no persistent state (prints/reads only)
   config secrets audit: {side_effect: read}
-  # cmd/commands/secrets_audit.go:69 RunE path changes no persistent state (prints/reads only)
+  # cmd/commands/secrets_decrypt.go:47 RunE path changes no persistent state (prints/reads only)
   # surface cli-only: prints every decrypted secret as KEY=VALUE; no useful machine answer without the values
   # D-0216: --reveal is the explicit opt-in for plaintext on a non-terminal stdout (v1.5) and never combines with --json, which carries names only.
   config secrets decrypt-on-deploy: {side_effect: read, surface: cli-only, flags: {reveal: {cli_only: true, json: none}}}
@@ -79,7 +79,6 @@ commands:
   # cmd/commands/secrets_core.go:40 overwrites a stored secret with a caller-chosen value; the old value is not restorable
   config secrets set: {side_effect: destructive, secret_args: [VALUE], confirm: {flags: []}}
   config secrets verify: {side_effect: read}
-  # arbitrary secret overwrites need a plan confirmation round trip.
   # cmd/commands/config_set_plan.go:45 destructive (D-0403): it can overwrite any .env secret, and canon escalations key on flags, not on argument values, so every machine call takes the D3 nonce round trip and then runs with --yes.
   config set: {side_effect: destructive, secret_args: [value], confirm: {flags: [yes]}}
   config show: {side_effect: read}

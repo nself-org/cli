@@ -9,6 +9,7 @@ package commands
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -500,4 +501,40 @@ func cfgPathLen(argv []string) int {
 		}
 	}
 	return 2
+}
+
+// TestConfigSetGateDecision: the invoke gate, driven with the machine registry
+// row of config set and no server, child process or file write (D-0403). A
+// request without confirm gets a request confirmation with a nonce; a request
+// that sets yes itself is refused E425, because consent flags belong to the
+// invoker.
+func TestConfigSetGateDecision(t *testing.T) {
+	machine, err := machineRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, ok := machine.Lookup("nself config set")
+	if !ok {
+		t.Fatal("machine registry has no config set")
+	}
+	opts := invoke.Options{Transport: invoke.TransportMCP, Guard: invoke.NewGuard("")}
+
+	d, err := invoke.Gate(context.Background(), machine, row, invoke.Request{Args: []string{"FAKE_KEY", "fake-value-d0403"}}, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Kind != invoke.DecisionConfirm || d.Confirmation == nil {
+		t.Fatalf("no confirm: decision %q (refusal %v), want %q", d.Kind, d.Refusal, invoke.DecisionConfirm)
+	}
+	if d.Confirmation.Kind != invoke.ConfirmKindRequest || len(d.Confirmation.Confirm) != 64 {
+		t.Errorf("confirmation kind %q nonce length %d, want kind request and a 64-char nonce", d.Confirmation.Kind, len(d.Confirmation.Confirm))
+	}
+
+	d, err = invoke.Gate(context.Background(), machine, row, invoke.Request{Args: []string{"FAKE_KEY", "fake-value-d0403"}, Flags: map[string]any{"yes": true}}, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Kind != invoke.DecisionRefuse || d.Refusal == nil || !strings.Contains(d.Refusal.Error(), "E425") {
+		t.Errorf("request setting yes: decision %q refusal %v, want refused E425", d.Kind, d.Refusal)
+	}
 }

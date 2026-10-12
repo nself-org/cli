@@ -396,7 +396,7 @@ commands:
   secrets: {canon: pending, side_effect: read}
   # cmd/commands/secrets_audit.go:86 RunE path changes no persistent state (prints/reads only)
   secrets audit: {side_effect: read}
-  # cmd/commands/secrets_audit.go:69 RunE path changes no persistent state (prints/reads only)
+  # cmd/commands/secrets_decrypt.go:47 RunE path changes no persistent state (prints/reads only)
   secrets decrypt-on-deploy: {side_effect: read, surface: cli-only, flags: {reveal: {cli_only: true, json: none}}}
   secrets edit: {side_effect: write, output: interactive}
   secrets get: {side_effect: read, surface: cli-only}

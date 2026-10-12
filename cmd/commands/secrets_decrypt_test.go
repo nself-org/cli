@@ -12,6 +12,7 @@ package commands
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -123,5 +124,39 @@ func TestDecryptOnDeployJSONMultilineValue(t *testing.T) {
 	values, _ := data["values"].(map[string]any)
 	if len(values) != 2 || values["DECRYPT_ITEM"] != "[REDACTED]" || values["DECRYPT_PEM"] != "[REDACTED]" {
 		t.Errorf("values = %v, want exactly DECRYPT_ITEM and DECRYPT_PEM, both [REDACTED]", values)
+	}
+}
+
+// TestDecryptOnDeployTerminalStdout: with stdout standing in for a terminal,
+// v1.5 prints KEY=VALUE without --reveal; with a non-terminal stdout it refuses
+// with E401 and prints nothing. In-process, so the terminal check is stubbed.
+func TestDecryptOnDeployTerminalStdout(t *testing.T) {
+	compattest.Set(t, true)
+	proj := decryptProject(t, true)
+	// The key lives under the HOME runPilot used for the setup commands.
+	t.Setenv("HOME", filepath.Join(filepath.Dir(proj), "home"))
+	t.Setenv("DEPLOY_AGE_KEY", "")
+	t.Chdir(proj)
+	orig := decryptStdoutIsTerminal
+	t.Cleanup(func() { decryptStdoutIsTerminal = orig })
+	run := func(isTerm bool) (string, error) {
+		decryptStdoutIsTerminal = func() bool { return isTerm }
+		return captureStdout(t, func() error { return secretsDecryptOnDeployCmd.RunE(secretsDecryptOnDeployCmd, nil) })
+	}
+
+	out, err := run(true)
+	if err != nil {
+		t.Fatalf("terminal stdout, no --reveal: %v, want it to print", err)
+	}
+	if !strings.Contains(out, "DECRYPT_ITEM="+decryptFakeValue) {
+		t.Errorf("terminal stdout printed %q, want DECRYPT_ITEM=<value>", out)
+	}
+
+	out, err = run(false)
+	if err == nil || !strings.Contains(err.Error(), "E401") || !strings.Contains(err.Error(), "--reveal") {
+		t.Errorf("non-terminal stdout, no --reveal: err %v, want E401 naming --reveal", err)
+	}
+	if out != "" || (err != nil && strings.Contains(err.Error(), decryptFakeValue)) {
+		t.Errorf("refusal printed or leaked the value: stdout %q err %v", out, err)
 	}
 }
