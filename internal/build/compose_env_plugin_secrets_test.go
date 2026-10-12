@@ -71,11 +71,15 @@ func pluginSecretsOnDisk(t *testing.T, f *planFixture) map[string]string {
 // generated value both times, the value never changes, .env.secrets is not
 // appended to again, and the value is never in docker-compose.yml or the log.
 func TestComposeEnvCarriesGeneratedPluginSecrets(t *testing.T) {
-	for _, name := range []string{"dev-minimal", "prod-plugins"} {
+	for _, withPlugin := range []bool{false, true} {
+		name := map[bool]string{false: "no-plugins", true: "with-plugin"}[withPlugin]
 		t.Run(name, func(t *testing.T) {
-			f := freshProject(t, name)
-			if env := readProjectFile(t, f, ".env"); strings.Contains(env, "INTERNAL_SECRET") {
+			f := freshProject(t, "dev-minimal")
+			if strings.Contains(readProjectFile(t, f, ".env"), "INTERNAL_SECRET=") {
 				t.Fatal("fixture .env must not define the plugin secrets")
+			}
+			if withPlugin {
+				writePlanPlugin(t, f.plugins, "nself-alpha", 3901, true)
 			}
 			logs := captureSlog(t)
 
@@ -172,6 +176,40 @@ func TestSecretEnvMapCarriesPluginSecrets(t *testing.T) {
 	for _, key := range pluginSecretKeys {
 		if _, ok := m[key]; ok {
 			t.Errorf("SecretEnvMap kept a blank %s", key)
+		}
+	}
+}
+
+// TestCustomServicePassthroughPluginSecretsTemplated (D-0647): when the plugin
+// secrets come from the process environment (a CI export) and a custom
+// service forwards them with CS_1_ENV_PASSTHROUGH, docker-compose.yml holds
+// ${KEY} and compose.env the value. Before the keys joined SecretEnvMap the
+// literal stayed in docker-compose.yml. Values are fake fixtures.
+func TestCustomServicePassthroughPluginSecretsTemplated(t *testing.T) {
+	f := freshProject(t, "dev-minimal")
+	env := readProjectFile(t, f, ".env")
+	writeFixtureFile(t, filepath.Join(f.workdir, ".env"), env+"CS_1=worker:express-ts\nCS_1_ENV_PASSTHROUGH=PLUGIN_INTERNAL_SECRET,NOTIFY_INTERNAL_SECRET\n", 0o600)
+	fakes := map[string]string{
+		"PLUGIN_INTERNAL_SECRET": "fake-ci-plugin-internal-Wd3Np7Lx",
+		"NOTIFY_INTERNAL_SECRET": "fake-ci-notify-internal-Gs5Qe9Vb",
+	}
+	for k, v := range fakes {
+		t.Setenv(k, v)
+	}
+	if _, err := Build(f.workdir, BuildOptions{}); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	compose := readProjectFile(t, f, "docker-compose.yml")
+	composeEnv := readProjectFile(t, f, composeEnvFile)
+	for key, val := range fakes {
+		if strings.Contains(compose, val) {
+			t.Errorf("%s value appears literally in docker-compose.yml", key)
+		}
+		if !strings.Contains(compose, "${"+key+"}") {
+			t.Errorf("custom service did not receive ${%s}", key)
+		}
+		if v := envFileValues(composeEnv, key); len(v) != 1 || v[0] != val {
+			t.Errorf("%s: compose.env does not carry the exported value", key)
 		}
 	}
 }
