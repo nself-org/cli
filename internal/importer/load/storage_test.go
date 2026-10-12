@@ -72,10 +72,71 @@ func TestObjectsAbsentRefusesExistingKeys(t *testing.T) {
 	}
 	clash := portable.Manifest{Storage: portable.Storage{Objects: []portable.Object{obj("new"), obj("held")}}}
 	err := ObjectsAbsent(ctx, clash, store, false)
-	if err == nil || !strings.Contains(err.Error(), "E519") || strings.Contains(err.Error(), "held") {
+	if err == nil || !strings.Contains(err.Error(), "E519") || strings.Contains(err.Error(), "bucket/held") {
 		t.Fatalf("existing key must be refused with E519 and no key name: %v", err)
 	}
 	if ObjectsAbsent(ctx, clash, store, true) != nil || ObjectsAbsent(ctx, clash, nil, false) != nil {
 		t.Fatal("skip-storage and no store must not check")
 	}
+}
+
+func TestObjectsAbsentFailsClosedOnLookupErrors(t *testing.T) {
+	obj := portable.Manifest{Storage: portable.Storage{Objects: []portable.Object{{Bucket: "bucket", Key: "k"}}}}
+	for _, status := range []int{http.StatusForbidden, http.StatusInternalServerError} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(status) }))
+		store := &objstore.Client{Endpoint: srv.URL, AccessKey: "fixture-access", SecretKey: "fixture-secret", Region: "us-east-1"}
+		err := ObjectsAbsent(context.Background(), obj, store, false)
+		srv.Close()
+		if err == nil || !strings.Contains(err.Error(), "E521") {
+			t.Errorf("status %d must refuse with E521, got %v", status, err)
+		}
+	}
+	dead := httptest.NewServer(http.NotFoundHandler())
+	endpoint := dead.URL
+	dead.Close()
+	err := ObjectsAbsent(context.Background(), obj, &objstore.Client{Endpoint: endpoint, AccessKey: "fixture-access", SecretKey: "fixture-secret"}, false)
+	if err == nil || !strings.Contains(err.Error(), "E521") {
+		t.Errorf("unreachable store must refuse with E521, got %v", err)
+	}
+	if err = ObjectsAbsent(context.Background(), portable.Manifest{}, &objstore.Client{Endpoint: endpoint}, false); err != nil {
+		t.Errorf("a bundle with no objects needs no store: %v", err)
+	}
+}
+
+func TestApplyStorageDoesNotOverwriteAKeyThatAppearedMeanwhile(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "stage")
+	writer, err := portable.NewWriter(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := "bundle-object"
+	sum := sha256.Sum256([]byte(payload))
+	member, _ := portable.StorageMember("bucket", "key")
+	if _, err = writer.WriteFile(member, strings.NewReader(payload)); err != nil {
+		t.Fatal(err)
+	}
+	m, err := writer.Finish(portable.Manifest{Storage: portable.Storage{Objects: []portable.Object{{Bucket: "bucket", Key: "key", Member: member, SHA256: hex.EncodeToString(sum[:]), Bytes: int64(len(payload))}}}, SourceCounts: []portable.SourceCount{{Kind: "objects", Count: 1, Method: "independent list"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := portable.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	put := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		switch {
+		case req.Method == http.MethodPut && req.URL.Path == "/bucket/key":
+			put = true
+		case req.Method == http.MethodGet && req.URL.Path == "/bucket/key":
+			_, _ = w.Write([]byte("someone else's object"))
+		}
+	}))
+	defer srv.Close()
+	store := &objstore.Client{Endpoint: srv.URL, AccessKey: "fixture-access", SecretKey: "fixture-secret", Region: "us-east-1"}
+	_, err = ApplyStorage(context.Background(), r, store, false)
+	if err == nil || !strings.Contains(err.Error(), "E519") || put {
+		t.Fatalf("a key that appeared after the preflight must stop the write (put=%v): %v", put, err)
+	}
+	_ = m
 }

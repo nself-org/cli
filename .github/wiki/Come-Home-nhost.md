@@ -14,7 +14,9 @@ sign in on nSelf with the password they already use; nobody is asked to reset it
   ask for the connection string or move the data with `pg_dump` and use the
   `postgres` source.
 - You need the Hasura base URL and admin secret, and S3 access to the bucket that
-  hasura-storage writes to (endpoint, access key, secret key, bucket name).
+  hasura-storage writes to (endpoint, access key, secret key, bucket name). Add
+  `--s3-region` when the bucket is not in `us-east-1`, and `--s3-root-folder` when
+  hasura-storage was configured with `S3_ROOT_FOLDER`.
 - Use a source on PostgreSQL 12 or later, with a major no newer than the target
   (set POSTGRES_VERSION on the target if needed).
 - Stop writes to the source while you copy. Rows and files are read at slightly
@@ -43,10 +45,17 @@ when the source holds files) and the target, and writes nothing.
 | Files | Every `storage.files` row with an uploaded object is fetched from the bucket, checked against the recorded size, hashed (SHA-256) and written to the target store under the same bucket name and key (the file id). A row whose object is missing stops the import. |
 | Metadata | Tracked tables, relationships, computed fields and permissions for the tables that came across. Tracked functions are recorded in the bundle and the SQL functions come across with the schema, but the load does not track them in Hasura yet: track them again after the import. |
 
-Not carried: event triggers, actions, remote schemas, cron triggers and query
-collections (their endpoints and secrets belong to your new setup; the manifest
-counts the skipped actions and remote schemas). A user's custom default role is not
-carried yet: every user lands with the `user` default role.
+Not carried: event triggers, actions, remote schemas, cron triggers, inherited roles,
+query collections and any Hasura database source other than `default`. Tracked views,
+materialized views, foreign tables and tables of schemas that are not copied (including
+the `auth` tables) are not carried either, so their relationships and permissions are
+not recreated: re-create them on the target after the import. Every tracked table,
+function and extra source that is left out is listed in the report's `exemptions` with
+the reason `kind: metadata`, and the manifest counts the skipped actions and remote
+schemas. Tracked functions are recorded in the bundle and the SQL functions come across
+with the schema, but the load does not track them in Hasura yet: track them again after
+the import. A user's custom default role is not carried yet: every user lands with the
+`user` default role.
 
 ## Result
 
@@ -61,14 +70,18 @@ mismatch; E522 means verification could not run. Treat both as an incomplete imp
 `--skip-storage` exempts each file (listed in the report) so you can move the
 database first. The private stage is removed after a pass; `--keep-stage` keeps the
 integrity-checked bundle. If the target object store already holds a key from the
-bundle, the import is refused with E519 before anything is written.
+bundle, the import is refused with E519 before anything is written and the target's
+object is left untouched. A failed run keeps its private stage under `.nself/import/`
+(a copy of your data, mode 0600): delete it when you are done.
 
 ## After a failed import
 
 `report.json` records `wrote` and `last_step`, and the error hint reads the same
 flag. If `wrote` is false nothing reached the target: fix the cause and rerun. If it
 is true, reset the fresh target and rerun (`db reset` drops the project database, so
-use it only on the target you were importing into):
+use it only on the target you were importing into). `db reset` does not touch an object
+store outside the project: if the failed attempt already wrote files there, delete them
+from the target bucket (or recreate the bucket) first, or the rerun is refused with E519:
 
 ```bash
 nself db reset --yes

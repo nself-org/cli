@@ -124,6 +124,22 @@ IMPORT=(nself db import nhost --db-url-env SRC_URL --hasura-url "$SRC_HASURA" --
 jq -e '.data.result=="pass" and (.data.steps|length)>0 and .data.detection.kind=="nhost" and .data.detection.source_users==3' "$W/plan.json"
 test ! -d .nself/import
 
+# D-0723: an object already in the target store under a bundle key is refused before any write, and
+# the target's own object is left as it was.
+srcpsql 'SELECT id FROM storage.files ORDER BY id' > "$W/file-ids.txt"
+test "$(wc -l < "$W/file-ids.txt")" -eq 4
+FIRST=$(head -1 "$W/file-ids.txt")
+curl -fsS -o /dev/null --aws-sigv4 'aws:amz:us-east-1:s3' --user "$T_S3A:$T_S3S" -X PUT "$TARGET_S3/$FIXTURE_S3_BUCKET"
+printf 'target-owned object' | curl -fsS -o /dev/null --aws-sigv4 'aws:amz:us-east-1:s3' --user "$T_S3A:$T_S3S" -X PUT --data-binary @- "$TARGET_S3/$FIXTURE_S3_BUCKET/$FIRST"
+if "${IMPORT[@]}" --json > "$W/seeded.json" 2> "$W/seeded.err"; then echo 'FAIL: import over an existing target object accepted'; exit 1; fi
+grep -q E519 "$W/seeded.json" "$W/seeded.err"
+grep -q 'already holds' "$W/seeded.json" "$W/seeded.err"
+jq -e '.wrote==false' "$(ls -dt .nself/import/*/report.json | head -1)"
+test "$(PGPASSWORD="$(sed -n 's/^POSTGRES_PASSWORD=//p' .env | tail -1)" psql -h 127.0.0.1 -p "$TARGET_PG_PORT" -U postgres -d nself -X -At -c 'SELECT count(*) FROM auth.users')" = 0
+test "$(curl -fsS --aws-sigv4 'aws:amz:us-east-1:s3' --user "$T_S3A:$T_S3S" "$TARGET_S3/$FIXTURE_S3_BUCKET/$FIRST")" = 'target-owned object'
+curl -fsS -o /dev/null --aws-sigv4 'aws:amz:us-east-1:s3' --user "$T_S3A:$T_S3S" -X DELETE "$TARGET_S3/$FIXTURE_S3_BUCKET/$FIRST"
+rm -rf .nself/import
+
 # 7. The import: zero mismatches, users with bcrypt, objects with sha256, FK tables, metadata.
 "${IMPORT[@]}" --keep-stage --json > "$W/import.json"
 jq -e '.data.result=="pass" and (.data.mismatches|length)==0 and ([.data.tables[].equal]|all)' "$W/import.json"
@@ -146,8 +162,6 @@ test "$(signin carol@example.invalid "$PW_CAROL")" = 200
 test "$(signin alice@example.invalid "not-the-password")" = 401
 
 # 9. Every object is in the target store byte for byte, and the app tables behave as before.
-srcpsql 'SELECT id FROM storage.files ORDER BY id' > "$W/file-ids.txt"
-test "$(wc -l < "$W/file-ids.txt")" -eq 4
 while read -r id; do
   curl -fsS --aws-sigv4 'aws:amz:us-east-1:s3' --user "$S3AUTH" "$SRC_S3/$FIXTURE_S3_BUCKET/$id" -o "$W/src-object"
   curl -fsS --aws-sigv4 'aws:amz:us-east-1:s3' --user "$T_S3A:$T_S3S" "$TARGET_S3/$FIXTURE_S3_BUCKET/$id" -o "$W/target-object"
@@ -163,7 +177,9 @@ if "${IMPORT[@]}" --json > "$W/rerun.json" 2> "$W/rerun.err"; then echo 'FAIL: r
 grep -q E519 "$W/rerun.json" "$W/rerun.err"
 python3 - "$W" <<'PY'
 import os,pathlib,sys
-paths=[p for p in pathlib.Path(sys.argv[1]).rglob('*') if p.is_file() and p.suffix in ('.json','.err') and 'stage' not in p.parts and p.parent.name != 'up']
+# Logs, reports and the whole kept bundle except the binary dump: no credential may appear in any of them
+# (bcrypt hashes in auth/users.jsonl are expected and are not in this list).
+paths=[p for p in pathlib.Path(sys.argv[1]).rglob('*') if p.is_file() and p.parent.name != 'up' and p.name not in ('data.dump','src-object','target-object') and (p.suffix in ('.json','.err','.jsonl','.txt','.sql') or 'stage' in p.parts)]
 secrets=[os.environ[k].encode() for k in ('FIXTURE_PASSWORD','FIXTURE_ADMIN_SECRET','FIXTURE_S3_ACCESS','FIXTURE_S3_SECRET','FIXTURE_JWT_KEY','PW_ALICE','PW_BOB','PW_CAROL')]
 assert paths
 for p in paths:

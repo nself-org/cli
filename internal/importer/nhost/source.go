@@ -33,6 +33,8 @@ func (Source) Flags() []importer.FlagSpec {
 		{Name: "s3-access-key-env", Usage: "Environment variable containing the S3 access key", EnvVarName: true},
 		{Name: "s3-secret-env", Usage: "Environment variable containing the S3 secret key", EnvVarName: true},
 		{Name: "bucket", Usage: "S3 bucket that hasura-storage writes to"},
+		{Name: "s3-region", Usage: "S3 region of the bucket (default us-east-1)"},
+		{Name: "s3-root-folder", Usage: "S3 root folder hasura-storage writes under, if it was configured with one"},
 	}
 }
 
@@ -93,6 +95,9 @@ func (Source) Detect(ctx context.Context, in importer.Input) (importer.Detection
 	}
 	if files > 0 {
 		if err = needStorageFlags(in); err != nil {
+			return d, err
+		}
+		if err = probeBucket(ctx, in); err != nil {
 			return d, err
 		}
 	}

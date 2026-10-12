@@ -37,8 +37,13 @@ writes nothing.
 | Tables | Every user schema's tables with their data, constraints and indexes (not `hdb_catalog`, `auth` or nSelf's own). |
 | Metadata | Tracked tables, relationships, computed fields and per-role permissions for the tables that came across. Connection strings are never copied. Tracked functions are recorded in the bundle and the SQL functions themselves come across with the schema, but the load does not track them in Hasura yet: track them again after the import. |
 
-Not carried: event triggers, actions, remote schemas, cron triggers, inherited roles
-and query collections. The manifest counts the skipped actions and remote schemas.
+Not carried: event triggers, actions, remote schemas, cron triggers, inherited roles,
+query collections and any Hasura database source other than `default` (the import stops
+if the project has no `default` source). Tracked views, materialized views and foreign
+tables are not carried, so their relationships and permissions are not recreated:
+re-create them on the target after the import. Every tracked table, function and extra
+source that is left out is listed in the report's `exemptions` with the reason
+`kind: metadata`, and the manifest counts the skipped actions and remote schemas.
 
 ## Result
 
@@ -61,4 +66,6 @@ nself stop
 nself start
 ```
 
-The same recovery rules as [Come home from PostgreSQL](Come-Home-Postgres) apply.
+A failed run keeps its private stage under `.nself/import/` (a copy of your data, mode
+0600): delete it when you are done. The same recovery rules as
+[Come home from PostgreSQL](Come-Home-Postgres) apply.

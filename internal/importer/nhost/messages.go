@@ -14,8 +14,11 @@ const (
 	msgObjectMissing  = "source object unavailable for a storage.files row"
 	msgObjectCopy     = "source object copy failed"
 	msgObjectSizeDiff = "source object size differs from storage.files"
+	msgObjectRead     = "source object read failed: check --storage-endpoint, --s3-region, the S3 keys and --bucket"
+	msgBucket         = "source S3 bucket unreachable or it refused the keys: check --storage-endpoint, --s3-region, --bucket and the S3 keys"
+	msgStorageChanged = "source storage changed while it was read: stop writes to the source and run the import again"
 )
 
 func init() {
-	importer.AllowMessages(msgStorageLookup, msgStorageFlags, msgS3Endpoint, msgSnapshot, msgListing, msgObjectName, msgObjectMissing, msgObjectCopy, msgObjectSizeDiff)
+	importer.AllowMessages(msgStorageLookup, msgStorageFlags, msgS3Endpoint, msgSnapshot, msgListing, msgObjectName, msgObjectMissing, msgObjectCopy, msgObjectSizeDiff, msgObjectRead, msgBucket, msgStorageChanged)
 }

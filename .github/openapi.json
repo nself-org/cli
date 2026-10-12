@@ -22359,6 +22359,16 @@
                         "description": "Environment variable containing the S3 access key",
                         "type": "string"
                       },
+                      "s3-region": {
+                        "default": "",
+                        "description": "S3 region of the bucket (default us-east-1)",
+                        "type": "string"
+                      },
+                      "s3-root-folder": {
+                        "default": "",
+                        "description": "S3 root folder hasura-storage writes under, if it was configured with one",
+                        "type": "string"
+                      },
                       "s3-secret-env": {
                         "default": "",
                         "description": "Environment variable containing the S3 secret key",

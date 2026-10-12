@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/nself-org/cli/internal/importer"
+	"github.com/nself-org/cli/internal/objstore"
 	"github.com/nself-org/cli/internal/portable"
 )
 
@@ -33,7 +34,7 @@ func TestRegisteredWithEnvNameFlags(t *testing.T) {
 			t.Errorf("secret flag %s must name an environment variable", name)
 		}
 	}
-	for _, name := range []string{"hasura-url", "storage-endpoint", "bucket"} {
+	for _, name := range []string{"hasura-url", "storage-endpoint", "bucket", "s3-region", "s3-root-folder"} {
 		if v, ok := env[name]; !ok || v {
 			t.Errorf("flag %s missing or marked env-name", name)
 		}
@@ -132,6 +133,7 @@ func TestAddStorageRefusals(t *testing.T) {
 		want  string
 	}{
 		{"missing object", nil, 1, []fileRow{{"bbbbbbbb-0000-0000-0000-000000000000", i64(4)}}, "source object unavailable"},
+		{"count differs from list", nil, 2, []fileRow{good}, "source storage changed"},
 		{"size differs", nil, 1, []fileRow{{good.id, i64(99)}}, "size differs"},
 		{"no endpoint flag", func(in *importer.Input) { delete(in.Values, "storage-endpoint") }, 1, []fileRow{good}, "--storage-endpoint"},
 		{"no bucket flag", func(in *importer.Input) { delete(in.Values, "bucket") }, 1, []fileRow{good}, "--bucket"},
@@ -160,5 +162,70 @@ func TestAddStorageWithNoFilesNeedsNoFlags(t *testing.T) {
 	m, _, err := build(t, importer.Input{Values: map[string]string{}}, 0, nil)
 	if err != nil || len(m.Storage.Objects) != 0 || len(m.SourceCounts) != 0 {
 		t.Fatalf("no files: %+v %v", m, err)
+	}
+}
+
+func TestObjectKeyAndRegion(t *testing.T) {
+	cases := map[string]string{"": "id1", "files": "files/id1", "/files/": "files/id1", "a/b": "a/b/id1"}
+	for root, want := range cases {
+		if got := objectKey(importer.Input{Values: map[string]string{"s3-root-folder": root}}, "id1"); got != want {
+			t.Errorf("root %q: %q want %q", root, got, want)
+		}
+	}
+	in := input(httptest.NewServer(http.NotFoundHandler()))
+	in.Values["s3-region"] = "eu-west-1"
+	c, err := s3Client(in)
+	if err != nil || c.Region != "eu-west-1" {
+		t.Fatalf("region: %+v %v", c, err)
+	}
+}
+
+func TestAddStorageReadsUnderRootFolder(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/files/root/dir/cccccccc-0000-0000-0000-000000000000" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		_, _ = w.Write([]byte("rooted"))
+	}))
+	defer srv.Close()
+	in := input(srv)
+	in.Values["s3-root-folder"] = "root/dir"
+	m, _, err := build(t, in, 1, []fileRow{{"cccccccc-0000-0000-0000-000000000000", i64(6)}})
+	if err != nil || len(m.Storage.Objects) != 1 || m.Storage.Objects[0].Key != "cccccccc-0000-0000-0000-000000000000" {
+		t.Fatalf("rooted read: %+v %v", m.Storage, err)
+	}
+}
+
+func TestProbeBucketAndGetFailureClassification(t *testing.T) {
+	status := http.StatusOK
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(status)
+		if status == http.StatusOK {
+			_, _ = w.Write([]byte(`<ListBucketResult><IsTruncated>false</IsTruncated></ListBucketResult>`))
+		}
+	}))
+	defer srv.Close()
+	in := input(srv)
+	if err := probeBucket(context.Background(), in); err != nil {
+		t.Fatalf("reachable bucket refused: %v", err)
+	}
+	for _, s := range []int{http.StatusForbidden, http.StatusNotFound, http.StatusInternalServerError} {
+		status = s
+		if err := probeBucket(context.Background(), in); err == nil || !strings.Contains(err.Error(), "E517") || strings.Contains(err.Error(), "fixture-secret-key") {
+			t.Errorf("status %d: %v", s, err)
+		}
+	}
+	srv.Close()
+	if err := probeBucket(context.Background(), in); err == nil {
+		t.Error("unreachable endpoint accepted")
+	}
+	if err := getFailure(&objstore.Error{Op: "get", Status: http.StatusNotFound}); !strings.Contains(err.Error(), "unavailable for a storage.files row") {
+		t.Errorf("404 must read as a missing object: %v", err)
+	}
+	for _, s := range []int{http.StatusForbidden, http.StatusBadRequest, http.StatusInternalServerError} {
+		if err := getFailure(&objstore.Error{Op: "get", Status: s}); !strings.Contains(err.Error(), "check --storage-endpoint") {
+			t.Errorf("status %d must read as a store problem: %v", s, err)
+		}
 	}
 }

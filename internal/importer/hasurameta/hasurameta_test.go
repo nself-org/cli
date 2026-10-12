@@ -85,11 +85,11 @@ const rawMetadata = `{"resource_version":7,"metadata":{"version":3,
      "event_triggers":[{"name":"t","webhook":"https://hook.invalid/secret-token"}],"surprise_key":{"k":"v"}},
     {"table":{"schema":"public","name":"dropped"}},
     {"table":{"schema":"auth","name":"users"}}],
-   "functions":[{"function":{"schema":"public","name":"search"}},{"function":{"schema":"other","name":"f"}},{"function":{"schema":"public","name":"np_hidden"}}]}]}}`
+   "functions":[{"function":{"schema":"public","name":"search"},"configuration":{"session_argument":"s"},"permissions":[{"role":"user"}],"fn_secret":"https://hook.invalid/fn-token"},{"function":{"schema":"other","name":"f"}},{"function":{"schema":"public","name":"np_hidden"}}]}]}}`
 
 func TestFilterKeepsOnlyBundleTablesAndAllowlistedKeys(t *testing.T) {
 	db := portable.DB{Schemas: []string{"public"}, Tables: []portable.Table{{Schema: "public", Name: "notes"}}}
-	out, counts, err := Filter([]byte(rawMetadata), db)
+	out, counts, exempt, err := Filter([]byte(rawMetadata), db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,22 @@ func TestFilterKeepsOnlyBundleTablesAndAllowlistedKeys(t *testing.T) {
 	if counts != want {
 		t.Fatalf("counts %+v want %+v", counts, want)
 	}
-	for _, leak := range []string{"event_triggers", "hook.invalid", "database_url", "surprise_key", "postgres://", "dropped", "auth", "np_hidden"} {
+	ids := map[string]string{}
+	for _, e := range exempt {
+		if e.Kind != "metadata" || e.Reason == "" {
+			t.Errorf("exemption %+v", e)
+		}
+		ids[e.ID] = e.Reason
+	}
+	for _, id := range []string{"source other", "public.dropped", "auth.users", "function other.f"} {
+		if ids[id] == "" {
+			t.Errorf("dropped item %q is not listed as an exemption: %v", id, ids)
+		}
+	}
+	if len(exempt) != 4 {
+		t.Errorf("exemptions %v", exempt)
+	}
+	for _, leak := range []string{"event_triggers", "hook.invalid", "database_url", "surprise_key", "fn-token", "postgres://", "dropped", "auth", "np_hidden"} {
 		if strings.Contains(string(out), leak) {
 			t.Errorf("output leaks %q:\n%s", leak, out)
 		}
@@ -112,19 +127,19 @@ func TestFilterKeepsOnlyBundleTablesAndAllowlistedKeys(t *testing.T) {
 	if err = json.Unmarshal(out, &doc); err != nil || len(doc.Sources) != 1 || doc.Sources[0].Name != "default" || len(doc.Sources[0].Tables) != 1 || len(doc.Sources[0].Functions) != 1 {
 		t.Fatalf("shape: %v %s", err, out)
 	}
-	again, _, _ := Filter([]byte(rawMetadata), db)
-	if !bytes.Equal(out, again) {
+	again, _, _, err := Filter([]byte(rawMetadata), db)
+	if err != nil || !bytes.Equal(out, again) {
 		t.Fatal("filter output is not deterministic")
 	}
 	// The unversioned export (no wrapper) is accepted too.
 	var wrapped map[string]any
 	_ = json.Unmarshal([]byte(rawMetadata), &wrapped)
 	inner, _ := json.Marshal(wrapped["metadata"])
-	if _, c, err := Filter(inner, db); err != nil || c != want {
+	if _, c, _, err := Filter(inner, db); err != nil || c != want {
 		t.Fatalf("unwrapped export: %+v %v", c, err)
 	}
-	for _, bad := range []string{`not json`, `{"sources":["x"]}`, `{"sources":[{"name":"default","tables":["x"]}]}`} {
-		if _, _, err := Filter([]byte(bad), db); err == nil {
+	for _, bad := range []string{`not json`, `{}`, `{"sources":"x"}`, `{"sources":[]}`, `{"sources":[{"name":"other"}]}`, `{"sources":["x"]}`, `{"sources":[{"name":"default","tables":["x"]}]}`} {
+		if _, _, _, err := Filter([]byte(bad), db); err == nil {
 			t.Errorf("Filter(%q) accepted", bad)
 		}
 	}

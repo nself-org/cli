@@ -17,6 +17,7 @@ const (
 	msgMetadataSource  = "source Hasura metadata has an invalid source"
 	msgMetadataTable   = "source Hasura metadata has an invalid table"
 	msgMetadataEncode  = "source Hasura metadata not encodable"
+	msgNoDefault       = "source Hasura metadata has no database source named default"
 	msgMetadataMember  = "metadata member write failed"
 	msgBundleIntegrity = "extracted bundle failed integrity checks"
 	msgBundleCreate    = "bundle creation failed"
@@ -25,5 +26,5 @@ const (
 )
 
 func init() {
-	importer.AllowMessages(msgURLInvalid, msgURLHTTP, msgRequestInvalid, msgUnreachable, msgResponse, msgRefusedSecret, msgRequestFailed, msgVersion, msgMetadata, msgMetadataSource, msgMetadataTable, msgMetadataEncode, msgMetadataMember, msgBundleIntegrity, msgBundleCreate, msgMemberCopy, msgManifest)
+	importer.AllowMessages(msgURLInvalid, msgURLHTTP, msgRequestInvalid, msgUnreachable, msgResponse, msgRefusedSecret, msgRequestFailed, msgVersion, msgMetadata, msgMetadataSource, msgMetadataTable, msgMetadataEncode, msgNoDefault, msgMetadataMember, msgBundleIntegrity, msgBundleCreate, msgMemberCopy, msgManifest)
 }

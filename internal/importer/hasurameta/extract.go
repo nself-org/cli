@@ -31,7 +31,7 @@ func Extract(ctx context.Context, pg importer.Source, pgIn importer.Input, stage
 		return importer.Extracted{}, err
 	}
 	err = Recompose(pgStage, stage, source, func(w *portable.Writer, m *portable.Manifest) error {
-		filtered, counts, e := Filter(raw, m.DB)
+		filtered, counts, exempt, e := Filter(raw, m.DB)
 		if e != nil {
 			return e
 		}
@@ -39,6 +39,7 @@ func Extract(ctx context.Context, pg importer.Source, pgIn importer.Input, stage
 			return errs.New("E520", msgMetadataMember)
 		}
 		m.Hasura = counts
+		m.Exemptions = append(m.Exemptions, exempt...)
 		if extra != nil {
 			return extra(w, m)
 		}

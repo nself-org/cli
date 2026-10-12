@@ -6,7 +6,6 @@ package load
 import (
 	"context"
 	"errors"
-	"fmt"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/objstore"
 	"github.com/nself-org/cli/internal/portable"
@@ -19,29 +18,39 @@ func StoragePreflight(m portable.Manifest, store *objstore.Client, skip bool) er
 	return nil
 }
 
+// objectExists reports whether bucket/key is already in the store. A missing key or bucket is
+// absent; any other failure (forbidden, server error, unreachable) is an error, so the check
+// fails closed.
+func objectExists(ctx context.Context, store *objstore.Client, bucket, key string) (bool, error) {
+	body, err := store.Get(ctx, bucket, key)
+	if err == nil {
+		_ = body.Close()
+		return true, nil
+	}
+	var apiErr *objstore.Error
+	if errors.As(err, &apiErr) && apiErr.IsNotFound() {
+		return false, nil
+	}
+	return false, errs.New("E521", "target object store lookup failed")
+}
+
 // ObjectsAbsent refuses, before the first write, a bundle whose object keys already exist in the
 // target store (D-0723): the load is an unconditional PUT, so it would replace a target object and
-// verify would still pass because the sha equals the source's. Read-only; it names no key.
+// verify would still pass because the sha equals the source's. Read-only; it names no key and stops
+// at the first clash. ApplyStorage checks each key again right before its PUT, which narrows the
+// window in which another writer could create the key between this check and the write.
 func ObjectsAbsent(ctx context.Context, m portable.Manifest, store *objstore.Client, skip bool) error {
 	if skip || store == nil {
 		return nil
 	}
-	present := 0
 	for _, o := range m.Storage.Objects {
-		body, err := store.Get(ctx, o.Bucket, o.Key)
-		if err == nil {
-			_ = body.Close()
-			present++
-			continue
+		exists, err := objectExists(ctx, store, o.Bucket, o.Key)
+		if err != nil {
+			return err
 		}
-		var apiErr *objstore.Error
-		if errors.As(err, &apiErr) && apiErr.IsNotFound() {
-			continue
+		if exists {
+			return errs.New("E519", "target object store already holds an object from the bundle; nothing was written")
 		}
-		return errs.New("E521", "target object store lookup failed")
-	}
-	if present > 0 {
-		return errs.New("E519", fmt.Sprintf("target object store already holds %d of the bundle's objects; nothing was written", present))
 	}
 	return nil
 }
@@ -58,6 +67,13 @@ func ApplyStorage(ctx context.Context, r *portable.Reader, store *objstore.Clien
 		}
 		if err := store.EnsureBucket(ctx, o.Bucket); err != nil {
 			return nil, errs.New("E521", "object bucket load failed")
+		}
+		exists, e := objectExists(ctx, store, o.Bucket, o.Key)
+		if e != nil {
+			return nil, e
+		}
+		if exists {
+			return nil, errs.New("E519", "target object store gained an object from the bundle during the import")
 		}
 		f, e := r.Open(o.Member)
 		if e != nil {

@@ -5,6 +5,8 @@ package nhost
 // Constraints: object bytes stream straight into the hashing writer; errors name no key or id.
 import (
 	"context"
+	"errors"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/nself-org/cli/internal/errs"
@@ -75,7 +77,39 @@ func s3Client(in importer.Input) (*objstore.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &objstore.Client{Endpoint: base.String(), AccessKey: access, SecretKey: secret}, nil
+	return &objstore.Client{Endpoint: base.String(), Region: in.Values["s3-region"], AccessKey: access, SecretKey: secret}, nil
+}
+
+// objectKey is the S3 key of a file: its id, under the root folder when hasura-storage has one.
+func objectKey(in importer.Input, id string) string {
+	if root := strings.Trim(in.Values["s3-root-folder"], "/"); root != "" {
+		return root + "/" + id
+	}
+	return id
+}
+
+// getFailure tells a missing object (the row has no file in the bucket) from a store, endpoint,
+// region or key problem, which the user fixes differently.
+func getFailure(err error) error {
+	var apiErr *objstore.Error
+	if errors.As(err, &apiErr) && apiErr.IsNotFound() {
+		return errs.New("E520", msgObjectMissing)
+	}
+	return errs.New("E520", msgObjectRead)
+}
+
+// probeBucket proves the endpoint, region, keys and bucket with a one-key listing, so --plan
+// fails before the dump instead of midway through extraction.
+func probeBucket(ctx context.Context, in importer.Input) error {
+	client, err := s3Client(in)
+	if err != nil {
+		return err
+	}
+	client.PageSize = 1
+	if _, err = client.ListPage(ctx, in.Values["bucket"], "", ""); err != nil {
+		return errs.New("E517", msgBucket)
+	}
+	return nil
 }
 
 type fileRow struct {
@@ -146,6 +180,9 @@ func addStorage(ctx context.Context, in importer.Input) func(*portable.Writer, *
 			return err
 		}
 		client, _ := s3Client(in)
+		if int64(len(rows)) != count {
+			return errs.New("E520", msgStorageChanged)
+		}
 		bucket := in.Values["bucket"]
 		var total int64
 		for _, r := range rows {
@@ -153,9 +190,9 @@ func addStorage(ctx context.Context, in importer.Input) func(*portable.Writer, *
 			if e != nil {
 				return errs.New("E520", msgObjectName)
 			}
-			body, e := client.Get(ctx, bucket, r.id)
+			body, e := client.Get(ctx, bucket, objectKey(in, r.id))
 			if e != nil {
-				return errs.New("E520", msgObjectMissing)
+				return getFailure(e)
 			}
 			f, e := w.WriteFile(member, body)
 			_ = body.Close()

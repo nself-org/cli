@@ -17,6 +17,10 @@ import (
 	"github.com/nself-org/cli/internal/httptimeout"
 )
 
+// Proxies: the client keeps the environment's proxy settings so Hasura Cloud stays reachable from a
+// corporate network. That is safe for the admin secret: Go never proxies loopback, https goes
+// through a CONNECT tunnel the proxy cannot read, and plain http to any other host is refused by Base.
+//
 // client never follows a redirect: Go would re-send the custom admin-secret header to the new
 // location, so a redirecting endpoint (or a man in the middle) could collect the secret.
 var client = func() *http.Client {

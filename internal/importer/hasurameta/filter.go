@@ -2,8 +2,10 @@ package hasurameta
 
 // Purpose: reduce a source's export_metadata document to what the bundle can carry.
 // Inputs: raw export and the bundle's dumped tables. Outputs: canonical JSON and counts.
-// Constraints: allowlist per table (event triggers and unknown keys are dropped, so a webhook
-// URL or header value cannot leak); connection configuration is never copied; output is sorted.
+// Constraints: allowlist per table and per function (event triggers and unknown keys are dropped,
+// so a webhook URL or header value cannot leak); connection configuration is never copied; output
+// is sorted. Whatever is tracked in the source but not carried is returned as a metadata exemption,
+// so a pass never hides a dropped view or database source.
 import (
 	"bytes"
 	"encoding/json"
@@ -18,15 +20,22 @@ import (
 // fields and permissions.
 var portableTableKeys = []string{"table", "is_enum", "configuration", "object_relationships", "array_relationships", "computed_fields", "select_permissions", "insert_permissions", "update_permissions", "delete_permissions"}
 
+// portableFunctionKeys is the function metadata kept.
+var portableFunctionKeys = []string{"function", "configuration", "permissions"}
+
 // Filter keeps the tables of source "default" that the bundle dumped, and the functions in
-// the dumped schemas. The counts feed manifest.hasura.
-func Filter(raw []byte, db portable.DB) ([]byte, portable.Hasura, error) {
+// the dumped schemas. The counts feed manifest.hasura; the exemptions list each tracked table or
+// function and each extra database source that was not carried.
+func Filter(raw []byte, db portable.DB) ([]byte, portable.Hasura, []portable.Exemption, error) {
 	var root map[string]any
 	if err := json.Unmarshal(raw, &root); err != nil {
-		return nil, portable.Hasura{}, errs.New("E520", msgMetadata)
+		return nil, portable.Hasura{}, nil, errs.New("E520", msgMetadata)
 	}
 	if inner, ok := root["metadata"].(map[string]any); ok {
 		root = inner
+	}
+	if _, ok := root["sources"].([]any); !ok {
+		return nil, portable.Hasura{}, nil, errs.New("E520", msgMetadata)
 	}
 	counts := portable.Hasura{Skipped: portable.HasuraSkipped{RemoteSchemas: len(list(root["remote_schemas"])), Actions: len(list(root["actions"]))}}
 	allowed := map[string]bool{}
@@ -38,30 +47,45 @@ func Filter(raw []byte, db portable.DB) ([]byte, portable.Hasura, error) {
 		schemas[s] = true
 	}
 	sources := []any{}
+	exempt := []portable.Exemption{}
 	for _, item := range list(root["sources"]) {
 		src, ok := item.(map[string]any)
 		if !ok {
-			return nil, counts, errs.New("E520", msgMetadataSource)
+			return nil, counts, nil, errs.New("E520", msgMetadataSource)
 		}
 		if src["name"] != "default" {
+			name, _ := src["name"].(string)
+			exempt = append(exempt, portable.Exemption{Kind: "metadata", ID: "source " + name, Reason: reasonSource})
 			continue
 		}
-		tables, err := keepTables(list(src["tables"]), allowed, &counts)
+		tables, skipped, err := keepTables(list(src["tables"]), allowed, &counts)
 		if err != nil {
-			return nil, counts, err
+			return nil, counts, nil, err
 		}
-		functions := keepFunctions(list(src["functions"]), schemas)
+		functions, skippedFns := keepFunctions(list(src["functions"]), schemas)
 		counts.Functions += len(functions)
+		exempt = append(exempt, skipped...)
+		exempt = append(exempt, skippedFns...)
 		sources = append(sources, map[string]any{"name": src["name"], "kind": src["kind"], "tables": sorted(tables), "functions": sorted(functions)})
 	}
+	if len(sources) == 0 {
+		return nil, counts, nil, errs.New("E520", msgNoDefault)
+	}
+	sort.Slice(exempt, func(i, j int) bool { return exempt[i].ID < exempt[j].ID })
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(map[string]any{"version": 3, "sources": sources}); err != nil {
-		return nil, counts, errs.New("E520", msgMetadataEncode)
+		return nil, counts, nil, errs.New("E520", msgMetadataEncode)
 	}
-	return buf.Bytes(), counts, nil
+	return buf.Bytes(), counts, exempt, nil
 }
+
+const (
+	reasonSource   = "database source other than default is not carried"
+	reasonTable    = "tracked object not carried: not a dumped base table (view, materialized view, foreign table or excluded schema)"
+	reasonFunction = "tracked function not carried: its schema was not dumped"
+)
 
 func list(v any) []any { a, _ := v.([]any); return a }
 
@@ -81,12 +105,13 @@ func sorted(items []any) []any {
 	return out
 }
 
-func keepTables(records []any, allowed map[string]bool, counts *portable.Hasura) ([]any, error) {
+func keepTables(records []any, allowed map[string]bool, counts *portable.Hasura) ([]any, []portable.Exemption, error) {
 	out := []any{}
+	skipped := []portable.Exemption{}
 	for _, item := range records {
 		t, ok := item.(map[string]any)
 		if !ok {
-			return nil, errs.New("E520", msgMetadataTable)
+			return nil, nil, errs.New("E520", msgMetadataTable)
 		}
 		ref, ok := t["table"].(map[string]any)
 		if !ok {
@@ -95,6 +120,7 @@ func keepTables(records []any, allowed map[string]bool, counts *portable.Hasura)
 		schema, _ := ref["schema"].(string)
 		name, _ := ref["name"].(string)
 		if !allowed[schema+"."+name] {
+			skipped = append(skipped, portable.Exemption{Kind: "metadata", ID: schema + "." + name, Reason: reasonTable})
 			continue
 		}
 		kept := make(map[string]any, len(portableTableKeys))
@@ -112,11 +138,12 @@ func keepTables(records []any, allowed map[string]bool, counts *portable.Hasura)
 			counts.Permissions += len(list(t[k]))
 		}
 	}
-	return out, nil
+	return out, skipped, nil
 }
 
-func keepFunctions(records []any, schemas map[string]bool) []any {
+func keepFunctions(records []any, schemas map[string]bool) ([]any, []portable.Exemption) {
 	out := []any{}
+	skipped := []portable.Exemption{}
 	for _, item := range records {
 		f, ok := item.(map[string]any)
 		if !ok {
@@ -128,9 +155,20 @@ func keepFunctions(records []any, schemas map[string]bool) []any {
 		}
 		schema, _ := ref["schema"].(string)
 		name, _ := ref["name"].(string)
-		if schemas[schema] && !strings.HasPrefix(name, "np_") {
-			out = append(out, f)
+		if strings.HasPrefix(name, "np_") {
+			continue
 		}
+		if !schemas[schema] {
+			skipped = append(skipped, portable.Exemption{Kind: "metadata", ID: "function " + schema + "." + name, Reason: reasonFunction})
+			continue
+		}
+		kept := make(map[string]any, len(portableFunctionKeys))
+		for _, k := range portableFunctionKeys {
+			if v, present := f[k]; present {
+				kept[k] = v
+			}
+		}
+		out = append(out, kept)
 	}
-	return out
+	return out, skipped
 }

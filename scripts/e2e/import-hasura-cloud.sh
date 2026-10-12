@@ -89,12 +89,12 @@ if nself db import hasura-cloud --db-url-env SRC_URL --hasura-url "$SRC_HASURA" 
 grep -q 'db import nhost' "$W/nhostlike.json" "$W/nhostlike.err"
 python3 - "$W" <<'PY'
 import os,pathlib,sys
-paths=[p for p in pathlib.Path(sys.argv[1]).rglob('*') if p.is_file() and p.suffix in ('.json','.err')]
+# Logs, reports and the whole kept bundle except the binary dump.
+paths=[p for p in pathlib.Path(sys.argv[1]).rglob('*') if p.is_file() and p.name != 'data.dump' and (p.suffix in ('.json','.err','.jsonl','.txt','.sql') or 'stage' in p.parts)]
 secrets=[os.environ['FIXTURE_PASSWORD'].encode(), os.environ['FIXTURE_ADMIN_SECRET'].encode()]
 assert paths
 for p in paths:
     data=p.read_bytes()
-    if p.parts[-2] == 'stage' or 'stage' in p.parts: continue
     for s in secrets: assert s not in data, 'credential appeared in output ' + p.name
 print('PASS redaction; files read=',len(paths))
 PY
