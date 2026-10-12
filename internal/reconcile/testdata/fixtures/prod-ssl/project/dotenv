@@ -3,3 +3,4 @@ ENV=prod
 BASE_DOMAIN=example.org
 SSL_MODE=letsencrypt
 MONITORING_ENABLED=true
+MINIO_ENABLED=false

@@ -17,17 +17,17 @@ d 0755 fronted-stack/nginx
 d 0755 fronted-stack/nginx/sites
 d 0755 home
 d 0755 plugins
-f 0600 fronted-stack/backend/.env b6b85ccbc838e5da19f25ac5f4f2662f3119eca8d34cad5bb284a15f01bc799a
+f 0600 fronted-stack/backend/.env 779469afb28aab57a312a30294588741be9f1bae8794eaca9a5f2fc4630e45b5
 f 0600 fronted-stack/backend/.env.computed 11d69b678463f3b0ecff1c6a2036bd3ac6ac39c6f0ab75b775da0196f209ed55
 f 0600 fronted-stack/backend/.nself/compose.env dc96cc215219abc0c4d5af95ed9a63044f163c866d671ccf7ff034ecd9457194
-f 0600 fronted-stack/backend/docker-compose.yml c7bf88c70dee617d138b8b161c5e3bcb1c1c2988882a8425e107906f4cf72624
+f 0600 fronted-stack/backend/docker-compose.yml 4c74b336bd09f3a156d33a814113b28da35f20d8eb6c4ba8bc6912740e36eab5
 f 0644 fronted-stack/backend/.nself/build-profile a172cedcae47474b615c54d510a5d84a8dea3032e958587430b413538be3f333
 f 0644 fronted-stack/backend/.nself/build-version 7fd890fffe22aa34fcf6b8f991d8abfbfed0090fe7cd76af60b46c20ad7bb027
 f 0644 fronted-stack/backend/.nself/compose-env-files.txt c5cc831deacff2b9ea7dc6ca55d7b7c15fc1fc87ca8d5c377467c10abcdf9e90
 f 0644 fronted-stack/backend/.nself/compose-files.txt 7d77a6f6014dd7dcb6edddc669ced57180e36e04300b0e6f0206631b935bfaab
 f 0644 fronted-stack/backend/.nself/dist/openapi.json 930f5017f004813b05d87fa8bf3d7e9a689fed9ef384fbf873095a8a89985a4d
 f 0644 fronted-stack/backend/.nself/dist/scalar.html 650a899517b6771cb32ebacf366efb67e25583b475fa9de342b04dadff732c44
-f 0644 fronted-stack/backend/.nself/generated/routes.json ad44ce1b72d079100f74858cb2b266adbd7918d5d20d62eddc4ef3200034f17f
+f 0644 fronted-stack/backend/.nself/generated/routes.json 46e2fb4d39909ecb1a12deae4943917624c1d9953679d8a7bcfd20f87df991ec
 f 0644 fronted-stack/backend/nginx/conf.d/default.conf ccc13780ced1a64b10360394d4b32693efc374590b9522b1988088dba5408f13
 f 0644 fronted-stack/backend/nginx/includes/rate-limits.conf 77e62d250a8c27ae3e563d4a9cdb7bd1ab999c5514fa972b498d30817d128f2a
 f 0644 fronted-stack/backend/nginx/nginx.conf 94095060d8a1226fd2b477f6fefbd3b588ed380f9d3ffcfbdf2b41937e507fac
@@ -38,5 +38,3 @@ f 0644 fronted-stack/nginx/sites/api-docs.conf e9c123c507404b40c062e15369038e9af
 f 0644 fronted-stack/nginx/sites/auth.conf 5e44d49fd8d1b8a6c998aaae1028cc834e5c9d12deedd3a471b0086cd7e6d666
 f 0644 fronted-stack/nginx/sites/hasura.conf 1f4dcdb4a34770e4ff0ccb4b463e81ed700e7736de90008502a20da70e55fe83
 f 0644 fronted-stack/nginx/sites/other-project.conf 012f7ce49b83c2fb9aee560c08ba2dd70dfa5121a1bc1fb19e73b37aade5a0e2
-f 0644 fronted-stack/nginx/sites/storage-console.conf 7f2b16cf84f72cea25cf847e5a8783673f0982e7605575d77a520c052f81b032
-f 0644 fronted-stack/nginx/sites/storage.conf 6c82ceddeccea893b6064d00d1484c8ecea968b05e183dad294146f675d853f3

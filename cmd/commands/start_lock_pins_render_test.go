@@ -23,14 +23,16 @@ import (
 
 // rowEnv switches on what a table row needs to be rendered at all.
 var rowEnv = map[string]map[string]string{
-	"postgres/postgres":                 {"POSTGRES_EXTENSIONS": "uuid-ossp"},
-	"postgres/pgvector":                 {"POSTGRES_EXTENSIONS": "uuid-ossp,pgvector"},
-	"hasura/hasura":                     {},
-	"auth/auth":                         {},
-	"nginx/nginx":                       {},
-	"redis/redis":                       {"REDIS_ENABLED": "true", "REDIS_ENGINE": "redis"},
-	"redis/valkey":                      {"REDIS_ENABLED": "true", "REDIS_ENGINE": "valkey"},
-	"minio/minio":                       {"MINIO_ENABLED": "true"},
+	"postgres/postgres": {"POSTGRES_EXTENSIONS": "uuid-ossp"},
+	"postgres/pgvector": {"POSTGRES_EXTENSIONS": "uuid-ossp,pgvector"},
+	"hasura/hasura":     {},
+	"auth/auth":         {},
+	"nginx/nginx":       {},
+	"redis/redis":       {"REDIS_ENABLED": "true", "REDIS_ENGINE": "redis"},
+	"redis/valkey":      {"REDIS_ENABLED": "true", "REDIS_ENGINE": "valkey"},
+	// core MinIO exists only in v1.4; SeaweedFS only in v1.5 (P7-PLUG-60)
+	"minio/minio":                       {"NSELF_V15": "0", "MINIO_ENABLED": "true"},
+	"seaweedfs/seaweedfs":               {"NSELF_V15": "1", "OBJECT_STORAGE_ENABLED": "true", "MINIO_ENABLED": "false"},
 	"mailpit/mailpit":                   {"MAILPIT_ENABLED": "true"},
 	"admin/admin":                       {"NSELF_ADMIN_ENABLED": "true"},
 	"functions/functions":               {"FUNCTIONS_ENABLED": "true", "FUNCTIONS_RUNTIME": "node"},
