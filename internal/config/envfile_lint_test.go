@@ -61,6 +61,11 @@ func godotenvCalls(filename string, src []byte) ([]string, error) {
 		if imp.Name != nil {
 			local = imp.Name.Name
 		}
+		if local == "." {
+			// A dot import hides the package name, so calls cannot be told
+			// apart from local ones: report the import itself.
+			return []string{"dot-import:" + strconv.Itoa(fset.Position(imp.Pos()).Line)}, nil
+		}
 	}
 	if local == "" || local == "_" {
 		return nil, nil
@@ -95,6 +100,10 @@ func TestDetectorPositiveControl(t *testing.T) {
 	other := "package p\nimport \"example.com/other\"\nfunc f() { other.Read(\"x\") }\n"
 	if got, _ = godotenvCalls("other.go", []byte(other)); len(got) != 0 {
 		t.Fatalf("another package's Read must not count: %v", got)
+	}
+	dot := "package p\nimport . \"github.com/joho/godotenv\"\nfunc f() { Read(\"x\") }\n"
+	if got, _ = godotenvCalls("dot.go", []byte(dot)); len(got) != 1 || !strings.HasPrefix(got[0], "dot-import:") {
+		t.Fatalf("a dot import of godotenv must be reported: %v", got)
 	}
 }
 
