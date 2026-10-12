@@ -9,7 +9,7 @@ cmd/commands/deploy_diagnostics.go 1
 cmd/commands/deploy_lifecycle.go 1
 cmd/commands/deploy_run.go 1
 cmd/commands/dev.go 2
-cmd/commands/doctor_checks_env.go 4
+cmd/commands/doctor_checks_env.go 3
 cmd/commands/functions_deploy.go 1
 cmd/commands/functions_logs.go 1
 cmd/commands/logs.go 1
@@ -57,7 +57,6 @@ internal/doctor/hardening_check_nginx_zones.go 1
 internal/doctor/plugin_migrations.go 1
 internal/doctor/system_monitoring.go 1
 internal/doctor/system_security.go 3
-internal/health/probes.go 1
 internal/health/restarter.go 2
 internal/migration/migrator_backup.go 1
 internal/model/detector.go 1

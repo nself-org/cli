@@ -50,6 +50,15 @@ func redisArgvViolations(name string, src any) ([]string, error) {
 			if v == "redis-cli" {
 				hasCLI = true
 			}
+			// One string holding the whole command, e.g. "redis-cli -a %s"
+			// for sh -c or fmt.Sprintf: flag it on its own.
+			if strings.Contains(v, "redis-cli") {
+				for _, tok := range strings.Fields(v) {
+					if redisPasswordFlags[tok] || strings.HasPrefix(tok, "--pass=") || strings.HasPrefix(tok, "--user=") {
+						hasCLI, hasFlag = true, true
+					}
+				}
+			}
 			if redisPasswordFlags[v] {
 				hasFlag = true
 			}
@@ -101,6 +110,13 @@ func Other() { _ = []string{"-a", "x"} }
 	got, err := redisArgvViolations("old.go", old)
 	if err != nil || len(got) != 1 {
 		t.Fatalf("old ProbeRedis argv must be flagged once, got %v err %v", got, err)
+	}
+	oneString := `package x
+func Shell(pw string) string { return fmt.Sprintf("redis-cli -a %s ping", pw) }
+`
+	got, err = redisArgvViolations("one.go", oneString)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("single-string redis-cli -a must be flagged once, got %v err %v", got, err)
 	}
 	got, err = redisArgvViolations("clean.go", clean)
 	if err != nil || len(got) != 0 {

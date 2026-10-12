@@ -18,6 +18,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -142,8 +143,13 @@ func resolveStartOpts(cmd *cobra.Command) (startOpts, error) {
 	}, nil
 }
 
-// composeRefusalSuffix ends the error checkComposeMinimum returns.
-const composeRefusalSuffix = " nself start refuses to run with this version."
+// composeTooOldError is the refusal checkComposeMinimum returns. A type, so
+// classifyStartError matches it with errors.As instead of on message text.
+type composeTooOldError struct{ version string }
+
+func (e *composeTooOldError) Error() string {
+	return docker.ComposeTooOldMessage(e.version) + " nself start refuses to run with this version."
+}
 
 // checkComposeMinimum refuses to start on a docker compose older than 2.20.
 // It fails open: an unreadable or unrecognised version returns nil, because
@@ -156,7 +162,7 @@ func checkComposeMinimum(ctx context.Context) error {
 		return nil
 	}
 	if docker.CheckComposeVersion(version) == docker.ComposeTooOld {
-		return fmt.Errorf("%s%s", docker.ComposeTooOldMessage(version), composeRefusalSuffix)
+		return &composeTooOldError{version: version}
 	}
 	return nil
 }
@@ -186,10 +192,12 @@ func classifyStartError(err error) string {
 	if err == nil {
 		return ""
 	}
+	var tooOld *composeTooOldError
+	if errors.As(err, &tooOld) {
+		return "compose-too-old"
+	}
 	msg := err.Error()
 	switch {
-	case strings.Contains(msg, "older than 2.20"):
-		return "compose-too-old"
 	case containsAny(msg, "port", "already in use", "bind: address"):
 		return "port-collision"
 	case containsAny(msg, "docker", "Docker", "cannot connect to the Docker", "docker not found", "docker info"):
