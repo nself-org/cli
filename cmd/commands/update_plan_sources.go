@@ -54,6 +54,10 @@ func gatherPlan(ctx context.Context, d updateDeps, l lock.Lock, target string) (
 			c.Images[k] = authCandidate(pin, passthrough)
 			continue
 		}
+		if k == "hasura" { // two lock entries, chosen by mode (P7-LIVE-23)
+			c.Images[k] = hasuraCandidate(pin)
+			continue
+		}
 		if cand, ok := imageCandidate(k, pin, engine); ok {
 			c.Images[k] = cand
 		}

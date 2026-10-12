@@ -249,7 +249,7 @@ func TestLockV14OptIn(t *testing.T) {
 	}
 	// The earlier v1.4 build left a tag-only compose; the first lock takes its
 	// pins from it, with the digest from the CLI image lock (the versions match).
-	hasura, _ := compose.LockedRef("hasura")
+	hasura, _ := compose.LockedRef("hasura-v14") // what v1.4 runs (P7-LIVE-23)
 	if l := readLock(t, f); l.Images["hasura"] != hasura.String() {
 		t.Fatalf("first v1.4 lock pins hasura %q, want the CLI image lock's %q: %+v", l.Images["hasura"], hasura.String(), l)
 	}
@@ -480,7 +480,9 @@ func TestLockBootstrapDockerIoSpelling(t *testing.T) {
 	for _, v15 := range []bool{false, true} {
 		f := newPlanFixture(t, "dev-minimal")
 		compattest.Set(t, v15)
-		r, ok := compose.LockedRef("hasura")
+		// The entry the mode renders: v1.4 hasura-v14 (the init-style default
+		// HASURA_VERSION=v2.44.0), v1.5 hasura (an explicit v2.51.0, an override).
+		r, ok := compose.LockedRef(compose.HasuraEntry())
 		if !ok {
 			t.Fatal("no hasura entry in the CLI image lock")
 		}

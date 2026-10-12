@@ -144,6 +144,21 @@
       "name": "hasura",
       "role": "core",
       "repository": "docker.io/hasura/graphql-engine",
+      "version": "v2.51.0",
+      "index_digest": "sha256:5d435a6756de53709bf48c15b822cabab38d57acd22e656cf633cc2df67df150",
+      "platforms": {
+        "linux/amd64": "sha256:9981434098fd81809f78706e0dfa212650f5cc53746e5454e92712762aa77464",
+        "linux/arm64": "sha256:3baef699d7b05bb5e4335acdcd6f94eea36bb215205ae4d1b36d4efece227a94"
+      },
+      "legacy_ref": "hasura/graphql-engine:v2.51.0",
+      "license": "Apache-2.0",
+      "source": "https://github.com/hasura/graphql-engine",
+      "mirror": "docker.io/nself/hasura"
+    },
+    {
+      "name": "hasura-v14",
+      "role": "core",
+      "repository": "docker.io/hasura/graphql-engine",
       "version": "v2.44.0",
       "index_digest": "sha256:4d34476840601fa0c372bce9b1ed15aac6ffc3f0a0db677e81062764c08e1dc5",
       "platforms": {
@@ -153,7 +168,7 @@
       "legacy_ref": "hasura/graphql-engine:v2.44.0",
       "license": "Apache-2.0",
       "source": "https://github.com/hasura/graphql-engine",
-      "mirror": "docker.io/nself/hasura"
+      "mirror": "docker.io/nself/hasura-v14"
     },
     {
       "name": "lego",
