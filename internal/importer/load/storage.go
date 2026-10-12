@@ -5,6 +5,7 @@ package load
 // Outputs: item-specific exemptions. Constraints: no keys or object content in errors.
 import (
 	"context"
+	"errors"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/objstore"
 	"github.com/nself-org/cli/internal/portable"
@@ -13,6 +14,44 @@ import (
 func StoragePreflight(m portable.Manifest, store *objstore.Client, skip bool) error {
 	if len(m.Storage.Objects) > 0 && store == nil && !skip {
 		return errs.New("E529", "bundle contains objects but target has no object store")
+	}
+	return nil
+}
+
+// lister is the part of the object store client that StorageCollisions reads.
+type lister interface {
+	List(ctx context.Context, bucket, prefix string) ([]objstore.Object, error)
+}
+
+// StorageCollisions refuses, before the first write, a bundle whose objects would replace objects
+// the target store already holds (D-0723): the load is an unconditional PUT and verification
+// compares against the bundle, so an overwrite would otherwise pass. A bucket the target does not
+// have yet is empty. Errors name no key.
+func StorageCollisions(ctx context.Context, m portable.Manifest, store lister, skip bool) error {
+	if skip || len(m.Storage.Objects) == 0 {
+		return nil
+	}
+	want := map[string]map[string]bool{}
+	for _, o := range m.Storage.Objects {
+		if want[o.Bucket] == nil {
+			want[o.Bucket] = map[string]bool{}
+		}
+		want[o.Bucket][o.Key] = true
+	}
+	for bucket, keys := range want {
+		held, err := store.List(ctx, bucket, "")
+		var apiErr *objstore.Error
+		if errors.As(err, &apiErr) && apiErr.IsNotFound() {
+			continue
+		}
+		if err != nil {
+			return errs.New("E521", "target object store check failed")
+		}
+		for _, o := range held {
+			if keys[o.Key] {
+				return errs.New("E519", "target object store already has an object the bundle would overwrite")
+			}
+		}
 	}
 	return nil
 }

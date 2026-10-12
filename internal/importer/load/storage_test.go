@@ -4,8 +4,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"github.com/nself-org/cli/internal/importer/verify"
+	"github.com/nself-org/cli/internal/objstore"
 	"github.com/nself-org/cli/internal/portable"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -46,5 +49,45 @@ func TestStorageMissingAndExemptions(t *testing.T) {
 	diffs := verify.CompareState(verify.State{Objects: map[string]string{}, Counts: map[string]int64{"objects\x00": 0}}, m, nil, nil)
 	if len(diffs) != 0 {
 		t.Fatalf("skip must pass with independent counts: %+v", diffs)
+	}
+}
+
+type fakeLister struct {
+	held map[string][]string
+	err  error
+}
+
+func (f fakeLister) List(_ context.Context, bucket, _ string) ([]objstore.Object, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	objs := []objstore.Object{}
+	for _, k := range f.held[bucket] {
+		objs = append(objs, objstore.Object{Key: k})
+	}
+	return objs, nil
+}
+
+func TestStorageCollisions(t *testing.T) {
+	m := portable.Manifest{Storage: portable.Storage{Objects: []portable.Object{{Bucket: "b", Key: "one.txt"}, {Bucket: "b", Key: "nested/two.txt"}}}}
+	ctx := context.Background()
+	if err := StorageCollisions(ctx, m, fakeLister{held: map[string][]string{"b": {"other.txt", "ONE.txt"}}}, false); err != nil {
+		t.Fatalf("different keys (case-sensitive) must pass: %v", err)
+	}
+	err := StorageCollisions(ctx, m, fakeLister{held: map[string][]string{"b": {"x", "nested/two.txt"}}}, false)
+	if codeOf(err) != "E519" || strings.Contains(err.Error(), "two.txt") {
+		t.Fatalf("an existing key must be refused with E519 and no key name: %v", err)
+	}
+	if err = StorageCollisions(ctx, m, fakeLister{err: &objstore.Error{Op: "list", Status: http.StatusNotFound, Code: "NoSuchBucket"}}, false); err != nil {
+		t.Fatalf("a missing bucket is empty: %v", err)
+	}
+	if codeOf(StorageCollisions(ctx, m, fakeLister{err: errors.New("boom")}, false)) != "E521" {
+		t.Fatal("a failed listing must stop the import before any write")
+	}
+	if err = StorageCollisions(ctx, m, fakeLister{err: errors.New("boom")}, true); err != nil {
+		t.Fatalf("--skip-storage loads no object, so nothing can collide: %v", err)
+	}
+	if err = StorageCollisions(ctx, portable.Manifest{}, fakeLister{err: errors.New("boom")}, false); err != nil {
+		t.Fatalf("a bundle without objects never lists: %v", err)
 	}
 }
