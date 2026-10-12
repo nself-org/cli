@@ -53,35 +53,47 @@ func noticeLines(buf *bytes.Buffer) int {
 
 func TestSettleBarePath(t *testing.T) {
 	skipBarePathOnWindows(t)
-	cases := []struct{ in, v14 string }{
-		{"/mnt/backups", "path:///mnt/backups"},
-		{"/mnt/backups/", "path:///mnt/backups"},
-		{"/mnt/a/../backups", "path:///mnt/backups"},
-		{"//mnt/backups", "path:///mnt/backups"},
-		{"path:///mnt/backups", "path:///mnt/backups"},
-		{"r2:bkt/x", "r2:bkt/x"},
-		{"s3://bucket/p", "s3://bucket/p"},
-		{"relative/dir", "relative/dir"},
-		{"./dir", "./dir"},
-		{"", ""},
+	const base = "/srv/proj"
+	cases := []struct {
+		in, v14 string
+		bare    bool
+	}{
+		{"/mnt/backups", "path:///mnt/backups", true},
+		{"/mnt/backups/", "path:///mnt/backups", true},
+		{"/mnt/a/../backups", "path:///mnt/backups", true},
+		{"//mnt/backups", "path:///mnt/backups", true},
+		{"relative/dir", "path:///srv/proj/relative/dir", true},
+		{"./dir", "path:///srv/proj/dir", true},
+		{"bk", "path:///srv/proj/bk", true},
+		{"../shared/bk", "path:///srv/shared/bk", true},
+		{"./a:b", "path:///srv/proj/a:b", true},
+		{"path:///mnt/backups", "path:///mnt/backups", false},
+		{"path://relative/dir", "path://relative/dir", false},
+		{"r2:bkt/x", "r2:bkt/x", false},
+		{"s3://bucket/p", "s3://bucket/p", false},
+		{":s3:b", ":s3:b", false},
+		{"-x", "-x", false},
+		{" /mnt/backups", " /mnt/backups", false},
+		{"/mnt/a\nb", "/mnt/a\nb", false},
+		{"", "", false},
 	}
 	compattest.Both(t, func(t *testing.T) {
 		v15 := os.Getenv("NSELF_V15") == "1"
 		buf := captureBareNotice(t)
 		for _, c := range cases {
-			got, err := settleBarePath(c.in)
-			bare := strings.HasPrefix(c.in, "/")
+			in, want := c.in, c.v14
+			got, err := settleBarePath(in, base)
 			switch {
-			case v15 && bare:
+			case v15 && c.bare:
 				if err == nil || got != "" {
-					t.Errorf("%q: got %q, %v; want a refusal", c.in, got, err)
+					t.Errorf("%q: got %q, %v; want a refusal", in, got, err)
 					continue
 				}
-				if !strings.Contains(err.Error(), "path:///") || strings.Contains(err.Error(), c.in) {
-					t.Errorf("%q: error %q must hint path:/// and not echo the value", c.in, err)
+				if !strings.Contains(err.Error(), "path:///") || (len(in) > 4 && strings.Contains(err.Error(), in)) {
+					t.Errorf("%q: error %q must hint path:/// and not echo the value", in, err)
 				}
-			case err != nil || got != c.v14:
-				t.Errorf("%q: got %q, %v; want %q", c.in, got, err, c.v14)
+			case err != nil || got != want:
+				t.Errorf("%q: got %q, %v; want %q", in, got, err, want)
 			}
 		}
 		if v15 && buf.Len() != 0 {
@@ -90,23 +102,38 @@ func TestSettleBarePath(t *testing.T) {
 	})
 }
 
+// TestSettleBarePath_RelativeToWorkingDir: base "" resolves against the
+// working directory, as rclone did.
+func TestSettleBarePath_RelativeToWorkingDir(t *testing.T) {
+	skipBarePathOnWindows(t)
+	compattest.Set(t, false)
+	captureBareNotice(t)
+	wd := t.TempDir()
+	t.Chdir(wd)
+	real, _ := os.Getwd()
+	got, err := settleBarePath("bk", "")
+	if err != nil || got != "path://"+filepath.Join(real, "bk") {
+		t.Errorf("got %q, %v; want path://%s/bk", got, err, real)
+	}
+}
+
 // TestSettleBarePath_NoticeOncePerValue: one line per value per process.
 func TestSettleBarePath_NoticeOncePerValue(t *testing.T) {
 	skipBarePathOnWindows(t)
 	compattest.Set(t, false)
 	buf := captureBareNotice(t)
 	for i := 0; i < 3; i++ {
-		if _, err := settleBarePath("/mnt/backups"); err != nil {
+		if _, err := settleBarePath("/mnt/backups", ""); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := settleBarePath("/mnt/other"); err != nil {
+	if _, err := settleBarePath("/mnt/other", ""); err != nil {
 		t.Fatal(err)
 	}
 	if n := noticeLines(buf); n != 2 {
 		t.Errorf("notice lines = %d, want 2: %q", n, buf)
 	}
-	if !strings.Contains(buf.String(), "Write path:///mnt/backups instead") {
+	if !strings.Contains(buf.String(), `Write "path:///mnt/backups" instead`) {
 		t.Errorf("notice does not say what to write: %q", buf)
 	}
 }
@@ -128,7 +155,7 @@ func TestSettleBarePath_SymlinkRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	want, _ := filepath.EvalSymlinks(real)
-	got, err := settleBarePath(link)
+	got, err := settleBarePath(link, "")
 	if err != nil || got != "path://"+want {
 		t.Errorf("got %q, %v; want path://%s", got, err, want)
 	}
@@ -140,7 +167,7 @@ func TestSettleBarePath_SymlinkRoot(t *testing.T) {
 // refused up front, nothing runs, nothing is written.
 func TestStreamBarePath_Sources(t *testing.T) {
 	skipBarePathOnWindows(t)
-	sources := []string{"to", "config", "heartbeat-to", "heartbeat-env"}
+	sources := []string{"to", "to-relative", "config", "heartbeat-to", "heartbeat-env"}
 	compattest.Both(t, func(t *testing.T) {
 		v15 := os.Getenv("NSELF_V15") == "1"
 		for _, src := range sources {
@@ -153,6 +180,9 @@ func TestStreamBarePath_Sources(t *testing.T) {
 				switch src {
 				case "to":
 					opts.To = dir
+				case "to-relative":
+					t.Chdir(filepath.Dir(dir))
+					opts.To = "./" + filepath.Base(dir)
 				case "config":
 					opts.To = ""
 					cfg.Backup.Remote = dir
@@ -233,42 +263,6 @@ func TestWriteHeartbeatBarePath(t *testing.T) {
 		_, serr := os.Stat(filepath.Join(dir, "p", "backup.json"))
 		if v15 == (serr == nil) {
 			t.Errorf("v15=%v: heartbeat object stat = %v", v15, serr)
-		}
-	})
-}
-
-// TestScheduleStreamBarePath: backup schedule accepts a bare --to and
-// --heartbeat-to on v1.4 (the unit keeps the value as written, as v1.4.13
-// did) and refuses them under v1.5, naming the flag.
-func TestScheduleStreamBarePath(t *testing.T) {
-	skipUnitTestOnWindows(t)
-	compattest.Both(t, func(t *testing.T) {
-		v15 := os.Getenv("NSELF_V15") == "1"
-		for _, flag := range []string{"--to", "--heartbeat-to"} {
-			buf := captureBareNotice(t)
-			var out bytes.Buffer
-			opts := scheduleOpts(t, true, &out)
-			if flag == "--to" {
-				opts.To = "/mnt/backups"
-			} else {
-				opts.HeartbeatTo = "/mnt/backups"
-			}
-			err := ScheduleStream(minimalConfig(), opts)
-			if v15 {
-				if err == nil || !strings.Contains(err.Error(), flag+":") || !strings.Contains(err.Error(), "path:///") {
-					t.Errorf("%s: err = %v; want a refusal naming the flag", flag, err)
-				}
-				continue
-			}
-			if err != nil {
-				t.Fatalf("%s: %v", flag, err)
-			}
-			if !strings.Contains(out.String(), "/mnt/backups") {
-				t.Errorf("%s: the unit does not carry the value as written: %q", flag, out.String())
-			}
-			if noticeLines(buf) != 1 {
-				t.Errorf("%s: want one notice, got %q", flag, buf)
-			}
 		}
 	})
 }

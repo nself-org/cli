@@ -19,12 +19,12 @@ import (
 // checkScheduleDestination validates one destination flag value (flag names it
 // in the error). Inline credentials are refused first with advice; then the
 // value must parse as a destination, so a host:// server missing from the
-// inventory is refused now, not at 02:00. A bare absolute path is settled
-// first (D-0676): accepted with a notice on v1.4, refused under v1.5; the
-// unit keeps the value as written and stream settles it again at run time.
-// Nothing is started.
+// inventory is refused now, not at 02:00. A bare path is settled first
+// (D-0676; relative to projectDir, the unit's WorkingDirectory): accepted
+// with a notice on v1.4, refused under v1.5. The unit keeps the value as
+// written and stream settles it again at run time. Nothing is started.
 func checkScheduleDestination(flag, v, projectDir string) error {
-	v, err := settleBarePath(v)
+	v, err := settleBarePath(v, projectDir)
 	if err != nil {
 		return fmt.Errorf("%s: %v", flag, err)
 	}
