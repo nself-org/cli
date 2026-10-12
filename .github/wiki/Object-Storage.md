@@ -31,6 +31,8 @@ The host endpoint is `http://127.0.0.1:8333`. `SEAWEEDFS_PORT` changes the host 
 
 In v1.5 mode, explicit MinIO intent without the MinIO plugin fails a profile that includes object storage with **E138: MinIO moved to a plugin** before generated project files change. This includes `MINIO_ENABLED=true`, even when `OBJECT_STORAGE_ENABLED=true` is also set. A profile without object storage, such as `ops`, does not fail this check. S3 credentials alone with core object storage enabled do not request MinIO.
 
+If this project does not use MinIO at all, set `MINIO_ENABLED=false` in `.env`. MinIO credentials such as `MINIO_ROOT_USER` and `MINIO_ROOT_PASSWORD` also count as MinIO intent when `MINIO_ENABLED` is not set, which is why `nself init` writes `MINIO_ENABLED=false`.
+
 To keep your existing store, run:
 
 ```bash

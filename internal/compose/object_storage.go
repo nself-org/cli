@@ -80,7 +80,7 @@ func (g *Generator) addObjectStorage(dc *DockerCompose) error {
 	installed := minioPluginInstalled()
 	// compat.V15(P7-PLUG-60): core MinIO generation -> missing plugin fails before writes
 	if compat.V15() && g.cfg.Minio.Enabled && !installed {
-		return errs.New("E138", "MinIO is no longer a core service in v1.5: run nself add minio to keep the minio_data volume, or set OBJECT_STORAGE_ENABLED=true and remove MINIO_ENABLED for a new empty SeaweedFS store (see Object-Storage.md)")
+		return errs.New("E138", "MinIO is no longer a core service in v1.5: run nself add minio to keep the minio_data volume, or set OBJECT_STORAGE_ENABLED=true and remove MINIO_ENABLED for a new empty SeaweedFS store, or set MINIO_ENABLED=false if this project does not use MinIO (see Object-Storage.md)")
 	}
 	store := ActiveStore(g.cfg, installed)
 	switch store {
