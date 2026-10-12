@@ -40,7 +40,7 @@ func Filter(raw []byte, db portable.DB) ([]byte, portable.Hasura, []portable.Exe
 	counts := portable.Hasura{Skipped: portable.HasuraSkipped{RemoteSchemas: len(list(root["remote_schemas"])), Actions: len(list(root["actions"]))}}
 	allowed := map[string]bool{}
 	for _, t := range db.Tables {
-		allowed[t.Schema+"."+t.Name] = true
+		allowed[t.Schema+"\x00"+t.Name] = true
 	}
 	schemas := map[string]bool{}
 	for _, s := range db.Schemas {
@@ -62,7 +62,10 @@ func Filter(raw []byte, db portable.DB) ([]byte, portable.Hasura, []portable.Exe
 		if err != nil {
 			return nil, counts, nil, err
 		}
-		functions, skippedFns := keepFunctions(list(src["functions"]), schemas)
+		functions, skippedFns, err := keepFunctions(list(src["functions"]), schemas)
+		if err != nil {
+			return nil, counts, nil, err
+		}
 		counts.Functions += len(functions)
 		exempt = append(exempt, skipped...)
 		exempt = append(exempt, skippedFns...)
@@ -115,11 +118,11 @@ func keepTables(records []any, allowed map[string]bool, counts *portable.Hasura)
 		}
 		ref, ok := t["table"].(map[string]any)
 		if !ok {
-			continue
+			return nil, nil, errs.New("E520", msgMetadataTable)
 		}
 		schema, _ := ref["schema"].(string)
 		name, _ := ref["name"].(string)
-		if !allowed[schema+"."+name] {
+		if !allowed[schema+"\x00"+name] {
 			skipped = append(skipped, portable.Exemption{Kind: "metadata", ID: schema + "." + name, Reason: reasonTable})
 			continue
 		}
@@ -141,17 +144,17 @@ func keepTables(records []any, allowed map[string]bool, counts *portable.Hasura)
 	return out, skipped, nil
 }
 
-func keepFunctions(records []any, schemas map[string]bool) ([]any, []portable.Exemption) {
+func keepFunctions(records []any, schemas map[string]bool) ([]any, []portable.Exemption, error) {
 	out := []any{}
 	skipped := []portable.Exemption{}
 	for _, item := range records {
 		f, ok := item.(map[string]any)
 		if !ok {
-			continue
+			return nil, nil, errs.New("E520", msgMetadataFunction)
 		}
 		ref, ok := f["function"].(map[string]any)
 		if !ok {
-			continue
+			return nil, nil, errs.New("E520", msgMetadataFunction)
 		}
 		schema, _ := ref["schema"].(string)
 		name, _ := ref["name"].(string)
@@ -170,5 +173,12 @@ func keepFunctions(records []any, schemas map[string]bool) ([]any, []portable.Ex
 		}
 		out = append(out, kept)
 	}
-	return out, skipped
+	return out, skipped, nil
+}
+
+// Check runs the structural checks of Filter on a raw export (a document with no usable sources
+// or no default source) without a table list, so --plan fails where the real run would.
+func Check(raw []byte) error {
+	_, _, _, err := Filter(raw, portable.DB{})
+	return err
 }

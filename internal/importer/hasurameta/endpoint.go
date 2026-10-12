@@ -107,14 +107,29 @@ func Version(ctx context.Context, base *url.URL) (string, error) {
 	var v struct {
 		Version string `json:"version"`
 	}
-	if json.Unmarshal(b, &v) != nil || v.Version == "" {
+	if json.Unmarshal(b, &v) != nil || cleanVersion(v.Version) == "" {
 		return "", errs.New("E517", msgVersion)
 	}
-	return v.Version, nil
+	return cleanVersion(v.Version), nil
 }
 
 // Export returns the raw export_metadata document; a wrong admin secret fails here, so
 // Detect (and --plan) catch it before any extraction work.
 func Export(ctx context.Context, base *url.URL, adminSecret string) ([]byte, error) {
 	return call(ctx, base, adminSecret, http.MethodPost, "/v1/metadata", map[string]any{"type": "export_metadata", "args": map[string]any{}})
+}
+
+// cleanVersion keeps the printable version characters of an unauthenticated response and at most
+// 64 of them, because the text reaches the terminal and the JSON report.
+func cleanVersion(v string) string {
+	out := make([]rune, 0, len(v))
+	for _, r := range v {
+		if len(out) == 64 {
+			break
+		}
+		if (r >= '0' && r <= '9') || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '.' || r == '-' || r == '_' || r == '+' {
+			out = append(out, r)
+		}
+	}
+	return string(out)
 }

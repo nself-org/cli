@@ -10,7 +10,6 @@ import (
 	"context"
 	"strings"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/importer"
 	"github.com/nself-org/cli/internal/importer/hasurameta"
@@ -43,23 +42,6 @@ func pgInput(in importer.Input) importer.Input {
 	return importer.Input{Values: map[string]string{"from-env": in.Values["db-url-env"]}, Env: in.Env, Target: in.Target}
 }
 
-func connect(ctx context.Context, in importer.Input) (*pgx.Conn, error) {
-	value, err := in.Secret("db-url-env")
-	if err != nil {
-		return nil, err
-	}
-	cfg, err := pgx.ParseConfig(value)
-	if err != nil {
-		return nil, errs.New("E517", "source connection configuration invalid")
-	}
-	cfg.ConnectTimeout = 10e9
-	db, err := pgx.ConnectConfig(ctx, cfg)
-	if err != nil {
-		return nil, errs.New("E517", "source database unreachable")
-	}
-	return db, nil
-}
-
 // Detect runs the postgres checks, then proves the Hasura admin secret works, reads the Hasura
 // version, and refuses a source that holds uploaded files without the S3 flags.
 func (Source) Detect(ctx context.Context, in importer.Input) (importer.Detection, error) {
@@ -79,25 +61,43 @@ func (Source) Detect(ctx context.Context, in importer.Input) (importer.Detection
 	if err != nil {
 		return d, err
 	}
-	if _, err = hasurameta.Export(ctx, base, secret); err != nil {
+	raw, err := hasurameta.Export(ctx, base, secret)
+	if err != nil {
+		return d, err
+	}
+	if err = hasurameta.Check(raw); err != nil {
 		return d, err
 	}
 	d.Kind = "nhost"
 	d.Notes = append(keepNotes(d.Notes), "hasura "+version)
-	db, err := connect(ctx, in)
+	db, err := hasurameta.Connect(ctx, in)
 	if err != nil {
 		return d, err
 	}
 	defer func() { _ = db.Close(ctx) }()
+	extras, err := authExtrasIn(ctx, db)
+	if err != nil {
+		return d, err
+	}
+	if extras.nonzero() {
+		return d, errs.New("E517", msgUnsupportedAuth)
+	}
 	files, err := uploadedFiles(ctx, db)
 	if err != nil {
 		return d, err
+	}
+	if files > maxFiles {
+		return d, errs.New("E520", msgTooManyFiles)
 	}
 	if files > 0 {
 		if err = needStorageFlags(in); err != nil {
 			return d, err
 		}
-		if err = probeBucket(ctx, in); err != nil {
+		first, e := firstUploaded(ctx, db)
+		if e != nil {
+			return d, e
+		}
+		if err = probeObject(ctx, in, first); err != nil {
 			return d, err
 		}
 	}

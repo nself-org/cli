@@ -19,8 +19,14 @@ sign in on nSelf with the password they already use; nobody is asked to reset it
   hasura-storage was configured with `S3_ROOT_FOLDER`.
 - Use a source on PostgreSQL 12 or later, with a major no newer than the target
   (set POSTGRES_VERSION on the target if needed).
-- Stop writes to the source while you copy. Rows and files are read at slightly
-  different moments, so a file uploaded during the copy shows up as a count mismatch.
+- Stop writes to the source while you copy. The tables are dumped first and the file list
+  is read afterwards; if a file was added or removed in between, the import stops with
+  `source storage changed while it was read` instead of leaving a row with no file.
+- The import is refused, before any work, for a source that has users with MFA enabled,
+  OAuth provider links (`auth.user_providers`) or security keys (`auth.user_security_keys`),
+  and for more than 100000 files. MFA, provider links and keys are not carried yet, and
+  dropping them silently would let a user sign in with the password alone or not at all.
+  Remove them on the source, or recreate those accounts on the target afterwards.
 
 Every secret goes in an environment variable; the flags take the variable's name,
 never its value. Nothing secret appears in a command line, a log, the report or an
@@ -42,7 +48,7 @@ when the source holds files) and the target, and writes nothing.
 |---|---|
 | Tables | One repeatable-read snapshot of every schema except `auth`, `hdb_catalog` and nSelf's own, including `storage.files` and `storage.buckets` and the foreign keys your tables hold into `auth.users` and `storage.files`. |
 | Users | Every row of `auth.users` with its roles, email, phone, display name, metadata and password hash. Hashes are bcrypt in both stacks and carry over unchanged. A hash in another format is listed in `users.reset_required` and the user resets the password. |
-| Files | Every `storage.files` row with an uploaded object is fetched from the bucket, checked against the recorded size, hashed (SHA-256) and written to the target store under the same bucket name and key (the file id). A row whose object is missing stops the import. |
+| Files | Every `storage.files` row with an uploaded object is fetched from the bucket, checked against the recorded size, hashed (SHA-256) and written to the target store under the same bucket name and key (the file id), so point the target's file service at a bucket with that name. A row whose object is missing stops the import. |
 | Metadata | Tracked tables, relationships, computed fields and permissions for the tables that came across. Tracked functions are recorded in the bundle and the SQL functions come across with the schema, but the load does not track them in Hasura yet: track them again after the import. |
 
 Not carried: event triggers, actions, remote schemas, cron triggers, inherited roles,
@@ -67,8 +73,8 @@ independent counts are `count(auth.users)` and the number of uploaded
 `storage.files` rows, read in separate queries outside the dump. E523 means a
 mismatch; E522 means verification could not run. Treat both as an incomplete import.
 
-`--skip-storage` exempts each file (listed in the report) so you can move the
-database first. The private stage is removed after a pass; `--keep-stage` keeps the
+`--skip-storage` exempts each file at load (listed in the report) so you can move the
+database first; the source side still needs the S3 flags and still downloads every file. The private stage is removed after a pass; `--keep-stage` keeps the
 integrity-checked bundle. If the target object store already holds a key from the
 bundle, the import is refused with E519 before anything is written and the target's
 object is left untouched. A failed run keeps its private stage under `.nself/import/`

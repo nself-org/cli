@@ -8,6 +8,7 @@ package hasuracloud
 import (
 	"context"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/importer"
 	"github.com/nself-org/cli/internal/importer/hasurameta"
@@ -17,11 +18,48 @@ import (
 // Source is the hasura-cloud importer.
 type Source struct{}
 
-const msgAuthUsers = "source database has auth.users: use `nself db import nhost` for an nhost project, or `nself db import postgres`"
+const (
+	msgAuthSchema   = "source database has an auth schema: use `nself db import nhost` for an nhost project, or `nself db import postgres`"
+	msgStorageFiles = "source database holds hasura-storage files, which this source does not move: use `nself db import nhost` with S3 access, or `nself db import postgres` and move the files yourself"
+	msgLookup       = "source database lookup failed"
+)
 
 func init() {
-	importer.AllowMessages(msgAuthUsers)
+	importer.AllowMessages(msgAuthSchema, msgStorageFiles, msgLookup)
 	importer.Register(Source{})
+}
+
+type rower interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+// ownDatabase refuses a database whose auth or storage data this source would drop without a word:
+// the postgres snapshot excludes the auth schema entirely and would dump storage.files rows with no
+// objects behind them. Both mean the project is an nhost project (or close enough that the nhost
+// source is the right one).
+func ownDatabase(ctx context.Context, q rower) error {
+	var auth int64
+	if q.QueryRow(ctx, `SELECT count(*) FROM information_schema.tables WHERE table_schema = 'auth'`).Scan(&auth) != nil {
+		return errs.New("E517", msgLookup)
+	}
+	if auth > 0 {
+		return errs.New("E517", msgAuthSchema)
+	}
+	var present bool
+	if q.QueryRow(ctx, `SELECT to_regclass('storage.files') IS NOT NULL`).Scan(&present) != nil {
+		return errs.New("E517", msgLookup)
+	}
+	if !present {
+		return nil
+	}
+	var rows bool
+	if q.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM storage.files)`).Scan(&rows) != nil {
+		return errs.New("E517", msgLookup)
+	}
+	if rows {
+		return errs.New("E517", msgStorageFiles)
+	}
+	return nil
 }
 func (Source) Name() string { return "hasura-cloud" }
 
@@ -39,17 +77,20 @@ func pgInput(in importer.Input) importer.Input {
 }
 
 // Detect runs the postgres checks, proves the admin secret and reads the Hasura version. A
-// database that holds auth.users is refused: this source carries no users, and the postgres
-// snapshot would otherwise read that table as hasura-auth users.
+// database that holds an auth schema or hasura-storage files is refused (see ownDatabase).
 func (Source) Detect(ctx context.Context, in importer.Input) (importer.Detection, error) {
 	d, err := postgres.Source{}.Detect(ctx, pgInput(in))
 	if err != nil {
 		return d, err
 	}
-	for _, n := range d.Notes {
-		if n == "looks like nhost" {
-			return d, errs.New("E517", msgAuthUsers)
-		}
+	db, err := hasurameta.Connect(ctx, in)
+	if err != nil {
+		return d, err
+	}
+	err = ownDatabase(ctx, db)
+	_ = db.Close(ctx)
+	if err != nil {
+		return d, err
 	}
 	base, err := hasurameta.Base(in.Values["hasura-url"])
 	if err != nil {
@@ -63,7 +104,11 @@ func (Source) Detect(ctx context.Context, in importer.Input) (importer.Detection
 	if err != nil {
 		return d, err
 	}
-	if _, err = hasurameta.Export(ctx, base, secret); err != nil {
+	raw, err := hasurameta.Export(ctx, base, secret)
+	if err != nil {
+		return d, err
+	}
+	if err = hasurameta.Check(raw); err != nil {
 		return d, err
 	}
 	d.Kind = "hasura-cloud"

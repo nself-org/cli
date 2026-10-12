@@ -138,7 +138,7 @@ func TestFilterKeepsOnlyBundleTablesAndAllowlistedKeys(t *testing.T) {
 	if _, c, _, err := Filter(inner, db); err != nil || c != want {
 		t.Fatalf("unwrapped export: %+v %v", c, err)
 	}
-	for _, bad := range []string{`not json`, `{}`, `{"sources":"x"}`, `{"sources":[]}`, `{"sources":[{"name":"other"}]}`, `{"sources":["x"]}`, `{"sources":[{"name":"default","tables":["x"]}]}`} {
+	for _, bad := range []string{`not json`, `{}`, `{"sources":"x"}`, `{"sources":[]}`, `{"sources":[{"name":"other"}]}`, `{"sources":["x"]}`, `{"sources":[{"name":"default","tables":["x"]}]}`, `{"sources":[{"name":"default","tables":[{"x":1}]}]}`, `{"sources":[{"name":"default","tables":[],"functions":[{"x":1}]}]}`, `{"sources":[{"name":"default","tables":[],"functions":["x"]}]}`} {
 		if _, _, _, err := Filter([]byte(bad), db); err == nil {
 			t.Errorf("Filter(%q) accepted", bad)
 		}
@@ -254,5 +254,30 @@ func TestRedirectsAreNeverFollowed(t *testing.T) {
 	}
 	if leaked {
 		t.Fatal("admin secret reached the redirect target")
+	}
+}
+
+func TestCheckAndVersionSanitizing(t *testing.T) {
+	if Check([]byte(`{"sources":[{"name":"default","tables":[]}]}`)) != nil {
+		t.Fatal("a default source with no tables is structurally fine")
+	}
+	for _, bad := range []string{`{}`, `{"sources":[{"name":"other"}]}`} {
+		if Check([]byte(bad)) == nil {
+			t.Errorf("Check(%s) accepted", bad)
+		}
+	}
+	if got := cleanVersion("v2.44.0\x1b[31m<script>"); got != "v2.44.031mscript" {
+		t.Errorf("cleanVersion %q", got)
+	}
+	if got := cleanVersion(strings.Repeat("a", 100)); len(got) != 64 {
+		t.Errorf("cleanVersion length %d", len(got))
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"version":"\u001b[2Jv2.1"}`))
+	}))
+	defer srv.Close()
+	base, _ := Base(srv.URL)
+	if v, err := Version(context.Background(), base); err != nil || v != "2Jv2.1" {
+		t.Fatalf("hostile version: %q %v", v, err)
 	}
 }

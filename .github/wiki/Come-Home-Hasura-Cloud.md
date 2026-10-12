@@ -3,8 +3,9 @@
 Moves a Hasura Cloud project (or any Hasura with its own Postgres and no platform
 auth) into a fresh nSelf project: the database through a repeatable-read snapshot
 and the Hasura metadata through `export_metadata`. This source carries no users: a
-Hasura project has no built-in accounts. If the database has an `auth.users` table
-it is an nhost project; the command says so and stops. Use
+Hasura project has no built-in accounts. If the database has an `auth` schema or
+hasura-storage files (`storage.files` with rows) it is an nhost project, or close to
+one; the command says so and stops. Use
 [`nself db import nhost`](Come-Home-nhost) instead.
 
 ## Before you start

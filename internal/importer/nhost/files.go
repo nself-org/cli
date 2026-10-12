@@ -6,6 +6,7 @@ package nhost
 import (
 	"context"
 	"errors"
+	"io"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -98,17 +99,32 @@ func getFailure(err error) error {
 	return errs.New("E520", msgObjectRead)
 }
 
-// probeBucket proves the endpoint, region, keys and bucket with a one-key listing, so --plan
-// fails before the dump instead of midway through extraction.
-func probeBucket(ctx context.Context, in importer.Input) error {
+// firstUploaded returns the id of one uploaded file, "" when there is none.
+func firstUploaded(ctx context.Context, q rower) (string, error) {
+	filter, err := uploadedFilter(ctx, q)
+	if err != nil {
+		return "", err
+	}
+	var id string
+	err = q.QueryRow(ctx, "SELECT coalesce((SELECT id::text FROM storage.files WHERE "+filter+" ORDER BY id LIMIT 1), '')").Scan(&id)
+	if err != nil {
+		return "", errs.New("E517", msgStorageLookup)
+	}
+	return id, nil
+}
+
+// probeObject proves the endpoint, region, keys, bucket and root-folder mapping with one read of
+// a real file, so --plan fails before the dump instead of midway through extraction.
+func probeObject(ctx context.Context, in importer.Input, id string) error {
 	client, err := s3Client(in)
 	if err != nil {
 		return err
 	}
-	client.PageSize = 1
-	if _, err = client.ListPage(ctx, in.Values["bucket"], "", ""); err != nil {
-		return errs.New("E517", msgBucket)
+	body, err := client.Get(ctx, in.Values["bucket"], objectKey(in, id))
+	if err != nil {
+		return getFailure(err)
 	}
+	_ = body.Close()
 	return nil
 }
 
@@ -118,74 +134,106 @@ type fileRow struct {
 }
 
 // readFiles lists the uploaded files in one repeatable-read transaction, ordered by id.
-func readFiles(ctx context.Context, in importer.Input) ([]fileRow, error) {
-	db, err := connect(ctx, in)
+func readFiles(ctx context.Context, in importer.Input) ([]fileRow, int64, error) {
+	db, err := hasurameta.Connect(ctx, in)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer func() { _ = db.Close(ctx) }()
 	tx, err := db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
-		return nil, errs.New("E520", msgSnapshot)
+		return nil, 0, errs.New("E520", msgSnapshot)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	filter, err := uploadedFilter(ctx, tx)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+	var total int64
+	if tx.QueryRow(ctx, "SELECT count(*) FROM storage.files").Scan(&total) != nil {
+		return nil, 0, errs.New("E520", msgListing)
 	}
 	rows, err := tx.Query(ctx, "SELECT id::text, size::bigint FROM storage.files WHERE "+filter+" ORDER BY id")
 	if err != nil {
-		return nil, errs.New("E520", msgListing)
+		return nil, 0, errs.New("E520", msgListing)
 	}
 	defer rows.Close()
 	var out []fileRow
 	for rows.Next() {
 		var r fileRow
 		if rows.Scan(&r.id, &r.size) != nil {
-			return nil, errs.New("E520", msgListing)
+			return nil, 0, errs.New("E520", msgListing)
 		}
 		out = append(out, r)
 	}
 	if rows.Err() != nil {
-		return nil, errs.New("E520", msgListing)
+		return nil, 0, errs.New("E520", msgListing)
 	}
-	return out, nil
+	return out, total, nil
 }
 
-// storageState reads the independent count (own connection, outside the dump) and the file list
-// (one repeatable-read transaction). Tests replace it so no database is needed.
-var storageState = func(ctx context.Context, in importer.Input) (int64, []fileRow, error) {
-	db, err := connect(ctx, in)
+// storageSnapshot is what the source's file table held when the objects were listed.
+type storageSnapshot struct {
+	uploaded int64 // count of uploaded files, read on its own connection outside the dump
+	total    int64 // every storage.files row, read in the same transaction as rows
+	rows     []fileRow
+}
+
+// maxFiles bounds one bundle: each object costs about 500 bytes of manifest and the reader
+// refuses a manifest over 64 MiB, so a larger set must fail before anything is downloaded.
+const maxFiles = 100000
+
+// storageState reads the snapshot. Tests replace it so no database is needed.
+var storageState = func(ctx context.Context, in importer.Input) (storageSnapshot, error) {
+	db, err := hasurameta.Connect(ctx, in)
 	if err != nil {
-		return 0, nil, err
+		return storageSnapshot{}, err
 	}
-	count, err := uploadedFiles(ctx, db)
+	uploaded, err := uploadedFiles(ctx, db)
 	_ = db.Close(ctx)
-	if err != nil || count == 0 {
-		return count, nil, err
+	if err != nil || uploaded == 0 {
+		return storageSnapshot{uploaded: uploaded}, err
 	}
-	rows, err := readFiles(ctx, in)
-	return count, rows, err
+	rows, total, err := readFiles(ctx, in)
+	return storageSnapshot{uploaded: uploaded, total: total, rows: rows}, err
+}
+
+// dumpedRows is the row count the postgres snapshot recorded for storage.files, if it dumped it.
+func dumpedRows(m *portable.Manifest) (int64, bool) {
+	for _, t := range m.DB.Tables {
+		if t.Schema == "storage" && t.Name == "files" {
+			return t.Rows, true
+		}
+	}
+	return 0, false
 }
 
 // addStorage returns the bundle edit that fetches every uploaded file's object into storage/ and
-// records the independent count(storage.files).
+// records the independent count(storage.files). The dump and the listing are different
+// snapshots, so the listing's total row count is compared with the dumped table's: a file added
+// or removed in between fails here instead of leaving a row with no object.
 func addStorage(ctx context.Context, in importer.Input) func(*portable.Writer, *portable.Manifest) error {
 	return func(w *portable.Writer, m *portable.Manifest) error {
-		count, rows, err := storageState(ctx, in)
-		if err != nil || count == 0 {
+		snap, err := storageState(ctx, in)
+		if err != nil || snap.uploaded == 0 {
 			return err
 		}
 		if err = needStorageFlags(in); err != nil {
 			return err
 		}
-		client, _ := s3Client(in)
-		if int64(len(rows)) != count {
+		client, err := s3Client(in)
+		if err != nil {
+			return err
+		}
+		if snap.uploaded > maxFiles {
+			return errs.New("E520", msgTooManyFiles)
+		}
+		if dumped, ok := dumpedRows(m); (ok && dumped != snap.total) || int64(len(snap.rows)) != snap.uploaded {
 			return errs.New("E520", msgStorageChanged)
 		}
 		bucket := in.Values["bucket"]
 		var total int64
-		for _, r := range rows {
+		for _, r := range snap.rows {
 			member, e := portable.StorageMember(bucket, r.id)
 			if e != nil {
 				return errs.New("E520", msgObjectName)
@@ -194,7 +242,13 @@ func addStorage(ctx context.Context, in importer.Input) func(*portable.Writer, *
 			if e != nil {
 				return getFailure(e)
 			}
-			f, e := w.WriteFile(member, body)
+			var src io.Reader = body
+			if r.size != nil {
+				// One byte past the recorded size is enough to prove a mismatch without letting a
+				// hostile endpoint fill the disk.
+				src = io.LimitReader(body, *r.size+1)
+			}
+			f, e := w.WriteFile(member, src)
 			_ = body.Close()
 			if e != nil {
 				return errs.New("E520", msgObjectCopy)
@@ -209,8 +263,8 @@ func addStorage(ctx context.Context, in importer.Input) func(*portable.Writer, *
 			m.Storage.Objects = append(m.Storage.Objects, obj)
 			total += f.Bytes
 		}
-		m.Storage.Buckets = append(m.Storage.Buckets, portable.Bucket{Name: bucket, Objects: len(rows), Bytes: total})
-		m.SourceCounts = append(m.SourceCounts, portable.SourceCount{Kind: "objects", ID: bucket, Count: count, Method: "independent count(storage.files)"})
+		m.Storage.Buckets = append(m.Storage.Buckets, portable.Bucket{Name: bucket, Objects: len(snap.rows), Bytes: total})
+		m.SourceCounts = append(m.SourceCounts, portable.SourceCount{Kind: "objects", ID: bucket, Count: snap.uploaded, Method: "independent count(storage.files)"})
 		return nil
 	}
 }

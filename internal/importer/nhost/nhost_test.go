@@ -4,14 +4,15 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/nself-org/cli/internal/importer"
-	"github.com/nself-org/cli/internal/objstore"
 	"github.com/nself-org/cli/internal/portable"
 )
 
@@ -73,15 +74,20 @@ func i64(n int64) *int64 { return &n }
 
 func build(t *testing.T, in importer.Input, count int64, rows []fileRow) (portable.Manifest, *portable.Reader, error) {
 	t.Helper()
+	return buildWith(t, in, storageSnapshot{uploaded: count, total: count, rows: rows}, nil)
+}
+
+func buildWith(t *testing.T, in importer.Input, snap storageSnapshot, tables []portable.Table) (portable.Manifest, *portable.Reader, error) {
+	t.Helper()
 	old := storageState
-	storageState = func(context.Context, importer.Input) (int64, []fileRow, error) { return count, rows, nil }
+	storageState = func(context.Context, importer.Input) (storageSnapshot, error) { return snap, nil }
 	t.Cleanup(func() { storageState = old })
 	dir := filepath.Join(t.TempDir(), "stage")
 	w, err := portable.NewWriter(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := portable.Manifest{Producer: portable.Producer{Tool: "nself", Version: "1", Source: "nhost"}}
+	m := portable.Manifest{Producer: portable.Producer{Tool: "nself", Version: "1", Source: "nhost"}, DB: portable.DB{Tables: tables}}
 	if err = addStorage(context.Background(), in)(w, &m); err != nil {
 		return m, nil, err
 	}
@@ -197,35 +203,105 @@ func TestAddStorageReadsUnderRootFolder(t *testing.T) {
 	}
 }
 
-func TestProbeBucketAndGetFailureClassification(t *testing.T) {
+func TestProbeObjectAndGetFailureClassification(t *testing.T) {
 	status := http.StatusOK
+	var path string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
 		w.WriteHeader(status)
-		if status == http.StatusOK {
-			_, _ = w.Write([]byte(`<ListBucketResult><IsTruncated>false</IsTruncated></ListBucketResult>`))
-		}
 	}))
 	defer srv.Close()
 	in := input(srv)
-	if err := probeBucket(context.Background(), in); err != nil {
-		t.Fatalf("reachable bucket refused: %v", err)
+	in.Values["s3-root-folder"] = "root"
+	if err := probeObject(context.Background(), in, "id1"); err != nil || path != "/files/root/id1" {
+		t.Fatalf("reachable object refused: %v (path %s)", err, path)
 	}
-	for _, s := range []int{http.StatusForbidden, http.StatusNotFound, http.StatusInternalServerError} {
+	status = http.StatusNotFound
+	if err := probeObject(context.Background(), in, "id1"); err == nil || !strings.Contains(err.Error(), "unavailable for a storage.files row") {
+		t.Errorf("404 must read as a missing object: %v", err)
+	}
+	for _, s := range []int{http.StatusForbidden, http.StatusInternalServerError} {
 		status = s
-		if err := probeBucket(context.Background(), in); err == nil || !strings.Contains(err.Error(), "E517") || strings.Contains(err.Error(), "fixture-secret-key") {
+		err := probeObject(context.Background(), in, "id1")
+		if err == nil || !strings.Contains(err.Error(), "check --storage-endpoint") || strings.Contains(err.Error(), "fixture-secret-key") {
 			t.Errorf("status %d: %v", s, err)
 		}
 	}
 	srv.Close()
-	if err := probeBucket(context.Background(), in); err == nil {
+	if err := probeObject(context.Background(), in, "id1"); err == nil {
 		t.Error("unreachable endpoint accepted")
 	}
-	if err := getFailure(&objstore.Error{Op: "get", Status: http.StatusNotFound}); !strings.Contains(err.Error(), "unavailable for a storage.files row") {
-		t.Errorf("404 must read as a missing object: %v", err)
+}
+
+func TestStorageChangedAndLimits(t *testing.T) {
+	srv := s3(t, map[string]string{"dddddddd-0000-0000-0000-000000000000": "data"})
+	row := fileRow{"dddddddd-0000-0000-0000-000000000000", i64(4)}
+	files := portable.Table{Schema: "storage", Name: "files", Rows: 3, Hash: "1"}
+	// The dump saw 3 storage.files rows; the listing saw 4: a file was added after the dump.
+	_, _, err := buildWith(t, input(srv), storageSnapshot{uploaded: 1, total: 4, rows: []fileRow{row}}, []portable.Table{files})
+	if err == nil || !strings.Contains(err.Error(), "source storage changed") {
+		t.Fatalf("an added file must stop the import: %v", err)
 	}
-	for _, s := range []int{http.StatusForbidden, http.StatusBadRequest, http.StatusInternalServerError} {
-		if err := getFailure(&objstore.Error{Op: "get", Status: s}); !strings.Contains(err.Error(), "check --storage-endpoint") {
-			t.Errorf("status %d must read as a store problem: %v", s, err)
+	// Equal totals pass.
+	if _, _, err = buildWith(t, input(srv), storageSnapshot{uploaded: 1, total: 3, rows: []fileRow{row}}, []portable.Table{files}); err != nil {
+		t.Fatalf("equal totals refused: %v", err)
+	}
+	_, _, err = buildWith(t, input(srv), storageSnapshot{uploaded: maxFiles + 1, total: maxFiles + 1}, nil)
+	if err == nil || !strings.Contains(err.Error(), "more than 100000 files") {
+		t.Fatalf("too many files must stop before any download: %v", err)
+	}
+}
+
+func TestObjectLongerThanItsRowIsCutAndRefused(t *testing.T) {
+	big := strings.Repeat("x", 100000)
+	srv := s3(t, map[string]string{"eeeeeeee-0000-0000-0000-000000000000": big})
+	_, _, err := build(t, input(srv), 1, []fileRow{{"eeeeeeee-0000-0000-0000-000000000000", i64(10)}})
+	if err == nil || !strings.Contains(err.Error(), "size differs") {
+		t.Fatalf("an object longer than storage.files.size must be refused: %v", err)
+	}
+}
+
+type fakeRow struct {
+	v   any
+	err error
+}
+
+func (r fakeRow) Scan(dest ...any) error {
+	if r.err != nil {
+		return r.err
+	}
+	switch d := dest[0].(type) {
+	case *bool:
+		*d = r.v.(bool)
+	case *int64:
+		*d = r.v.(int64)
+	}
+	return nil
+}
+
+type fakeDB map[string]any // SQL fragment -> value
+
+func (f fakeDB) QueryRow(_ context.Context, sql string, _ ...any) pgx.Row {
+	for frag, v := range f {
+		if strings.Contains(sql, frag) {
+			return fakeRow{v: v}
 		}
+	}
+	return fakeRow{err: errors.New("unexpected query")}
+}
+
+func TestAuthExtrasCountsWhatIsNotCarried(t *testing.T) {
+	none := fakeDB{"column_name='active_mfa_type'": false, "'auth.user_providers'": false, "'auth.user_security_keys'": false}
+	got, err := authExtrasIn(context.Background(), none)
+	if err != nil || got.nonzero() {
+		t.Fatalf("older hasura-auth without those tables: %+v %v", got, err)
+	}
+	all := fakeDB{"column_name='active_mfa_type'": true, "active_mfa_type IS NOT NULL": int64(2), "'auth.user_providers'": true, "FROM auth.user_providers": int64(5), "'auth.user_security_keys'": true, "FROM auth.user_security_keys": int64(1)}
+	got, err = authExtrasIn(context.Background(), all)
+	if err != nil || got.mfa != 2 || got.providers != 5 || got.keys != 1 || !got.nonzero() {
+		t.Fatalf("counts: %+v %v", got, err)
+	}
+	if _, err = authExtrasIn(context.Background(), fakeDB{}); err == nil {
+		t.Fatal("a failed lookup must be an error, not zero")
 	}
 }

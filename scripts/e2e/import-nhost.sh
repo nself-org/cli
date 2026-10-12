@@ -120,6 +120,13 @@ grep -q E517 "$W/badsecret.json" "$W/badsecret.err"
 export SRC_SECRET=$SAVED
 test ! -d .nself/import
 IMPORT=(nself db import nhost --db-url-env SRC_URL --hasura-url "$SRC_HASURA" --admin-secret-env SRC_SECRET --storage-endpoint "$SRC_S3" --s3-access-key-env SRC_S3_ACCESS --s3-secret-env SRC_S3_SECRET --bucket "$FIXTURE_S3_BUCKET")
+# A user with a second factor is refused up front: the factor is not carried, so the import would
+# silently let that user sign in with the password alone.
+srcpsql "UPDATE auth.users SET active_mfa_type = 'totp' WHERE email = 'carol@example.invalid'" > /dev/null
+if "${IMPORT[@]}" --plan --json > "$W/mfa.json" 2> "$W/mfa.err"; then echo 'FAIL: a source user with MFA was accepted'; exit 1; fi
+grep -q E517 "$W/mfa.json" "$W/mfa.err"
+grep -q 'MFA' "$W/mfa.json" "$W/mfa.err"
+srcpsql "UPDATE auth.users SET active_mfa_type = NULL WHERE email = 'carol@example.invalid'" > /dev/null
 "${IMPORT[@]}" --plan --json > "$W/plan.json"
 jq -e '.data.result=="pass" and (.data.steps|length)>0 and .data.detection.kind=="nhost" and .data.detection.source_users==3' "$W/plan.json"
 test ! -d .nself/import
