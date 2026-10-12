@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/compose"
 )
 
@@ -29,6 +30,7 @@ func main() {
 	// IMAGE_PINNING the caller has set, so it is the same in both compat modes;
 	// the digest-pinned v1.5 references are on Image-Lock.md (P7-LIVE-17).
 	_ = os.Setenv(compose.EnvImagePinning, compose.PinningLegacy)
+	_ = os.Setenv(compat.EnvVar, "0") // hasura's default differs per mode (P7-LIVE-23)
 	entries := compose.ServiceCatalog()
 
 	switch *format {
