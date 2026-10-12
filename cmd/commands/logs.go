@@ -155,8 +155,9 @@ func runLogsBody(cmd *cobra.Command, args []string) error {
 		composeArgs = append(composeArgs, "--no-log-prefix")
 	}
 
-	// If --no-color or --plain, pass --no-color to docker compose
-	if noColor || plain {
+	// If --no-color or --plain, pass --no-color to docker compose; v1.5 JSON
+	// always does, so no ANSI escapes reach the record fields.
+	if noColor || plain || envelope {
 		composeArgs = append(composeArgs, "--no-color")
 	}
 

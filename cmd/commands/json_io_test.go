@@ -259,6 +259,7 @@ func streamLines(t *testing.T, out string) []map[string]any {
 	env := contractResolve(t, "envelope.v1.schema.json")
 	var docs []map[string]any
 	sc := bufio.NewScanner(strings.NewReader(out))
+	sc.Buffer(make([]byte, 0, 64*1024), maxLogLineBytes+4096)
 	for sc.Scan() {
 		line := sc.Text()
 		var compact bytes.Buffer
@@ -273,6 +274,9 @@ func streamLines(t *testing.T, out string) []map[string]any {
 			t.Fatal(err)
 		}
 		docs = append(docs, doc)
+	}
+	if err := sc.Err(); err != nil {
+		t.Fatalf("reading stream: %v", err)
 	}
 	return docs
 }
@@ -427,3 +431,22 @@ func TestLogsJSONStreamWriteFailure(t *testing.T) {
 type ioFailWriter struct{}
 
 func (ioFailWriter) Write([]byte) (int, error) { return 0, errors.New("broken pipe") }
+
+// TestLogsJSONStreamLongLine pins that a log line over the default 64 KiB
+// scanner buffer becomes a record and the stream still ends with a result.
+func TestLogsJSONStreamLongLine(t *testing.T) {
+	compattest.Set(t, true)
+	long := "web-1  | " + strings.Repeat("x", 100*1024)
+	ioProject(t, []string{long, "web-1  | after"}, true, 0)
+	out, err := runIOLogs(t, "--json", "--follow")
+	if err != nil {
+		t.Fatal(err)
+	}
+	docs := streamLines(t, out)
+	if len(docs) != 3 {
+		t.Fatalf("lines = %d, want 2 records and 1 result", len(docs))
+	}
+	if last, _ := docs[2]["data"].(map[string]any); last["type"] != "result" || last["lines"] != float64(2) {
+		t.Fatalf("last line data = %v, want type result and lines 2", last)
+	}
+}

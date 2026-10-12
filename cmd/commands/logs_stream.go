@@ -35,6 +35,10 @@ func streamFilteredLogs(ctx context.Context, workdir string, composeArgs []strin
 	})
 }
 
+// maxLogLineBytes caps one docker log line; a longer line ends the stream
+// with an error instead of a silent stop.
+const maxLogLineBytes = 4 << 20
+
 // streamLogLines runs docker with composeArgs and calls fn with every line that
 // passes the opts filters (the one place the logs commands spawn docker). An
 // error from fn stops the stream, kills docker and is returned. A cancelled
@@ -61,6 +65,7 @@ func streamLogLines(parent context.Context, workdir string, composeArgs []string
 
 	var fnErr error
 	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxLogLineBytes)
 	for scanner.Scan() {
 		filtered, ok := filterLogLine(scanner.Text(), opts)
 		if !ok {
@@ -69,6 +74,15 @@ func streamLogLines(parent context.Context, workdir string, composeArgs []string
 		if fnErr = fn(filtered); fnErr != nil {
 			cancel()
 			break
+		}
+	}
+
+	// A read error (a line over maxLogLineBytes) must not pass for the end of
+	// the logs: stop docker so Wait cannot block on a full pipe, and report it.
+	if fnErr == nil {
+		if serr := scanner.Err(); serr != nil {
+			cancel()
+			fnErr = fmt.Errorf("reading docker output: %w", serr)
 		}
 	}
 
