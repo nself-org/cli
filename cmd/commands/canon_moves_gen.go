@@ -6,6 +6,7 @@ package commands
 var canonTable = canonTableT{
 	Verbs: []string{"init", "start", "stop", "restart", "status", "logs", "doctor", "build", "reset", "clean", "add", "remove", "config", "db", "backup", "deploy", "update", "license", "mcp", "exec"},
 	Moves: []canonRowT{
+		{From: []string{"migrate", "appwrite"}, To: []string{"db", "import", "appwrite"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"migrate", "detect"}, To: []string{"update", "project", "detect"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"migrate", "firebase"}, To: []string{"db", "import", "firebase"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"migrate", "from-bash"}, To: []string{"update", "project", "from-bash"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},

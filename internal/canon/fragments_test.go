@@ -143,6 +143,7 @@ func TestFragmentAssignment(t *testing.T) {
 	delete(where, "migrate nhost")          // Added after the pre-split snapshot (P7-ADOPT-11).
 	delete(where, "migrate hasura-cloud")   // Added after the pre-split snapshot (P7-ADOPT-11).
 	delete(where, "migrate nself")          // Added after the pre-split snapshot (P7-ADOPT-18).
+	delete(where, "migrate appwrite")       // Added after the pre-split snapshot (P7-ADOPT-16).
 	for _, key := range []string{
 		"secrets resolve",
 		"secrets recipients",

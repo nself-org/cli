@@ -1,0 +1,29 @@
+{
+  "schema_version": "1",
+  "command": "db import appwrite",
+  "data": {
+    "source": "appwrite",
+    "run_id": "fixture",
+    "result": "pass",
+    "tables": [],
+    "users": {
+      "source": 0,
+      "target": 0,
+      "equal": true,
+      "reset_required": []
+    },
+    "storage": {
+      "source_objects": 0,
+      "target_objects": 0,
+      "equal": true
+    },
+    "hasura": {
+      "equal": true,
+      "diffs": []
+    },
+    "untranslated_policies": [],
+    "exemptions": [],
+    "mismatches": [],
+    "wrote": false
+  }
+}

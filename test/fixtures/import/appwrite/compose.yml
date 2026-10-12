@@ -1,0 +1,65 @@
+# Appwrite 1.5.10 source fixture for `nself db import appwrite` (P7-ADOPT-16).
+# Reduced stack: the API, the databases worker (attribute creation is asynchronous), MariaDB and
+# Redis. Every image is pinned by digest. All credentials are synthetic and come from the
+# environment of the e2e script; nothing here is a real secret.
+name: ${FIXTURE_PROJECT:-a16-appwrite}
+x-appwrite: &appwrite
+  image: appwrite/appwrite:1.5.10@sha256:af97ef7456fe27f8d1689bec097734a1e29fd0063f9d6c56d086ae726e062935
+  environment: &env
+    _APP_ENV: production
+    _APP_LOCALE: en
+    _APP_DOMAIN: localhost
+    _APP_DOMAIN_TARGET: localhost
+    _APP_OPENSSL_KEY_V1: ${FIXTURE_PASSWORD}
+    _APP_REDIS_HOST: redis
+    _APP_REDIS_PORT: "6379"
+    _APP_DB_HOST: mariadb
+    _APP_DB_PORT: "3306"
+    _APP_DB_SCHEMA: appwrite
+    _APP_DB_USER: appwrite
+    _APP_DB_PASS: ${FIXTURE_PASSWORD}
+    _APP_USAGE_STATS: disabled
+    _APP_LOGGING_PROVIDER: ""
+    _APP_WORKER_PER_CORE: "6"
+  depends_on:
+    mariadb: {condition: service_healthy}
+    redis: {condition: service_healthy}
+services:
+  appwrite:
+    <<: *appwrite
+    ports: ["127.0.0.1:${FIXTURE_PORT}:80"]
+    volumes: [uploads:/storage/uploads, cache:/storage/cache, config:/storage/config, certs:/storage/certificates, functions:/storage/functions]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost/v1/health/version >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+  appwrite-worker-databases:
+    <<: *appwrite
+    entrypoint: worker-databases
+  mariadb:
+    image: mariadb:10.11@sha256:7db29378d4fdab73f8123bbc2b48905c90d1a4b00cf848b028f1e81e623257f2
+    environment:
+      MYSQL_ROOT_PASSWORD: ${FIXTURE_PASSWORD}
+      MYSQL_DATABASE: appwrite
+      MYSQL_USER: appwrite
+      MYSQL_PASSWORD: ${FIXTURE_PASSWORD}
+    command: ["mysqld", "--innodb-flush-method=fsync"]
+    healthcheck:
+      test: ["CMD-SHELL", "healthcheck.sh --connect --innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  redis:
+    image: redis:7.2.4-alpine@sha256:c8bb255c3559b3e458766db810aa7b3c7af1235b204cfdb304e79ff388fe1a5a
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+volumes:
+  uploads:
+  cache:
+  config:
+  certs:
+  functions:

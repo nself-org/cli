@@ -458,6 +458,10 @@
       "id": "urn:nself:cli:schema:commands:db-hasura:v1"
     },
     {
+      "path": "commands/db-import-appwrite.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-import-appwrite:v1"
+    },
+    {
       "path": "commands/db-import-firebase.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:db-import-firebase:v1"
     },
