@@ -143,3 +143,27 @@ func TestProgressNilSafeAndRecords(t *testing.T) {
 		t.Fatalf("%+v", p)
 	}
 }
+
+func TestSkipPlatformOwned(t *testing.T) {
+	toc := "; header\n349; 1255 16569 FUNCTION public uuidv7() postgres\n243; 1259 16846 TABLE public notes postgres\n"
+	ctx := context.Background()
+	have := &fakeDB{rows: []fakeRow{{val: true}}}
+	got, err := SkipPlatformOwned(ctx, have, toc, "nself")
+	if err != nil || !strings.Contains(got, ";349; 1255 16569 FUNCTION public uuidv7() postgres") || !strings.Contains(got, "\n243; 1259 16846 TABLE public notes postgres") {
+		t.Fatalf("an owned platform function must be commented out, nothing else: %q %v", got, err)
+	}
+	if err = TypeFunctionCollisions(ctx, &fakeDB{rows: []fakeRow{{val: true}}}, got, []string{"public"}); err != nil {
+		t.Fatalf("the commented line must not collide: %v", err)
+	}
+	missing := &fakeDB{rows: []fakeRow{{val: false}}}
+	if got, err = SkipPlatformOwned(ctx, missing, toc, "nself"); err != nil || got != toc {
+		t.Fatalf("a target without the function must keep the line: %q %v", got, err)
+	}
+	foreign := &fakeDB{rows: []fakeRow{{val: true}}}
+	if got, err = SkipPlatformOwned(ctx, foreign, toc, "postgres"); err != nil || got != toc || len(foreign.sqls) != 0 {
+		t.Fatalf("a bundle from another source must be left alone: %q %v", got, err)
+	}
+	if _, err = SkipPlatformOwned(ctx, &fakeDB{rows: []fakeRow{{err: errors.New("boom")}}}, toc, "nself"); codeOf(err) != "E521" {
+		t.Fatalf("lookup failure must be E521: %v", err)
+	}
+}
