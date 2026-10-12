@@ -13,13 +13,16 @@ import (
 // where build's validator echoes a value: a string where a map or list
 // belongs, and non-string scalars where a string belongs.
 var d0430Scalars = []string{"fake-scalar-d0430-0000", "fake-list-d0430-0000", "8675309123", "fake-true",
-	"fake-pem-d0430-0000", "fake-pem-d0430-0001", "fake-tag-d0430-0000"}
+	"fake-pem-d0430-0000", "fake-pem-d0430-0001", "fake-tag-d0430-0000", "fake-fold-d0430-0000", "fake-fold-d0430-0001",
+	"fake-flow-d0430-0000", "fake-vtag-d0430-0000", "fake-tblk-d0430-0000"}
 
 // d0430Manifests cover a one-line string, a block scalar (newlines in the
 // value) and a custom tag, plus non-string scalars where a string belongs.
 var d0430Manifests = []string{
 	"plugins: fake-scalar-d0430-0000\nbundles: fake-list-d0430-0000\ncli_min_version: 8675309123\napp: !!bool fake-true\nbundle: !my-tag fake-tag-d0430-0000\n",
 	"plugins: |\n  fake-pem-d0430-0000\n  fake-pem-d0430-0001\n",
+	"plugins: >\n  fake-fold-d0430-0000\n  fake-fold-d0430-0001\nbundles: [!x-y fake-flow-d0430-0000]\n",
+	"app: !<tag:example.test,2000:s> fake-vtag-d0430-0000\nbundle: \"a\\nfake-esc-d0430-0000\"\nplugins: !x-y |\n  fake-tblk-d0430-0000\n",
 }
 
 // TestRedactManifestFinding runs build.ValidateManifestFile on a manifest that

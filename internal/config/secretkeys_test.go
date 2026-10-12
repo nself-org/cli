@@ -53,7 +53,8 @@ func TestIsSecretKey(t *testing.T) {
 
 // TestMaskURLCredentials: user and password are masked up to the last @, so a
 // password with @, /, : or a space never leaks; query, matrix and fragment
-// parameters are matched on their percent-decoded name (D-0430).
+// parameters are matched on their percent-decoded name (D-0430), and a
+// credential value runs to the next & or space, through any ; or #.
 func TestMaskURLCredentials(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"postgres://app:pw@db:5432/app", "postgres://****@db:5432/app"},
@@ -64,9 +65,9 @@ func TestMaskURLCredentials(t *testing.T) {
 		{"postgresql://postgres:ab/cd+ef@postgres/db", "postgresql://****@postgres/db"},
 		{"postgres://u:p@ss@h/db", "postgres://****@h/db"},
 		{"postgres://h/db?sslmode=require&password=x", "postgres://h/db?sslmode=require&password=****"},
-		{"https://h/p?SSLPassword=x&API_KEY=y#f", "https://h/p?SSLPassword=****&API_KEY=****#f"},
+		{"https://h/p?SSLPassword=x&API_KEY=y#f", "https://h/p?SSLPassword=****&API_KEY=****"},
 		{"https://example.test/p?access_token=FAKETOK2&x=1", "https://example.test/p?access_token=****&x=1"},
-		{"https://h/cb?client_secret=FAKE3;api-key=FAKE4", "https://h/cb?client_secret=****;api-key=****"},
+		{"https://h/cb?client_secret=FAKE3;api-key=FAKE4", "https://h/cb?client_secret=****"},
 		{"https://s3.test/o?X-Amz-Signature=FAKE5&auth=FAKE6", "https://s3.test/o?X-Amz-Signature=****&auth=****"},
 		{"https://h/p?page=2&sort=name", "https://h/p?page=2&sort=name"},
 		// D-0430: percent-encoded names and fragment parameters.
@@ -81,6 +82,18 @@ func TestMaskURLCredentials(t *testing.T) {
 		{"https://h/p?page=2#section=intro", "https://h/p?page=2#section=intro"},
 		{"https://h/?q=%5Ftoken&next=%2Fpass", "https://h/?q=%5Ftoken&next=%2Fpass"},
 		{"https://h/?%5F=1", "https://h/?%5F=1"},
+		// Opus adversarial inputs (cli#724).
+		{"https://h/app/page;jsessionid=ABC?access_token=FAKE23", "https://h/app/page;jsessionid=****"},
+		{"https://h/app/page;v=ABC?access_token=FAKE24", "https://h/app/page;v=ABC?access_token=****"},
+		{"https://h/api;v=2/items?token=FAKE25", "https://h/api;v=2/items?token=****"},
+		{"https://h/p?a=b?api_key=FAKE26&c=d", "https://h/p?a=b?api_key=****&c=d"},
+		{"https://h/b?sv=2024&sig=FAKE27", "https://h/b?sv=2024&sig=****"},
+		{"https://h/cb?code=FAKE28&state=s", "https://h/cb?code=****&state=s"},
+		{"https://h/? token=FAKE29", "https://h/? token=****"},
+		{"https://h/?token =FAKE30&x=1", "https://h/?token =****&x=1"},
+		{"https://h/?password=FAKE#31&x=1", "https://h/?password=****&x=1"},
+		{"https://h/?password=FAKE;32", "https://h/?password=****"},
+		{"https://h/?next=https%3A%2F%2Fapp%2Fcb%3Ftoken%3DFAKE33", "https://h/?next=****"},
 		{"https://h/?redirect=https://x/?token=FAKE15", "https://h/?redirect=https://x/?token=****"},
 		{"https://h/?foo=bar?access%5Ftoken=FAKE16&y=2", "https://h/?foo=****&y=2"},
 		{"https://h/?access_token%3DFAKE17&y=2", "https://h/?access_token%3D****&y=2"},
@@ -88,7 +101,7 @@ func TestMaskURLCredentials(t *testing.T) {
 		{"https://h/?r=https%3A%2F%2Fx%2F%3Ftoken%3DFAKE21&y=2", "https://h/?r=****&y=2"},
 		{"https://h/?access%3Dtoken=FAKE22", "https://h/?access%3D****"},
 		{"https://h/?r=https%3A%2F%2Fx%2F%3Fpage%3D2&y=2", "https://h/?r=https%3A%2F%2Fx%2F%3Fpage%3D2&y=2"},
-		{"https://h/?token=FAKE19?refresh_token=FAKE20#x", "https://h/?token=****#x"},
+		{"https://h/?token=FAKE19?refresh_token=FAKE20#x", "https://h/?token=****"},
 		{"https://example.test/path", "https://example.test/path"},
 		{"user@example.test", "user@example.test"},
 		{"plain-value", "plain-value"},
