@@ -1,0 +1,40 @@
+{
+  "schema_version": "1",
+  "command": "logs",
+  "data": {
+    "records": [
+      {
+        "type": "log",
+        "service": "web-1",
+        "time": "2026-01-02T03:04:05Z",
+        "level": "info",
+        "message": "[info] server started"
+      },
+      {
+        "type": "log",
+        "service": "web-1",
+        "time": "2026-01-02T03:04:06Z",
+        "message": "GET /health 200"
+      },
+      {
+        "type": "log",
+        "service": "db-1",
+        "time": "2026-01-02T03:04:07Z",
+        "level": "error",
+        "message": "[error] connection refused"
+      },
+      {
+        "type": "log",
+        "service": "db-1",
+        "time": "2026-01-02T03:04:08Z",
+        "level": "warn",
+        "message": "[warn] slow query <b> & done"
+      },
+      {
+        "type": "log",
+        "service": "web-1",
+        "message": "plain line without a timestamp"
+      }
+    ]
+  }
+}

@@ -174,4 +174,5 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-SURF-14 | --json on the data commands is ignored or the pre-contract form (NSELF_JSON_LEGACY=1 then prints an empty list as bare []) | v1 envelope | `cmd/commands/db_envelope.go` |
 | P7-SURF-25 | no token = open loopback with a warning | token required (generated on first start) | `cmd/commands/mcp_auth.go` |
 | P7-SURF-26 | --json ignored | envelope | `cmd/commands/registry_types_build.go` |
+| P7-SURF-27 | logs --json per-line legacy JSON | envelope / json-stream | `cmd/commands/logs_json.go` |
 <!-- END GENERATED:gated -->

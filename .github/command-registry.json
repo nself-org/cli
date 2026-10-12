@@ -16410,7 +16410,7 @@
       "canon": "core",
       "target": null,
       "side_effect": "destructive",
-      "output": "document",
+      "output": "interactive",
       "json": "none",
       "data_schema": null,
       "exit_codes": {},
@@ -18926,7 +18926,7 @@
           "env": null,
           "side_effect": null,
           "json": null,
-          "output": null,
+          "output": "stream",
           "cli_only": false,
           "secret": false
         },
@@ -19112,7 +19112,7 @@
           "persistent": false,
           "env": null,
           "side_effect": null,
-          "json": null,
+          "json": "none",
           "output": null,
           "cli_only": false,
           "secret": false
@@ -19129,7 +19129,7 @@
           "persistent": false,
           "env": null,
           "side_effect": null,
-          "json": null,
+          "json": "none",
           "output": null,
           "cli_only": false,
           "secret": false
@@ -19163,7 +19163,7 @@
           "persistent": false,
           "env": null,
           "side_effect": null,
-          "json": null,
+          "json": "none",
           "output": null,
           "cli_only": false,
           "secret": false
@@ -19189,9 +19189,9 @@
       "canon": "core",
       "target": null,
       "side_effect": "read",
-      "output": "stream",
-      "json": "legacy",
-      "data_schema": null,
+      "output": "document",
+      "json": "envelope",
+      "data_schema": "schemas/commands/logs.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -22999,7 +22999,7 @@
     "deprecated_shims": 44,
     "plugin": 11,
     "core_missing": [],
-    "json_envelope": 196,
-    "json_legacy": 34
+    "json_envelope": 197,
+    "json_legacy": 33
   }
 }
