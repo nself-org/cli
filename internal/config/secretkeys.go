@@ -31,10 +31,14 @@ func IsSecretKey(key string) bool {
 	return false
 }
 
-// urlParam matches one query, matrix or fragment parameter: a separator
-// (?, &, ; or #), the raw name up to `=`, and the value up to the next
-// separator or space.
-var urlParam = regexp.MustCompile(`([?&;#])([^=&;#\s]*)=([^&;#\s]*)`)
+// urlParamName matches the start of one query, matrix or fragment parameter:
+// a separator (?, &, ; or #), the raw name, and the first `=` or its encoded
+// form `%3D` after it. It never consumes a value, so a parameter nested in
+// another parameter's value (?redirect=https://x/?token=...) is still seen.
+var urlParamName = regexp.MustCompile(`([?&;#])([^=&;#\s]*?)(=|%3[dD])`)
+
+// urlParamValueEnd matches the separator that ends a parameter value.
+var urlParamValueEnd = regexp.MustCompile(`[&;#]`)
 
 // credentialWord matches a credential word anywhere in a decoded parameter
 // name (access_token, client_secret, api-key, X-Amz-Signature, auth).
@@ -47,9 +51,12 @@ var credentialWord = regexp.MustCompile(`(?i)pass|pwd|token|secret|key|signature
 // accepting the string. Query, matrix (`;`) and fragment (`#`) parameters
 // whose name contains pass, pwd, token, secret, key, signature, auth or
 // credential (any case) are masked too; the name is percent-decoded first, so
-// `access%5Ftoken` and `#access_token=` are caught (D-0430). A value without
-// `://` is returned unchanged. The rule over-masks a path that holds an `@`;
-// that is the safe side.
+// `access%5Ftoken=`, `access_token%3D` and `#access_token=` are caught, and
+// a parameter nested in another one's value is found (D-0430). A masked
+// value runs to the next `&`, `;` or `#` (spaces included: over-masking is
+// the safe side), so a credential that itself holds one of those keeps the
+// part after it. A value without `://` is returned unchanged. The rule
+// over-masks a path that holds an `@`; that is the safe side.
 func MaskURLCredentials(v string) string {
 	i := strings.Index(v, "://")
 	if i < 0 {
@@ -58,13 +65,25 @@ func MaskURLCredentials(v string) string {
 	if rest := v[i+3:]; strings.Contains(rest, "@") {
 		v = v[:i+3] + "****" + rest[strings.LastIndex(rest, "@"):]
 	}
-	return urlParam.ReplaceAllStringFunc(v, func(m string) string {
-		p := urlParam.FindStringSubmatch(m)
-		if !credentialWord.MatchString(decodeParamName(p[2])) {
-			return m
+	var b strings.Builder
+	done := 0 // v[:done] is already written
+	for _, m := range urlParamName.FindAllStringSubmatchIndex(v, -1) {
+		if m[0] < done || !credentialWord.MatchString(decodeParamName(v[m[4]:m[5]])) {
+			continue
 		}
-		return p[1] + p[2] + "=****"
-	})
+		end := len(v)
+		if e := urlParamValueEnd.FindStringIndex(v[m[1]:]); e != nil {
+			end = m[1] + e[0]
+		}
+		b.WriteString(v[done:m[1]])
+		b.WriteString("****")
+		done = end
+	}
+	if done == 0 {
+		return v
+	}
+	b.WriteString(v[done:])
+	return b.String()
 }
 
 // pctEscape matches one valid percent escape.

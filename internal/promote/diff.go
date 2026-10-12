@@ -3,7 +3,7 @@ package promote
 // Purpose: the env/directory/image diffing helpers, secret redaction (config.IsSecretKey + MaskURLCredentials, D-0415), and record/backup persistence backing DryRun/Execute/Rollback in promote.go.
 // Inputs: parsed .env maps and directory paths for source/target environments.
 // Outputs: []DiffEntry comparisons, a saved PromotionRecord, and backup-tag discovery for rollback.
-// Constraints: split out of promote.go as a pure move (CLI-R12); no behavior change.
+// Constraints: split out of promote.go (CLI-R12); redaction follows the shared config rule and never prints a character of a secret.
 
 import (
 	"context"

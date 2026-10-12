@@ -173,10 +173,11 @@ func manifestLines(text string) []string {
 // foundScalar matches the scalar a manifest type finding echoes: build's
 // describe() renders "found a <tag> (<value>)", and the string check follows
 // it with ": YAML reads it as a <tag>, not text".
-var foundScalar = regexp.MustCompile(`(found an? [!A-Za-z0-9_:]+) \(.*\)($|: YAML reads it as )`)
+// (?s): a block scalar puts newlines in the value; \S+ covers custom tags.
+var foundScalar = regexp.MustCompile(`(?s)(found an? \S+) \(.*\)($|: YAML reads it as )`)
 
 // quoteScalar matches the string check's fix, which quotes the scalar back.
-var quoteScalar = regexp.MustCompile(`^quote it: ".*"$`)
+var quoteScalar = regexp.MustCompile(`(?s)^quote it: ".*"$`)
 
 // redactManifestFinding drops the scalar values a manifest finding copies from
 // nself.yaml (D-0430): a value written where a map or list belongs can be a

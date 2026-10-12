@@ -12,20 +12,33 @@ import (
 // d0430Scalars are synthetic credential-shaped scalars written into nself.yaml
 // where build's validator echoes a value: a string where a map or list
 // belongs, and non-string scalars where a string belongs.
-var d0430Scalars = []string{"fake-scalar-d0430-0000", "fake-list-d0430-0000", "8675309123", "fake-true"}
+var d0430Scalars = []string{"fake-scalar-d0430-0000", "fake-list-d0430-0000", "8675309123", "fake-true",
+	"fake-pem-d0430-0000", "fake-pem-d0430-0001", "fake-tag-d0430-0000"}
 
-const d0430Manifest = "plugins: fake-scalar-d0430-0000\nbundles: fake-list-d0430-0000\ncli_min_version: 8675309123\napp: !!bool fake-true\n"
+// d0430Manifests cover a one-line string, a block scalar (newlines in the
+// value) and a custom tag, plus non-string scalars where a string belongs.
+var d0430Manifests = []string{
+	"plugins: fake-scalar-d0430-0000\nbundles: fake-list-d0430-0000\ncli_min_version: 8675309123\napp: !!bool fake-true\nbundle: !my-tag fake-tag-d0430-0000\n",
+	"plugins: |\n  fake-pem-d0430-0000\n  fake-pem-d0430-0001\n",
+}
 
 // TestRedactManifestFinding runs build.ValidateManifestFile on a manifest that
 // holds synthetic scalars in every echoing shape (D-0430). The raw findings
 // must carry the scalars (positive control: the guard tracks build's wording)
 // and the redacted findings must not, while file, line and path stay.
 func TestRedactManifestFinding(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "nself.yaml")
-	if err := os.WriteFile(path, []byte(d0430Manifest), 0o600); err != nil {
-		t.Fatal(err)
+	var findings []build.Finding
+	for i, m := range d0430Manifests {
+		path := filepath.Join(t.TempDir(), "nself.yaml")
+		if err := os.WriteFile(path, []byte(m), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if fs := build.ValidateManifestFile(path); len(fs) > 0 {
+			findings = append(findings, fs...)
+		} else {
+			t.Fatalf("manifest %d gives no finding", i)
+		}
 	}
-	findings := build.ValidateManifestFile(path)
 	var raw, redacted strings.Builder
 	for _, f := range findings {
 		raw.WriteString(f.String() + "\n")
@@ -35,8 +48,8 @@ func TestRedactManifestFinding(t *testing.T) {
 		}
 		redacted.WriteString(r.String() + "\n")
 	}
-	for _, v := range []string{"fake-scalar-d0430-0000", "fake-list-d0430-0000", "8675309123"} {
-		if !strings.Contains(raw.String(), v) {
+	for _, v := range d0430Scalars {
+		if v != "fake-true" && !strings.Contains(raw.String(), v) {
 			t.Fatalf("positive control: build no longer echoes %q, so this guard tests nothing; update redactManifestFinding\n%s", v, raw.String())
 		}
 	}
@@ -53,18 +66,20 @@ func TestRedactManifestFinding(t *testing.T) {
 // TestConfigValidateHidesManifestScalars: machine `config validate` keeps the
 // manifest findings but no scalar from nself.yaml reaches stdout or stderr.
 func TestConfigValidateHidesManifestScalars(t *testing.T) {
-	proj := cfgFixtureProject(t)
-	if err := os.WriteFile(filepath.Join(proj, "nself.yaml"), []byte(d0430Manifest), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	val := runPilot(t, proj, true, nil, "config", "validate", "--json")
-	data := validateEnvelope(t, val.stdout, "config validate")
-	if findings, _ := data["manifest_findings"].([]any); len(findings) == 0 {
-		t.Fatalf("validate data lists no manifest finding: %v", data)
-	}
-	for _, v := range d0430Scalars {
-		if strings.Contains(val.stdout+val.stderr, v) {
-			t.Errorf("config validate --json echoes the manifest scalar %q:\n%s\n%s", v, val.stdout, val.stderr)
+	for i, m := range d0430Manifests {
+		proj := cfgFixtureProject(t)
+		if err := os.WriteFile(filepath.Join(proj, "nself.yaml"), []byte(m), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		val := runPilot(t, proj, true, nil, "config", "validate", "--json")
+		data := validateEnvelope(t, val.stdout, "config validate")
+		if findings, _ := data["manifest_findings"].([]any); len(findings) == 0 {
+			t.Fatalf("manifest %d: validate data lists no manifest finding: %v", i, data)
+		}
+		for _, v := range d0430Scalars {
+			if strings.Contains(val.stdout+val.stderr, v) {
+				t.Errorf("manifest %d: config validate --json echoes the manifest scalar %q:\n%s\n%s", i, v, val.stdout, val.stderr)
+			}
 		}
 	}
 }
