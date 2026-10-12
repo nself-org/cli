@@ -213,7 +213,10 @@ func (fa *frontApply) sync(ctx context.Context, o ApplyOptions, res *ApplyResult
 	if len(fa.fr.Files) == 0 {
 		return nil
 	}
-	return rsyncList(ctx, r, ArtifactSet{StageDir: fa.fr.StageDir, RemotePath: front}, fa.fr.Files, nil)
+	// -c: compare by checksum, not size and mtime. The files are tiny, and a stale
+	// front conf after a reported success is the dangerous outcome (a restore leaves
+	// whole-second mtimes, so a same-size new conf could be skipped otherwise).
+	return rsyncList(ctx, r, ArtifactSet{StageDir: fa.fr.StageDir, RemotePath: front}, fa.fr.Files, []string{"-c"})
 }
 
 // restore puts the front root back in place (changed restored, absent removed).

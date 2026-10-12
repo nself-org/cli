@@ -167,9 +167,16 @@ func TestApplyShipsFrontRoot(t *testing.T) {
 			t.Errorf("exec used another container or a name: %q", c)
 		}
 	}
-	tIdx, rIdx, syncIdx := x.index("docker exec '"+frontCID+"' nginx -t"), x.index("nginx -s reload"), x.index("rsync  -> "+filepath.Join(x.front, "nginx", "sites"))
+	tIdx, rIdx, syncIdx := x.index("docker exec '"+frontCID+"' nginx -t"), x.index("nginx -s reload"), x.index("rsync -c -> "+filepath.Join(x.front, "nginx", "sites"))
 	if syncIdx < 0 || !(syncIdx < tIdx && tIdx < x.index("up -d --no-deps -- 'db'") && x.index("up -d --no-deps -- 'web'") < rIdx) {
 		t.Errorf("order: front rsync %d, nginx -t %d, reload %d", syncIdx, tIdx, rIdx)
+	}
+	// The front sync compares by checksum (-c); the main-root sync keeps the default quick check.
+	if x.index("rsync -c -> "+filepath.Join(x.front, "nginx", "sites")) < 0 {
+		t.Errorf("the front rsync did not carry -c: %v", x.f.flags)
+	}
+	if x.index("rsync -c -> "+x.rp) >= 0 {
+		t.Error("the main-root sync carries -c")
 	}
 	// The project model's nginx is not touched: no throwaway container, no compose exec.
 	for _, c := range x.f.commands() {
