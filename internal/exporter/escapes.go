@@ -130,7 +130,7 @@ func uEscapeASCII(s, verb string) string {
 	var b strings.Builder
 	for _, r := range s {
 		switch {
-		case r < 0x80 && !(r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z'):
+		case r < 0x80 && (r < '0' || r > '9') && (r < 'a' || r > 'z') && (r < 'A' || r > 'Z'):
 			fmt.Fprintf(&b, `\u`+verb, r)
 		default:
 			b.WriteRune(r)
