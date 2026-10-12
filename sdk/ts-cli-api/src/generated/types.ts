@@ -2374,6 +2374,90 @@ export interface DbHasuraValidateRequest {
   flags?: DbHasuraValidateFlags;
 }
 
+export type DbImportAppwriteArgs = [];
+
+export interface DbImportAppwriteData {
+  compat_shims: null | Array<string>;
+  detection?: null | {
+    kind: string;
+    notes: null | Array<string>;
+    schemas: null | Array<string>;
+    source_users?: number;
+    version: string;
+  };
+  exemptions: null | Array<{
+    id: string;
+    kind: string;
+    reason: string;
+  }>;
+  hasura: {
+    diffs: null | Array<{
+      detail: string;
+      id: string;
+      kind: string;
+    }>;
+    equal: boolean;
+  };
+  last_step?: string;
+  mismatches: null | Array<{
+    detail: string;
+    id: string;
+    kind: string;
+  }>;
+  result: string;
+  run_id: string;
+  source: string;
+  steps?: null | Array<string>;
+  storage: {
+    equal: boolean;
+    source_objects: number;
+    target_objects: number;
+  };
+  tables: null | Array<{
+    equal: boolean;
+    name: string;
+    schema: string;
+    source_rows: number;
+    target_rows: number;
+  }>;
+  untranslated_policies: null | Array<{
+    policy: string;
+    reason: string;
+    table: string;
+  }>;
+  users: {
+    equal: boolean;
+    reset_required: null | Array<{
+      email: string;
+      id: string;
+    }>;
+    source: number;
+    target: number;
+  };
+  wrote: boolean;
+}
+
+export type DbImportAppwriteFlags = {
+  /** Environment variable containing the Appwrite API key */
+  "api-key-env"?: string;
+  /** Appwrite API endpoint, e.g. https://cloud.appwrite.io/v1 */
+  endpoint?: string;
+  /** Keep the private portable bundle after a successful import */
+  "keep-stage"?: boolean;
+  /** Check source and target and print the import plan without writing */
+  plan?: boolean;
+  /** Appwrite project ID */
+  project?: string;
+  /** Exempt each storage object from this import */
+  "skip-storage"?: boolean;
+};
+
+/** Import and verify data from appwrite */
+export interface DbImportAppwriteRequest {
+  args?: DbImportAppwriteArgs;
+  flags?: DbImportAppwriteFlags;
+}
+
 export type DbImportFirebaseArgs = [];
 
 export interface DbImportFirebaseData {

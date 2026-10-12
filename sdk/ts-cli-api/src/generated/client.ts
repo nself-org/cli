@@ -210,6 +210,8 @@ export interface Operations {
   dbHasuraSync(request?: T.DbHasuraSyncRequest, options?: CallOptions): Promise<T.DbHasuraSyncData>;
   /** Validate Hasura metadata consistency and permission coverage (POST /v1/commands/db/hasura/validate) */
   dbHasuraValidate(request?: T.DbHasuraValidateRequest, options?: CallOptions): Promise<T.DbHasuraValidateData>;
+  /** Import and verify data from appwrite (POST /v1/commands/db/import/appwrite) */
+  dbImportAppwrite(request?: T.DbImportAppwriteRequest, options?: CallOptions): Promise<T.DbImportAppwriteData>;
   /** Generate nSelf migration artifacts from a Firebase export (POST /v1/commands/db/import/firebase) */
   dbImportFirebase(request?: T.DbImportFirebaseRequest, options?: CallOptions): Promise<T.DbImportFirebaseData>;
   /** Import and verify data from hasura-cloud (POST /v1/commands/db/import/hasura-cloud) */
@@ -525,6 +527,7 @@ export function createOperations(transport: Transport): Operations {
     dbHasuraSnapshot: (request, options) => transport.call<T.DbHasuraSnapshotData>("/v1/commands/db/hasura/snapshot", request, options),
     dbHasuraSync: (request, options) => transport.call<T.DbHasuraSyncData>("/v1/commands/db/hasura/sync", request, options),
     dbHasuraValidate: (request, options) => transport.call<T.DbHasuraValidateData>("/v1/commands/db/hasura/validate", request, options),
+    dbImportAppwrite: (request, options) => transport.call<T.DbImportAppwriteData>("/v1/commands/db/import/appwrite", request, options),
     dbImportFirebase: (request, options) => transport.call<T.DbImportFirebaseData>("/v1/commands/db/import/firebase", request, options),
     dbImportHasuraCloud: (request, options) => transport.call<T.DbImportHasuraCloudData>("/v1/commands/db/import/hasura-cloud", request, options),
     dbImportNhost: (request, options) => transport.call<T.DbImportNhostData>("/v1/commands/db/import/nhost", request, options),
