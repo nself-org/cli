@@ -22,7 +22,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/lock"
 	"github.com/nself-org/cli/internal/output"
@@ -88,37 +87,6 @@ func loadProjectLock() (string, lock.Lock, error) {
 			WithFix("Run nself build --write-lock, commit the file, then retry.")
 	}
 	return dir, *l, nil
-}
-
-// gatherPlan resolves every candidate and diffs it against the lock.
-func gatherPlan(ctx context.Context, d updateDeps, l lock.Lock, target string) (plan.Plan, error) {
-	c := plan.Candidates{CLICurrent: d.runningVersion(), Images: map[string]plan.Candidate{}, Plugins: map[string]plan.Candidate{}}
-	tag, _, err := d.latestRelease(target)
-	switch {
-	case err == nil:
-		c.CLI = plan.Candidate{Value: tag}
-	case strings.Contains(err.Error(), "status 404"):
-		c.CLI = plan.Candidate{Reason: "no such release (HTTP 404)"}
-	default:
-		return plan.Plan{}, sourceFailure("the CLI release lookup", err)
-	}
-	for k := range l.Pins() {
-		if ref, ok := compose.LockedRef(k); ok {
-			c.Images[k] = plan.Candidate{Value: ref.String()}
-		}
-	}
-	if len(l.Plugins) > 0 {
-		reg, err := d.registry(ctx)
-		if err != nil {
-			return plan.Plan{}, sourceFailure("the plugin registry", err)
-		}
-		for i := range reg.Plugins {
-			if _, locked := l.Plugins[reg.Plugins[i].Name]; locked {
-				c.Plugins[reg.Plugins[i].Name] = plan.Candidate{Value: reg.Plugins[i].Version}
-			}
-		}
-	}
-	return plan.BuildPlan(l, c), nil
 }
 
 // humanWriter is where text goes: stdout, or stderr when stdout carries JSON.
@@ -261,9 +229,20 @@ func runUpdateYes(cmd *cobra.Command, d updateDeps) error {
 }
 
 // applyLocalSteps runs images, plugins and build, in that order.
-func applyLocalSteps(ctx context.Context, w io.Writer, d updateDeps, dir string, l lock.Lock, p plan.Plan, st map[string]UpdateStep) error {
+func applyLocalSteps(ctx context.Context, w io.Writer, d updateDeps, dir string, l lock.Lock, p plan.Plan, st map[string]UpdateStep) (err error) {
 	changed := false
 	skip := func(n, why string) { st[n] = UpdateStep{Name: n, Status: "skipped", Detail: why} }
+	orig, rerr := os.ReadFile(lock.Path(dir))
+	if rerr != nil {
+		return rerr
+	}
+	// Until the build has rewritten the lock, any failure puts the old pins back,
+	// so a retry sees the same diff instead of a half-applied "nothing to do".
+	defer func() {
+		if err != nil {
+			err = restoreLock(dir, orig, err)
+		}
+	}()
 	if imgs := pinsOf(p, plan.KindImage); len(imgs) > 0 {
 		if err := d.writeLock(dir, plan.ApplyImagePins(l, imgs)); err != nil {
 			return fmt.Errorf("moving image pins in %s: %w", lock.FileName, err)
@@ -277,7 +256,7 @@ func applyLocalSteps(ctx context.Context, w io.Writer, d updateDeps, dir string,
 		for _, pin := range plugs {
 			progress(w, "Updating plugin %s: %s -> %s", pin.Name, pin.From, pin.To)
 			if err := d.updatePlugin(ctx, dir, pin.Name); err != nil {
-				return fmt.Errorf("updating plugin %q (earlier steps already applied): %w", pin.Name, err)
+				return fmt.Errorf("updating plugin %q (plugins updated before it stay installed): %w", pin.Name, err)
 			}
 		}
 		st[plan.StepPlugins] = UpdateStep{Name: plan.StepPlugins, Status: "done", Detail: fmt.Sprintf("%d plugin(s)", len(plugs))}

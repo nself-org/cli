@@ -93,6 +93,8 @@ type updRecorder struct {
 	calls []string
 	reg   []plugin.PluginManifest
 	cli   func() (string, string, error)
+	// buildErr, pluginErr make the build or the plugin update fail.
+	buildErr, pluginErr error
 }
 
 // install replaces newUpdateDeps with recording stubs.
@@ -110,12 +112,16 @@ func (r *updRecorder) install() {
 				r.calls = append(r.calls, "images")
 				return writeLockFile(dir, l)
 			},
+			entitled: func(context.Context, []string) (bool, error) { return true, nil },
 			updatePlugin: func(_ context.Context, _ string, slug string) error {
 				r.calls = append(r.calls, "plugins:"+slug)
-				return nil
+				return r.pluginErr
 			},
 			build: func(_ context.Context, dir string) error {
 				r.calls = append(r.calls, "build")
+				if r.buildErr != nil {
+					return r.buildErr
+				}
 				// A real build re-renders the lock from the new state: images keep
 				// the moved pins, plugins take the installed versions.
 				l, err := lock.Load(dir)

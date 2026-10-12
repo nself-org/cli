@@ -35,6 +35,6 @@ One row per top-level command (CLI-R17), scored against the four surfaces a comm
 | `nself start` | core | yes | yes | undocumented: NSELF_PROFILE, NSELF_SKIP_DB_INIT | n/a (see below) |
 | `nself status` | core | yes | yes | n/a | n/a (see below) |
 | `nself stop` | core | yes | yes | n/a | n/a (see below) |
-| `nself update` | account | yes | no | n/a | n/a (see below) |
+| `nself update` | account | yes | no | undocumented: NSELF_PLUGIN_REGISTRY | n/a (see below) |
 
-Total: 24 commands. Missing wiki page: 0. No MCP tool: 12. Env vars found but undocumented: 10.
+Total: 24 commands. Missing wiki page: 0. No MCP tool: 12. Env vars found but undocumented: 11.

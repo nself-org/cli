@@ -149,10 +149,12 @@ type updateDeps struct {
 	// latestRelease resolves the CLI target: "" is the latest release.
 	latestRelease func(target string) (tag, url string, err error)
 	registry      func(ctx context.Context) (*plugin.Registry, error)
-	writeLock     func(dir string, l lock.Lock) error
-	updatePlugin  func(ctx context.Context, dir, slug string) error
-	build         func(ctx context.Context, dir string) error
-	selfUpdate    func(tag string) error
+	// entitled decides a free/licensed tier pair; nil is the licence check.
+	entitled     plugin.EntitlementFunc
+	writeLock    func(dir string, l lock.Lock) error
+	updatePlugin func(ctx context.Context, dir, slug string) error
+	build        func(ctx context.Context, dir string) error
+	selfUpdate   func(tag string) error
 }
 
 // newUpdateDeps is a variable so tests can install fixtures.
@@ -165,16 +167,19 @@ var newUpdateDeps = func() updateDeps {
 			}
 			return fetchReleaseByTag(target)
 		},
-		registry: func(ctx context.Context) (*plugin.Registry, error) {
-			return plugin.FetchRegistry(ctx, "", plugin.DefaultCacheDir())
-		},
+		registry:  strictRegistry,
 		writeLock: writeLockFile,
 		updatePlugin: func(ctx context.Context, dir, slug string) error {
 			cfg, err := loadConfig()
 			if err != nil {
 				return err
 			}
-			return plugin.Update(ctx, cfg, slug, resolvePluginDir())
+			if err := plugin.Update(ctx, cfg, slug, resolvePluginDir()); err != nil {
+				return err
+			}
+			// plugin.Update leaves the bundle ledger, which supplies the build's
+			// plugin pins, on the old version and checksum.
+			return refreshBundleLedger(resolvePluginDir(), slug)
 		},
 		build: func(ctx context.Context, dir string) error {
 			_, _, err := reconcile.ApplyBuild(ctx, reconcile.Request{
