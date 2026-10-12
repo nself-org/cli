@@ -88,7 +88,7 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 
 <!-- BEGIN GENERATED: operations (tools/sdkgen, DO NOT HAND EDIT) -->
 
-179 operations. Every method takes `{ args, flags }` (plus `confirm` where the operation declares it) and resolves to the typed `data` member.
+184 operations. Every method takes `{ args, flags }` (plus `confirm` where the operation declares it) and resolves to the typed `data` member.
 
 | Method | Route | Summary |
 | --- | --- | --- |
@@ -102,6 +102,7 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 | `backupPitrBaseBackup` | `POST /v1/commands/backup/pitr/base-backup` | Take a manual pg_basebackup snapshot now |
 | `backupPitrDisable` | `POST /v1/commands/backup/pitr/disable` | Stop WAL archiving (removes PITR config snippet) |
 | `backupPitrEnable` | `POST /v1/commands/backup/pitr/enable` | Configure WAL archiving and enable PITR |
+| `backupPitrRestore` | `POST /v1/commands/backup/pitr/restore` | Restore database to a specific point in time |
 | `backupPitrStatus` | `POST /v1/commands/backup/pitr/status` | Show PITR retention window, segment count, and latest WAL timestamp |
 | `backupPrune` | `POST /v1/commands/backup/prune` | Remove old backups by retention policy |
 | `backupRestore` | `POST /v1/commands/backup/restore` | Restore from a backup |
@@ -195,6 +196,7 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 | `dbHasuraSync` | `POST /v1/commands/db/hasura/sync` | Export live Hasura metadata and commit to git |
 | `dbHasuraValidate` | `POST /v1/commands/db/hasura/validate` | Validate Hasura metadata consistency and permission coverage |
 | `dbImportFirebase` | `POST /v1/commands/db/import/firebase` | Generate nSelf migration artifacts from a Firebase export |
+| `dbImportNself` | `POST /v1/commands/db/import/nself` | Import and verify a portable bundle written by `nself db export` |
 | `dbImportPostgres` | `POST /v1/commands/db/import/postgres` | Import and verify data from postgres |
 | `dbImportSupabase` | `POST /v1/commands/db/import/supabase` | Migrate a Supabase project to nSelf |
 | `dbLint` | `POST /v1/commands/db/lint` | Check RLS policies on tenant-scoped tables |
@@ -204,6 +206,7 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 | `dbMigrateAudit` | `POST /v1/commands/db/migrate/audit` | Audit migrations for idempotency, rollback files, and checksum drift |
 | `dbMigrateBaseline` | `POST /v1/commands/db/migrate/baseline` | Record migration(s) as applied WITHOUT running their SQL |
 | `dbMigrateCreate` | `POST /v1/commands/db/migrate/create` | Create new migration file |
+| `dbMigrateDown` | `POST /v1/commands/db/migrate/down` | Revert last migration |
 | `dbMigrateGenerate` | `POST /v1/commands/db/migrate/generate` | Generate a SQL migration from a natural-language description |
 | `dbMigrateIdempotent` | `POST /v1/commands/db/migrate/idempotent` | Check and optionally rewrite a migration file to be idempotent |
 | `dbMigrateLint` | `POST /v1/commands/db/migrate/lint` | Refuse migrations with many unguarded CREATE TABLE statements |
@@ -214,6 +217,7 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 | `dbPgbouncerStatus` | `POST /v1/commands/db/pgbouncer/status` | Show PgBouncer runtime status (SHOW STATS via psql) |
 | `dbPitr` | `POST /v1/commands/db/pitr` | Point-in-time recovery: status, enable, test, restore |
 | `dbPitrEnable` | `POST /v1/commands/db/pitr/enable` | Write PITR configuration to .nself/pitr/ |
+| `dbPitrRestore` | `POST /v1/commands/db/pitr/restore` | Restore database to a point in time (--target RFC3339) |
 | `dbPitrStatus` | `POST /v1/commands/db/pitr/status` | Show PITR/WAL archiving status |
 | `dbPitrTest` | `POST /v1/commands/db/pitr/test` | Verify WAL archiving is working |
 | `dbReconcile` | `POST /v1/commands/db/reconcile` | Push repo-declared Hasura metadata (permissions, relationships, table tracking) to a live instance |
@@ -269,6 +273,7 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 | `updateProjectDetect` | `POST /v1/commands/update/project/detect` | Detect v1 artifacts in the current project |
 | `updateProjectFromBash` | `POST /v1/commands/update/project/from-bash` | Migrate a v0.9.9 Bash-era project to the current nSelf CLI |
 | `updateProjectFromV099` | `POST /v1/commands/update/project/from-v099` | Migrate v0.9.9 home-level state (license key, channel, ssh keys) to v1.x layout |
+| `updateProjectRollback` | `POST /v1/commands/update/project/rollback` | Restore a v1 backup created by migrate run |
 | `updateProjectRun` | `POST /v1/commands/update/project/run` | Migrate v1 project to v2 |
 | `updateStack` | `POST /v1/commands/update/stack` | Upgrade the stack with a verified backup and resumable steps |
 

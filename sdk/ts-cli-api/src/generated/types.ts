@@ -255,6 +255,30 @@ export interface BackupPitrRequest {
   flags?: BackupPitrFlags;
 }
 
+export type BackupPitrRestoreArgs = [];
+
+export interface BackupPitrRestoreData {
+  dry_run: boolean;
+  ok: boolean;
+  target: string;
+}
+
+export type BackupPitrRestoreFlags = {
+  /** Automatically promote Postgres after recovery */
+  "auto-promote"?: boolean;
+  /** Path to age identity file for decrypting encrypted archives */
+  identity?: string;
+  /** Target time in RFC3339 or relative form (required) */
+  to?: string;
+};
+
+/** Restore database to a specific point in time */
+export interface BackupPitrRestoreRequest {
+  args?: BackupPitrRestoreArgs;
+  flags?: BackupPitrRestoreFlags;
+  confirm?: string;
+}
+
 export type BackupPitrStatusArgs = [];
 
 export interface BackupPitrStatusData {
@@ -2377,6 +2401,83 @@ export interface DbImportFirebaseRequest {
   flags?: DbImportFirebaseFlags;
 }
 
+export type DbImportNselfArgs = [string];
+
+export interface DbImportNselfData {
+  detection?: null | {
+    kind: string;
+    notes: null | Array<string>;
+    schemas: null | Array<string>;
+    source_users?: number;
+    version: string;
+  };
+  exemptions: null | Array<{
+    id: string;
+    kind: string;
+    reason: string;
+  }>;
+  hasura: {
+    diffs: null | Array<{
+      detail: string;
+      id: string;
+      kind: string;
+    }>;
+    equal: boolean;
+  };
+  last_step?: string;
+  mismatches: null | Array<{
+    detail: string;
+    id: string;
+    kind: string;
+  }>;
+  result: string;
+  run_id: string;
+  source: string;
+  steps?: null | Array<string>;
+  storage: {
+    equal: boolean;
+    source_objects: number;
+    target_objects: number;
+  };
+  tables: null | Array<{
+    equal: boolean;
+    name: string;
+    schema: string;
+    source_rows: number;
+    target_rows: number;
+  }>;
+  untranslated_policies: null | Array<{
+    policy: string;
+    reason: string;
+    table: string;
+  }>;
+  users: {
+    equal: boolean;
+    reset_required: null | Array<{
+      email: string;
+      id: string;
+    }>;
+    source: number;
+    target: number;
+  };
+  wrote: boolean;
+}
+
+export type DbImportNselfFlags = {
+  /** Keep the private portable bundle after a successful import */
+  "keep-stage"?: boolean;
+  /** Check source and target and print the import plan without writing */
+  plan?: boolean;
+  /** Exempt each storage object from this import */
+  "skip-storage"?: boolean;
+};
+
+/** Import and verify a portable bundle written by `nself db export` */
+export interface DbImportNselfRequest {
+  args: DbImportNselfArgs;
+  flags?: DbImportNselfFlags;
+}
+
 export type DbImportPostgresArgs = [];
 
 export interface DbImportPostgresData {
@@ -2647,6 +2748,28 @@ export interface DbMigrateData {
   }>;
 }
 
+export type DbMigrateDownArgs = [];
+
+export interface DbMigrateDownData {
+  dry_run: boolean;
+  ok: boolean;
+  target: string;
+}
+
+export type DbMigrateDownFlags = {
+  /** Revert migrations of this directory using <name>_down.sql or <name>.down.sql (default: the auto-detected directory, last migration only) */
+  "migration-dir"?: string;
+  /** With --migration-dir: number of most recent migrations to revert, each in its own transaction */
+  steps?: number;
+};
+
+/** Revert last migration */
+export interface DbMigrateDownRequest {
+  args?: DbMigrateDownArgs;
+  flags?: DbMigrateDownFlags;
+  confirm?: string;
+}
+
 export type DbMigrateFlags = {
   /** Migrate specific plugin schema */
   plugin?: string;
@@ -2857,6 +2980,26 @@ export type DbPitrFlags = Record<string, never>;
 export interface DbPitrRequest {
   args?: DbPitrArgs;
   flags?: DbPitrFlags;
+}
+
+export type DbPitrRestoreArgs = [];
+
+export interface DbPitrRestoreData {
+  dry_run: boolean;
+  ok: boolean;
+  target: string;
+}
+
+export type DbPitrRestoreFlags = {
+  /** Target time in RFC3339 format (e.g. 2024-01-15T14:30:00Z) */
+  target?: string;
+};
+
+/** Restore database to a point in time (--target RFC3339) */
+export interface DbPitrRestoreRequest {
+  args?: DbPitrRestoreArgs;
+  flags?: DbPitrRestoreFlags;
+  confirm?: string;
 }
 
 export type DbPitrStatusArgs = [];
@@ -4214,6 +4357,28 @@ export type UpdateProjectFromV099Flags = {
 export interface UpdateProjectFromV099Request {
   args?: UpdateProjectFromV099Args;
   flags?: UpdateProjectFromV099Flags;
+}
+
+export type UpdateProjectRollbackArgs = [];
+
+export interface UpdateProjectRollbackData {
+  dry_run: boolean;
+  ok: boolean;
+  target: string;
+}
+
+export type UpdateProjectRollbackFlags = {
+  /** Specific backup timestamp to restore (e.g. 20260328-143022) */
+  backup?: string;
+  /** List available backups with timestamps and sizes */
+  list?: boolean;
+};
+
+/** Restore a v1 backup created by migrate run */
+export interface UpdateProjectRollbackRequest {
+  args?: UpdateProjectRollbackArgs;
+  flags?: UpdateProjectRollbackFlags;
+  confirm?: string;
 }
 
 export type UpdateProjectRunArgs = [];

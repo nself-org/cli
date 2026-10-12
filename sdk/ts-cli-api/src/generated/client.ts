@@ -24,6 +24,8 @@ export interface Operations {
   backupPitrDisable(request?: T.BackupPitrDisableRequest, options?: CallOptions): Promise<T.BackupPitrDisableData>;
   /** Configure WAL archiving and enable PITR (POST /v1/commands/backup/pitr/enable) */
   backupPitrEnable(request?: T.BackupPitrEnableRequest, options?: CallOptions): Promise<T.BackupPitrEnableData>;
+  /** Restore database to a specific point in time (POST /v1/commands/backup/pitr/restore) */
+  backupPitrRestore(request?: T.BackupPitrRestoreRequest, options?: CallOptions): Promise<T.BackupPitrRestoreData>;
   /** Show PITR retention window, segment count, and latest WAL timestamp (POST /v1/commands/backup/pitr/status) */
   backupPitrStatus(request?: T.BackupPitrStatusRequest, options?: CallOptions): Promise<T.BackupPitrStatusData>;
   /** Remove old backups by retention policy (POST /v1/commands/backup/prune) */
@@ -210,6 +212,8 @@ export interface Operations {
   dbHasuraValidate(request?: T.DbHasuraValidateRequest, options?: CallOptions): Promise<T.DbHasuraValidateData>;
   /** Generate nSelf migration artifacts from a Firebase export (POST /v1/commands/db/import/firebase) */
   dbImportFirebase(request?: T.DbImportFirebaseRequest, options?: CallOptions): Promise<T.DbImportFirebaseData>;
+  /** Import and verify a portable bundle written by `nself db export` (POST /v1/commands/db/import/nself) */
+  dbImportNself(request: T.DbImportNselfRequest, options?: CallOptions): Promise<T.DbImportNselfData>;
   /** Import and verify data from postgres (POST /v1/commands/db/import/postgres) */
   dbImportPostgres(request?: T.DbImportPostgresRequest, options?: CallOptions): Promise<T.DbImportPostgresData>;
   /** Migrate a Supabase project to nSelf (POST /v1/commands/db/import/supabase) */
@@ -228,6 +232,8 @@ export interface Operations {
   dbMigrateBaseline(request: T.DbMigrateBaselineRequest, options?: CallOptions): Promise<T.DbMigrateBaselineData>;
   /** Create new migration file (POST /v1/commands/db/migrate/create) */
   dbMigrateCreate(request: T.DbMigrateCreateRequest, options?: CallOptions): Promise<T.DbMigrateCreateData>;
+  /** Revert last migration (POST /v1/commands/db/migrate/down) */
+  dbMigrateDown(request?: T.DbMigrateDownRequest, options?: CallOptions): Promise<T.DbMigrateDownData>;
   /** Generate a SQL migration from a natural-language description (POST /v1/commands/db/migrate/generate) */
   dbMigrateGenerate(request: T.DbMigrateGenerateRequest, options?: CallOptions): Promise<T.DbMigrateGenerateData>;
   /** Check and optionally rewrite a migration file to be idempotent (POST /v1/commands/db/migrate/idempotent) */
@@ -248,6 +254,8 @@ export interface Operations {
   dbPitr(request?: T.DbPitrRequest, options?: CallOptions): Promise<T.DbPitrData>;
   /** Write PITR configuration to .nself/pitr/ (POST /v1/commands/db/pitr/enable) */
   dbPitrEnable(request?: T.DbPitrEnableRequest, options?: CallOptions): Promise<T.DbPitrEnableData>;
+  /** Restore database to a point in time (--target RFC3339) (POST /v1/commands/db/pitr/restore) */
+  dbPitrRestore(request?: T.DbPitrRestoreRequest, options?: CallOptions): Promise<T.DbPitrRestoreData>;
   /** Show PITR/WAL archiving status (POST /v1/commands/db/pitr/status) */
   dbPitrStatus(request?: T.DbPitrStatusRequest, options?: CallOptions): Promise<T.DbPitrStatusData>;
   /** Verify WAL archiving is working (POST /v1/commands/db/pitr/test) */
@@ -358,6 +366,8 @@ export interface Operations {
   updateProjectFromBash(request?: T.UpdateProjectFromBashRequest, options?: CallOptions): Promise<T.UpdateProjectFromBashData>;
   /** Migrate v0.9.9 home-level state (license key, channel, ssh keys) to v1.x layout (POST /v1/commands/update/project/from-v099) */
   updateProjectFromV099(request?: T.UpdateProjectFromV099Request, options?: CallOptions): Promise<T.UpdateProjectFromV099Data>;
+  /** Restore a v1 backup created by migrate run (POST /v1/commands/update/project/rollback) */
+  updateProjectRollback(request?: T.UpdateProjectRollbackRequest, options?: CallOptions): Promise<T.UpdateProjectRollbackData>;
   /** Migrate v1 project to v2 (POST /v1/commands/update/project/run) */
   updateProjectRun(request?: T.UpdateProjectRunRequest, options?: CallOptions): Promise<T.UpdateProjectRunData>;
   /** Upgrade the stack with a verified backup and resumable steps (POST /v1/commands/update/stack) */
@@ -376,6 +386,7 @@ export function createOperations(transport: Transport): Operations {
     backupPitrBaseBackup: (request, options) => transport.call<T.BackupPitrBaseBackupData>("/v1/commands/backup/pitr/base-backup", request, options),
     backupPitrDisable: (request, options) => transport.call<T.BackupPitrDisableData>("/v1/commands/backup/pitr/disable", request, options),
     backupPitrEnable: (request, options) => transport.call<T.BackupPitrEnableData>("/v1/commands/backup/pitr/enable", request, options),
+    backupPitrRestore: (request, options) => transport.call<T.BackupPitrRestoreData>("/v1/commands/backup/pitr/restore", request, options),
     backupPitrStatus: (request, options) => transport.call<T.BackupPitrStatusData>("/v1/commands/backup/pitr/status", request, options),
     backupPrune: (request, options) => transport.call<T.BackupPruneData>("/v1/commands/backup/prune", request, options),
     backupRestore: (request, options) => transport.call<T.BackupRestoreData>("/v1/commands/backup/restore", request, options),
@@ -469,6 +480,7 @@ export function createOperations(transport: Transport): Operations {
     dbHasuraSync: (request, options) => transport.call<T.DbHasuraSyncData>("/v1/commands/db/hasura/sync", request, options),
     dbHasuraValidate: (request, options) => transport.call<T.DbHasuraValidateData>("/v1/commands/db/hasura/validate", request, options),
     dbImportFirebase: (request, options) => transport.call<T.DbImportFirebaseData>("/v1/commands/db/import/firebase", request, options),
+    dbImportNself: (request, options) => transport.call<T.DbImportNselfData>("/v1/commands/db/import/nself", request, options),
     dbImportPostgres: (request, options) => transport.call<T.DbImportPostgresData>("/v1/commands/db/import/postgres", request, options),
     dbImportSupabase: (request, options) => transport.call<T.DbImportSupabaseData>("/v1/commands/db/import/supabase", request, options),
     dbLint: (request, options) => transport.call<T.DbLintData>("/v1/commands/db/lint", request, options),
@@ -478,6 +490,7 @@ export function createOperations(transport: Transport): Operations {
     dbMigrateAudit: (request, options) => transport.call<T.DbMigrateAuditData>("/v1/commands/db/migrate/audit", request, options),
     dbMigrateBaseline: (request, options) => transport.call<T.DbMigrateBaselineData>("/v1/commands/db/migrate/baseline", request, options),
     dbMigrateCreate: (request, options) => transport.call<T.DbMigrateCreateData>("/v1/commands/db/migrate/create", request, options),
+    dbMigrateDown: (request, options) => transport.call<T.DbMigrateDownData>("/v1/commands/db/migrate/down", request, options),
     dbMigrateGenerate: (request, options) => transport.call<T.DbMigrateGenerateData>("/v1/commands/db/migrate/generate", request, options),
     dbMigrateIdempotent: (request, options) => transport.call<T.DbMigrateIdempotentData>("/v1/commands/db/migrate/idempotent", request, options),
     dbMigrateLint: (request, options) => transport.call<T.DbMigrateLintData>("/v1/commands/db/migrate/lint", request, options),
@@ -488,6 +501,7 @@ export function createOperations(transport: Transport): Operations {
     dbPgbouncerStatus: (request, options) => transport.call<T.DbPgbouncerStatusData>("/v1/commands/db/pgbouncer/status", request, options),
     dbPitr: (request, options) => transport.call<T.DbPitrData>("/v1/commands/db/pitr", request, options),
     dbPitrEnable: (request, options) => transport.call<T.DbPitrEnableData>("/v1/commands/db/pitr/enable", request, options),
+    dbPitrRestore: (request, options) => transport.call<T.DbPitrRestoreData>("/v1/commands/db/pitr/restore", request, options),
     dbPitrStatus: (request, options) => transport.call<T.DbPitrStatusData>("/v1/commands/db/pitr/status", request, options),
     dbPitrTest: (request, options) => transport.call<T.DbPitrTestData>("/v1/commands/db/pitr/test", request, options),
     dbReconcile: (request, options) => transport.call<T.DbReconcileData>("/v1/commands/db/reconcile", request, options),
@@ -543,6 +557,7 @@ export function createOperations(transport: Transport): Operations {
     updateProjectDetect: (request, options) => transport.call<T.UpdateProjectDetectData>("/v1/commands/update/project/detect", request, options),
     updateProjectFromBash: (request, options) => transport.call<T.UpdateProjectFromBashData>("/v1/commands/update/project/from-bash", request, options),
     updateProjectFromV099: (request, options) => transport.call<T.UpdateProjectFromV099Data>("/v1/commands/update/project/from-v099", request, options),
+    updateProjectRollback: (request, options) => transport.call<T.UpdateProjectRollbackData>("/v1/commands/update/project/rollback", request, options),
     updateProjectRun: (request, options) => transport.call<T.UpdateProjectRunData>("/v1/commands/update/project/run", request, options),
     updateStack: (request, options) => transport.call<T.UpdateStackData>("/v1/commands/update/stack", request, options),
   };
