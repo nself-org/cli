@@ -361,10 +361,11 @@ same confd-before.manifest confd-after.manifest
 [[ ! -e $W/a/.nself/plugins/traefik ]] || { echo 'FAIL: refused add left the traefik plugin installed' >&2; exit 1; }
 rm "$W/a/nginx/conf.d/shadow.conf"
 swap_started=1
+# Probe auth /healthz: it has no rate limit, while hasura's 100/min bucket would answer 429 to a 20/s probe.
 (
   while :; do
     timestamp=$(epoch_ms)
-    status=$(curl --silent --noproxy '*' -k --max-time 1 --resolve 'hasura.proxy.test:443:127.0.0.1' -o /dev/null -w '%{http_code}' https://hasura.proxy.test/v1/version) || status=000
+    status=$(curl --silent --noproxy '*' -k --max-time 1 --resolve 'auth.proxy.test:443:127.0.0.1' -o /dev/null -w '%{http_code}' https://auth.proxy.test/healthz) || status=000
     printf '%s %s\n' "$timestamp" "$status"
     sleep .05
   done
@@ -381,7 +382,7 @@ fi
 wait_healthy traefik
 recovered=0
 for _ in $(seq 1 60); do
-  status=$(curl --silent --noproxy '*' -k --max-time 1 --resolve 'hasura.proxy.test:443:127.0.0.1' -o /dev/null -w '%{http_code}' https://hasura.proxy.test/v1/version) || status=000
+  status=$(curl --silent --noproxy '*' -k --max-time 1 --resolve 'auth.proxy.test:443:127.0.0.1' -o /dev/null -w '%{http_code}' https://auth.proxy.test/healthz) || status=000
   if [[ $status == 2?? ]]; then recovered=1; break; fi
   sleep .05
 done
