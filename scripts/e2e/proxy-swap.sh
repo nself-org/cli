@@ -322,6 +322,9 @@ fi
 cat "$W/evidence/prod-plan.stdout" "$W/evidence/prod-plan.stderr" > "$W/evidence/plan-sample.txt"
 # RenderHuman currently omits added services and orphan removals from add's plan.
 # Preserve that sample and supplement it with the supported read-only diff verb.
+# A refused add removes its plugin again, so unpack the fixture archive to plan against it.
+mkdir -p "$W/a/.nself/plugins/traefik"
+tar -xzf "$W/registry/plugins/traefik/tarball" -C "$W/a/.nself/plugins/traefik"
 nself "$W/a" build --plan --diff --remove-orphans > "$W/evidence/plan-diff.txt" 2>&1
 grep -Eq '^-[[:space:]]+nginx:' "$W/evidence/plan-diff.txt"
 grep -Eq '^\+.*[/]traefik/docker-compose[.]plugin[.]yml' "$W/evidence/plan-diff.txt"
@@ -336,10 +339,9 @@ for line in pathlib.Path(sys.argv[1]).read_text().splitlines():
 PY
 grep -q '^planned added service traefik ' "$W/evidence/planned-services.txt"
 grep -q '^planned added service traefik-config ' "$W/evidence/planned-services.txt"
+rm -rf "$W/a/.nself/plugins/traefik"
 manifest "$W/a" prod-after.manifest
 same prod-before.manifest prod-after.manifest
-# Remove through the CLI without V15 reconciliation while the fixture is prod.
-NSELF_V15=0 nself "$W/a" remove traefik
 python3 - "$W/a/.env" <<'PY'
 import pathlib,sys
 p=pathlib.Path(sys.argv[1]); p.write_text(p.read_text().replace('ENV=prod','ENV=dev'))
@@ -355,7 +357,8 @@ if [[ $rc != 1 ]] || ! grep -q E481 "$W/evidence/confd.stderr"; then
 fi
 manifest "$W/a" confd-after.manifest
 same confd-before.manifest confd-after.manifest
-NSELF_V15=0 nself "$W/a" remove traefik
+# The refused add removed its plugin again.
+[[ ! -e $W/a/.nself/plugins/traefik ]] || { echo 'FAIL: refused add left the traefik plugin installed' >&2; exit 1; }
 rm "$W/a/nginx/conf.d/shadow.conf"
 swap_started=1
 (
