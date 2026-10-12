@@ -33,7 +33,7 @@ mk_bump_env() {
 #!/usr/bin/env bash
 echo "UPDATE_GOLDEN=${UPDATE_GOLDEN:-} $*" >> "$GO_LOG"
 [ "${STUB_GO_FAIL_PLAIN:-}" = 1 ] && [ -z "${UPDATE_GOLDEN:-}" ] && exit 1
-if [ "${UPDATE_GOLDEN:-}" = 1 ]; then
+if [ "${UPDATE_GOLDEN:-}" = 1 ] && [ "${STUB_GO_NOOP:-}" != 1 ]; then
   for g in $GOLD_PATHS; do
     sed "s/build-version $OLDH/build-version $NEWH/" "$GOLD_ROOT/$g" > "$GOLD_ROOT/$g.new"
     [ "${STUB_GO_DRIFT:-}" = 1 ] && sed 's/other keep/other changed/' "$GOLD_ROOT/$g.new" > "$GOLD_ROOT/$g.new2" && mv "$GOLD_ROOT/$g.new2" "$GOLD_ROOT/$g.new"
@@ -82,6 +82,25 @@ for mode in DELETE MODE EXTRA; do
   check "$mode of a build-version line restored the goldens" gold_all "build-version $OLDH"
   rm -rf "$B"
 done
+
+# 14c. a golden test that did not regenerate anything (renamed or skipped) fails the bump --
+mk_bump_env
+export STUB_GO_NOOP=1; run_bump 9.9.9; unset STUB_GO_NOOP
+check "no-op golden regeneration exits 1" test "$RC" -eq 1
+check "no-op golden regeneration is named" grep -q 'did not change although the version moved 1.4.13 -> 9.9.9' "$B/err"
+rm -rf "$B"
+# re-running a bump at the version already in place leaves the goldens alone and passes
+mk_bump_env
+run_bump 9.9.9; run_bump 9.9.9
+check "re-running the same bump exits 0" test "$RC" -eq 0
+check "re-running the same bump keeps the new goldens" gold_all "build-version $NEWH"
+rm -rf "$B"
+
+# 14d. the caller's UPDATE_GOLDEN does not reach the plain re-run
+mk_bump_env
+export UPDATE_GOLDEN=1; run_bump 9.9.9; unset UPDATE_GOLDEN
+check "exported UPDATE_GOLDEN: plain runs stay plain" test "$(grep -c '^UPDATE_GOLDEN= test' "$GO_LOG")" -eq 2
+rm -rf "$B"
 
 # 15. a red plain run after regeneration fails the bump ------------------------------------
 mk_bump_env

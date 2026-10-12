@@ -110,6 +110,8 @@ fi
 # ── File paths ────────────────────────────────────────────────────────────────
 
 VERSION_FILE="${REPO_ROOT}/.github/VERSION"
+# The version before this run edits anything: the golden step needs it (see update_goldens).
+OLD_VERSION="$(tr -d '[:space:]' < "${VERSION_FILE}" 2>/dev/null || true)"
 VERSION_GO="${REPO_ROOT}/internal/version/version.go"
 SDK_GO="${REPO_ROOT}/sdk/go/doc.go"
 SDK_TS="${REPO_ROOT}/sdk/ts/package.json"
@@ -461,10 +463,13 @@ GOLDEN_FILES=(
 
 # golden_tests [VAR=value...]: the two tests that own the goldens (the second
 # one reads internal/reconcile/testdata/fixtures/dev-minimal/golden-tree.txt).
+# The caller's UPDATE_GOLDEN and NSELF_L03_REF_BIN are cleared first: an exported
+# UPDATE_GOLDEN would turn the plain re-run into a second rewrite, and a reference
+# binary would regenerate the goldens for the old version.
 golden_tests() {
   (cd "${REPO_ROOT}" \
-    && env "$@" go test -count=1 ./internal/build -run 'TestWriteModeGolden$' \
-    && env "$@" go test -count=1 ./cmd/commands -run 'TestBuildPlanDevGolden$')
+    && env -u UPDATE_GOLDEN -u NSELF_L03_REF_BIN "$@" go test -count=1 ./internal/build -run 'TestWriteModeGolden$' \
+    && env -u UPDATE_GOLDEN -u NSELF_L03_REF_BIN "$@" go test -count=1 ./cmd/commands -run 'TestBuildPlanDevGolden$')
 }
 
 # mask_version_hash FILE: FILE with the hash on each `.nself/build-version` line replaced by HASH.
@@ -523,6 +528,12 @@ update_goldens() {
       exit 1
     fi
     if cmp -s "${GOLD_BAK}/${n}" "${REPO_ROOT}/${g}"; then
+      # The hash covers the version, so an unchanged golden after a version move means the
+      # test did not run (renamed, or skipped under -short): fail, never pass silently.
+      if [ "${OLD_VERSION}" != "${NEW_VERSION}" ]; then
+        printf 'ERROR: %s did not change although the version moved %s -> %s; the golden test did not regenerate it (renamed or skipped?).\n' "${g}" "${OLD_VERSION}" "${NEW_VERSION}" >&2
+        exit 1
+      fi
       printf '  SKIP  %s  (build-version hash unchanged)\n' "${g}"
     else
       printf '  %-60s  build-version hash -> %s\n' "${g}" "${NEW_VERSION}"
