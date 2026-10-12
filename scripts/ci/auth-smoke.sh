@@ -142,9 +142,15 @@ HASURA_URL="http://127.0.0.1:8080"
 RC=0
 # nsf <args...>: run nself in the project; stdout $WORK/out, stderr $WORK/err, status $RC.
 nsf() {
+  local dh=""
   RC=0
-  (umask 022; cd "$PDIR" && env NSELF_V15=1 NSELF_CMD_LOG_ENABLED=false AI_AUTO_INSTALL=false HOME="$WORK/home" \
-    DOCKER_CONFIG="${DOCKER_CONFIG:-$REAL_HOME/.docker}" "$BIN" "$@" > "$WORK/out" 2> "$WORK/err" < /dev/null) || RC=$?
+  if [ -n "${DOCKER_HOST:-}" ]; then dh="DOCKER_HOST=$DOCKER_HOST"; fi
+  # The caller's environment never steers nself at another stack: env -i plus a fixed
+  # allow-list (a db reset aimed at someone's own project would be destructive).
+  # shellcheck disable=SC2086
+  (umask 022; cd "$PDIR" && env -i PATH="$PATH" HOME="$WORK/home" TMPDIR="${TMPDIR:-/tmp}" \
+    DOCKER_CONFIG="${DOCKER_CONFIG:-$REAL_HOME/.docker}" $dh NSELF_V15=1 NSELF_CMD_LOG_ENABLED=false \
+    AI_AUTO_INSTALL=false LANG="${LANG:-C}" "$BIN" "$@" > "$WORK/out" 2> "$WORK/err" < /dev/null) || RC=$?
 }
 nsf_tail() { { tail -n 6 "$WORK/err"; tail -n 4 "$WORK/out"; } | redact | tr '\n' '|'; }
 
@@ -216,6 +222,7 @@ next_window() { python3 -c 'import time;time.sleep(30 - time.time() % 30 + 1)'; 
 # then /signin/mfa/totp must issue a session. A second attempt in the next 30 s
 # window rules out a rejected replay of the code used just before. Sets MFA_WHY.
 MFA_WHY=""
+MFA_STAGE=""
 totp_signin() {
   local email="$1" sf="$2" ticket code try
   try=0
@@ -223,6 +230,7 @@ totp_signin() {
     signin "$email"
     ticket="$(jv 'd["mfa"]["ticket"]')"
     if [ "$HTTP" != 200 ] || [ -z "$ticket" ]; then
+      MFA_STAGE=password
       MFA_WHY="password sign-in gave no MFA ticket ($(why))"
       return 1
     fi
@@ -230,6 +238,7 @@ totp_signin() {
     jbody '{"ticket":"%s","otp":"%s"}' "$ticket" "$code"; call POST "$AUTH_URL/signin/mfa/totp"
     sign_in_out
     if have_session; then MFA_WHY="ok"; return 0; fi
+    MFA_STAGE=totp
     MFA_WHY="TOTP step refused ($(why))"
     try=$((try + 1))
     if [ "$try" -lt 2 ]; then next_window; fi
@@ -297,6 +306,11 @@ step "1 new project, auth-v14"
 nsf init --non-interactive --name "$PROJECT" --domain local.nself.org --no-pgvector
 [ "$RC" -eq 0 ] || fatal "nself init --non-interactive exits 0" "rc=$RC $(nsf_tail)"
 pass "nself init --non-interactive exits 0"
+if [ "$(grep -c "^PROJECT_NAME=$PROJECT\$" "$PDIR/.env")" -eq 1 ]; then
+  pass "project .env names PROJECT_NAME=$PROJECT"
+else
+  fatal "project .env names PROJECT_NAME=$PROJECT" "refusing to continue: the project is not the one this run created"
+fi
 printf 'AUTH_MFA_ENABLED=true\n' >> "$PDIR/.env"
 check "project .env has no AUTH_ENCRYPTION_KEY" test "$(grep -c '^AUTH_ENCRYPTION_KEY' "$PDIR/.env")" -eq 0
 nsf build
@@ -389,10 +403,10 @@ RT_NEW="$(jv 'd["refreshToken"]')"
 if [ "$HTTP" = 200 ] && [ -n "$RT_NEW" ] && [ "$RT_NEW" != "$A_RT_OLD" ]; then
   pass "auth: pre-upgrade refresh token on /token is accepted once and a NEW refresh token is returned"
   jbody '{"refreshToken":"%s"}' "$A_RT_OLD"; call POST "$AUTH_URL/token"
-  if [ "$HTTP" != 200 ]; then
-    pass "auth: the old refresh token is rejected after rotation ($(why))"
+  if [ "$HTTP" = 401 ] && [ "$(jv 'd.get("error")')" = invalid-refresh-token ]; then
+    pass "auth: the old refresh token is rejected after rotation (http=401 invalid-refresh-token)"
   else
-    fail "auth: the old refresh token is rejected after rotation" "second use of the old token answered http=$HTTP"
+    fail "auth: the old refresh token is rejected after rotation" "expected 401 invalid-refresh-token, observed $(why)"
   fi
   jbody '{"refreshToken":"%s"}' "$RT_NEW"; call POST "$AUTH_URL/token"
   if [ "$HTTP" = 200 ]; then pass "auth: the rotated refresh token works"; else fail "auth: the rotated refresh token works" "$(why)"; fi
@@ -411,33 +425,31 @@ if have_session; then pass "auth: new user C signs in"; else fail "auth: new use
 step "6 pin back to auth-v14 without restoring"
 set_pin "$REF_V14"
 # nself update is not merged (P7-LIVE-10): the pin edit above is its stand-in.
-BREAK=""
+# PASS only when everything but the TOTP step is healthy and the TOTP step is refused
+# with the observed answer (HTTP 401, error invalid-otp). Anything else is a FAIL.
 nsf build
 if [ "$RC" -ne 0 ]; then
-  BREAK="nself build refused the pin ($(nsf_tail))"
+  fail "pin-back-without-restore-is-unsupported" "nself build failed, rc=$RC $(nsf_tail)"
 else
   nsf start
   if [ "$RC" -ne 0 ]; then
-    BREAK="nself start failed, rc=$RC"
+    fail "pin-back-without-restore-is-unsupported" "nself start failed, rc=$RC $(nsf_tail)"
   elif ! wait_stack; then
-    BREAK="auth-v14 is unhealthy on the migrated database"
+    fail "pin-back-without-restore-is-unsupported" "the stack is unhealthy on auth-v14"
   elif [ "$(running_auth_image)" != "$REF_V14" ]; then
-    BREAK="auth container did not return to the auth-v14 image"
+    fail "pin-back-without-restore-is-unsupported" "running auth image is '$(running_auth_image)', not the auth-v14 ref"
   else
     signin "$EMAIL_A"
     if ! have_session; then
-      BREAK="A's password sign-in fails on auth-v14 ($(why))"
+      fail "pin-back-without-restore-is-unsupported" "A's password sign-in fails on auth-v14 ($(why))"
     elif totp_signin "$EMAIL_B" "$WORK/b.totp"; then
-      BREAK=""
+      fail "pin-back-without-restore-is-unsupported" "no breakage observed: B's TOTP sign-in worked on auth-v14 after the migration"
+    elif [ "$MFA_STAGE" = totp ] && [ "$HTTP" = 401 ] && [ "$(jv 'd.get("error")')" = invalid-otp ]; then
+      pass "pin-back-without-restore-is-unsupported (A signs in; B's TOTP step is refused on auth-v14: http=401 invalid-otp)"
     else
-      BREAK="B's TOTP sign-in fails on auth-v14: $MFA_WHY"
+      fail "pin-back-without-restore-is-unsupported" "expected the TOTP step to answer 401 invalid-otp; observed stage=$MFA_STAGE $MFA_WHY"
     fi
   fi
-fi
-if [ -n "$BREAK" ]; then
-  pass "pin-back-without-restore-is-unsupported ($(printf '%s' "$BREAK" | redact | cut -c1-160))"
-else
-  fail "pin-back-without-restore-is-unsupported" "no breakage observed: B's TOTP sign-in worked on auth-v14 after the migration"
 fi
 
 # ---- step 7: rollback, supported (restore the pre-switch backup) ---------------------
@@ -451,12 +463,20 @@ if [ "$RC" -eq 0 ]; then
   pass "restore: nself backup restore --only pg --yes exits 0 on the migrated database"
 else
   # Observed limit: pg_restore --clean cannot drop auth.users while objects that the
-  # newer auth release added still depend on it. The supported path then needs a
-  # reset database (nself db reset --yes: drop, create, re-initialise schemas and
-  # extensions; it runs no migrations or seeds). The plain failure is asserted as
-  # observed, not hidden.
+  # newer auth release added still depend on it. The plain failure is asserted as
+  # observed (E207 or the "cannot drop" reason), not hidden. Only then is the database
+  # reset with the CLI (nself db reset --yes: drop, create, re-initialise schemas and
+  # extensions; it runs no migrations or seeds) and the restore repeated.
   RESTORE_E="$(grep -o 'E207' "$WORK/err" | head -1)"
-  RESTORE_WHY="$(tr '|' '\n' < "$WORK/err" | grep -o 'cannot drop [a-z ]*[a-z._]* because other objects depend on it' | head -1)"
+  RESTORE_WHY="$(grep -o 'cannot drop [a-z ]*[a-z._]* because other objects depend on it' "$WORK/err" | head -1)"
+  if [ -z "$RESTORE_E" ] && [ -z "$RESTORE_WHY" ]; then
+    fatal "plain restore failed for the expected reason (E207 / cannot drop)" "rc=$RC observed: $(nsf_tail)"
+  fi
+  # The reset target must be this run's own postgres.
+  if [ "$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "${PROJECT}_postgres" 2>/dev/null)" != "$PROJECT" ]; then
+    fatal "db reset target ${PROJECT}_postgres carries this run's compose project label" "refusing to run nself db reset"
+  fi
+  pass "db reset target ${PROJECT}_postgres carries this run's compose project label"
   nsf db reset --yes
   if [ "$RC" -eq 0 ]; then pass "restore: nself db reset --yes exits 0"; else fail "restore: nself db reset --yes exits 0" "rc=$RC $(nsf_tail)"; fi
   nsf backup restore "$BID" --only pg --yes
@@ -476,7 +496,7 @@ signin "$EMAIL_A"
 if have_session; then pass "restore: user A signs in"; else fail "restore: user A signs in" "$(why)"; fi
 hdr a3 "$TOK"
 hasura "$WORK/auth.a3"
-if [ "$HASURA_OK" = 1 ]; then pass "restore: Hasura accepts A's JWT (metadata restored)"; else fail "restore: Hasura accepts A's JWT (metadata restored)" "$(why)"; fi
+if [ "$HASURA_OK" = 1 ]; then pass "restore: Hasura accepts A's JWT"; else fail "restore: Hasura accepts A's JWT" "$(why)"; fi
 if [ "$(db_secret_is_plain)" = t ]; then pass "restore: B's TOTP secret is plaintext again"; else fail "restore: B's TOTP secret is plaintext again" "psql answered '$(db_secret_is_plain)'"; fi
 if totp_signin "$EMAIL_B" "$WORK/b.totp"; then pass "restore: B's TOTP sign-in works again"; else fail "restore: B's TOTP sign-in works again" "$MFA_WHY"; fi
 signin "$EMAIL_C"
