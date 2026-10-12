@@ -89,7 +89,9 @@ PDIR="$WORK/project"
 cleanup() {
   local ids
   ids="$(docker ps -aq --filter "label=com.docker.compose.project=$PROJECT" 2>/dev/null)"
-  ids="$ids $(docker ps -aq --filter "name=^${PROJECT}_" 2>/dev/null)"
+  # backup verify --restore-test starts ${PROJECT}_pg_restore_test without a compose
+  # label: remove exactly that name, nothing else matched by prefix.
+  ids="$ids $(docker ps -aq --filter "name=^${PROJECT}_pg_restore_test\$" 2>/dev/null)"
   # shellcheck disable=SC2086
   if [ -n "${ids// /}" ]; then docker rm -f -v $ids >/dev/null 2>&1; fi
   ids="$(docker volume ls -q --filter "label=com.docker.compose.project=$PROJECT" 2>/dev/null)"
@@ -464,13 +466,13 @@ if [ "$RC" -eq 0 ]; then
 else
   # Observed limit: pg_restore --clean cannot drop auth.users while objects that the
   # newer auth release added still depend on it. The plain failure is asserted as
-  # observed (E207 or the "cannot drop" reason), not hidden. Only then is the database
+  # observed (E207 with the "cannot drop" reason), not hidden. Only then is the database
   # reset with the CLI (nself db reset --yes: drop, create, re-initialise schemas and
   # extensions; it runs no migrations or seeds) and the restore repeated.
   RESTORE_E="$(grep -o 'E207' "$WORK/err" | head -1)"
   RESTORE_WHY="$(grep -o 'cannot drop [a-z ]*[a-z._]* because other objects depend on it' "$WORK/err" | head -1)"
-  if [ -z "$RESTORE_E" ] && [ -z "$RESTORE_WHY" ]; then
-    fatal "plain restore failed for the expected reason (E207 / cannot drop)" "rc=$RC observed: $(nsf_tail)"
+  if [ -z "$RESTORE_E" ] || [ -z "$RESTORE_WHY" ]; then
+    fatal "plain restore failed for the expected reason (E207, cannot drop)" "rc=$RC observed: $(nsf_tail)"
   fi
   # The reset target must be this run's own postgres.
   if [ "$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "${PROJECT}_postgres" 2>/dev/null)" != "$PROJECT" ]; then
@@ -481,7 +483,7 @@ else
   if [ "$RC" -eq 0 ]; then pass "restore: nself db reset --yes exits 0"; else fail "restore: nself db reset --yes exits 0" "rc=$RC $(nsf_tail)"; fi
   nsf backup restore "$BID" --only pg --yes
   if [ "$RC" -eq 0 ]; then
-    pass "restore-over-migrated-db-needs-a-db-reset (plain restore failed ${RESTORE_E:-without E207}: ${RESTORE_WHY:-no dependency detail}; after nself db reset --yes the restore exits 0)"
+    pass "restore-over-migrated-db-needs-a-db-reset (plain restore failed $RESTORE_E: $RESTORE_WHY; after nself db reset --yes the restore exits 0)"
   else
     fail "restore after nself db reset --yes exits 0" "rc=$RC $(nsf_tail)"
   fi

@@ -38,6 +38,15 @@ var (
 	authVersionRE = regexp.MustCompile(`^v?(\d+)\.(\d+)\.\d+(-[0-9A-Za-z.-]+)?$`)
 )
 
+// authTag is the tag of an image reference (digest dropped), "" when it has none.
+func authTag(ref string) string {
+	base := imageBase(ref)
+	if i := strings.LastIndex(base, ":"); i > strings.LastIndex(base, "/") {
+		return base[i+1:]
+	}
+	return ""
+}
+
 // authTagNeedsKey reports whether an explicit release tag is 0.43.0 or later.
 func authTagNeedsKey(tag string) bool {
 	m := authVersionRE.FindStringSubmatch(tag)
@@ -73,8 +82,8 @@ func AuthEntry(passthrough map[string]string) (entry string, keyMissing bool) {
 // pre-rename nhost/hasura-auth spelling is returned as is (same digest;
 // ResolveImage would drop it as another repository). Any other value is an
 // explicit nhost/auth tag and outranks the pin. The current release without a
-// valid key (for example a pin `nself update` moved) is an error, not a
-// container that crash-loops.
+// valid key, rendered or pinned at any release from 0.43.0 (for example a pin
+// `nself update` moved), is an error, not a container that crash-loops.
 func (g *Generator) authImage() (string, error) {
 	version := strings.TrimSpace(g.cfg.Auth.Version)
 	entry, keyMissing := AuthEntry(g.cfg.Passthrough)
@@ -114,8 +123,7 @@ func (g *Generator) authImage() (string, error) {
 	default:
 		image = ResolveImage("auth", ImageRef("auth-v14", version))
 	}
-	isCurrent := cur.IndexDigest != "" && strings.HasSuffix(image, "@"+cur.IndexDigest)
-	if (isCurrent || CanonicalRef(image) == CanonicalRef(cur.String())) && !authKeySet(g.cfg.Passthrough) {
+	if version == "" && authTagNeedsKey(authTag(image)) && !authKeySet(g.cfg.Passthrough) {
 		return "", fmt.Errorf("auth image %s needs %s (64 hex characters) in the env: set it in .env.secrets, or keep auth on 0.36.0 (see the Image-Lock wiki page)", imageBase(image), AuthEncryptionKeyEnv)
 	}
 	return image, nil

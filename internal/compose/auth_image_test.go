@@ -211,28 +211,30 @@ func TestAuthCatalogShowsModeEntry(t *testing.T) {
 
 func TestAuthCurrentReleaseNeedsKey(t *testing.T) {
 	cur, _ := LockedRef("auth")
-	compattest.Both(t, func(t *testing.T) {
-		for _, mode := range []string{PinningLock, PinningLegacy} {
-			setMode(t, mode)
-			captureAuthNotice(t)
-			defer SetProjectPins(map[string]string{"auth": cur.String()})() // a pin nself update moved
-			for _, key := range []string{"", "not-hex", " " + fakeAuthKey} {
-				cfg := minimalConfig()
-				cfg.Auth.Version = "0.36.0"
-				cfg.Passthrough = map[string]string{AuthEncryptionKeyEnv: key}
-				_, err := NewGenerator(cfg).buildAuthService()
-				if err == nil || !strings.Contains(err.Error(), AuthEncryptionKeyEnv) {
-					t.Errorf("%s key=%q: err = %v, want the missing-key error", mode, key, err)
+	for _, pinAt := range []string{cur.String(), "docker.io/nhost/auth:0.45.0@sha256:" + strings.Repeat("ab", 32)} {
+		compattest.Both(t, func(t *testing.T) {
+			for _, mode := range []string{PinningLock, PinningLegacy} {
+				setMode(t, mode)
+				captureAuthNotice(t)
+				defer SetProjectPins(map[string]string{"auth": pinAt})() // a pin nself update moved
+				for _, key := range []string{"", "not-hex", " " + fakeAuthKey} {
+					cfg := minimalConfig()
+					cfg.Auth.Version = "0.36.0"
+					cfg.Passthrough = map[string]string{AuthEncryptionKeyEnv: key}
+					_, err := NewGenerator(cfg).buildAuthService()
+					if err == nil || !strings.Contains(err.Error(), AuthEncryptionKeyEnv) {
+						t.Errorf("%s key=%q: err = %v, want the missing-key error", mode, key, err)
+					}
+					if err != nil && strings.Contains(err.Error(), fakeAuthKey) {
+						t.Error("the error must never echo a key")
+					}
 				}
-				if err != nil && strings.Contains(err.Error(), fakeAuthKey) {
-					t.Error("the error must never echo a key")
+				if got := authImageFor(t, "0.36.0", fakeAuthKey); got != pinAt {
+					t.Errorf("%s with key: auth image = %q, want the pin %q", mode, got, pinAt)
 				}
 			}
-			if got := authImageFor(t, "0.36.0", fakeAuthKey); got != cur.String() {
-				t.Errorf("%s with key: auth image = %q, want the pin %q", mode, got, cur.String())
-			}
-		}
-	})
+		})
+	}
 }
 
 func TestAuthTagNeedsKey(t *testing.T) {
@@ -256,5 +258,14 @@ func TestAuthExplicitNewerTagNotice(t *testing.T) {
 	authImageFor(t, "0.45.0", fakeAuthKey)
 	if quiet.Len() != 0 {
 		t.Errorf("notice printed with a key: %q", quiet.String())
+	}
+}
+
+func TestAuthTag(t *testing.T) {
+	for ref, want := range map[string]string{"docker.io/nhost/auth:0.52.0@sha256:" + strings.Repeat("ab", 32): "0.52.0",
+		"nhost/auth:0.36.0": "0.36.0", "registry:5000/nhost/auth": "", "nhost/auth@sha256:" + strings.Repeat("cd", 32): ""} {
+		if got := authTag(ref); got != want {
+			t.Errorf("authTag(%q) = %q, want %q", ref, got, want)
+		}
 	}
 }
