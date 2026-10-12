@@ -22,6 +22,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -178,7 +180,14 @@ func runPilot(t *testing.T, proj string, v15 bool, extra []string, args ...strin
 			env = append(env, kv)
 		}
 	}
-	env = append(env, "HOME="+home, "AI_AUTO_INSTALL=false", "PATH="+stub+string(os.PathListSeparator)+os.Getenv("PATH"))
+	// doctor's LIC-MIGRATION-01 check calls the ping API; point it at a loopback
+	// server so the run never depends on the real endpoint (it answers 429 under
+	// repeated runs, which made two doctor runs differ).
+	ping := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(ping.Close)
+	env = append(env, "HOME="+home, "AI_AUTO_INSTALL=false", "NSELF_PING_API_URL="+ping.URL, "PATH="+stub+string(os.PathListSeparator)+os.Getenv("PATH"))
 	if v15 {
 		env = append(env, "NSELF_V15=1")
 	}
@@ -298,7 +307,8 @@ func TestPilotJSONStatus(t *testing.T) {
 }
 
 // stableDoctor drops what legitimately differs between two runs of doctor: the
-// timestamp and the free-disk figure in the "Disk space" message.
+// timestamp and the free-disk figures in the "Disk space" message and detail
+// (the detail carries the used percent, which can tick between two runs).
 func stableDoctor(doc map[string]any) map[string]any {
 	out := withoutKeys(doc, "timestamp")
 	checks, _ := out["checks"].([]any)
@@ -306,7 +316,7 @@ func stableDoctor(doc map[string]any) map[string]any {
 	for _, c := range checks {
 		row, _ := c.(map[string]any)
 		if strings.HasPrefix(row["name"].(string), "Disk space") {
-			row = withoutKeys(row, "message")
+			row = withoutKeys(row, "message", "detail")
 		}
 		stable = append(stable, row)
 	}

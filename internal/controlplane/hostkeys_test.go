@@ -123,6 +123,10 @@ func TestReadOnlyFirstContactOnce(t *testing.T) {
 	}
 	t.Setenv("NSELF_V15", "1")
 	t.Setenv("HOME", t.TempDir())
+	// firstContact is package-global and keeps its entries for the process, so
+	// forget the host before and after: a second run (-count>1) must see a first contact.
+	firstContact.Delete("once.example")
+	t.Cleanup(func() { firstContact.Delete("once.example") })
 	bin := t.TempDir()
 	for name, script := range map[string]string{
 		"ssh-keygen":  "#!/bin/sh\nexit 1\n",

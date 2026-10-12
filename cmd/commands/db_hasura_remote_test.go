@@ -303,6 +303,9 @@ func TestDBHasuraRemotePartialFailure(t *testing.T) {
 	rt := dbRemoteTarget{SSHTarget: "fixture.invalid", RemotePath: "/project", EnvName: "staging", AllowVersionDrift: true}
 	cmd := &cobra.Command{}
 	cmd.Flags().String("message", "", "")
+	// The command is built by hand, not executed, so cobra never sets a context;
+	// V15 host-key handling passes cmd.Context() to exec and panics on nil.
+	cmd.SetContext(context.Background())
 	if err := runDBHasuraRemoteSync(cmd, rt); err == nil || calls != 1 {
 		t.Fatalf("partial failure not stopped: %v calls=%d", err, calls)
 	}
