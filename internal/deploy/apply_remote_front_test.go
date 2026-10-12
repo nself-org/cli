@@ -23,8 +23,8 @@ import (
 const (
 	frontCID  = "c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00"
 	otherCID  = "0ddba11"
-	front1    = markedConf + "# front v1\n"
-	frontNew  = markedConf + "# front v2\n"
+	front1    = markedConf + "server { server_name api.example.org; }\n# front v1\n"
+	frontNew  = markedConf + "server { server_name api.example.org; }\n# front v2\n"
 	frontOwn  = "FRONT_SECRET=1\n"
 	frontComp = "services: {nginx: {}}\n"
 )

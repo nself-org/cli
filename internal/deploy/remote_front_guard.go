@@ -120,7 +120,9 @@ func checkFrontForeign(ctx context.Context, r Remote, front, stage string, files
 		if err != nil {
 			return err
 		}
-		if theirs := serverNameSet(conf); strings.Join(theirs, " ") != strings.Join(ours, " ") {
+		// An empty set on either side is a mismatch: a snippet with only upstream or map
+		// blocks (or a shipped file without server_name) is never taken over.
+		if theirs := serverNameSet(conf); len(theirs) == 0 || len(ours) == 0 || strings.Join(theirs, " ") != strings.Join(ours, " ") {
 			return errs.New("E485", fmt.Sprintf("%q in the fronting stack is a generated file of another project: its server_name set is [%s], this deploy ships [%s]",
 				p, safeText(strings.Join(theirs, " ")), safeText(strings.Join(ours, " ")))).
 				WithFix("rename or remove the other project's file, or deploy that project instead; this project's previous deploy did not ship " + p + "; nothing was sent")

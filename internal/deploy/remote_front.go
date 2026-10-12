@@ -115,8 +115,10 @@ func (c frontContainer) checkMounts(ctx context.Context, r Remote, front, realFr
 	}
 	ok := map[string]bool{}
 	for _, root := range []string{front, realFront} {
-		if root != "" {
-			ok[path.Join(root, "nginx")], ok[path.Join(root, "nginx", "sites")] = true, true
+		for _, d := range frontDirs {
+			if root != "" {
+				ok[path.Join(root, d)] = true
+			}
 		}
 	}
 	var seen, roots []string

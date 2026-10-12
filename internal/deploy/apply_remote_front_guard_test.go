@@ -54,6 +54,28 @@ func TestFrontSiblingCollision(t *testing.T) {
 		t.Errorf("hasura.conf was not replaced: %q", got)
 	}
 
+	// An empty server_name set on either side is a mismatch: a sibling's snippet with only upstream/map blocks stays.
+	for _, c := range []struct{ name, host, ship string }{
+		{"host file without server_name", "upstream pool { server 10.0.0.1:80; }\n", "api.chat.example.org"},
+		{"shipped file without server_name", "server { server_name api.backend.example.org; }\n", ""},
+	} {
+		e := frontFixture(t)
+		if c.ship != "" {
+			e.shipSite(t, "pool.conf", c.ship)
+		} else {
+			writeFile(t, filepath.Join(e.o.Set.Front.StageDir, "nginx", "sites", "pool.conf"), markedConf, 0o644)
+			e.o.Set.Front.Files = append(e.o.Set.Front.Files, "nginx/sites/pool.conf")
+		}
+		host := e.hostSite(t, "pool.conf", markedConf+c.host)
+		if _, err := ApplyRemote(context.Background(), e.o); !e485(err) || !strings.Contains(err.Error(), "pool.conf") {
+			t.Errorf("%s: err = %v, want E485", c.name, err)
+		}
+		if !strings.Contains(readFile(t, host), c.host) {
+			t.Errorf("%s: the sibling's file was replaced", c.name)
+		}
+		e.nothingSent(t)
+	}
+
 	// A path this host's own record lists ships whatever the host file says (marked).
 	z := frontFixture(t)
 	z.shipSite(t, "hasura.conf", "api.new.example.org")
