@@ -1,1 +1,11 @@
-{"schema_version":"1","command":"db export","data":{"out":"/tmp/fake-export-bundle","tables":2,"users":3,"objects":4,"storage_note":""}}
+{
+  "schema_version": "1",
+  "command": "db export",
+  "data": {
+    "out": "/tmp/fake-export-bundle",
+    "tables": 2,
+    "users": 3,
+    "objects": 4,
+    "storage_note": ""
+  }
+}

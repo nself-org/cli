@@ -1,4 +1,5 @@
 # Authored portable-export command fragment (P7-ADOPT-17).
 schema_version: 1
 commands:
+  # internal/exporter/db.go:31 opens a read-only repeatable-read snapshot; the stack is never written (output goes to a new local dir)
   db export: {side_effect: read}
