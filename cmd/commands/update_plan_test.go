@@ -20,6 +20,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/lock"
@@ -37,6 +38,10 @@ const (
 // plugin "ai" at 1.0.0, and makes it the working directory.
 func updateProject(t *testing.T) string {
 	t.Helper()
+	// Pin v1.4: the redis row keeps its image (v1.5 moves it to valkey), so
+	// the fixture does not depend on the ambient NSELF_V15. Tests of the v1.5
+	// behaviour call compattest.Set(t, true) after this.
+	compattest.Set(t, false)
 	ref, ok := compose.LockedRef(updSvc)
 	if !ok {
 		t.Fatalf("image lock has no %q entry", updSvc)

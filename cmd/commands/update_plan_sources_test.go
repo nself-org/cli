@@ -63,6 +63,7 @@ func TestUpdatePlanTierPair(t *testing.T) {
 	}
 	for _, tc := range []struct{ tier, want string }{{lock.TierFree, "1.0.0"}, {lock.TierLicensed, "1.1.2"}} {
 		updateProject(t)
+		compattest.Set(t, true) // after updateProject, which pins v1.4
 		r := newUpdateRecorder(t)
 		r.reg = reg
 		l, err := lock.Load(".")

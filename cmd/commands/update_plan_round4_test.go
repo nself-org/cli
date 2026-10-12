@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -76,8 +77,11 @@ func TestUpdateYesPrimesRegistryCache(t *testing.T) {
 	if seen != "2.0.0" {
 		t.Fatalf("the plugin step resolved ai %q, want the planned 2.0.0 (stale cache held 1.0.0)", seen)
 	}
-	if st, err := os.Stat(cacheFile); err != nil || st.Mode().Perm() != 0o600 {
-		t.Fatalf("cache file mode = %v err = %v, want 0600", st.Mode().Perm(), err)
+	// Windows has no POSIX permission bits (it reads back 0666).
+	if runtime.GOOS != "windows" {
+		if st, err := os.Stat(cacheFile); err != nil || st.Mode().Perm() != 0o600 {
+			t.Fatalf("cache file mode = %v err = %v, want 0600", st.Mode().Perm(), err)
+		}
 	}
 }
 
@@ -159,8 +163,8 @@ func TestUpdatePlanCacheEngineFromConfig(t *testing.T) {
 		want compose.Ref
 	}{{"", vk}, {"redis", rd}, {"valkey", vk}} {
 		t.Run("REDIS_ENGINE="+tc.eng, func(t *testing.T) {
-			compattest.Set(t, true)
 			updateProject(t)
+			compattest.Set(t, true) // after updateProject, which pins v1.4
 			t.Setenv("REDIS_ENGINE", tc.eng)
 			newUpdateRecorder(t)
 			l, err := lock.Load(".")
@@ -194,6 +198,7 @@ func TestUpdatePlanCacheEngineFromConfig(t *testing.T) {
 // A 200 whose body does not parse is an error from the one request: the strict
 // registry never retries on the network or the fallback host.
 func TestUpdateStrictRegistryBadBodyNoFallback(t *testing.T) {
+	compattest.Set(t, false)
 	var hits int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		atomic.AddInt32(&hits, 1)
@@ -237,8 +242,8 @@ func TestUpdateCheckWithYesOrPlanIsUsageError(t *testing.T) {
 // The update schema accepts an engine-switch envelope: a redis pin moving to
 // valkey carries the optional note, in data.pins and in the images step.
 func TestUpdateEngineSwitchEnvelopeMatchesSchema(t *testing.T) {
-	compattest.Set(t, true)
 	updateProject(t)
+	compattest.Set(t, true) // after updateProject, which pins v1.4
 	t.Setenv("REDIS_ENGINE", "")
 	newUpdateRecorder(t)
 	out, _ := pilotBuffers(t)

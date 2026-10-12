@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -35,8 +36,11 @@ func TestWriteRegistryCacheOverridesStale(t *testing.T) {
 	if err := WriteRegistryCache(dir, want); err != nil {
 		t.Fatal(err)
 	}
-	if st, err := os.Stat(stale); err != nil || st.Mode().Perm() != 0o600 {
-		t.Fatalf("cache mode = %v err=%v, want 0600", st.Mode().Perm(), err)
+	// Windows has no POSIX permission bits (it reads back 0666).
+	if runtime.GOOS != "windows" {
+		if st, err := os.Stat(stale); err != nil || st.Mode().Perm() != 0o600 {
+			t.Fatalf("cache mode = %v err=%v, want 0600", st.Mode().Perm(), err)
+		}
 	}
 	got, err := FetchRegistry(context.Background(), "", dir) // fresh cache: no network
 	if err != nil || len(got.Plugins) != 1 || got.Plugins[0].Version != "2.0.0" {
