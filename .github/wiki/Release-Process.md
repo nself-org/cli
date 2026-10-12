@@ -1,86 +1,72 @@
 # Release Process
 
-How ɳSelf CLI releases are built, tagged, and distributed.
+How an ɳSelf CLI release is cut. One script runs the whole chain from the owner's machine: `scripts/release/release.sh`. It uses your `gh` login and nothing else. It stores no token and asks for none.
 
-## Version Files
+## Before you start
 
-Two files must be updated for a release:
+- `gh auth login` as the repo owner. The script uses that session for every call.
+- `git`, `jq`, `curl` and `gh` on the PATH. `go` too, once `tools/facts` exists in cli.
+- The registry secrets are set for the cli repo (P7-PROD-61): `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` and the npm token. S1 warns if Docker Hub's is missing. S8 to S10 fail without them.
+- Run it in a terminal you are sitting at. A real run refuses to start when stdin is not a TTY (exit 2), because you answer every merge prompt yourself.
+- `main` of cli, admin and homebrew-nself is green and nothing you want released is waiting in an open PR.
 
-| File | Content |
-|------|---------|
-| `.github/VERSION` | Plain text version string, e.g. `1.0.0` |
-| `internal/version/version.go` | Go constant: `const Version = "1.0.0"` |
-
-Both must match exactly before tagging.
-
-## Version String Validation
-
-The `nself release <ver>` command validates the version argument against an anchored semver regexp before any exec call:
-
-```
-^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$
-```
-
-Strings containing shell metacharacters (`;`, `&&`, `$()`, backticks) are rejected at entry. This prevents shell injection via the version argument.
-
-## Version Bump Implementation
-
-The release command updates web subapp `package.json` files and README version badges using injection-safe patterns:
-
-- **Web version bumps** (`nself release <ver>` step 7): invokes `node --eval <script>` with the version passed as the `NSELF_VERSION` environment variable. The version is never interpolated into the shell command string.
-- **README badge sync** (step 9): uses Go-native `regexp.ReplaceAll` on each `README.md` file directly. No shell or `sed` invocation.
-
-## Tag Format
-
-Releases use semantic versioning with a `v` prefix:
-
-```
-v1.0.0       # stable release
-v1.0.1       # patch release
-v1.1.0       # minor release
-v2.0.0       # major release
-v1.0.0-rc.1  # release candidate
-```
-
-## Release Workflow
-
-The CI release workflow (`.github/workflows/release.yml`) triggers automatically on a version tag push:
+## Always plan first
 
 ```bash
-# 1. Update version files
-# 2. Commit
-git commit -m "release: v1.0.0"
-
-# 3. Tag
-git tag v1.0.0
-
-# 4. Push tag (triggers CI)
-git push origin v1.0.0
+scripts/release/release.sh --plan --version 1.5.0
 ```
 
-The workflow:
-1. Runs tests and linting
-2. Cross-compiles for all targets (Linux/macOS/Windows x amd64/arm64)
-3. Creates release archives (`.tar.gz` and `.zip`)
-4. Uploads artifacts to the GitHub Release
-5. Generates release notes from commit history
+Plan mode prints one row per command, `S<n> <step-id> <repo> <command>`, and makes only read-only `gh api` calls. It writes nothing, in the repo or anywhere else. Read the rows, then run for real:
 
-## Homebrew Formula
+```bash
+scripts/release/release.sh --version 1.5.0
+```
 
-The `homebrew-nself` tap auto-updates when a new GitHub Release is published. No manual action required, the formula reads the latest release tag from GitHub.
+Flags:
 
-**Homebrew lockstep gate:** The workflow `.github/workflows/homebrew-version-lockstep.yml` runs on every `v*.*.*` tag push. It reads the Homebrew formula version from `nself-org/homebrew-nself/Formula/nself.rb` via the GitHub API and fails if the formula version does not match the tag being cut. If the gate fails: update the formula in `homebrew-nself` first (version string + sha256), then re-tag on `cli`. Never cut a CLI tag while the formula is behind. This gate closes the gap that allowed v1.0.6/v1.0.7/v1.0.8 to ship without Homebrew formula sync (S30-T02).
+| Flag | Meaning |
+|---|---|
+| `--version X.Y.Z` | Required. No leading `v`. |
+| `--plan` | Print the steps. Change nothing. |
+| `--from S<n>` | Resume at step `n`. Earlier steps are skipped. |
+| `--yes` | Skip the script's own `Run S<n>? [y/N]` question. It never answers a merge prompt. |
 
-## install.sh
+Exit codes: `0` done, `1` a step failed (the message names the step and how to resume), `2` refused input (no or bad `--version`, stdin not a TTY, version not newer than the latest release, or the tag already exists).
 
-The installer at `install.nself.org` is hosted in a separate repo. Update the version reference in `install.sh` after the GitHub Release is live.
+## The ten steps
 
-## Release Announcement
+Every step first checks whether GitHub already shows it finished. If so it prints `S<n> <id> done` and changes nothing. That is what makes a re-run safe. Work happens in temporary clones under `$TMPDIR/nself-release-<version>/`, removed when the run finishes. Resume data is in `$TMPDIR/nself-release-<version>.state`, and every step can also rebuild it from GitHub.
 
-After the release:
-1. Write GitHub Release notes highlighting new features and breaking changes
-2. Update [[Changelog]] with the release summary
-3. Post to ɳSelf community channels
+| Step | What it does | If it fails |
+|---|---|---|
+| S1 `preflight` | Checks tools and `gh` login, clones cli, admin and homebrew-nself, warns about missing Docker Hub secrets. | Fix the tool or login. Re-run from S1. |
+| S2 `admin-lockstep` | Bumps admin (`package.json`, `src/lib/cli-version.ts`, `Dockerfile`) with cli's `bump-version.sh`, opens a PR on admin, waits for required checks, merges with `admin-merge.sh`. | `--from S2`. A closed PR must be deleted with its branch first. |
+| S3 `cli-version` | Bumps the cli version files. When `tools/facts` exists it also runs `go run -mod=vendor ./tools/facts` and the `-readme README.md` form, so the facts file and README match the tag. Opens the PR, waits, merges. | `--from S3`. |
+| S4 `tag` | Checks the merged commit equals `origin/main`, then tags it through `scripts/release-create.sh` with `--latest=false`. The tag push starts `release.yml`. | `--from S4`. If main moved after the merge it stops; inspect before tagging by hand. |
+| S5 `build-wait` | Waits for the `build` job of `release.yml`, then downloads the `release-checksums` artifact. | A red build: fix, re-run the failed jobs on GitHub, `--from S5`. |
+| S6 `homebrew-formula` | In homebrew-nself runs its own `update-formula.sh --checksums-file` on the build's checksums. That writes the darwin arm64 hash into `on_arm` and the amd64 hash into `on_intel`. Opens the PR, waits, merges, then re-runs the failed `verify-homebrew-lockstep` job. | `--from S6`. |
+| S7 `release-wait` | Waits for `release.yml` to succeed and lists the assets. Then opens a PR on the web repo that pins the new cli tag (`update-lock.mjs`). The owner merges that PR; nothing deploys. | If the run failed, re-run its failed jobs, then `--from S7`. |
+| S8 `docker-verify` | Checks `nself/nself:X.Y.Z` on Docker Hub for linux/amd64 and linux/arm64. If absent, dispatches `docker-publish.yml` once and waits. | `--from S8`. Check the Docker Hub secrets. |
+| S9 `admin-image` | Dispatches admin's `docker-publish.yml` and checks `nself/nself-admin:X.Y.Z` the same way. | `--from S9`. |
+| S10 `sdk-publish` | For each `sdk-*publish*.yml` in cli: done if a run on the tag succeeded, otherwise dispatches it with the version. A file without `workflow_dispatch` is printed for a manual run. | `--from S10`. Check the npm and PyPI secrets. |
+
+## Merges are yours
+
+S2, S3 and S6 merge PRs on protected repos. For each one the script waits until the PR's required checks are green (red stops the run, nothing merges), then runs `scripts/admin-merge.sh --repo nself-org/<repo> --pr <n>` with your terminal attached. That script snapshots branch protection, relaxes it for under a minute, merges, and restores it. You answer its `[y/N]` prompt. `--yes` does not cover it, and the script never pipes an answer in.
+
+If `admin-merge.sh` exits non-zero, protection may not be restored. Read its message and its audit log (`~/.nself/admin-merge-audit.log`) before you do anything else.
+
+## Recovery
+
+- Any step: fix the cause, then `release.sh --version X.Y.Z --from S<n>`.
+- A fresh start (no `--from`) refuses when the version is not newer than the latest release or the tag exists. A resume does not: the tag is expected, and a published release (S7 to S10) equals the latest.
+- Wrong tag or broken release: use `scripts/release-retract.sh`, then start again with a new patch version.
+- Artifacts expire after a day. If S6 runs later, it falls back to the release's `checksums.txt` asset.
+- If the script cannot be used, P7-PROD-23 keeps a fallback token path for the old dispatch workflows. It is a fallback only; do not use it for a normal release.
+
+## Version files
+
+`scripts/bump-version.sh` edits every lockstep file in one go: `.github/VERSION`, `internal/version/version.go`, the SDK manifests, and in admin `package.json`, `src/lib/cli-version.ts` and `Dockerfile`. Do not hand-edit them. Tags are `vX.Y.Z`.
 
 ## See Also
 

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Test stub for `curl`: logs argv; Docker Hub answers from fixtures once the matching
+# publish workflow was dispatched; release downloads 404 (exit 22, as curl -f does).
+printf '%s\n' "$*" >> "$CURL_LOG"
+url=""; for a in "$@"; do url=$a; done
+case "$url" in
+  https://hub.docker.com/v2/repositories/nself/nself/tags/*)
+    [ -f "$ST/dispatch/docker-publish.yml@cli" ] && { cat "$FIXTURES/hub-tag.json"; exit 0; }; exit 22 ;;
+  https://hub.docker.com/v2/repositories/nself/nself-admin/tags/*)
+    [ -f "$ST/dispatch/docker-publish.yml@admin" ] && { cat "$FIXTURES/hub-tag.json"; exit 0; }; exit 22 ;;
+  */releases/download/*) exit 22 ;;
+  */archive/refs/tags/*) printf 'fixture source archive' ;;
+  *) exit 22 ;;
+esac

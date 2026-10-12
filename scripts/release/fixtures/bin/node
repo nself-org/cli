@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Test stub for `node org/scripts/sources/update-lock.mjs cli vX.Y.Z` (test.sh only).
+printf '%s\n' "$*" >> "$NODE_LOG"
+mkdir -p org
+printf '{"cli":"%s"}\n' "$3" > org/sources.lock.json
