@@ -169,7 +169,7 @@ func RefreshToken(ctx context.Context, accessToken string) (*TokenResponse, erro
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, parseAPIError(resp)
+		return nil, parseSessionError(resp)
 	}
 
 	var result TokenResponse
@@ -200,7 +200,7 @@ func RevokeSession(ctx context.Context, accessToken string, all bool) error {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return parseAPIError(resp)
+		return parseSessionError(resp)
 	}
 
 	return nil
@@ -222,12 +222,8 @@ func GetSession(ctx context.Context, accessToken string) (*AccountInfo, error) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, ErrNotLoggedIn
-	}
-
 	if resp.StatusCode != http.StatusOK {
-		return nil, parseAPIError(resp)
+		return nil, parseSessionError(resp)
 	}
 
 	var result AccountInfo
@@ -255,7 +251,7 @@ func GetLicenses(ctx context.Context, accessToken string) ([]LicenseInfo, error)
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, parseAPIError(resp)
+		return nil, parseSessionError(resp)
 	}
 
 	var result struct {

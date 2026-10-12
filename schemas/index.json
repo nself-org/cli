@@ -734,6 +734,14 @@
       "id": "urn:nself:cli:schema:commands:init-template:v1"
     },
     {
+      "path": "commands/logs-record.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:logs-record:v1"
+    },
+    {
+      "path": "commands/logs.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:logs:v1"
+    },
+    {
       "path": "commands/reset.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:reset:v1"
     },

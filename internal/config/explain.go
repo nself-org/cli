@@ -24,10 +24,7 @@ package config
 // SPORT:   cli/internal/config — CLI-R18 env cascade canon.
 
 import (
-	"fmt"
 	"os"
-
-	"github.com/joho/godotenv"
 )
 
 // Setter is one existing cascade file that sets the key.
@@ -130,9 +127,9 @@ func ExplainKey(projectDir, env, key string) (Explanation, error) {
 		if !f.Exists {
 			continue
 		}
-		vars, err := godotenv.Read(f.Path)
+		vars, err := ReadEnvFile(f.Path)
 		if err != nil {
-			return Explanation{}, fmt.Errorf("reading %s: %w", f.Path, err)
+			return Explanation{}, EnvReadError(f.Path, err)
 		}
 		if v, ok := vars[key]; ok {
 			exp.Setters = append(exp.Setters, Setter{File: f.Name, Value: v})

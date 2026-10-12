@@ -63,7 +63,7 @@ An explicit flag sets its key for that one invocation and wins over every file a
 | `nself backup list` | `--env` | filters backup rows by environment label; it does not select the local ENV cascade |
 | `nself build` | `--no-monorepo` | NSELF_NO_MONOREPO is listed as a known key but no code reads it; the flag is the only control |
 | `nself config plugins dev` | `--debug` | attaches the dlv debugger; unrelated to the DEBUG key |
-| `nself db drift` | `--env` | carries a project directory (usage text: Project directory to read hasura/metadata/**), not an environment name |
+| `nself db drift` | `--env` | selects a deploy inventory target (NSELF_DEPLOY_HOST_<ENV> or control-plane.yaml); an existing project directory is still accepted for back-compat; not the local ENV cascade |
 | `nself db generate` | `--env` | names the target environment of the generated output (local, staging or prod), not the local ENV cascade |
 | `nself db hasura apply-ref` | `--env` | selects a deploy inventory target (NSELF_DEPLOY_HOST_<ENV> or control-plane.yaml), not the local ENV cascade |
 | `nself db hasura metadata apply` | `--env` | selects a deploy inventory target (NSELF_DEPLOY_HOST_<ENV> or control-plane.yaml), not the local ENV cascade |
@@ -71,7 +71,7 @@ An explicit flag sets its key for that one invocation and wins over every file a
 | `nself db import firebase` | `--project-name` | names generated SQL files; it is not the PROJECT_NAME of the project |
 | `nself db migrate status` | `--env` | selects a deploy inventory target (NSELF_DEPLOY_HOST_<ENV> or control-plane.yaml), not the local ENV cascade |
 | `nself db migrate up` | `--env` | selects a deploy inventory target (NSELF_DEPLOY_HOST_<ENV> or control-plane.yaml), not the local ENV cascade |
-| `nself db reconcile` | `--env` | carries a project directory (usage text: Project directory to read hasura/metadata/**), not an environment name |
+| `nself db reconcile` | `--env` | selects a deploy inventory target (NSELF_DEPLOY_HOST_<ENV> or control-plane.yaml); an existing project directory is still accepted for back-compat; not the local ENV cascade |
 | `nself deploy` | `--env` | selects the deploy inventory environment (staging, prod, qa), not the local ENV cascade |
 | `nself deploy access grant` | `--env` | selects hosts in a deploy inventory environment, not the local ENV cascade |
 | `nself deploy access list` | `--env` | selects hosts in a deploy inventory environment, not the local ENV cascade |

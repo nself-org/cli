@@ -25,8 +25,6 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/joho/godotenv"
-
 	"github.com/nself-org/cli/internal/config"
 )
 
@@ -196,9 +194,9 @@ func readAllCascadeFiles(projectDir string) (map[string]map[string]string, error
 		if _, err := os.Stat(path); err != nil {
 			continue
 		}
-		m, err := godotenv.Read(path)
+		m, err := config.ReadEnvFile(path)
 		if err != nil {
-			return nil, fmt.Errorf("reading %s: %w", path, err)
+			return nil, config.EnvReadError(path, err)
 		}
 		values[name] = m
 	}

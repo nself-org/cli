@@ -84,6 +84,9 @@ func mcpConfigSetHandler() server.ToolHandlerFunc {
 		if err := validateConfigValue(value); err != nil {
 			return mcpErrorResult("Error: %v", err)
 		}
+		if err := validateMCPEnvName(envFlag); err != nil {
+			return mcpErrorResult("Error: %v", err)
+		}
 
 		projectDir, err := resolveProjectDir()
 		if err != nil {

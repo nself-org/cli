@@ -28,7 +28,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/joho/godotenv"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/nginxtopo"
 )
@@ -150,14 +149,14 @@ func cascadeValue(projectDir string, pending map[string][]byte, key string) stri
 	env, _ := config.ResolveEnv(projectDir)
 	if data, ok := pending[".env"]; ok && os.Getenv("ENV") == "" {
 		env = "dev"
-		if m, err := godotenv.UnmarshalBytes(data); err == nil && m["ENV"] != "" {
+		if m, err := config.ParseEnvBytes(".env", data); err == nil && m["ENV"] != "" {
 			env = m["ENV"]
 		}
 	}
 	for _, name := range config.EnvCascadeOrder(env, config.LegacyOrderActive()) {
-		m, err := godotenv.Read(filepath.Join(projectDir, name))
+		m, err := config.ReadEnvFile(filepath.Join(projectDir, name))
 		if data, ok := pending[name]; ok {
-			m, err = godotenv.UnmarshalBytes(data)
+			m, err = config.ParseEnvBytes(name, data)
 		}
 		if err != nil {
 			continue

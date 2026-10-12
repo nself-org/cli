@@ -1,11 +1,9 @@
 package compose
 
 import (
-	"fmt"
 	"path/filepath"
 	"strings"
 
-	"github.com/joho/godotenv"
 	"github.com/nself-org/cli/internal/config"
 )
 
@@ -33,15 +31,15 @@ func loadCustomServiceEnvFile(workDir, relPath string, overlay map[string][]byte
 		path = filepath.Join(workDir, relPath)
 	}
 	if data, ok := overlay[filepath.ToSlash(filepath.Clean(relPath))]; ok {
-		vars, err := godotenv.UnmarshalBytes(data)
+		vars, err := config.ParseEnvBytes(path, data)
 		if err != nil {
-			return nil, fmt.Errorf("reading %s: %w", path, err)
+			return nil, config.EnvReadError(path, err)
 		}
 		return vars, nil
 	}
-	vars, err := godotenv.Read(path)
+	vars, err := config.ReadEnvFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("reading %s: %w", path, err)
+		return nil, config.EnvReadError(path, err)
 	}
 	return vars, nil
 }

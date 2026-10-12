@@ -6,8 +6,9 @@ package commands
 // move: same checks/output/errors/order, no behavior change.
 
 import (
-	"context"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -75,7 +76,11 @@ func runPluginLifecycleCheck(quiet, remoteDeploy bool) error {
 			cfg = &config.Config{}
 		}
 		pluginDir := resolvePluginDir()
-		if removeErr := plugin.Remove(context.Background(), cfg, name, pluginDir, false, true); removeErr != nil {
+		warnOut := io.Writer(os.Stderr)
+		if quiet {
+			warnOut = io.Discard
+		}
+		if removeErr := removeExpiredPlugin(warnOut, cfg, pluginDir, name); removeErr != nil {
 			failed = append(failed, fmt.Sprintf("%s: %v", name, removeErr))
 		} else {
 			// Clear the record after successful removal.

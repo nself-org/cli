@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/joho/godotenv"
+	"github.com/nself-org/cli/internal/config"
 )
 
 // writeResolvedDeployEnv merges every file in target's env cascade (in the
@@ -40,7 +40,7 @@ func writeResolvedDeployEnv(workdir, target string) (path string, cleanup func()
 	for _, f := range deployEnvCascadeFiles(workdir, target) {
 		pairs, readErr := readEnvFileOverrides(f)
 		if readErr != nil {
-			return "", func() {}, fmt.Errorf("reading %s: %w", f, readErr)
+			return "", func() {}, config.EnvReadError(f, readErr)
 		}
 		for _, kv := range pairs {
 			if _, seen := merged[kv.key]; !seen {
@@ -70,9 +70,13 @@ func writeResolvedDeployEnv(workdir, target string) (path string, cleanup func()
 	// Read the whole snapshot back the way the remote nself will and require
 	// exactly the resolved values: per-value checks cannot see cross-key
 	// expansion ($A in one value reading another key).
-	back, parseErr := godotenv.Unmarshal(b.String())
-	if parseErr != nil || len(back) != len(merged) {
+	back, parseErr := config.ParseEnvBytes("the resolved deploy env file", []byte(b.String()))
+	if parseErr != nil {
+		// parseErr names the file and line only: the parser's own text can quote a value.
 		return "", func() {}, fmt.Errorf("the resolved deploy env file does not read back as written (%v); nothing was sent", parseErr)
+	}
+	if len(back) != len(merged) {
+		return "", func() {}, fmt.Errorf("the resolved deploy env file does not read back as written (it holds %d keys, expected %d); nothing was sent", len(back), len(merged))
 	}
 	for k, v := range merged {
 		if back[k] != v {
@@ -101,7 +105,7 @@ func encodeEnvValue(v string) (enc string, ok bool) {
 		cands = append([]string{v}, cands...)
 	}
 	for _, c := range cands {
-		if m, err := godotenv.Unmarshal("K=" + c + "\nZ=1\n"); err == nil && m["K"] == v && m["Z"] == "1" {
+		if m, err := config.ParseEnvBytes("probe", []byte("K="+c+"\nZ=1\n")); err == nil && m["K"] == v && m["Z"] == "1" {
 			return c, true
 		}
 	}
@@ -120,7 +124,7 @@ type envKV struct {
 // A missing file returns an empty slice, matching config.Load's "each file is
 // optional" semantics.
 func readEnvFileOverrides(path string) ([]envKV, error) {
-	m, err := godotenv.Read(path)
+	m, err := config.ReadEnvFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
