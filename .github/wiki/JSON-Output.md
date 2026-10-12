@@ -32,7 +32,32 @@ Error: [E402] nself restart does not support --json
 
 The refusal happens before the command's own start-up work, so nothing is restarted, fetched or cached. The bare `nself --json` is refused the same way.
 
-## Streams: `deploy --stream`
+## Streams
+
+A command that never ends by itself (a follow, a live progress feed) is a stream, not a document. Every stream uses one framing (contract `cli.json-stream` v1):
+
+- Stdout is NDJSON: one line per message, each line one complete compact v1 envelope (same key order and encoder as a document, no indent, UTF-8, newline-terminated). Any line parses with the document parser.
+- A record line is a data envelope whose `data.type` names the record kind: `log`, `progress` or `event`. `result` is reserved and never a record kind.
+- The last line is either a data envelope with `data.type` `"result"` (the command's result members sit beside `type`) or an error envelope. A reader stops on that line. End of input before it means the stream was interrupted.
+- The exit status is the one the command has without `--json`. Human text still goes to stderr.
+
+To stop reading, stop at the first line with `data.type` `"result"` or with an `error` member; to stop the command, close the pipe or send SIGINT (the stream then ends with its `result` line).
+
+Record types:
+
+| Command | `data.type` | Members | Schema |
+|---|---|---|---|
+| `nself logs --json --follow` | `log` | `service`, `time`, `level` (each omitted when the line has none), `message` | `schemas/commands/logs-record.v1.schema.json` |
+| `nself deploy --json --stream` | `progress` | see below | `schemas/deploy-progress.v1.schema.json` |
+
+`nself logs --json` without `--follow` is a document: one envelope whose `data.records` holds the same `log` records (`schemas/commands/logs.v1.schema.json`). The last line of a `logs` stream is `{"type":"result","lines":N}`, or an error envelope when docker fails (also when no container is running). `logs --status`, `--summary` and `--top` are human reports and refuse `--json` with `E402`. In v1.4 mode `logs --json` keeps its earlier output, one bare JSON object per line. `exec` runs a TTY command in a container: it is `interactive`, has no envelope and refuses `--json` with `E402` in both modes.
+
+```text
+{"schema_version":"1","command":"logs","data":{"type":"log","service":"web-1","time":"2026-01-02T03:04:05Z","level":"info","message":"[info] server started"}}
+{"schema_version":"1","command":"logs","data":{"type":"result","lines":1}}
+```
+
+### Deploy progress: `deploy --stream`
 
 `nself deploy` and `nself deploy promote <source> <target>` take `--stream` with `--json` (without `--json` it is `E401`). Stdout is then NDJSON: every line is a compact v1 envelope. Progress lines carry a `progress` event in `data`; the last line is always the `result`, also on failure. The failure text goes to stderr and the exit status does not change. Plain `--json` is still one document.
 
@@ -64,6 +89,7 @@ Every JSON contract is published as a JSON Schema (draft 2020-12) under `schemas
 | `schemas/error.v1.schema.json` | The error object: `code` (`E` and three digits), `message`, optional `cause`, `remediation`, `docs_url`, `exit_code`, `class` |
 | `schemas/command-registry.v1.schema.json` | The command registry document (`nself help --json` data and `.github/command-registry.json`) |
 | `schemas/commands/<command>.v1.schema.json` | The `data` of one envelope command; the path is the command with spaces as `-` (`help`, `status`, `backup create` as `backup-create`) |
+| `schemas/commands/<command>-record.v1.schema.json` | The `data` of one record line of a streaming command (`logs-record` for `nself logs --json --follow`; contract `cli.json-stream` v1) |
 | `schemas/invoke/confirmation.v1.schema.json` | The `data` of a machine confirmation (contract `cli.machine-request` v1) |
 | `schemas/deploy-targets.v1.schema.json` | The `data` of `nself deploy targets --json` |
 | `schemas/deploy-progress.v1.schema.json` | The `data` of one progress line of `nself deploy --json --stream` and `nself deploy promote <source> <target> --json --stream` (contract `cli.deploy-progress` v1) |

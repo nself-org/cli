@@ -180,6 +180,15 @@ func TestEffectivePresplitEquivalence(t *testing.T) {
 					if got.Flags = rest; len(rest) == 0 {
 						got.Flags = want.Flags
 					}
+				case "logs":
+					// P7-SURF-27: logs is a document (the --follow flag overrides to
+					// stream, --status/--summary/--top are json none); the frozen
+					// pre-split table says stream/legacy.
+					got.Flags = nil
+					want.Output, want.JSON = "", ""
+				case "exec":
+					// P7-SURF-27: exec is interactive (runs a TTY command in a container).
+					want.Output = OutputInteractive
 				case "plugin info":
 					// P7-PLUG-17 (lead ruling 2026-10-10): `config plugins info`
 					// is json legacy, so `plugin info <n> --json` is not refused

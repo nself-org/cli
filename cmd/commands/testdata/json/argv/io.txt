@@ -1,0 +1,10 @@
+# io fragment conversion rows. See README.md for tags.
+# The harness docker stub answers `compose ps -q` with nothing, so logs finds no
+# containers and exits 1 with the same message in every mode; that pins the human
+# output, the exit status and (legacy-json) the v1.4 --json bytes against the base.
+# The populated paths (5 records, the --follow stream, mid-stream failure) are
+# covered by TestLogsJSON* in json_io_test.go.
+logs --tail 5 #| legacy-json no-json=fixture-has-no-containers-see-json_io_test.go
+logs --follow --tail 5 #| legacy-json no-json=stream-checked-by-TestLogsJSONStream
+# exec is interactive: no envelope, --json is refused with E402 in both modes.
+exec web echo hi #| no-json=interactive-exec-has-no-envelope

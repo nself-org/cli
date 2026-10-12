@@ -278,10 +278,14 @@ func TestStateExitCodes(t *testing.T) {
 
 func TestStreamCommands(t *testing.T) {
 	f := load(t)
-	for _, key := range []string{"logs", "license tail", "mcp"} {
+	for _, key := range []string{"license tail", "mcp"} {
 		if f.Commands[key].Output != canon.OutputStream {
 			t.Errorf("%q must be output stream", key)
 		}
+	}
+	// P7-SURF-27: logs is a document whose --follow flag is the stream.
+	if f.Commands["logs"].Flags["follow"].Output != canon.OutputStream {
+		t.Error(`"logs --follow" must be output stream`)
 	}
 	for key, e := range f.Commands {
 		w := strings.Fields(key)

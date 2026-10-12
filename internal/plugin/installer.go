@@ -10,6 +10,7 @@ package plugin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -89,4 +90,36 @@ func Install(ctx context.Context, cfg *config.Config, name string, pluginDir str
 	defer releaseInstallLock(lock, pluginDir)
 
 	return installLocked(ctx, cfg, name, pluginDir)
+}
+
+// UndoInstall reverses a fresh install that the caller's reconcile refused: it
+// unpublishes the plugin's command binary and deletes its directory. The
+// schema is never dropped: an install reuses a schema kept by an earlier
+// `remove --keep-data` or bundle remove, so dropping here could destroy kept
+// data; a schema this install created stays empty and `nself remove` drops
+// it. Unlike Remove it does not stop containers (the refused reconcile never
+// started any), check reverse dependencies, touch a .prev backup, or print
+// the build hint. It takes the install lock, so it must not run inside Install.
+func UndoInstall(_ context.Context, _ *config.Config, name, pluginDir string) error {
+	if err := ValidateName(name); err != nil {
+		return err
+	}
+	lock, err := acquireInstallLock(pluginDir)
+	if err != nil {
+		return err
+	}
+	defer releaseInstallLock(lock, pluginDir)
+
+	destDir := filepath.Join(pluginDir, name)
+	// Nothing on disk means nothing to undo.
+	if _, err := os.Stat(destDir); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err := unlinkCLIBinary(name, readPluginManifest(destDir)); err != nil {
+		return fmt.Errorf("unpublishing plugin %q command: %w", name, err)
+	}
+	if err := os.RemoveAll(destDir); err != nil {
+		return fmt.Errorf("removing plugin directory %q: %w", destDir, err)
+	}
+	return nil
 }

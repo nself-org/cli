@@ -41,30 +41,39 @@ Examples:
 }
 
 func init() {
-	logsCmd.Flags().BoolP("follow", "f", false, "Follow log output (live)")
-	logsCmd.Flags().IntP("tail", "n", 10, "Number of lines to show")
-	logsCmd.Flags().Bool("more", false, "Show last 50 lines")
-	logsCmd.Flags().Bool("all", false, "Show last 100 lines")
-	logsCmd.Flags().StringP("search", "s", "", "Search pattern (regex)")
-	logsCmd.Flags().StringP("level", "l", "", "Filter by level (error, warn)")
-	logsCmd.Flags().BoolP("errors", "e", false, "Show only errors")
-	logsCmd.Flags().BoolP("compact", "c", false, "Compact output: [service] message")
-	logsCmd.Flags().BoolP("quiet", "q", false, "Filter out noise (healthchecks)")
-	logsCmd.Flags().String("grep", "", "Regex pattern filter")
-	logsCmd.Flags().String("since", "", "Show logs since (e.g. 1h, 30m, or RFC3339)")
-	logsCmd.Flags().String("until", "", "Show logs until (e.g. 1h or RFC3339)")
-	logsCmd.Flags().Bool("json", false, "Structured JSON output per line")
-	logsCmd.Flags().Bool("no-color", false, "Disable colored output")
-	logsCmd.Flags().Bool("plain", false, "Plain output (no highlighting, for piping)")
-	logsCmd.Flags().StringSliceP("service", "S", nil, "Filter by service name (repeatable)")
-	logsCmd.Flags().Bool("status", false, "Show service status overview")
-	logsCmd.Flags().Bool("summary", false, "Show recent errors by service")
-	logsCmd.Flags().Bool("top", false, "Show most active services")
-
+	addLogsFlags(logsCmd)
 	RootCmd.AddCommand(logsCmd)
 }
 
+// addLogsFlags declares the flags of `nself logs` on c (tests build a fresh
+// command with the same flags so no flag state is shared).
+func addLogsFlags(c *cobra.Command) {
+	c.Flags().BoolP("follow", "f", false, "Follow log output (live)")
+	c.Flags().IntP("tail", "n", 10, "Number of lines to show")
+	c.Flags().Bool("more", false, "Show last 50 lines")
+	c.Flags().Bool("all", false, "Show last 100 lines")
+	c.Flags().StringP("search", "s", "", "Search pattern (regex)")
+	c.Flags().StringP("level", "l", "", "Filter by level (error, warn)")
+	c.Flags().BoolP("errors", "e", false, "Show only errors")
+	c.Flags().BoolP("compact", "c", false, "Compact output: [service] message")
+	c.Flags().BoolP("quiet", "q", false, "Filter out noise (healthchecks)")
+	c.Flags().String("grep", "", "Regex pattern filter")
+	c.Flags().String("since", "", "Show logs since (e.g. 1h, 30m, or RFC3339)")
+	c.Flags().String("until", "", "Show logs until (e.g. 1h or RFC3339)")
+	c.Flags().Bool("json", false, "Structured JSON output per line")
+	c.Flags().Bool("no-color", false, "Disable colored output")
+	c.Flags().Bool("plain", false, "Plain output (no highlighting, for piping)")
+	c.Flags().StringSliceP("service", "S", nil, "Filter by service name (repeatable)")
+	c.Flags().Bool("status", false, "Show service status overview")
+	c.Flags().Bool("summary", false, "Show recent errors by service")
+	c.Flags().Bool("top", false, "Show most active services")
+}
+
 func runLogs(cmd *cobra.Command, args []string) error {
+	return closeLogsStream(cmd, runLogsBody(cmd, args))
+}
+
+func runLogsBody(cmd *cobra.Command, args []string) error {
 	follow, _ := cmd.Flags().GetBool("follow")
 	tail, _ := cmd.Flags().GetInt("tail")
 	more, _ := cmd.Flags().GetBool("more")
@@ -140,12 +149,15 @@ func runLogs(cmd *cobra.Command, args []string) error {
 		composeArgs = append(composeArgs, "--until", until)
 	}
 
-	if !follow {
+	// v1.5 JSON keeps the service prefix so every record can name its service.
+	envelope := logsEnvelopeMode(jsonOut)
+	if !follow && !envelope {
 		composeArgs = append(composeArgs, "--no-log-prefix")
 	}
 
-	// If --no-color or --plain, pass --no-color to docker compose
-	if noColor || plain {
+	// If --no-color or --plain, pass --no-color to docker compose; v1.5 JSON
+	// always does, so no ANSI escapes reach the record fields.
+	if noColor || plain || envelope {
 		composeArgs = append(composeArgs, "--no-color")
 	}
 
@@ -176,6 +188,10 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	if len(bytes.TrimSpace(psOut)) == 0 {
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "No containers found. Is the stack running? Try 'nself status' to check.")
 		return fmt.Errorf("no containers found")
+	}
+
+	if envelope {
+		return runLogsEnvelope(cmd.Context(), workdir, composeArgs, opts)
 	}
 
 	if err := streamFilteredLogs(cmd.Context(), workdir, composeArgs, opts, os.Stdout); err != nil {

@@ -208,6 +208,6 @@ func InstallFromURL(ctx context.Context, cfg *config.Config, sourceURL string, p
 	}
 
 	fmt.Fprintf(os.Stderr, "Plugin %q (v%s) installed from third-party source %s.\n", manifest.Name, manifest.Version, u.Host)
-	fmt.Fprintf(os.Stderr, "\nℹ Run 'nself build' to include %s in your stack.\n", manifest.Name)
+	printBuildHint(ctx, manifest.Name)
 	return nil
 }

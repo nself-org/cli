@@ -52,6 +52,9 @@ func mcpConfigGetHandler() server.ToolHandlerFunc {
 			return mcpErrorResult("Error: key is required")
 		}
 		envFlag, _ := args["env"].(string)
+		if err := validateMCPEnvName(envFlag); err != nil {
+			return mcpErrorResult("Error: %v", err)
+		}
 
 		projectDir, err := resolveProjectDir()
 		if err != nil {
@@ -83,6 +86,9 @@ type ConfigShowResult struct {
 func mcpConfigShowHandler() server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		envFlag, _ := req.GetArguments()["env"].(string)
+		if err := validateMCPEnvName(envFlag); err != nil {
+			return mcpErrorResult("Error: %v", err)
+		}
 
 		projectDir, err := resolveProjectDir()
 		if err != nil {

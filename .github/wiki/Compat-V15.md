@@ -53,6 +53,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | Ticket | v1.4 behaviour (old) | v1.5 behaviour (new) | File |
 |---|---|---|---|
 | D-0216 | decrypt-on-deploy prints KEY=VALUE to any stdout and puts values in --json | plaintext needs a terminal stdout or --reveal; --json carries names only | `cmd/commands/secrets_decrypt.go` |
+| D-0274 | installer prints 'run nself build' after every install | no hint when the caller reconciles | `internal/plugin/installer_hint.go` |
 | D-0287 | two plugins mapping to one nginx/sites file overwrite silently (warning) | E055 fails the build | `internal/build/plugin_nginx_collision.go` |
 | D-0327 | no Host check on mcp sse/http | Host must be localhost/127.0.0.1/[::1] or an --allowed-host, with the listener port | `cmd/commands/mcp_auth.go` |
 | D-0330 | remove <plugin> drops plugin data unless --keep-data | keeps it unless --delete-data, confirmed by --yes or a terminal | `cmd/commands/plugin_remove_data.go` |
@@ -174,4 +175,5 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-SURF-14 | --json on the data commands is ignored or the pre-contract form (NSELF_JSON_LEGACY=1 then prints an empty list as bare []) | v1 envelope | `cmd/commands/db_envelope.go` |
 | P7-SURF-25 | no token = open loopback with a warning | token required (generated on first start) | `cmd/commands/mcp_auth.go` |
 | P7-SURF-26 | --json ignored | envelope | `cmd/commands/registry_types_build.go` |
+| P7-SURF-27 | logs --json per-line legacy JSON | envelope / json-stream | `cmd/commands/logs_json.go` |
 <!-- END GENERATED:gated -->

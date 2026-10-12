@@ -40,6 +40,13 @@ func resolveDBMetadataDir(cmd *cobra.Command, remoteArgs ...string) (dir string,
 	envVal, _ := cmd.Flags().GetString(dbRemoteEnvFlag)
 	if envVal != "" {
 		if info, statErr := os.Stat(envVal); statErr == nil && info.IsDir() {
+			// D-0525: a local ./staging directory wins over the environment
+			// of the same name. Say so on stderr, so `reconcile --apply --env
+			// staging` is never silently a local run.
+			if _, nameErr := resolveTarget(envVal); nameErr == nil {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+					"note: --env %q is a directory here and also an environment name; using the directory and not contacting the environment (rename or remove ./%[1]s to target the environment)\n", envVal)
+			}
 			return envVal, false, nil
 		}
 		// A remote run streams the host's text output and its data is never

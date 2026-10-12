@@ -27,9 +27,11 @@ This page lists the minimum requirements to install and run the ɳSelf CLI corre
 |---|---|---|
 | Docker Engine | 24.x | Linux native install |
 | Docker Desktop | 4.x | macOS and Windows (WSL2 backend) |
-| Docker Compose | v2.x | Bundled with Docker Desktop; install the standalone `docker compose` plugin on Linux headless installs |
+| Docker Compose | v2.20 or newer | Bundled with Docker Desktop; install the standalone `docker compose` plugin on Linux headless installs |
 
 The CLI uses `docker compose` (v2 plugin syntax). The legacy `docker-compose` (v1 standalone binary) is **not** supported.
+
+Compose 2.20 is the floor because older releases cannot read a double-quoted `compose.env` value that ends in a backslash. They stop with "unterminated quoted value" and the stack does not start. `nself doctor` warns when the installed version is below 2.20, and `nself start` refuses to run. Upgrade Docker Desktop, or the `docker-compose-plugin` package on Linux.
 
 ### Hardware
 

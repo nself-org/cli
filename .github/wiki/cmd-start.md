@@ -46,6 +46,10 @@ Database initialization is automatic and idempotent, ɳSelf creates the database
 
 Since v1.2.2, when the project uses a default local domain (unset, `localhost`, or `local.nself.org`), the printed ready URLs are direct `http://localhost:<port>` endpoints (GraphQL, Hasura console, Auth, Storage, Mail UI, Admin) that work on a fresh machine with no DNS setup. The nginx-routed `*.local.nself.org` URLs are listed separately with a `requires: nself dns-setup` hint. Custom domains keep nginx-routed URLs unchanged. Start also removes stale rename-leftover containers (hex-prefixed names such as `b6d7...78_myapp_hasura` from an interrupted recreate) before and after `compose up`, so `docker exec <project>_<service>` names stay stable, and passes `.nself/compose.env` to docker compose via `--env-file` for secret interpolation (see [[cmd-build]]).
 
+### Requirements
+
+`nself start` needs `docker compose` 2.20 or newer. Older releases cannot read a double-quoted `compose.env` value that ends in a backslash, so the stack would fail to start. `nself start` refuses to run on an older version and says why. Run `nself doctor` to see the installed version.
+
 ## v0.9 project detection
 
 `nself start` scans the current directory for v0.9 project artifacts before launching any containers. Detection uses five heuristics (v0.9 `docker-compose.yml` header, `NSELF_VERSION=0.x` in `.env`, flat `nginx/` layout, `.nself/config` as a plain file, and `nself.sh` bootstrap script). Two or more hits trigger a hard error:
