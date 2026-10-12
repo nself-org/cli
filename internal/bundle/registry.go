@@ -146,17 +146,23 @@ func LoadBytes(data []byte) error {
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return fmt.Errorf("invalid bundles.json: %w", err)
 	}
+	if err := validateDoc(doc); err != nil {
+		return err
+	}
+	setState(buildBundleMap(doc))
+	return nil
+}
+
+// validateDoc is the one shape check for a catalog, fetched or cached: schema
+// 2.x, at least one bundle, and plain plugin-slug member names.
+func validateDoc(doc bundlesDoc) error {
 	if !strings.HasPrefix(doc.SchemaVersion, "2.") {
 		return fmt.Errorf("unsupported bundles.json schema_version %q (expected 2.x)", doc.SchemaVersion)
 	}
 	if len(doc.Bundles) == 0 {
 		return fmt.Errorf("bundles.json has no bundles")
 	}
-	if err := validateCatalogNames(doc); err != nil {
-		return err
-	}
-	setState(buildBundleMap(doc))
-	return nil
+	return validateCatalogNames(doc)
 }
 
 // validateCatalogNames refuses a catalog whose member plugin names are not plain

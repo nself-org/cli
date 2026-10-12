@@ -19,8 +19,10 @@ import (
 )
 
 const (
-	badCatalogJSON  = `{"schema_version":"2.0.0","bundles":{"evil":{"display":"E","tier":"free","plugins":["ok","../x"]}}}`
-	goodCatalogJSON = `{"schema_version":"2.0.0","bundles":{"cached-good":{"display":"CG","tier":"free","plugins":["alpha","beta"]}}}`
+	badCatalogJSON   = `{"schema_version":"2.0.0","bundles":{"evil":{"display":"E","tier":"free","plugins":["ok","../x"]}}}`
+	emptyCatalogJSON = `{"schema_version":"2.0.0","bundles":{}}`
+	oldSchemaJSON    = `{"schema_version":"1.0.0","bundles":{"x":{"display":"X","tier":"free","plugins":["ok"]}}}`
+	goodCatalogJSON  = `{"schema_version":"2.0.0","bundles":{"cached-good":{"display":"CG","tier":"free","plugins":["alpha","beta"]}}}`
 )
 
 // isolateBundleState clears the loaded catalog for the test and restores it after.
@@ -115,6 +117,8 @@ func TestLoad_FetchedInvalid(t *testing.T) {
 	}{
 		{name: "good cache is used", cache: goodCatalogJSON, wantSlug: "cached-good", wantNoGet: "evil"},
 		{name: "no cache returns the validation error", wantErr: "validating bundles.json", wantNoGet: "evil"},
+		{name: "empty cache returns an error", cache: emptyCatalogJSON, wantErr: "validating bundles.json", wantNoGet: "evil"},
+		{name: "wrong-schema cache returns an error", cache: oldSchemaJSON, wantErr: "validating bundles.json", wantNoGet: "x"},
 		{name: "bad cache returns an error", cache: badCatalogJSON, wantErr: "validating bundles.json", wantNoGet: "evil"},
 	}
 	for _, tc := range tests {

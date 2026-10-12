@@ -36,6 +36,14 @@ func TestCompareSemver(t *testing.T) {
 		{"1.9.9", "1.10.0", -1},
 		{"0.2.3", "v1.2.3", -1},
 		{"2.0.0-rc.1", "1.9.9", 1},
+		// Build metadata never affects order.
+		{"1.2.3+b1", "1.2.3", 0},
+		{"1.2.3+b1", "1.2.3+b2", 0},
+		{"1.2.3-rc.1+b2", "1.2.3-rc.1", 0},
+		{"1.2.3-rc.1+b2", "1.2.3", -1},
+		{"2.0.0+b1", "1.0.0", 1},
+		{"1.0.0", "2.0.0+b1", -1},
+		{"1.2.3+", "1.2.3", 0},
 	}
 	for _, tc := range tests {
 		t.Run(tc.a+"_vs_"+tc.b, func(t *testing.T) {
@@ -58,7 +66,7 @@ func TestCompareSemverErrors(t *testing.T) {
 		{"1.0.0", "1.x"},
 		{"1.x", "1.x"},
 		{"1.2.3.4", "1.0.0"},
-		{"1.2.3+build", "1.2.3"},
+		{"+b", "1.0.0"},
 		{"v", "1.0.0"},
 	}
 	for _, tc := range tests {
@@ -87,6 +95,8 @@ func TestDepsCompareSemverWrapper(t *testing.T) {
 		{"abc", "xyz", 0},
 		{"", "", 0},
 		{"1.x", "", 0},
+		{"2.0.0+b1", "1.0.0", 1},
+		{"1.0.0", "2.0.0+b1", -1},
 	}
 	for _, tc := range tests {
 		t.Run(tc.a+"_vs_"+tc.b, func(t *testing.T) {

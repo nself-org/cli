@@ -88,7 +88,7 @@ func readBundlesCache() (*cachedBundlesDoc, error) {
 }
 
 // loadBundlesFromCache installs the last-known-good cached catalog after
-// re-validating its member names (a cache file is as untrusted as a fetch).
+// re-validating its shape and member names (a cache file is as untrusted as a fetch).
 // cause is why the live document was not used. invalid is true when the fetch
 // succeeded but the document failed validation: that always prints one stderr
 // warning naming the failure. For a failed fetch, the warning is printed once
@@ -101,7 +101,7 @@ func loadBundlesFromCache(cause error, invalid bool) (bool, error) {
 	if err != nil || cached == nil {
 		return false, nil
 	}
-	if err := validateCatalogNames(cached.Doc); err != nil {
+	if err := validateDoc(cached.Doc); err != nil {
 		return false, fmt.Errorf("cached bundles.json: %w", err)
 	}
 	age := time.Since(time.Unix(cached.FetchedAt, 0))
