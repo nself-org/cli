@@ -2404,6 +2404,7 @@ export interface DbImportFirebaseRequest {
 export type DbImportNselfArgs = [string];
 
 export interface DbImportNselfData {
+  compat_shims: null | Array<string>;
   detection?: null | {
     kind: string;
     notes: null | Array<string>;
@@ -2481,6 +2482,7 @@ export interface DbImportNselfRequest {
 export type DbImportPostgresArgs = [];
 
 export interface DbImportPostgresData {
+  compat_shims: null | Array<string>;
   detection?: null | {
     kind: string;
     notes: null | Array<string>;
@@ -2566,10 +2568,22 @@ export interface DbImportSupabaseData {
 }
 
 export type DbImportSupabaseFlags = {
+  /** Supabase API URL for storage (default https://<project-ref>.supabase.co) (v1.5 import) */
+  "api-url"?: string;
+  /** Environment variable containing the Supabase direct database URL (v1.5 import) */
+  "db-url-env"?: string;
+  /** Keep the private portable bundle after a successful import (v1.5 import) */
+  "keep-stage"?: boolean;
   /** Output directory for generated files (default: current dir) */
   out?: string;
+  /** Check source and target and print the import plan without writing (v1.5 import) */
+  plan?: boolean;
   /** Supabase project reference ID (required) */
   "project-ref"?: string;
+  /** Environment variable containing the service_role key (storage API) (v1.5 import) */
+  "service-key-env"?: string;
+  /** Exempt each storage object from this import (v1.5 import) */
+  "skip-storage"?: boolean;
   /** Supabase service_role key (required) */
   "supabase-key"?: string;
 };
