@@ -41,8 +41,11 @@ func envFileName(projectDir, envFlag string) string {
 }
 
 // mcpEnvNameRe is the shape of an env suffix taken from an MCP tool argument:
-// lowercase letters, digits and hyphens, starting with a letter or digit.
-var mcpEnvNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+// lowercase letters, digits, hyphens and underscores, starting with a letter or
+// digit, at most 63 characters. It matches customEnvNameRe in
+// internal/config/cascade.go so every name the env cascade accepts still works
+// here (D-0738 asked for ^[a-z0-9][a-z0-9-]*$; underscores cannot traverse).
+var mcpEnvNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,62}$`)
 
 // validateMCPEnvName checks the env argument of the legacy MCP config tools
 // before it reaches envFileName, which joins ".env."+env onto the project
@@ -55,7 +58,7 @@ func validateMCPEnvName(env string) error {
 		return nil
 	}
 	return errs.Newf("E401", "invalid env name %q", env).
-		WithWhy("the env name becomes part of a file name (.env.<env>) inside the project, so it may hold only lowercase letters, digits and hyphens").
+		WithWhy("the env name becomes part of a file name (.env.<env>) inside the project, so it may hold only lowercase letters, digits, hyphens and underscores (63 characters at most)").
 		WithFix("Use a name such as dev, staging or prod, or leave env empty for the plain .env file.")
 }
 
