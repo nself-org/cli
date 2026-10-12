@@ -19,6 +19,13 @@ func TestExportPreflightNoWrites(t *testing.T) {
 	if _, err := Export(context.Background(), &config.Config{}, Options{}); err == nil {
 		t.Fatal("empty output accepted")
 	}
+	secretOut := filepath.Join(dir, "FAKE-OUTPUT-PATH-SECRET")
+	if _, err := Export(context.Background(), &config.Config{}, Options{Out: secretOut, SecretValues: []string{"FAKE-OUTPUT-PATH-SECRET"}}); err == nil || strings.Contains(err.Error(), "FAKE-OUTPUT-PATH-SECRET") {
+		t.Fatal("output path could expose a configured secret")
+	}
+	if _, err := os.Lstat(secretOut); !os.IsNotExist(err) {
+		t.Fatal("unsafe output path was written")
+	}
 	if err := os.Mkdir(out, 0o700); err != nil {
 		t.Fatal(err)
 	}
