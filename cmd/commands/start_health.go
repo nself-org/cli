@@ -37,6 +37,10 @@ func runHealthCheckLoop(ctx context.Context, cfg *config.Config, workdir string,
 	healthCtx, healthCancel := context.WithTimeout(ctx, timeout)
 	defer healthCancel()
 
+	// Services the generated compose declares; checks for anything else are
+	// dropped when they fail (D-0502: no nginx under the traefik provider).
+	declared := composeDeclaredServices(healthCtx, workdir)
+
 	const pollInterval = 3 * time.Second
 	var lastReport *health.HealthReport
 
@@ -57,6 +61,7 @@ func runHealthCheckLoop(ctx context.Context, cfg *config.Config, workdir string,
 			}
 		}
 
+		report = filterDeclaredHealth(report, declared)
 		lastReport = report
 		actualPct := 0
 		if report.Total > 0 {
