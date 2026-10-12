@@ -2377,6 +2377,7 @@ export interface DbHasuraValidateRequest {
 export type DbImportAppwriteArgs = [];
 
 export interface DbImportAppwriteData {
+  compat_shims: null | Array<string>;
   detection?: null | {
     kind: string;
     notes: null | Array<string>;
