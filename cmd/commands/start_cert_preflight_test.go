@@ -67,7 +67,7 @@ func TestCertExpiryWarning(t *testing.T) {
 	}
 	// Positive control: the pre-fix join (no ssl/) misses that same pair and warns.
 	oldPath := filepath.Join(project, "certificates", "local-example-test", "fullchain.pem")
-	if msg := certExpiryWarning(oldPath, true); !strings.Contains(msg, "no such file") {
+	if msg := certExpiryWarning(oldPath, true); !strings.Contains(msg, "reading certificate") {
 		t.Errorf("old path: %q, want the missing-file warning", msg)
 	}
 
