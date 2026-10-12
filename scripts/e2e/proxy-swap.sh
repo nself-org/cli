@@ -345,17 +345,23 @@ if [[ $MODE != add ]]; then
   matrix traefik
   same nginx.matrix traefik.matrix
   [[ -f $W/a/.nself/generated/traefik/.nself-generated ]] || { echo 'FAIL: the swap left no renderer marker to clean' >&2; exit 1; }
-  # traefik-config runs as root and Docker creates its bind directories root-owned, so an unprivileged
-  # build warns and keeps them (D-0778). Hand them to the runner user first, as cleanup() does for the fixture.
-  if [[ $(uname -s) == Linux ]]; then
-    sudo -n chown -R "$(id -u):$(id -g)" "$W/a/.nself/generated" || { echo 'FAIL: could not chown the rendered output' >&2; exit 1; }
-  fi
   nself "$W/a" remove traefik --yes
   if [[ $MODE == round-trip ]]; then
+    # traefik-config runs as root and Docker creates its bind directories root-owned (D-0778): an
+    # unprivileged build must warn, keep them and still succeed. Then hand them over and build again.
+    nself "$W/a" build --remove-orphans --yes 2>&1 | tee "$W/evidence/remove-root-owned.log"
+    if [[ $(uname -s) == Linux ]]; then
+      grep -q 'owned by root' "$W/evidence/remove-root-owned.log" || { echo 'FAIL: expected the root-owned warning' >&2; exit 1; }
+      [[ -f $W/a/.nself/generated/traefik/.nself-generated ]] || { echo 'FAIL: the marker must stay for the retry' >&2; exit 1; }
+      sudo -n chown -R "$(id -u):$(id -g)" "$W/a/.nself/generated" || { echo 'FAIL: could not chown the rendered output' >&2; exit 1; }
+    fi
     nself "$W/a" build --remove-orphans --yes
     finish_restore
     echo "PASS: proxy round trip; rt-before.manifest vs rt-after.manifest compared; request parity restored; evidence: $EVIDENCE"
   else
+    if [[ $(uname -s) == Linux ]]; then
+      sudo -n chown -R "$(id -u):$(id -g)" "$W/a/.nself/generated" || { echo 'FAIL: could not chown the rendered output' >&2; exit 1; }
+    fi
     # kill -9 once the traefik service container is gone; this build is what stops it.
     project=$(compose "$W/a" config --format json | jq -er .name)
     (cd "$W/a" && NSELF_PLUGIN_DIR="$W/a/.nself/plugins" exec "$W/nself" build --remove-orphans --yes) &

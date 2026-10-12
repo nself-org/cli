@@ -68,6 +68,11 @@ func cleanupOutputDir(sink Sink, workdir, dir string) error {
 	if ok, why := proxyOwnedDir(workdir, dir); !ok {
 		return proxyKeep(dir, why)
 	}
+	// Decide before any removal so plan and apply see the same thing: the
+	// plan-checked sink fails a build that planned a removal which did not happen.
+	if why := unwritableIn(filepath.Dir(dir), dir); why != "" {
+		return proxyKeep(dir, "it is owned by root (the traefik-config container wrote it): "+why+" is not writable; run `sudo rm -rf "+dir+"` or chown it to your user, then build again")
+	}
 	err = removeTree(sink, dir)
 	if errors.Is(err, fs.ErrPermission) {
 		// The one-shot runs as root and Docker creates its bind directories
@@ -79,6 +84,25 @@ func cleanupOutputDir(sink Sink, workdir, dir string) error {
 		return fmt.Errorf("removing generated traefik output %s: %w", dir, err)
 	}
 	return nil
+}
+
+// unwritableIn returns the first directory, the parent first and then dir and
+// everything under it, in which this user cannot unlink, or "".
+func unwritableIn(parent, dir string) string {
+	if !dirWritable(parent) {
+		return parent
+	}
+	var bad string
+	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || !d.IsDir() || bad != "" {
+			return nil
+		}
+		if !dirWritable(p) {
+			bad = p
+		}
+		return nil
+	})
+	return bad
 }
 
 // proxyKeep warns once that dir stays and why. The build goes on: a leftover
@@ -130,7 +154,8 @@ func removeTree(sink Sink, dir string) error {
 		if e.Name() == proxyGeneratedMarker {
 			continue
 		}
-		if e.IsDir() {
+		// The listing may be stale: only a directory that is still one is entered.
+		if fi, err := os.Lstat(p); e.IsDir() && err == nil && fi.IsDir() {
 			if err := removeTree(sink, p); err != nil {
 				return err
 			}

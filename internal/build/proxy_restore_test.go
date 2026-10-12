@@ -178,3 +178,22 @@ func TestProxyRestoreRootOwnedWarnsAndKeeps(t *testing.T) {
 		t.Fatal("the marker must stay so the next build retries")
 	}
 }
+
+func TestProxyRestoreRootOwnedPlansNoRemoval(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs unix permissions and a non-root user")
+	}
+	workdir, dir := restoreProject(t, testRendererMarker)
+	if err := os.Chmod(dir, 0555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0755) })
+	sink := newMemSink(workdir, "")
+	if err := cleanupProviderOutput(sink, workdir, ProviderNginx); err != nil {
+		t.Fatal(err)
+	}
+	// A planned removal that apply cannot do fails the build (E452), so plan none.
+	if len(sink.removed) != 0 {
+		t.Fatalf("plan recorded removals for a directory apply cannot clean: %v", sink.removed)
+	}
+}
