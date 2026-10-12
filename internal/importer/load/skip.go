@@ -17,6 +17,9 @@ import (
 // RestoreSkipMember is the bundle member that names the archive entry kinds to leave out.
 const RestoreSkipMember = "db/restore.skip"
 
+// maxSkipBytes bounds the member; a larger one is refused rather than read in part.
+const maxSkipBytes = 4096
+
 // skippable are the entry kinds a source may leave out: row level security policies and the
 // ENABLE ROW LEVEL SECURITY switch name roles and functions the target does not have.
 var skippable = map[string]bool{"POLICY": true, "ROW SECURITY": true}
@@ -31,9 +34,12 @@ func SkipKinds(r *portable.Reader) ([]string, error) {
 		return nil, err
 	}
 	defer func() { _ = f.Close() }()
-	b, err := io.ReadAll(io.LimitReader(f, 4096))
+	b, err := io.ReadAll(io.LimitReader(f, maxSkipBytes+1))
 	if err != nil {
 		return nil, err
+	}
+	if len(b) > maxSkipBytes {
+		return nil, errors.New("restore skip list is too large")
 	}
 	kinds := []string{}
 	for _, line := range strings.Split(string(b), "\n") {

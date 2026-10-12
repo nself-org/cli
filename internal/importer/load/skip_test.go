@@ -30,7 +30,7 @@ func TestDropEntriesComment(t *testing.T) {
 }
 
 func TestSkipKindsRefusesOtherKinds(t *testing.T) {
-	for body, wantErr := range map[string]bool{"POLICY\nROW SECURITY\n": false, "": false, "TABLE\n": true, "POLICY\nFUNCTION\n": true} {
+	for body, wantErr := range map[string]bool{"POLICY\nROW SECURITY\n": false, "": false, "TABLE\n": true, "POLICY\nFUNCTION\n": true, "POLICY\n" + strings.Repeat(" ", 5000) + "TABLE\n": true} {
 		dir := filepath.Join(t.TempDir(), "stage")
 		w, err := portable.NewWriter(dir)
 		if err != nil {
