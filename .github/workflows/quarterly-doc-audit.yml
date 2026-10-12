@@ -141,7 +141,7 @@ jobs:
             **/*.md
 
       - name: Upload JSON report
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: doc-audit-${{ steps.quarter.outputs.label }}
           path: .claude/qa/findings/${{ steps.quarter.outputs.label }}-doc-audit.json

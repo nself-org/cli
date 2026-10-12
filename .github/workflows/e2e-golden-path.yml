@@ -182,7 +182,7 @@ jobs:
 
       - name: Upload JSON report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: golden-path-report-${{ github.run_id }}
           path: /tmp/golden-path-report.json
@@ -193,7 +193,7 @@ jobs:
       # the job ends. Without this they were written and thrown away.
       - name: Upload golden-path diagnostics
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: golden-path-diagnostics-${{ github.run_id }}
           path: /tmp/golden-path-diag-step*.txt
@@ -232,7 +232,7 @@ jobs:
       # default branch.
       - name: Upload archived result
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: golden-path-result-${{ github.run_id }}
           path: .github/golden-path-results/

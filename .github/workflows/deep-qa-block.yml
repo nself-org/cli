@@ -71,7 +71,7 @@ jobs:
           EOF
 
       - name: Upload report
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: "deep-qa-block-${{ inputs.block }}"
           path: "deep-qa-block-${{ inputs.block }}.md"
