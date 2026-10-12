@@ -7,6 +7,7 @@ import (
 	cpromote "github.com/nself-org/cli/internal/controlplane/promote"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -291,6 +292,7 @@ func assertNoPromoteWrites(t *testing.T, commands []string) {
 }
 
 func TestPromoteVerifyStopsApply(t *testing.T) {
+	skipPromoteShellDoubles(t)
 	compattest.Set(t, true)
 	locked := compose.LockedImages()[0]
 	_, target := setupPromoteSafety(t, locked.LegacyRef, locked.String(), true)
@@ -305,6 +307,7 @@ func TestPromoteVerifyStopsApply(t *testing.T) {
 }
 
 func TestPromoteDriftStopsWrite(t *testing.T) {
+	skipPromoteShellDoubles(t)
 	compattest.Set(t, true)
 	locked := compose.LockedImages()
 	_, target := setupPromoteSafety(t, locked[0].LegacyRef, locked[1].String(), false)
@@ -500,6 +503,7 @@ func TestPromoteStatefulConfirmation(t *testing.T) {
 }
 
 func TestPromoteCompareResolvedManifest(t *testing.T) {
+	skipPromoteShellDoubles(t)
 	root := promoteFixture(t)
 	locked := compose.LockedImages()
 	wf(t, filepath.Join(root, "docker-compose.yml"), "services:\n  api:\n    image: "+locked[0].String()+"\n")
@@ -528,6 +532,7 @@ esac
 }
 
 func TestPromoteCompareServicePlatformFragment(t *testing.T) {
+	skipPromoteShellDoubles(t)
 	root := promoteFixture(t)
 	locked := compose.LockedImages()[0]
 	wf(t, filepath.Join(root, "docker-compose.yml"), "services:\n  api:\n    image: "+locked.String()+"\n")
@@ -644,5 +649,14 @@ func TestPromoteModelEnvironment(t *testing.T) {
 	got, err := (localPromoteRemote{root: t.TempDir()}).resolveModel(context.Background(), `[ -n "$HOME" ] && [ -z "$PROMOTE_IMAGE_OPERATOR" ] && printf model`)
 	if err != nil || string(got) != "model" {
 		t.Fatalf("model runner environment: %q, %v", got, err)
+	}
+}
+
+// skipPromoteShellDoubles skips tests whose docker double is a POSIX shell script
+// put on PATH; Windows neither runs shebang scripts nor splits PATH on ':'.
+func skipPromoteShellDoubles(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the docker double is a POSIX shell script")
 	}
 }

@@ -3,6 +3,7 @@ package promote
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/deploy"
+	"github.com/nself-org/cli/internal/oplock"
 )
 
 type recordRemote struct {
@@ -160,7 +162,9 @@ func TestPromoteRecordRollbackConcurrent(t *testing.T) {
 	if got := r.restores.Load(); got != 1 {
 		t.Fatalf("overlapping rollbacks restored backup %d times", got)
 	}
-	if secondErr != nil && !strings.Contains(secondErr.Error(), "E460") {
+	// With the project oplock the overlap is refused (E460). Where the platform has
+	// no oplock (Windows) the restore-started marker still fails closed (E489).
+	if secondErr != nil && !strings.Contains(secondErr.Error(), "E460") && (oplockSupported(t) || !strings.Contains(secondErr.Error(), "E489")) {
 		t.Fatalf("second rollback = %v", secondErr)
 	}
 	// A stale caller must reload the completed record before deciding to restore.
@@ -288,4 +292,18 @@ func TestPromoteRecordRollbackReloadAuthority(t *testing.T) {
 			}
 		})
 	}
+}
+
+// oplockSupported reports whether this platform takes the project oplock.
+func oplockSupported(t *testing.T) bool {
+	t.Helper()
+	lock, err := oplock.Acquire(context.Background(), t.TempDir(), oplock.Opts{Getenv: func(string) string { return "" }})
+	if errors.Is(err, oplock.ErrUnsupported) {
+		return false
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	lock.Release()
+	return true
 }

@@ -70,6 +70,7 @@ func TestPromoteFailedLaterAttemptPreservesAuthority(t *testing.T) {
 }
 
 func TestPromoteApplyDeployRecordKeepsBackup(t *testing.T) {
+	skipPromoteShellDoubles(t)
 	compattest.Set(t, true)
 	locked := compose.LockedImages()[0]
 	source, _ := setupPromoteSafety(t, locked.LegacyRef, locked.String(), false)

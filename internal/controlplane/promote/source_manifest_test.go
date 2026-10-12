@@ -98,3 +98,28 @@ func TestResolvedArtifactEnvSnapshot(t *testing.T) {
 		t.Fatalf("private env survived: %v", err)
 	}
 }
+
+// Local staged paths keep their platform form: a space, a quote or a Windows
+// drive path must reach the local model quoted, never fail the remote charset.
+func TestResolvedComposeImagesLocalPaths(t *testing.T) {
+	files := []string{`/Users/jane doe/it's/docker-compose.yml`, `C:\Users\RUNNER~1\Temp\001\override.yml`}
+	envs := []string{`/Users/jane doe/.env`}
+	var got string
+	run := func(_ context.Context, command string) ([]byte, error) {
+		got = command
+		return []byte(`{"services":{"api":{"image":"fixture"}}}`), nil
+	}
+	images, err := ResolvedComposeImages(context.Background(), run, files, envs)
+	if err != nil || len(images) != 1 {
+		t.Fatalf("local paths refused: %v %v", images, err)
+	}
+	want := `docker compose -f '/Users/jane doe/it'\''s/docker-compose.yml' -f 'C:\Users\RUNNER~1\Temp\001\override.yml' --env-file '/Users/jane doe/.env' config`
+	if !strings.HasPrefix(got, want) {
+		t.Fatalf("local command = %s", got)
+	}
+	for _, bad := range [][]string{{""}, {"/srv/a\x00b.yml"}} {
+		if _, err := ResolvedComposeImages(context.Background(), run, bad, nil); err == nil {
+			t.Fatalf("invalid local path %q accepted", bad[0])
+		}
+	}
+}

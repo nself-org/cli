@@ -21,7 +21,7 @@ import (
 
 // ResolvedComposeImages reads Docker's merged, interpolated config model.
 func ResolvedComposeImages(ctx context.Context, run Runner, files, envFiles []string) ([]Image, error) {
-	base, err := composeManifestCommand(files, envFiles)
+	base, err := composeLocalCommand(files, envFiles)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +112,27 @@ func sourceManifest(ctx context.Context, run Runner, root, name string, fallback
 	return entries, nil
 }
 
+// composeManifestCommand builds the compose prefix for host-side manifest paths.
 func composeManifestCommand(files, envFiles []string) (string, error) {
+	return composeCommand(files, envFiles, deploy.ValidateRemotePath)
+}
+
+// composeLocalCommand builds the compose prefix for paths on the operator machine.
+// Local paths keep their platform form (spaces, drive letters, backslashes), so
+// the remote charset does not apply; single quoting is the shell boundary.
+func composeLocalCommand(files, envFiles []string) (string, error) {
+	return composeCommand(files, envFiles, validateLocalPath)
+}
+
+// validateLocalPath refuses only what quoting cannot carry: empty paths and NUL.
+func validateLocalPath(p string) error {
+	if p == "" || strings.ContainsRune(p, 0) {
+		return fmt.Errorf("invalid local compose path %q", p)
+	}
+	return nil
+}
+
+func composeCommand(files, envFiles []string, validate func(string) error) (string, error) {
 	if len(files) == 0 {
 		return "", fmt.Errorf("no compose files for promotion")
 	}
@@ -122,7 +142,7 @@ func composeManifestCommand(files, envFiles []string) (string, error) {
 		paths []string
 	}{{" -f ", files}, {" --env-file ", envFiles}} {
 		for _, file := range list.paths {
-			if err := deploy.ValidateRemotePath(file); err != nil {
+			if err := validate(file); err != nil {
 				return "", err
 			}
 			base += list.flag + remotesdk.ShellQuote(file)
