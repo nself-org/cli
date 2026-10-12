@@ -36,17 +36,32 @@
     {
       "name": "auth",
       "role": "core",
-      "repository": "docker.io/nhost/hasura-auth",
+      "repository": "docker.io/nhost/auth",
+      "version": "0.52.0",
+      "index_digest": "sha256:dfdc0b0403eb1abf36da253d47c43a31b606876324dec7200557b5b33d6d3ef1",
+      "platforms": {
+        "linux/amd64": "sha256:831a4a1201f99a88a248468df12d73d66be390d1b2a2db7547bc165d18d1726c",
+        "linux/arm64": "sha256:473270241aa19ace38b48e75580bb1bc949866ebdf89c0888a9e1310f4ad3211"
+      },
+      "legacy_ref": "nhost/auth:0.52.0",
+      "license": "MIT",
+      "source": "https://github.com/nhost/nhost/tree/main/services/auth",
+      "mirror": "docker.io/nself/auth"
+    },
+    {
+      "name": "auth-v14",
+      "role": "core",
+      "repository": "docker.io/nhost/auth",
       "version": "0.36.0",
       "index_digest": "sha256:2e0713ef06e9c3c0af086c81289e9efbd87e4fa5dcda26891e5977b1e096caaf",
       "platforms": {
         "linux/amd64": "sha256:12c62b5e62f71d1b3c894c1748edf74c8631fa61495fd573737312c6f9a207d7",
         "linux/arm64": "sha256:4eb4a63373097c2ab14e2c08c806830f869a780c0b3cb19166f9684c4a2b7b65"
       },
-      "legacy_ref": "nhost/hasura-auth:0.36.0",
+      "legacy_ref": "nhost/auth:0.36.0",
       "license": "MIT",
-      "source": "https://github.com/nhost/hasura-auth",
-      "mirror": "docker.io/nself/auth"
+      "source": "https://github.com/nhost/nhost/tree/main/services/auth",
+      "mirror": "docker.io/nself/auth-v14"
     },
     {
       "name": "cadvisor",
