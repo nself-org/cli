@@ -1,0 +1,58 @@
+{
+  "schema_version": "1",
+  "command": "update",
+  "data": {
+    "plan": {
+      "pins": [
+        {
+          "kind": "cli",
+          "name": "nself",
+          "from": "v1.4.0",
+          "to": "v1.4.9",
+          "resolvable": true
+        },
+        {
+          "kind": "plugin",
+          "name": "ai",
+          "from": "1.0.0",
+          "to": "",
+          "resolvable": false,
+          "reason": "not in the plugin registry"
+        }
+      ],
+      "steps": [
+        {
+          "name": "backup",
+          "kind": "stack",
+          "pins": [],
+          "command": "nself backup create"
+        },
+        {
+          "name": "cli",
+          "kind": "self",
+          "pins": [
+            {
+              "kind": "cli",
+              "name": "nself",
+              "from": "v1.4.0",
+              "to": "v1.4.9",
+              "resolvable": true
+            }
+          ],
+          "command": "nself update --cli"
+        }
+      ]
+    },
+    "applied": false,
+    "steps": [
+      {
+        "name": "backup",
+        "status": "pending"
+      },
+      {
+        "name": "cli",
+        "status": "pending"
+      }
+    ]
+  }
+}

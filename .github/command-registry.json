@@ -21867,6 +21867,23 @@
           "secret": false
         },
         {
+          "name": "plan",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Show the pin diff (CLI, images, plugins) and the upgrade steps; writes nothing",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        },
+        {
           "name": "restart",
           "shorthand": null,
           "type": "bool",
@@ -21899,14 +21916,31 @@
           "output": null,
           "cli_only": false,
           "secret": false
+        },
+        {
+          "name": "yes",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Apply the image and plugin pins, rebuild, then update the CLI last (--cli=false skips the CLI)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
         }
       ],
       "canon": "core",
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/update.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -22480,7 +22514,7 @@
     "deprecated_shims": 43,
     "plugin": 11,
     "core_missing": [],
-    "json_envelope": 191,
+    "json_envelope": 192,
     "json_legacy": 34
   }
 }
