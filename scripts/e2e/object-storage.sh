@@ -138,6 +138,9 @@ echo 'PASS: S3 coverage suite'
 printf '%s\n%s\n' "$S3_ACCESS_KEY" "$S3_SECRET_KEY" >/work/key-patterns
 chmod 600 /work/key-patterns
 if grep -Fq -f /work/key-patterns docker-compose.yml; then fail "credential in compose"; fi
+# The designated secret stores may hold the keys; nothing else under the project may.
+leaks="$(grep -rlF -f /work/key-patterns . --exclude=.env --exclude=.env.secrets --exclude=.env.local --exclude=compose.env 2>/dev/null || true)"
+if [ -n "$leaks" ]; then echo "$leaks"; fail "credential outside the secret files"; fi
 echo 'PASS: identity absent from project and credentials absent from compose'
 sed '/^OBJECT_STORAGE_ENABLED=/d' .env >/work/env-next
 printf 'MINIO_ENABLED=true\n' >>/work/env-next

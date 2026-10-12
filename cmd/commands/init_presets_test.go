@@ -193,3 +193,29 @@ func TestInitPresetsWriteObjectStorage(t *testing.T) {
 		}
 	})
 }
+
+// TestInitStandardEnvObjectStorageLine: a standard (non-demo) init lists
+// OBJECT_STORAGE_ENABLED=false with the optional services in v1.5 only.
+func TestInitStandardEnvObjectStorageLine(t *testing.T) {
+	compattest.Both(t, func(t *testing.T) {
+		dir := t.TempDir()
+		t.Chdir(dir)
+		t.Setenv("NSELF_TELEMETRY", "false")
+		cmd := newInitCmd()
+		cmd.SetArgs([]string{"init", "--non-interactive", "--quiet", "--name", "storage-std"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("init: %v", err)
+		}
+		data, err := os.ReadFile(filepath.Join(dir, ".env"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		env := string(data)
+		if !strings.Contains(env, "MINIO_ENABLED=false\n") {
+			t.Error("standard env lost MINIO_ENABLED=false")
+		}
+		if has := strings.Contains(env, "OBJECT_STORAGE_ENABLED=false\n"); has != compat.V15() {
+			t.Errorf("OBJECT_STORAGE_ENABLED=false present = %v, want %v", has, compat.V15())
+		}
+	})
+}

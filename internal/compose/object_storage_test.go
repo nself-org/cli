@@ -168,6 +168,24 @@ func TestObjectStorageSeaweedGenerated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var doc struct {
+		Services map[string]map[string]any `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(got, &doc); err != nil {
+		t.Fatal(err)
+	}
+	initSvc, ok := doc.Services["seaweedfs-init"]
+	if !ok {
+		t.Fatal("rendered compose has no seaweedfs-init")
+	}
+	if initSvc["network_mode"] != "service:seaweedfs" {
+		t.Fatalf("rendered network_mode=%v, want service:seaweedfs", initSvc["network_mode"])
+	}
+	for _, key := range []string{"networks", "ports"} {
+		if _, has := initSvc[key]; has {
+			t.Fatalf("rendered seaweedfs-init has a %s key", key)
+		}
+	}
 	for _, value := range []string{cfg.Minio.S3AccessKey, cfg.Minio.S3SecretKey} {
 		if bytes.Contains(got, []byte(value)) {
 			t.Fatalf("compose contains fake credential")
