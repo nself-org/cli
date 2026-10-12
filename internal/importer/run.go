@@ -60,6 +60,23 @@ func checkTarget(ctx context.Context, cfg *config.Config, d Detection) error {
 	}
 	return load.AuthPreflight(ctx, db, d.SourceUsers)
 }
+
+// planObjects runs the object-store preflights of the real run (E529 missing store, E519 existing
+// keys, D-0723) during --plan, so a plan never reports pass for a bundle the run would refuse.
+func planObjects(ctx context.Context, cfg *config.Config, d Detection, skip bool) error {
+	if skip || len(d.Objects) == 0 {
+		return nil
+	}
+	store, err := load.Store(cfg)
+	if err != nil {
+		return err
+	}
+	m := portable.Manifest{Storage: portable.Storage{Objects: d.Objects}}
+	if err = load.StoragePreflight(m, store, skip); err != nil || store == nil {
+		return err
+	}
+	return load.StorageCollisions(ctx, m, store, skip)
+}
 func Run(ctx context.Context, cfg *config.Config, s Source, in Input, opts RunOptions) (Report, error) {
 	report := Report{Result: "failed", Tables: []TableReport{}, Exemptions: []portable.Exemption{}, Mismatches: []verify.Mismatch{}, UntranslatedPolicies: []Policy{}, Hasura: HasuraReport{Diffs: []verify.Mismatch{}}}
 	if s == nil {
@@ -103,6 +120,11 @@ func Run(ctx context.Context, cfg *config.Config, s Source, in Input, opts RunOp
 	}
 	if err = targetChecks(ctx, cfg, detection); err != nil {
 		return report, err
+	}
+	if opts.Plan {
+		if err = planObjects(ctx, cfg, detection, opts.SkipStorage); err != nil {
+			return report, err
+		}
 	}
 	report.Detection = &detection
 	report.Steps = []string{"extract snapshot", "check portable bundle", "restore pre-data and data", "load auth users", "load storage", "restore post-data", "apply additive metadata", "verify zero mismatches"}

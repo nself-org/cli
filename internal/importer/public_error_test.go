@@ -1,8 +1,11 @@
 package importer
 
 import (
+	"context"
 	"errors"
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/portable"
 	"strings"
 	"testing"
 )
@@ -29,3 +32,19 @@ func TestPublicErrorKeepsPortableBundleCodes(t *testing.T) {
 }
 
 func asCLI(err error, target **errs.CLIError) bool { return errors.As(err, target) }
+
+func TestPlanObjects(t *testing.T) {
+	ctx := context.Background()
+	objs := []portable.Object{{Bucket: "b", Key: "k"}}
+	if err := planObjects(ctx, &config.Config{}, Detection{}, false); err != nil {
+		t.Fatalf("a bundle without objects needs no store: %v", err)
+	}
+	if err := planObjects(ctx, &config.Config{}, Detection{Objects: objs}, true); err != nil {
+		t.Fatalf("--skip-storage loads no object: %v", err)
+	}
+	err := planObjects(ctx, &config.Config{}, Detection{Objects: objs}, false)
+	var cli *errs.CLIError
+	if !errors.As(err, &cli) || cli.Code != "E529" {
+		t.Fatalf("a plan must refuse objects with no object store like the real run (E529): %v", err)
+	}
+}

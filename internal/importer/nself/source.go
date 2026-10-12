@@ -34,7 +34,18 @@ func open(in importer.Input) (*portable.Reader, error) {
 	if dir == "" {
 		return nil, errs.New("E517", "bundle directory required")
 	}
-	return portable.Open(dir)
+	r, err := portable.Open(dir)
+	if err != nil {
+		return nil, err
+	}
+	// compat.sql would run as the database owner before any other check; nself db export never
+	// writes one, so a bundle that carries it did not come from the exporter.
+	for _, f := range r.Manifest().Files {
+		if f.Path == "db/compat.sql" {
+			return nil, errs.New("E516", "bundle carries db/compat.sql, which nself db export never writes; import it with the source that wrote it")
+		}
+	}
+	return r, nil
 }
 
 // Detect reads the manifest, checks the Postgres major against the target and reports the bundle's
@@ -45,7 +56,7 @@ func (Source) Detect(ctx context.Context, in importer.Input) (importer.Detection
 		return importer.Detection{}, err
 	}
 	m := r.Manifest()
-	d := importer.Detection{Kind: "nself", Version: m.Postgres.ServerVersion, Schemas: m.DB.Schemas, SourceUsers: m.Auth.Users, Notes: []string{fmt.Sprintf("portable bundle from %s %s (source %s)", m.Producer.Tool, m.Producer.Version, m.Producer.Source)}}
+	d := importer.Detection{Kind: "nself", Version: m.Postgres.ServerVersion, Schemas: m.DB.Schemas, SourceUsers: m.Auth.Users, Objects: m.Storage.Objects, Notes: []string{fmt.Sprintf("portable bundle from %s %s (source %s)", m.Producer.Tool, m.Producer.Version, m.Producer.Source)}}
 	if in.Target == nil {
 		return d, nil
 	}

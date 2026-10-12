@@ -3,6 +3,7 @@ package nself
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/importer"
@@ -181,5 +182,51 @@ func TestCopyStopsWhenCancelled(t *testing.T) {
 	src := io.NopCloser(strings.NewReader("data"))
 	if err := writeMember(ctx, src, filepath.Join(t.TempDir(), "out")); codeOf(err) != "E520" {
 		t.Fatalf("want E520 on a cancelled copy, got %v", err)
+	}
+}
+
+func TestCompatSQLBundleIsRefused(t *testing.T) {
+	w, err := portable.NewWriter(filepath.Join(t.TempDir(), "bundle"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{"db/data.dump": "d", "db/schema.sql": "s", "db/compat.sql": "SELECT 1;\n"} {
+		if _, err = w.WriteFile(name, strings.NewReader(body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err = w.Finish(portable.Manifest{Postgres: portable.PostgresInfo{ServerVersion: "16.4", Major: 16}, DB: portable.DB{Schemas: []string{"public"}}}); err != nil {
+		t.Fatal(err)
+	}
+	_, derr := Source{}.Detect(context.Background(), input(w.Dir()))
+	_, xerr := Source{}.Extract(context.Background(), input(w.Dir()), filepath.Join(t.TempDir(), "stage"))
+	if codeOf(derr) != "E516" || codeOf(xerr) != "E516" {
+		t.Fatalf("a bundle with db/compat.sql must be refused with E516: %v / %v", derr, xerr)
+	}
+}
+func TestDetectCarriesObjectsOutOfTheReport(t *testing.T) {
+	w, err := portable.NewWriter(filepath.Join(t.TempDir(), "bundle"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	member, _ := portable.StorageMember("bkt", "a/one.txt")
+	f, err := w.WriteFile(member, strings.NewReader("obj"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	obj, err := portable.NewObject("bkt", "a/one.txt", f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := portable.Manifest{Postgres: portable.PostgresInfo{ServerVersion: "16.4", Major: 16}, DB: portable.DB{Schemas: []string{"public"}}, Storage: portable.Storage{Objects: []portable.Object{obj}}, SourceCounts: []portable.SourceCount{{Kind: "objects", Count: 1, Method: "independent list"}}}
+	if _, err = w.Finish(m); err != nil {
+		t.Fatal(err)
+	}
+	d, err := Source{}.Detect(context.Background(), input(w.Dir()))
+	if err != nil || len(d.Objects) != 1 || d.Objects[0].Key != "a/one.txt" {
+		t.Fatalf("detection objects: %+v %v", d.Objects, err)
+	}
+	if b, _ := json.Marshal(d); bytes.Contains(b, []byte("one.txt")) {
+		t.Fatalf("object keys must not reach the report JSON: %s", b)
 	}
 }

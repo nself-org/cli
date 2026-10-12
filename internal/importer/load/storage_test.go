@@ -90,4 +90,28 @@ func TestStorageCollisions(t *testing.T) {
 	if err = StorageCollisions(ctx, portable.Manifest{}, fakeLister{err: errors.New("boom")}, false); err != nil {
 		t.Fatalf("a bundle without objects never lists: %v", err)
 	}
+	// SeaweedFS stores "a//one.txt" and "/a/one.txt" as "a/one.txt": they must collide with it.
+	for _, key := range []string{"a//one.txt", "/a/one.txt", "a/one.txt/"} {
+		bm := portable.Manifest{Storage: portable.Storage{Objects: []portable.Object{{Bucket: "b", Key: key}}}}
+		if codeOf(StorageCollisions(ctx, bm, fakeLister{held: map[string][]string{"b": {"a/one.txt"}}}, false)) != "E519" {
+			t.Fatalf("key %q must collide with a/one.txt", key)
+		}
+		if err = StorageCollisions(ctx, bm, fakeLister{held: map[string][]string{"b": {"other"}}}, false); err != nil {
+			t.Fatalf("key %q with nothing held must pass: %v", key, err)
+		}
+	}
+	for _, key := range []string{"a/../b", "./a", "a/./b", "/", "//"} {
+		bm := portable.Manifest{Storage: portable.Storage{Objects: []portable.Object{{Bucket: "b", Key: key}}}}
+		if codeOf(StorageCollisions(ctx, bm, fakeLister{}, false)) != "E519" {
+			t.Fatalf("key %q has no canonical form and must be refused", key)
+		}
+	}
+	twin := portable.Manifest{Storage: portable.Storage{Objects: []portable.Object{{Bucket: "b", Key: "a/x"}, {Bucket: "b", Key: "a//x"}}}}
+	if codeOf(StorageCollisions(ctx, twin, fakeLister{}, false)) != "E519" {
+		t.Fatal("two keys that collapse to one must be refused")
+	}
+	other := portable.Manifest{Storage: portable.Storage{Objects: []portable.Object{{Bucket: "b", Key: "a/x"}, {Bucket: "c", Key: "a//x"}}}}
+	if err = StorageCollisions(ctx, other, fakeLister{}, false); err != nil {
+		t.Fatalf("the same key in two buckets is fine: %v", err)
+	}
 }

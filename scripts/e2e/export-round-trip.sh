@@ -100,7 +100,7 @@ cd "$DIRA"
 PGDB_A="$(pgdb "$PA")"
 pga() { docker exec "${PA}_postgres" psql -X -U postgres -d "$PGDB_A" -v ON_ERROR_STOP=1 -At -c "$1"; }
 test "$(pga "SELECT count(*) FROM public.np_plugins WHERE name='a10-fixture'")" = 1 || fail 'plugin not installed in A'
-pga "CREATE SCHEMA app; CREATE TABLE public.notes(id integer PRIMARY KEY, body text); INSERT INTO public.notes SELECT i, md5(i::text) FROM generate_series(1,1000) i; CREATE TABLE app.extra(id integer PRIMARY KEY, note_id integer REFERENCES public.notes(id), body text); INSERT INTO app.extra VALUES(1, 1, 'fixture'); CREATE TABLE public.np_export_private(id int); CREATE SCHEMA np_export_private; CREATE TABLE np_export_private.private(id int);" >>"$LOG" 2>&1 || fail 'seed A'
+pga "CREATE SCHEMA app; CREATE TABLE public.notes(id integer PRIMARY KEY, body text); INSERT INTO public.notes SELECT i, md5(i::text) FROM generate_series(1,1000) i; CREATE TABLE app.extra(id integer PRIMARY KEY, note_id integer REFERENCES public.notes(id), body text); INSERT INTO app.extra VALUES(1, 1, 'fixture'); CREATE TABLE public.np_export_private(id int); CREATE SCHEMA np_export_private; CREATE TABLE np_export_private.private(id int); CREATE SCHEMA app2; CREATE TABLE app2.t(id integer PRIMARY KEY); INSERT INTO app2.t VALUES(1);" >>"$LOG" 2>&1 || fail 'seed A'
 for i in 1 2 3; do
   curl -fsS "http://127.0.0.1:$((A_BASE + 400))/signup/email-password" -H 'Content-Type: application/json' \
     -d "{\"email\":\"fake-roundtrip-$i@example.invalid\",\"password\":\"FAKE-USER-PASSWORD-$i\"}" >"$W/signup-$i.json" || fail 'signup A'
@@ -123,6 +123,9 @@ FINGER_A="$(pga 'SELECT count(*), sum(hashtextextended(t::text,0)::numeric) FROM
 nself db export --out "$W/bundle" --json >"$W/summary.json" 2>>"$LOG" || fail export
 jq -e '.data.tables==2 and .data.users==3 and .data.objects==4' "$W/summary.json" >/dev/null || fail summary
 pass 'seeded project A exported (2 tables, 3 users, 4 objects)'
+# A second bundle holds only app2.t (a table B will not have) but also all four objects.
+nself db export --out "$W/bundle2" --schemas app2 --json >"$W/summary2.json" 2>>"$LOG" || fail 'export app2'
+jq -e '.data.tables==1 and .data.objects==4' "$W/summary2.json" >/dev/null || fail 'summary app2'
 # A is no longer needed; stopping it keeps the host small while B starts.
 nself stop >>"$LOG" 2>&1 || fail 'stop A'
 # ---- Project B: fresh, same plugin, import -----------------------------------------------
@@ -170,12 +173,29 @@ for i in 1 2 3; do
 done
 pass 'users sign in to B with their original passwords'
 # Importing the same bundle again is refused (E519) and changes nothing.
-state_b() { pgb 'SELECT (SELECT count(*) FROM public.notes), (SELECT sum(hashtextextended(t::text,0)::numeric) FROM public.notes t), (SELECT count(*) FROM auth.users), (SELECT count(*) FROM app.extra)'; }
+objs_b() {
+  for key in one.txt TWO.txt two.txt nested/four.txt; do
+    curl -fsS --aws-sigv4 'aws:amz:us-east-1:s3' --user "$S3_AUTH" "http://127.0.0.1:$((B_BASE + 333))/export-fixture/$key" | sha256sum
+  done | sha256sum
+}
+meta_hash() { meta_b '{"type":"export_metadata","version":2,"args":{}}' | jq -S '.metadata' | sha256sum; }
+# state_b: rows, users and Hasura metadata and every object's bytes in B, in one comparable line.
+state_b() {
+  echo "$(pgb 'SELECT (SELECT count(*) FROM public.notes), (SELECT sum(hashtextextended(t::text,0)::numeric) FROM public.notes t), (SELECT count(*) FROM auth.users), (SELECT count(*) FROM app.extra), (SELECT count(*) FROM information_schema.schemata WHERE schema_name='"'"'app2'"'"')')|$(objs_b)|$(meta_hash)"
+}
 before="$(state_b)"
 if nself db import nself "$W/bundle" --json >"$W/rerun.json" 2>"$W/rerun.err"; then fail 'rerun accepted'; fi
-grep -q E519 "$W/rerun.json" "$W/rerun.err" || fail 'rerun without E519'
+jq -e '.error.code=="E519"' "$W/rerun.json" >/dev/null || fail 'rerun without E519'
 test "$(state_b)" = "$before" || fail 'rerun changed B'
 pass 'second import refused with E519, B unchanged'
+# A bundle whose tables B does not have still cannot overwrite B's objects (D-0723): the object
+# store check refuses it, in --plan as well as in the real run, before anything is written.
+for mode in --plan ''; do
+  if nself db import nself "$W/bundle2" $mode --json >"$W/objects.json" 2>"$W/objects.err"; then fail "object collision accepted ($mode)"; fi
+  jq -e '.error.code=="E519" and (.error.message|test("object store"))' "$W/objects.json" >/dev/null || fail "object collision without E519 ($mode)"
+done
+test "$(state_b)" = "$before" || fail 'object collision changed B'
+pass 'bundle that would overwrite existing objects refused (plan and run), B unchanged'
 # A damaged or foreign bundle is refused before anything is read into B, on a used target too.
 cp -r "$W/bundle" "$W/flipped"
 chmod -R u+w "$W/flipped"
