@@ -26,7 +26,8 @@ var rowEnv = map[string]map[string]string{
 	"postgres/postgres":                 {"POSTGRES_EXTENSIONS": "uuid-ossp"},
 	"postgres/pgvector":                 {"POSTGRES_EXTENSIONS": "uuid-ossp,pgvector"},
 	"hasura/hasura":                     {},
-	"auth/auth":                         {},
+	"auth/auth":                         {"NSELF_V15": "1", "AUTH_ENCRYPTION_KEY": strings.Repeat("0f", 32)}, // fake key (P7-LIVE-20)
+	"auth/auth-v14":                     {},
 	"nginx/nginx":                       {},
 	"redis/redis":                       {"REDIS_ENABLED": "true", "REDIS_ENGINE": "redis"},
 	"redis/valkey":                      {"REDIS_ENABLED": "true", "REDIS_ENGINE": "valkey"},

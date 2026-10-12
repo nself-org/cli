@@ -17,7 +17,7 @@ d 0755 project/ssl/certificates
 f 0600 project/.env a7c8b3e29cfdd033c034b4944a5d494fd720f309bb3ae9201eddb4fa76bc35ec
 f 0600 project/.env.computed 11d69b678463f3b0ecff1c6a2036bd3ac6ac39c6f0ab75b775da0196f209ed55
 f 0600 project/.nself/compose.env dc96cc215219abc0c4d5af95ed9a63044f163c866d671ccf7ff034ecd9457194
-f 0600 project/docker-compose.yml 8cfaaa007382b88bc37f19365881c559e06d8d644fa1f52d4925cc36060aa5f9
+f 0600 project/docker-compose.yml 535d2932dd9b4b9efdad08f654bac2e15e1bdc3397f8fdac07cb6a7a6d82f239
 f 0644 project/.nself/build-profile a172cedcae47474b615c54d510a5d84a8dea3032e958587430b413538be3f333
 f 0644 project/.nself/build-version 7fd890fffe22aa34fcf6b8f991d8abfbfed0090fe7cd76af60b46c20ad7bb027
 f 0644 project/.nself/compose-env-files.txt 7d3e777d4d376c34edad2c78f512e08ec2d1819efdea2a89bbf91cb62e675a92

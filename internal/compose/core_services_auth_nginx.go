@@ -8,9 +8,12 @@ package compose
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
+	"sync/atomic"
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
@@ -126,24 +129,17 @@ func (g *Generator) buildAuthService() (ServiceConfig, error) {
 	}, nil
 }
 
-// AuthEncryptionKeyEnv is the key nhost/auth 0.43.0 and later refuse to start
-// without: 32 bytes, hex encoded. It encrypts the TOTP secrets in auth.users.
+// AuthEncryptionKeyEnv (32 bytes, hex; authKeyRE) is required by nhost/auth 0.43.0+; it encrypts the TOTP secrets.
 const AuthEncryptionKeyEnv = "AUTH_ENCRYPTION_KEY"
 
 var authKeyRE = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
 
 // AuthEntry names the image lock entry the auth service runs by default:
-// auth-v14 (nhost/auth:0.36.0) in v1.4. In v1.5 it is auth (the current
-// nhost/auth release) once the env cascade sets a valid AUTH_ENCRYPTION_KEY,
-// which that release requires; without one v1.5 stays on auth-v14 (P7-LIVE-20
-// lead ruling, LIVE Invalidations 2026-10-11). passthrough is config.Passthrough.
-func AuthEntry(passthrough map[string]string) string {
-	entry, _ := authEntry(passthrough)
-	return entry
-}
-
-// authEntry is AuthEntry plus whether v1.5 stays on auth-v14 for want of the key.
-func authEntry(passthrough map[string]string) (entry string, keyMissing bool) {
+// auth-v14 (nhost/auth:0.36.0) in v1.4; in v1.5 auth (the current release) once
+// the env cascade (passthrough, config.Passthrough) sets a valid
+// AUTH_ENCRYPTION_KEY, which that release requires, else auth-v14 with
+// keyMissing true (P7-LIVE-20 lead ruling, LIVE Invalidations 2026-10-11).
+func AuthEntry(passthrough map[string]string) (entry string, keyMissing bool) {
 	// compat.V15(P7-LIVE-20): auth runs nhost/auth:0.36.0 (auth-v14) -> the current nhost/auth release (auth) when AUTH_ENCRYPTION_KEY is set
 	if !compat.V15() {
 		return "auth-v14", false
@@ -156,21 +152,25 @@ func authEntry(passthrough map[string]string) (entry string, keyMissing bool) {
 
 // authImage renders the auth image. AUTH_VERSION blank or 0.36.0 (the config
 // default that nself init writes into .env) renders the AuthEntry entry; the
-// current release's version renders that entry in any mode. Neither is an
+// current release's version renders that entry in any mode when the key is set
+// (else auth-v14 and the notice). Neither is an
 // explicit override (Ref.IsDefaultVersion), so a project lock pin wins over both;
 // a pin in the pre-rename nhost/hasura-auth spelling is returned as is (same
 // digest; ResolveImage would drop it as another repository). Any other value is
 // an explicit nhost/auth tag and outranks the pin.
 func (g *Generator) authImage() string {
 	version := strings.TrimSpace(g.cfg.Auth.Version)
-	entry, keyMissing := authEntry(g.cfg.Passthrough)
+	entry, keyMissing := AuthEntry(g.cfg.Passthrough)
 	v14, _ := LockedRef("auth-v14")
 	cur, _ := LockedRef("auth")
 	switch {
 	case v14.IsDefaultVersion(version):
 		version = ""
-	case cur.IsDefaultVersion(version):
-		entry, version = "auth", ""
+	case cur.IsDefaultVersion(version): // the current release, but never without its key
+		version, entry, keyMissing = "", "auth", false
+		if !authKeyRE.MatchString(strings.TrimSpace(g.cfg.Passthrough[AuthEncryptionKeyEnv])) {
+			entry, keyMissing = "auth-v14", true
+		}
 	}
 	if version == "" {
 		pin := ProjectPins()["auth"]
@@ -187,14 +187,15 @@ func (g *Generator) authImage() string {
 	return ResolveImage("auth", ImageRef("auth-v14", version))
 }
 
-// noticeAuthKey says once, on the pin notice writer, why v1.5 still runs auth 0.36.0.
+var ( // authNoticeW receives the key notice, once per process (authNoticed)
+	authNoticeW io.Writer = os.Stderr
+	authNoticed atomic.Bool
+)
+
+// noticeAuthKey says once why v1.5 still runs auth 0.36.0; never the key itself.
 func noticeAuthKey() {
-	pinNoticedMu.Lock()
-	seen, w := pinNoticed["auth/"+AuthEncryptionKeyEnv], pinNoticeW
-	pinNoticed["auth/"+AuthEncryptionKeyEnv] = true
-	pinNoticedMu.Unlock()
-	if !seen && w != nil {
-		_, _ = fmt.Fprintf(w, "notice: auth stays on nhost/auth 0.36.0 until %s is set (64 hex characters); the current release requires it\n", AuthEncryptionKeyEnv)
+	if !authNoticed.Swap(true) && authNoticeW != nil {
+		_, _ = fmt.Fprintf(authNoticeW, "notice: auth stays on nhost/auth 0.36.0 until %s is set (64 hex characters); the current release requires it\n", AuthEncryptionKeyEnv)
 	}
 }
 

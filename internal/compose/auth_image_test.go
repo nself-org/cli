@@ -56,7 +56,7 @@ func TestAuthImageByMode(t *testing.T) {
 	}
 	restore := SetProjectPins(nil)
 	defer restore()
-	defer PinNoticeSink(&bytes.Buffer{})()
+	captureAuthNotice(t)
 	cases := []struct {
 		name, version, key string
 		v15, mode          string // compat mode "", "1"; pinning mode
@@ -70,7 +70,9 @@ func TestAuthImageByMode(t *testing.T) {
 		{"v1.5 malformed key stays on auth-v14", "0.36.0", "not-hex", "1", PinningLock, v14.String()},
 		{"v1.5 key moves to the current release", "0.36.0", fakeAuthKey, "1", PinningLock, cur.String()},
 		{"v1.5 key legacy pinning", "", fakeAuthKey, "1", PinningLegacy, cur.LegacyRef},
-		{"explicit current version in v1.4", cur.Version, "", "", PinningLock, cur.String()},
+		{"current version with key in v1.4", cur.Version, fakeAuthKey, "", PinningLock, cur.String()},
+		{"current version without key stays on auth-v14", cur.Version, "", "", PinningLock, v14.String()},
+		{"current version without key in v1.5", cur.Version, "", "1", PinningLock, v14.String()},
 		{"explicit other version in v1.4", "0.40.0", "", "", PinningLock, "nhost/auth:0.40.0"},
 		{"explicit other version in v1.5", "0.40.0", fakeAuthKey, "1", PinningLock, "nhost/auth:0.40.0"},
 	}
@@ -97,6 +99,7 @@ func TestAuthLockPinKept(t *testing.T) {
 				setMode(t, PinningLock)
 				var notices bytes.Buffer
 				defer PinNoticeSink(&notices)()
+				keyNotice := captureAuthNotice(t)
 				defer SetProjectPins(map[string]string{"auth": pin})()
 				t.Setenv("AUTH_VERSION", "0.36.0") // what nself init writes into .env
 				for _, key := range []string{"", fakeAuthKey} {
@@ -104,8 +107,8 @@ func TestAuthLockPinKept(t *testing.T) {
 						t.Errorf("key=%t: auth image = %q, want the pin %q", key != "", got, pin)
 					}
 				}
-				if notices.Len() != 0 {
-					t.Errorf("a kept pin printed a notice: %q", notices.String())
+				if notices.Len() != 0 || keyNotice.Len() != 0 {
+					t.Errorf("a kept pin printed a notice: %q %q", notices.String(), keyNotice.String())
 				}
 				// The current release's version is a CLI default too: the pin stays.
 				t.Setenv("AUTH_VERSION", cur.Version)
@@ -122,19 +125,33 @@ func TestAuthLockPinKept(t *testing.T) {
 	}
 }
 
+// captureAuthNotice points the key notice at a buffer and re-arms it.
+func captureAuthNotice(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := authNoticeW
+	authNoticeW = &buf
+	authNoticed.Store(false)
+	t.Cleanup(func() { authNoticeW = prev; authNoticed.Store(false) })
+	return &buf
+}
+
 func TestAuthKeyNoticeOnce(t *testing.T) {
 	compattest.Set(t, true)
 	setMode(t, PinningLock)
 	defer SetProjectPins(nil)()
-	var notices bytes.Buffer
-	defer PinNoticeSink(&notices)()
+	notices := captureAuthNotice(t)
 	authImageFor(t, "0.36.0", "")
 	authImageFor(t, "0.36.0", "")
 	if got := strings.Count(notices.String(), AuthEncryptionKeyEnv); got != 1 {
 		t.Errorf("notice printed %d times, want once: %q", got, notices.String())
 	}
-	if strings.Contains(notices.String(), fakeAuthKey) {
-		t.Error("the notice must never echo a key")
+	quiet := captureAuthNotice(t)
+	authImageFor(t, "0.36.0", fakeAuthKey)
+	compattest.Set(t, false)
+	authImageFor(t, "0.36.0", "")
+	if quiet.Len() != 0 {
+		t.Errorf("notice printed with a key or in v1.4: %q", quiet.String())
 	}
 }
 
@@ -144,11 +161,35 @@ func TestAuthEntryExported(t *testing.T) {
 		if compat.V15() {
 			want = "auth"
 		}
-		if got := AuthEntry(map[string]string{AuthEncryptionKeyEnv: " " + fakeAuthKey + " "}); got != want {
-			t.Errorf("AuthEntry(with key) = %q, want %q", got, want)
+		if got, missing := AuthEntry(map[string]string{AuthEncryptionKeyEnv: " " + fakeAuthKey + " "}); got != want || missing {
+			t.Errorf("AuthEntry(with key) = %q, %t; want %q, false", got, missing, want)
 		}
-		if got := AuthEntry(nil); got != "auth-v14" {
-			t.Errorf("AuthEntry(nil) = %q, want auth-v14", got)
+		if got, missing := AuthEntry(nil); got != "auth-v14" || missing != compat.V15() {
+			t.Errorf("AuthEntry(nil) = %q, %t; want auth-v14, %t", got, missing, compat.V15())
+		}
+	})
+}
+
+func TestAuthBootstrapMapsPreRenameRef(t *testing.T) {
+	v14, _ := LockedRef("auth-v14")
+	for _, ref := range []string{"nhost/hasura-auth:0.36.0", "docker.io/nhost/hasura-auth:0.36.0", "nhost/auth:0.36.0"} {
+		if got, ok := CLILockedRef(ref); !ok || got != v14.String() {
+			t.Errorf("CLILockedRef(%q) = %q, %t; want %q (auth-v14)", ref, got, ok, v14.String())
+		}
+	}
+	if _, ok := CLILockedRef("nhost/hasura-auth:0.40.0"); ok {
+		t.Error("an unlocked hasura-auth tag must stay unpinned")
+	}
+}
+
+func TestAuthCatalogShowsModeEntry(t *testing.T) {
+	compattest.Both(t, func(t *testing.T) {
+		setMode(t, PinningLock)
+		v14, _ := LockedRef("auth-v14")
+		for _, e := range ServiceCatalog() {
+			if e.Name == "auth" && e.DefaultImage != v14.String() {
+				t.Errorf("catalog auth image = %q, want %q", e.DefaultImage, v14.String())
+			}
 		}
 	})
 }
