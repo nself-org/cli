@@ -1,0 +1,15 @@
+{{.Header}}
+// One method per operation in .github/openapi.json (regenerate with: go run ./tools/sdkgen -lang ts)
+import type { CallOptions, Transport } from "../runtime/transport";
+import type * as T from "./types";
+
+export interface Operations {
+{{range .Ops}}  /** {{.Summary}} (POST {{.Path}}) */
+  {{.Method}}(request{{if .Optional}}?{{end}}: T.{{.Name}}Request, options?: CallOptions): Promise<{{.DataType}}>;
+{{end}}}
+
+export function createOperations(transport: Transport): Operations {
+  return {
+{{range .Ops}}    {{.Method}}: (request, options) => transport.call<{{.DataType}}>("{{.Path}}", request, options),
+{{end}}  };
+}

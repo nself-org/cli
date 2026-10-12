@@ -1,0 +1,44 @@
+{
+  "openapi": "3.1.0",
+  "info": {"title": "fixture", "version": "1"},
+  "paths": {
+    "/openapi.json": {"get": {"operationId": "openapi", "summary": "doc", "responses": {}}},
+    "/v1/commands/widget/get": {"post": {
+      "operationId": "nself_widget_get",
+      "summary": "Get a widget | with pipe */",
+      "requestBody": {"required": true, "content": {"application/json": {"schema": {
+        "type": "object", "additionalProperties": false,
+        "properties": {
+          "args": {"type": "array", "items": false, "minItems": 1, "maxItems": 2, "prefixItems": [{"type": "string"}, {"type": "string"}]},
+          "flags": {"type": "object", "additionalProperties": false, "properties": {"dry-run": {"type": "boolean", "description": "do not write"}, "mode": {"enum": ["a", "b"], "type": "string"}}}
+        }}}}}
+    }},
+    "/v1/commands/widget/list": {"post": {
+      "operationId": "nself_widget_list",
+      "summary": "List widgets",
+      "requestBody": {"required": true, "content": {"application/json": {"schema": {
+        "type": "object",
+        "properties": {
+          "args": {"type": "array", "items": {"type": "string"}, "minItems": 0},
+          "confirm": {"type": "string"}
+        }}}}}
+    }}
+  },
+  "components": {"schemas": {
+    "envelope": {"type": "object"},
+    "error": {"type": "object", "properties": {"code": {"type": "string"}, "class": {"enum": ["user", "other"], "type": "string"}}, "required": ["code", "class"]},
+    "nself_widget_get_data": {
+      "type": "object", "required": ["id", "tags"],
+      "properties": {
+        "id": {"type": "integer"},
+        "tags": {"type": "array", "items": {"type": "string"}},
+        "pair": {"type": "array", "prefixItems": [{"type": "string"}, {"type": "number"}], "items": false},
+        "owner": {"type": ["string", "null"]},
+        "extra": {"type": "object"},
+        "child": {"$ref": "#/components/schemas/nself_widget_list_data"},
+        "ok": true
+      }
+    },
+    "nself_widget_list_data": {"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}}}}
+  }}
+}
