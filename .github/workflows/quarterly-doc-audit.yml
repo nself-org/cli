@@ -130,7 +130,7 @@ jobs:
 
       - name: Open auto-fix PR
         if: ${{ github.event.inputs.apply_autofix == 'true' }}
-        uses: peter-evans/create-pull-request@v8
+        uses: peter-evans/create-pull-request@v8.1.1
         with:
           commit-message: "docs(audit): quarterly sweep ${{ steps.quarter.outputs.label }}"
           title: "Quarterly doc audit — ${{ steps.quarter.outputs.label }}"
