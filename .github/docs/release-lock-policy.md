@@ -1,6 +1,7 @@
 # Release Lock Policy — nSelf Ecosystem
 
-**Document type:** Ecosystem-wide policy (applies to all 12 repos under nself-org)
+**Release procedure:** `scripts/release/release.sh` runs the release chain; the runbook is `.github/wiki/Release-Process.md`.
+**Document type:** Ecosystem-wide policy (applies to every repo under nself-org)
 **Authored:** 2026-06-01 (P1-E1-W1-S01-T02 version reconciliation)
 **Authority:** GCI Version & Release Lock Hard Rule + phase-end-shipping.md
 
@@ -18,26 +19,23 @@ Reconciliation was performed against disk version files and git tags. No version
 
 | Repo | Documented | Actual | Delta | Status |
 |---|---|---|---|---|
-| cli | v1.1.1 (PPI) | v1.1.5 (disk+tag) | +4 patches | MASTER-VERSIONS.md updated |
-| admin | v1.1.1 (PPI) | v1.1.5 (disk) | +4 patches | MASTER-VERSIONS.md updated |
-| homebrew-nself | v1.1.1 (PPI) | v1.1.5 (formula) | +4 patches | MASTER-VERSIONS.md updated |
-| plugins-pro | v1.1.10 (MV) | v1.1.12 (tag) | +2 patches | MASTER-VERSIONS.md updated |
-| plugins (free) | undocumented | v1.1.3 (tag) | added | MASTER-VERSIONS.md updated |
-| web | v1.0.13 (MV) | v1.1.3 (tag) | +minor (own semver) | MASTER-VERSIONS.md updated |
-| nchat | undocumented | v1.1.4 (tag) | added | MASTER-VERSIONS.md updated |
-| nclaw | undocumented | v1.1.3 (tag) | added | MASTER-VERSIONS.md updated |
-| ntask | undocumented | v1.1.4 (tag) | added | MASTER-VERSIONS.md updated |
-| ntv | v1.0.9 (MV) | v1.1.3 (tag) | +patches (own semver) | MASTER-VERSIONS.md updated |
-| nfamily | v0.1.0 (MV) | v0.1.1 (tag) | +1 patch | MASTER-VERSIONS.md updated |
-| clawde | undocumented | v0.3.2 Tauri (tag) | added | MASTER-VERSIONS.md updated |
-
-MV = MASTER-VERSIONS.md prior state
+| cli | v1.1.1 (PPI) | v1.1.5 (disk+tag) | +4 patches | recorded |
+| admin | v1.1.1 (PPI) | v1.1.5 (disk) | +4 patches | recorded |
+| homebrew-nself | v1.1.1 (PPI) | v1.1.5 (formula) | +4 patches | recorded |
+| plugins-pro | v1.1.10 (prior doc) | v1.1.12 (tag) | +2 patches | recorded |
+| plugins (free) | undocumented | v1.1.3 (tag) | added | recorded |
+| web | v1.0.13 (prior doc) | v1.1.3 (tag) | +minor (own semver) | recorded |
+| nchat | undocumented | v1.1.4 (tag) | added | recorded |
+| nclaw | undocumented | v1.1.3 (tag) | added | recorded |
+| ntask | undocumented | v1.1.4 (tag) | added | recorded |
+| nfamily | v0.1.0 (prior doc) | v0.1.1 (tag) | +1 patch | recorded |
+| clawde | undocumented | v0.3.2 Tauri (tag) | added | recorded |
 
 ---
 
 ## CLI ↔ Admin Lockstep Status
 
-**Status: MAINTAINED at v1.1.5.** Both CLI and Admin are at v1.1.5. The homebrew formula references v1.1.5. No lockstep violation exists; MASTER-VERSIONS.md documentation was stale only.
+**Status: MAINTAINED at v1.1.5.** Both CLI and Admin are at v1.1.5. The homebrew formula references v1.1.5. No lockstep violation exists; the version documentation was stale only.
 
 Lockstep rule (hard): When CLI tags vX.Y.Z, Admin Docker must publish on the same release day. Any desync = `nself doctor --deep` hard error.
 
@@ -71,10 +69,10 @@ At P1 Build phase start, the user may grant a standing authorization covering th
 
 ## Multi-Phase Guidance
 
-- MASTER-VERSIONS.md is the single authoritative version source. Update it at every release.
+- The generated version facts (`hq/sport/generated/repos.json`) are the authoritative version source. Never type versions by hand.
 - REGISTRY-PACKAGES.md (SPORT) mirrors the package version rows.
 - The PPI "Current version" line in CLAUDE.md should reflect CLI version and be updated at every CLI release.
-- Future phases: run `pbd-verify-ready` which checks MASTER-VERSIONS.md consistency as part of the Ready gate.
+- Future phases: run `pbd-verify-ready` which checks version consistency as part of the Ready gate.
 
 ---
 
@@ -82,5 +80,5 @@ At P1 Build phase start, the user may grant a standing authorization covering th
 
 - `~/.claude/CLAUDE.md` § Version & Release Lock — Hard Rule
 - `~/.claude/rules/phase-end-shipping.md` § Version Bump Authority
-- `.claude/docs/MASTER-VERSIONS.md` — authoritative version table
+- `scripts/release/release.sh` and `.github/wiki/Release-Process.md` — the release chain and its runbook
 - `.opencode/phases/sport/REGISTRY-PACKAGES.md` — SPORT package mirror

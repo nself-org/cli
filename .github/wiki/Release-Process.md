@@ -1,86 +1,82 @@
 # Release Process
 
-How ɳSelf CLI releases are built, tagged, and distributed.
+How an ɳSelf CLI release is cut. One script runs the whole chain from the owner's machine: `scripts/release/release.sh`. It uses your `gh` login and nothing else. It stores no token and asks for none.
 
-## Version Files
+## Before you start
 
-Two files must be updated for a release:
+- `gh auth login` as the repo owner. The script uses that session for every call.
+- `git`, `gh`, `jq`, `curl` and `node` on the PATH (S1 checks them). `go` too, once `tools/facts` exists in cli (S3 runs it). `node` is for the web lock PR in S7.
+- The registry secrets are set for the cli repo (P7-PROD-61): `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` and the npm token. S1 warns if Docker Hub's is missing. S8 to S10 fail without them.
+- Run it in a terminal you are sitting at. A real run refuses to start when stdin is not a TTY (exit 2). What the code guarantees is that `release.sh` never pre-answers a prompt and never feeds `admin-merge.sh` any input. A TTY check cannot prove a human is typing (a `script` or `expect` wrapper has a TTY too), so the discipline of answering each merge prompt yourself is yours.
+- `main` of cli, admin and homebrew-nself is green and nothing you want released is waiting in an open PR.
 
-| File | Content |
-|------|---------|
-| `.github/VERSION` | Plain text version string, e.g. `1.0.0` |
-| `internal/version/version.go` | Go constant: `const Version = "1.0.0"` |
-
-Both must match exactly before tagging.
-
-## Version String Validation
-
-The `nself release <ver>` command validates the version argument against an anchored semver regexp before any exec call:
-
-```
-^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$
-```
-
-Strings containing shell metacharacters (`;`, `&&`, `$()`, backticks) are rejected at entry. This prevents shell injection via the version argument.
-
-## Version Bump Implementation
-
-The release command updates web subapp `package.json` files and README version badges using injection-safe patterns:
-
-- **Web version bumps** (`nself release <ver>` step 7): invokes `node --eval <script>` with the version passed as the `NSELF_VERSION` environment variable. The version is never interpolated into the shell command string.
-- **README badge sync** (step 9): uses Go-native `regexp.ReplaceAll` on each `README.md` file directly. No shell or `sed` invocation.
-
-## Tag Format
-
-Releases use semantic versioning with a `v` prefix:
-
-```
-v1.0.0       # stable release
-v1.0.1       # patch release
-v1.1.0       # minor release
-v2.0.0       # major release
-v1.0.0-rc.1  # release candidate
-```
-
-## Release Workflow
-
-The CI release workflow (`.github/workflows/release.yml`) triggers automatically on a version tag push:
+## Always plan first
 
 ```bash
-# 1. Update version files
-# 2. Commit
-git commit -m "release: v1.0.0"
-
-# 3. Tag
-git tag v1.0.0
-
-# 4. Push tag (triggers CI)
-git push origin v1.0.0
+scripts/release/release.sh --plan --version 1.5.0
 ```
 
-The workflow:
-1. Runs tests and linting
-2. Cross-compiles for all targets (Linux/macOS/Windows x amd64/arm64)
-3. Creates release archives (`.tar.gz` and `.zip`)
-4. Uploads artifacts to the GitHub Release
-5. Generates release notes from commit history
+Plan mode prints one row per command, `S<n> <step-id> <repo> <command>`, and makes only read-only `gh api` calls. It writes nothing to any repo, and no state file; the only file it touches is a short-lived temp file in `$TMPDIR` that holds a `gh` error message and is removed at once. Read the rows, then run for real:
 
-## Homebrew Formula
+```bash
+scripts/release/release.sh --version 1.5.0
+```
 
-The `homebrew-nself` tap auto-updates when a new GitHub Release is published. No manual action required, the formula reads the latest release tag from GitHub.
+Flags:
 
-**Homebrew lockstep gate:** The workflow `.github/workflows/homebrew-version-lockstep.yml` runs on every `v*.*.*` tag push. It reads the Homebrew formula version from `nself-org/homebrew-nself/Formula/nself.rb` via the GitHub API and fails if the formula version does not match the tag being cut. If the gate fails: update the formula in `homebrew-nself` first (version string + sha256), then re-tag on `cli`. Never cut a CLI tag while the formula is behind. This gate closes the gap that allowed v1.0.6/v1.0.7/v1.0.8 to ship without Homebrew formula sync (S30-T02).
+| Flag | Meaning |
+|---|---|
+| `--version X.Y.Z` | Required. No leading `v`. |
+| `--plan` | Print the steps. Change nothing. |
+| `--from S<n>` | Resume at step `n`. Earlier steps are skipped. |
+| `--yes` | Skip the script's own `Run S<n>? [y/N]` question. It never answers a merge prompt. |
 
-## install.sh
+Exit codes: `0` done, `1` a step failed (the message names the step and how to resume), `2` refused input. Refusals are: no or bad `--version`, stdin not a TTY, a version older than the latest release, a fresh start (or `--from S2`, `S3`) when the version is already the latest or its tag exists, and `--from S4` when the version is already the latest. From S5 on, the tag and a published release are expected. `--from S4` is allowed with the tag present: S4 only confirms the tag sits on the merged commit.
 
-The installer at `install.nself.org` is hosted in a separate repo. Update the version reference in `install.sh` after the GitHub Release is live.
+## The ten steps
 
-## Release Announcement
+Every step first checks whether GitHub already shows it finished. If so it prints `S<n> <id> done` and changes nothing. That is what makes a re-run safe. Work happens in temporary clones under `$TMPDIR/nself-release-<version>/`, removed when the run finishes. Resume data is in `$TMPDIR/nself-release-<version>.state`, and every step can also rebuild it from GitHub.
 
-After the release:
-1. Write GitHub Release notes highlighting new features and breaking changes
-2. Update [[Changelog]] with the release summary
-3. Post to ɳSelf community channels
+| Step | What it does | If it fails |
+|---|---|---|
+| S1 `preflight` | Checks tools and `gh` login, clones cli, admin and homebrew-nself, warns about missing Docker Hub secrets. | Fix the tool or login. Re-run from S1. |
+| S2 `admin-lockstep` | Bumps admin (`package.json`, `src/lib/cli-version.ts`, `Dockerfile`) with cli's `bump-version.sh`, opens a PR on admin, waits for required checks, merges with `admin-merge.sh`. | `--from S2`. A closed PR must be deleted with its branch first. |
+| S3 `cli-version` | Bumps the cli version files. When `tools/facts` exists it also runs `go run -mod=vendor ./tools/facts` and the `-readme README.md` form, so the facts file and README match the tag. Opens the PR, waits, merges. | `--from S3`. |
+| S4 `tag` | Finds the merge commit of the S3 PR. Tags `origin/main` if it is that commit; if main has moved on but still contains it, tags the merge commit you reviewed (a commit outside main's history stops the run). Reads `.github/VERSION` at that commit, runs the tag-time denylist rules (see below), then creates an annotated tag there and pushes it. The tag push starts `release.yml`, which creates the release with its assets. An existing tag on a different commit stops the run; a tag is never moved. | `--from S4`. Close the milestone or get `license-audit.yml` green first. |
+| S5 `build-wait` | Waits for the build job of the `release.yml` run whose head is the tag commit, then downloads the `release-checksums` artifact (fetched fresh each run, never trusted from a cache). | A red build: fix, re-run the failed jobs on GitHub, `--from S5`. Artifact expired (it lives one day) and the release is not published: re-run the WHOLE run with `gh run rerun <id> -R nself-org/cli` (not `--failed`), wait for the build, then `--from S5`. |
+| S6 `homebrew-formula` | Waits until every `release.yml` job except the Homebrew lockstep job and the publish job has succeeded (a failed `Pre-Release Gate`, SBOM or provenance job stops it: the formula is never merged for a release that cannot publish). Then runs homebrew-nself's own `update-formula.sh --checksums-file` on the release checksums (the published `checksums.txt` once the release exists, otherwise the build artifact). That writes the darwin arm64 hash into `on_arm` and the amd64 hash into `on_intel`. Opens the PR, waits, merges, then re-runs the failed `verify-homebrew-lockstep` job. S6 counts as done only when the formula's version and both hashes match the checksums. | `--from S6`. A closed unmerged PR: delete its branch with `gh api -X DELETE repos/nself-org/homebrew-nself/git/refs/heads/<branch>` (the message prints the exact command), then re-run. |
+| S7 `release-wait` | Waits for `release.yml` to succeed and lists the assets. Downloads the published `checksums.txt` and compares its darwin lines with `on_arm` and `on_intel` in `Formula/nself.rb` on homebrew-nself main; a rebuilt release has new hashes, and a mismatch stops the run. Then opens a PR on the web repo that pins the new cli tag (`update-lock.mjs`). The owner merges that PR; nothing deploys. | A failed run: the message names the failed jobs. Fix, re-run the failed jobs, then `--from S7`. Hash mismatch: `--from S6` re-writes the formula from the published checksums. |
+| S8 `docker-verify` | Checks `nself/nself:X.Y.Z` on Docker Hub for linux/amd64 and linux/arm64. If absent, waits about 3 minutes for the `docker-publish.yml` run that the Release starts, then for that run to finish; dispatches it once only when none exists. | `--from S8`. Check the Docker Hub secrets. |
+| S9 `admin-image` | Tags admin: an annotated `vX.Y.Z` on the S2 merge commit, pushed from the admin clone. Admin's `docker-publish.yml` starts on a `v*` tag push, and admin's release-tag-drift check fails 6 hours after the bump without the tag. The tag push also starts admin's other tag-triggered workflows (`release.yml` and `docker-publish.yml`). The tag goes on the S2 merge commit; if no merged lockstep PR is found, on the commit that set `package.json` to the version, never the tip of main. S9 then waits for that run (it does not dispatch a second publish) and checks `nself/nself-admin:X.Y.Z`. Only if no run publishes the image does it dispatch the workflow once. An admin tag on another commit stops the run. | `--from S9`. |
+| S10 `sdk-publish` | For each `sdk-*publish*.yml` in cli: done if a run on the tag succeeded, otherwise dispatches it on the tag's ref. Only `sdk-publish-go.yml` gets `-f version`; the py, ts and ts-sdk workflows would overwrite their own manifest version with it, so they publish the version committed at the tag. A file without `workflow_dispatch` is printed for a manual run. An API error stops the run. | `--from S10`. Check the npm and PyPI secrets. |
+
+## The denylist runs in two places
+
+`.github/release-denylist.json` has five rules. S4 evaluates the three that can be decided at tag time:
+
+- DENY-003: at least one commit since the prior tag.
+- DENY-004: the newest `license-audit.yml` run on `main` succeeded. If it is still running (a merge to Go files starts one, about 20 minutes), S4 waits up to 30 minutes. S4 then reads the newest run on any branch, the exact query `pre-release-gate.yml` uses, and stops before tagging if the gate would fail (for example a newer failed PR-branch run). Messages: still running after 30 minutes (wait, `--from S4`); failed (fix the licenses, `gh workflow run license-audit.yml -R nself-org/cli --ref main`, `--from S4`); none on main (start one the same way). Do not dispatch a new run while one is in flight: it cancels the first.
+- DENY-005: a closed milestone titled exactly `vX.Y.Z`, as `pre-release-gate.yml` requires. A milestone named `X.Y.Z` does not count. S4 reads milestones of every state, as the gate does, and needs exactly one milestone with that title, closed; an open duplicate stops the run and is named.
+
+DENY-001 (cosign bundles) and DENY-002 (SBOMs) need the build output, so they are evaluated after the build by the Pre-Release Gate, the `denylist` job in `release.yml`. That job re-checks all five before anything is published. `scripts/release-create.sh` is not used here: it evaluates the post-build rules before the build exists, so it would always refuse at tag time. Recovery for a refusal: close the milestone or fix `license-audit.yml`, then `--from S4`.
+
+## Merges are yours
+
+S2, S3 and S6 merge PRs on protected repos. For each one the script polls the PR's required checks for up to 45 minutes (red stops the run, nothing merges; pending after 45 minutes stops it with `--from S<n>`), then runs `scripts/admin-merge.sh --repo nself-org/<repo> --pr <n>` with your terminal attached. If a PR shows no checks yet, the script asks branch protection what is required: none means it goes on to your prompt, otherwise it retries six times and then stops without merging. When checks come back green it also confirms each required check name is among the passing ones. That script snapshots branch protection, relaxes it for under a minute, merges, and restores it. You answer its `[y/N]` prompt. `--yes` does not cover it, and the script never pipes an answer in.
+
+If `admin-merge.sh` exits non-zero, protection may not be restored. Read its message and its audit log (`~/.nself/admin-merge-audit.log`) before you do anything else.
+
+## Recovery
+
+- Any step: fix the cause, then `release.sh --version X.Y.Z --from S<n>`.
+- Guard rules are in the exit-code paragraph above. A stale branch on the remote from an earlier attempt stops the run with the exact `gh api -X DELETE …/git/refs/heads/<branch>` command to clear it. A work directory that is not a clone is named in the message; delete it and re-run.
+- Wrong tag or broken release: use `scripts/release-retract.sh`, then start again with a new patch version.
+- Artifacts expire after a day. Before the release is published there is no asset to fall back on, so S5 stops with the real recovery: re-run the whole `release.yml` run, wait for the build, `--from S5`. After publish, S6 and S7 use the published `checksums.txt`.
+- If the script cannot be used, P7-PROD-23 keeps a fallback token path for the old dispatch workflows. It is a fallback only; do not use it for a normal release.
+
+## Version files
+
+`scripts/bump-version.sh` edits every lockstep file in one go: `.github/VERSION`, `internal/version/version.go`, the SDK manifests, and in admin `package.json`, `src/lib/cli-version.ts` and `Dockerfile`. Do not hand-edit them. Tags are `vX.Y.Z`.
 
 ## See Also
 

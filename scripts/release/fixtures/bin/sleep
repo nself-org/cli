@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Test stub: no real waiting.
+exit 0
