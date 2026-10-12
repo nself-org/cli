@@ -33,8 +33,8 @@ internal/backup/pitr 25  # measured 27.6 2026-10-05
 internal/build 71  # measured 73.5 2026-10-05
 internal/builtin/admin 12  # measured 12.4 2026-10-08 (P7-CANON-19, moved from cmd/commands)
 internal/bundle 64  # measured 67.0 2026-10-05
-internal/bundle/ledger 87  # measured 89.5 2026-10-10 (P7-PLUG-18)
 internal/bundle/appready 85  # measured 92.1 2026-10-10 (P7-PLUG-19)
+internal/bundle/ledger 87  # measured 89.5 2026-10-10 (P7-PLUG-18)
 internal/canon 95  # measured 97.2 2026-10-05
 internal/cmd/ci 39  # measured 42.0 2026-10-05
 internal/cmdlog 75  # measured 77.0 2026-10-05
@@ -66,12 +66,19 @@ internal/embedded 78  # measured 80.8 2026-10-05
 internal/env 19  # measured 21.7 2026-10-05
 internal/errs 93  # measured 95.8 2026-10-05
 internal/eval 77  # measured 79.1 2026-10-05
+internal/exporter 58  # measured 60.2 2026-10-12 (P7-ADOPT-17; snapshot, pg_dump and auth reads need a live Postgres, covered by scripts/e2e/export.sh)
 internal/featureflags 69  # measured 71.7 2026-10-05
 internal/generate 65  # measured 67.5 2026-10-05
 internal/hasura 87  # measured 89.1 2026-10-05
 internal/health 26  # measured 28.1 2026-10-05
 internal/httpapi 93  # measured 95.1 2026-10-11 (P7-SURF-02)
 internal/httptimeout 98  # measured 100.0 2026-10-05
+internal/importer 47  # measured 49.7 2026-10-12
+internal/importer/load 6  # measured 8.4 2026-10-12
+internal/importer/postgres 8  # measured 10.8 2026-10-12
+internal/importer/scratch 37  # measured 39.2 2026-10-12
+internal/importer/testkit 60  # measured 62.5 2026-10-12
+internal/importer/verify 26  # measured 28.4 2026-10-12
 internal/installer 11  # measured 13.2 2026-10-05
 internal/installmeta 75  # measured 77.8 2026-10-05
 internal/invoke 89  # measured 91.2 2026-10-10 (P7-SURF-24)

@@ -47,19 +47,19 @@ jobs:
 
     steps:
       - name: Checkout cli
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           path: cli
 
       - name: Checkout admin
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           repository: nself-org/admin
           token: ${{ secrets.GITHUB_TOKEN }}
           path: admin
 
       - name: Checkout homebrew-nself
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           repository: nself-org/homebrew-nself
           token: ${{ secrets.GITHUB_TOKEN }}

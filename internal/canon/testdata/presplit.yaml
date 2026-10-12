@@ -105,7 +105,7 @@ commands:
   # cmd/commands/config_export_import.go:131 --force overwrites existing values without the prompt; the old values are not restorable
   config import: {side_effect: write, flags: {force: {side_effect: destructive}}, confirm: {flags: []}}
   config list: {side_effect: read}
-  config set: {side_effect: write, surface: cli-only, secret_args: [value]}
+  config set: {side_effect: destructive, secret_args: [value], confirm: {flags: [yes]}}
   config show: {side_effect: read}
   config validate: {side_effect: read, exit_codes: {"1": "one or more validators fail (exits 0 when all pass)"}}
   # cmd/commands/db.go:27 RunE path changes no persistent state (prints/reads only)
@@ -396,8 +396,8 @@ commands:
   secrets: {canon: pending, side_effect: read}
   # cmd/commands/secrets_audit.go:86 RunE path changes no persistent state (prints/reads only)
   secrets audit: {side_effect: read}
-  # cmd/commands/secrets_audit.go:69 RunE path changes no persistent state (prints/reads only)
-  secrets decrypt-on-deploy: {side_effect: read, surface: cli-only}
+  # cmd/commands/secrets_decrypt.go:47 RunE path changes no persistent state (prints/reads only)
+  secrets decrypt-on-deploy: {side_effect: read, surface: cli-only, flags: {reveal: {cli_only: true, json: none}}}
   secrets edit: {side_effect: write, output: interactive}
   secrets get: {side_effect: read, surface: cli-only}
   secrets init: {side_effect: write}

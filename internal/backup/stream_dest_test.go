@@ -27,6 +27,11 @@ func hostileRemotes() []string {
 		":s3:b",
 		":s3,access_key_id=" + fakeKeyID + ",secret_access_key=" + fakeSecret + ":bucket",
 		"myr,pass=" + fakeSecret + ":p",
+		// A "/" inside the secret: no ":" before the first "/", so it must not
+		// pass as a bare local path either (D-0676).
+		"myr,pass=fake/secret-not-real:p",
+		":s3,access_key_id=" + fakeKeyID + ",secret_access_key=fake/secret-not-real:bucket",
+		"s3,access_key_id=" + fakeKeyID + ",secret_access_key=fake/secret-not-real:bucket",
 		"s3://" + fakeKeyID + ":" + fakeSecret + "@bucket/p",
 		"file:///etc/x",
 		"http://h/x",

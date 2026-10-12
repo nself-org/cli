@@ -61,11 +61,17 @@ func TestConfigSecretsStoreHoldsNoSecret(t *testing.T) {
 			t.Fatalf("%v: exit %d\n%s", argv, r.code, r.stderr)
 		}
 	}
-	// Positive controls: the two cli-only rows print the stored value.
-	for _, argv := range [][]string{{"config", "secrets", "get", "STORE_ITEM"}, {"config", "secrets", "decrypt-on-deploy"}} {
-		if r := run(argv...); r.code != 0 || !strings.Contains(r.stdout, storeVal) {
-			t.Fatalf("positive control %v: exit %d stdout %q lacks the store value", argv, r.code, r.stdout)
-		}
+	// Positive controls: the cli-only rows print the stored value. get does it
+	// in the envelope; decrypt-on-deploy only as text with --reveal (D-0216).
+	if r := run("config", "secrets", "get", "STORE_ITEM"); r.code != 0 || !strings.Contains(r.stdout, storeVal) {
+		t.Fatalf("positive control get: exit %d stdout %q lacks the store value", r.code, r.stdout)
+	}
+	if r := runPilot(t, proj, true, nil, "config", "secrets", "decrypt-on-deploy", "--reveal"); r.code != 0 || !strings.Contains(r.stdout, storeVal) {
+		t.Fatalf("positive control decrypt-on-deploy --reveal: exit %d stdout %q lacks the store value", r.code, r.stdout)
+	}
+	// decrypt-on-deploy --json names the key and redacts the value.
+	if r := run("config", "secrets", "decrypt-on-deploy"); r.code != 0 || strings.Contains(r.stdout+r.stderr, storeVal) || !strings.Contains(r.stdout, "STORE_ITEM") || !strings.Contains(r.stdout, "[REDACTED]") {
+		t.Fatalf("decrypt-on-deploy --json: exit %d stdout %q, want the key, [REDACTED] and no value", r.code, r.stdout)
 	}
 	rows := [][]string{
 		{"config", "secrets", "list"}, {"config", "secrets", "verify", "STORE_ITEM"}, {"config", "secrets", "audit"},

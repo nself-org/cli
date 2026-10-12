@@ -1,5 +1,18 @@
 # Import / Export Format (portable bundle v1)
 
+## Export from a started project
+
+`nself db export --out <dir> [--schemas a,b] [--no-storage] [--json]` reads a
+started project's database under one exported snapshot and writes this format.
+Objects come from the active store's loopback S3 port (SeaweedFS in v1.5).
+The manifest maps each bucket/key to its content-addressed member; all object
+writes use the portable writer. Config lists names only; Hasura source connection
+configuration is omitted. Plugin-owned tables and schemas are excluded.
+The scrubber fails closed on read/render errors or a secret in text/SQL (E526),
+removing staging output. Auth bcrypt hashes are allowed; user object bytes are
+not scanned. Nonempty output (E527) and insufficient disk (E525) are refused
+before writing. See [[Leaving-nSelf]] for restore instructions and limitations.
+
 The portable bundle is the vendor-neutral directory that `nself db export` writes and every importer reads. It is contract `cli.portable-export` v1. The manifest schema is generated: `schemas/portable-export.v1.schema.json`.
 
 Library: `internal/portable` (Writer, Reader, Manifest), `internal/postgres/tablehash` (count and hash per table), `internal/objstore` (S3 client for bucket contents).
@@ -13,7 +26,7 @@ Library: `internal/portable` (Writer, Reader, Manifest), `internal/postgres/tabl
   db/data.dump                  pg_dump -Fc --no-owner --no-privileges (schemas in manifest db.schemas)
   auth/users.jsonl              one JSON object per user, sorted by id
   storage/objects/<sha256 hex>  object bytes (see "Object names")
-  hasura/metadata.json          export_metadata v3 subset for db.schemas
+  hasura/metadata.json          export_metadata v3 subset for db.schemas (tables: definition, configuration, relationships, computed fields, permissions; event triggers, remote relationships, remote schemas, actions and connection configuration are not exported)
   config/keys.txt               sorted config key NAMES, never values (nself sources only)
   db/compat.sql                 optional source shims applied before pre-data
 ```
@@ -30,7 +43,7 @@ The bundle directory is mode 0700 and its files 0600. A bundle never holds a sec
 | `producer` | `tool`, `version`, `source` (`nself`, `postgres`, `nhost`, `hasura-cloud`, `supabase`, `firebase`, `appwrite`) |
 | `postgres` | `server_version`, `major` of the source |
 | `db` | `schemas`, and `tables[]` with `schema`, `name`, `rows`, `hash`, `pk`; `(schema, name)` is unique and `hash` is canonical (`0`, or a decimal with no leading zero, no `+`, no `-0`) |
-| `auth` | `users`, `hash_algorithms` (algorithm to count), `reset_required` |
+| `auth` | `users`, `hash_algorithms` (algorithm to count; keys `bcrypt`, `unknown` for a stored hash in another format, `none` for no hash), `reset_required` |
 | `storage` | `buckets[]` (`name`, `objects`, `bytes`) and `objects[]` (`bucket`, `key`, `member`, `sha256`, `bytes`); `(bucket, key)` is unique and every object names a listed file with the same `sha256` and `bytes` |
 | `hasura` | counts of tables, relationships, permissions, functions, and `skipped` kinds |
 | `exemptions` | items deliberately left out: `kind` (`table`, `user`, `object`, `metadata`), `id`, `reason` |

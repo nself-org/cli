@@ -18,7 +18,7 @@ See [[cmd-config]] for the current command. [[Command-Canon]] lists every move.
 
 The persistent `--env` flag selects which environment a subcommand operates on (default `dev`). `secrets init` generates the local age keypair and `.secrets/` skeleton. `secrets set / get / list / edit` are the day-to-day operations. `secrets rotate` rolls a value, with `--dual-window` to keep `_PREVIOUS` alongside `_CURRENT` for a transition window; `secrets retire` removes the `_PREVIOUS` half once the rotation has settled.
 
-`secrets schedule` shows the rotation schedule status for tracked secrets. `secrets audit` lists secrets older than the rotation policy. `secrets lint` greps git-tracked files for plaintext secrets. `secrets decrypt-on-deploy` outputs `KEY=VALUE` lines for CI/CD consumption. `secrets rekey --remove <pubkey>` re-encrypts everything without a departed team member's key.
+`secrets schedule` shows the rotation schedule status for tracked secrets. `secrets audit` lists secrets older than the rotation policy. `secrets lint` greps git-tracked files for plaintext secrets. `secrets decrypt-on-deploy` outputs `KEY=VALUE` lines for CI/CD consumption. In v1.5 it prints the plaintext to a terminal, or to a pipe or file only with `--reveal` (otherwise it exits `E401` before decrypting), and `--json` carries the key names with every value shown as `[REDACTED]`; `--reveal --json` is `E402`. `secrets rekey --remove <pubkey>` re-encrypts everything without a departed team member's key.
 
 ### Persistent (all subcommands)
 ### Resolve references

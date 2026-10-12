@@ -71,9 +71,9 @@ jobs:
       DRY_RUN_PR: ${{ inputs.dry_run_pr == true && 'true' || 'false' }}
       BRANCH: ${{ inputs.dry_run_pr == true && 'chore/image-pins-dry-run' || 'chore/image-pins' }}
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: false
@@ -145,7 +145,7 @@ jobs:
       - name: Open or update the PR
         id: cpr
         if: steps.bump.outputs.changed == 'true' && env.DRY_RUN_PR != 'true'
-        uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e # v7.0.8
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: chore/image-pins
@@ -259,7 +259,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Skip unless the owner switch is on
         if: vars.IMAGE_MIRROR_APPLY != 'true'

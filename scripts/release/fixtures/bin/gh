@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+# Test stub for `gh` (scripts/release/test.sh only). Logs argv to $GH_LOG and answers
+# from the bare fixture repos in $FIX and the state dir $ST. Never touches the network.
+set -u
+printf '%s\n' "$*" >> "$GH_LOG"
+JQ=""; REPO=""; prev=""; HEAD=""; STATE_ARG=""
+for a in "$@"; do
+  case "$prev" in --jq) JQ=$a ;; -R) REPO=${a#nself-org/} ;; --head) HEAD=$a ;; --state) STATE_ARG=$a ;; esac
+  prev=$a
+done
+emit() { if [ -n "$JQ" ]; then jq -r "$JQ"; else cat; fi; }
+bare() { printf '%s/%s.git\n' "$FIX" "$1"; }
+published() { [ -f "$ST/rerun" ] || [ -f "$ST/published" ]; }
+has_tag() { git --git-dir="$(bare cli)" rev-parse -q --verify "refs/tags/$1" >/dev/null 2>&1; }
+cmd="${1:-}"; sub="${2:-}"
+case "$cmd $sub" in
+  "auth status") exit 0 ;;
+  "repo clone")
+    git clone -q "$(bare "${3#nself-org/}")" "$4" ;;
+  "api "*)
+    path=""; skip=0
+    for a in "${@:2}"; do
+      if [ "$skip" = 1 ]; then skip=0; continue; fi
+      case "$a" in -H|--jq) skip=1 ;; -*) ;; *) path=$a; break ;; esac
+    done
+    case "$path" in
+      repos/nself-org/cli/releases/latest)
+        printf '{"tag_name":"%s"}\n' "$(cat "$ST/latest")" | emit ;;
+      repos/nself-org/cli/git/ref/tags/*)
+        if has_tag "${path##*/}"; then echo '{"ref":"tag"}' | emit; else echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi ;;
+      repos/nself-org/*/branches/main/protection/required_status_checks)
+        r=${path#repos/nself-org/}; r=${r%%/*}
+        if [ -f "$ST/required/$r" ]; then echo '{"strict":true,"contexts":["ci"],"checks":[{"context":"ci"}]}' | emit
+        else echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi ;;
+      repos/nself-org/*/commits\?*)
+        r=${path#repos/nself-org/}; r=${r%%/*}
+        git --git-dir="$(bare "$r")" log --format=%H -- package.json | jq -R -s 'split("\n") | map(select(length > 0) | {sha: .})' | emit ;;
+      repos/nself-org/cli/milestones*)
+        if [ -f "$ST/dup_open_milestone" ]; then echo '[{"title":"v1.5.0","state":"closed"},{"title":"v1.5.0","state":"open"}]' | emit
+        elif [ -f "$ST/no_milestone" ]; then echo '[]' | emit
+        elif [ -f "$ST/only_bare_milestone" ]; then echo '[{"title":"1.5.0","state":"closed"}]' | emit; else echo '[{"title":"v1.5.0","state":"closed"}]' | emit; fi ;;
+      repos/nself-org/*/commits/*)
+        r=${path#repos/nself-org/}; r=${r%%/*}
+        if sha=$(git --git-dir="$(bare "$r")" rev-parse -q --verify "${path##*/}^{commit}" 2>/dev/null); then
+          printf '{"sha":"%s"}\n' "$sha" | emit
+        else echo "gh: No commit found for SHA: ${path##*/} (HTTP 422)" >&2; exit 1; fi ;;
+      repos/nself-org/*/actions/organization-secrets)
+        echo '{"secrets":[{"name":"DOCKERHUB_TOKEN"}]}' | emit ;;
+      repos/nself-org/*/contents/*)
+        r=${path#repos/nself-org/}; r=${r%%/*}; p=${path#*/contents/}; ref=main
+        case "$p" in *\?ref=*) ref=${p##*ref=}; p=${p%%\?*} ;; esac
+        case "$p" in .github/workflows*) [ -f "$ST/workflows_fail" ] && { echo "gh: HTTP 502" >&2; exit 1; } ;; esac
+        git --git-dir="$(bare "$r")" rev-parse -q --verify "$ref" >/dev/null 2>&1 || ref=main
+        if [ "$(git --git-dir="$(bare "$r")" cat-file -t "$ref:$p" 2>/dev/null)" = tree ]; then
+          git --git-dir="$(bare "$r")" ls-tree --name-only "$ref:$p" | jq -R -s 'split("\n") | map(select(length > 0) | {name: .})' | emit
+        else
+          git --git-dir="$(bare "$r")" show "$ref:$p" || exit 1
+        fi ;;
+      *) echo "stub gh: unhandled api path: $path" >&2; exit 1 ;;
+    esac ;;
+  "pr create")
+    n=$(( $(cat "$ST/prcount" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$ST/prcount"
+    mkdir -p "$ST/pr/$REPO"; printf '%s' "$HEAD" > "$ST/pr/$REPO/$n.head"; echo OPEN > "$ST/pr/$REPO/$n.state"
+    echo "https://github.com/nself-org/$REPO/pull/$n" ;;
+  "pr list")
+    rows=""
+    for f in "$ST/pr/$REPO"/*.head; do
+      [ -e "$f" ] || continue
+      n=$(basename "$f" .head)
+      [ "$(cat "$f")" = "$HEAD" ] || continue
+      st=$(cat "$ST/pr/$REPO/$n.state")
+      if [ "$STATE_ARG" = merged ] && [ "$st" != MERGED ]; then continue; fi
+      oid=null; [ -f "$ST/pr/$REPO/$n.sha" ] && oid="\"$(cat "$ST/pr/$REPO/$n.sha")\""
+      rows="$rows{\"number\":$n,\"state\":\"$st\",\"mergeCommit\":{\"oid\":$oid}},"
+    done
+    printf '[%s]\n' "${rows%,}" | emit ;;
+  "pr view")
+    printf '{"state":"%s"}\n' "$(cat "$ST/pr/$REPO/$3.state")" | emit ;;
+  "pr checks")
+    if printf '%s' "$*" | grep -q -- '--json'; then
+      if [ -f "$ST/missing_ctx" ]; then echo '[]' | emit; else printf '[{"name":"ci","bucket":"%s"}]\n' "$([ -f "$ST/skip_ctx" ] && echo skipping || echo pass)" | emit; fi
+      exit 0
+    fi
+    if [ -f "$ST/pending_forever" ]; then echo "ci  pending"; exit 8; fi
+    if [ -f "$ST/pending_left" ] && [ "$(cat "$ST/pending_left")" -gt 0 ]; then
+      echo $(( $(cat "$ST/pending_left") - 1 )) > "$ST/pending_left"; echo "ci  pending"; exit 8
+    fi
+    if [ -f "$ST/nochecks" ]; then echo "no required checks reported on the 'x' branch"; exit 1; fi
+    if [ "${STUB_CHECKS_RED:-0}" = 1 ]; then echo "1 failing check"; exit 1; fi
+    echo "all required checks passed" ;;
+  "run list")
+    wf=""; ev=""; br=""; prev=""
+    for a in "$@"; do
+      case "$prev" in --workflow) wf=$a ;; --event) ev=$a ;; --branch) br=$a ;; esac
+      prev=$a
+    done
+    case "$wf" in
+      release.yml)
+        if has_tag "$br"; then
+          printf '[{"databaseId":5551,"status":"completed","conclusion":"success","event":"push","headSha":"%s"}]\n' \
+            "$(git --git-dir="$(bare cli)" rev-parse "$br^{commit}")" | emit
+        else echo '[]' | emit; fi ;;
+      license-audit.yml)
+        if [ -f "$ST/license_fail" ]; then echo '[{"status":"completed","conclusion":"failure"}]' | emit
+        elif [ -z "$br" ] && [ -f "$ST/license_pr_fail" ]; then echo '[{"status":"completed","conclusion":"failure"}]' | emit
+        elif [ -f "$ST/license_inflight" ] && [ "$(cat "$ST/license_inflight")" -gt 0 ]; then
+          echo $(( $(cat "$ST/license_inflight") - 1 )) > "$ST/license_inflight"
+          echo '[{"status":"in_progress","conclusion":null}]' | emit
+        elif [ -f "$ST/license_none" ]; then echo '[]' | emit
+        else echo '[{"status":"completed","conclusion":"success"}]' | emit; fi ;;
+      docker-publish.yml)
+        if [ -z "$ev" ] && [ -f "$ST/inflight@$REPO" ]; then
+          echo '[{"databaseId":7000,"status":"in_progress","createdAt":"2026-01-02T00:00:00Z"}]' | emit
+        elif [ "$REPO" = admin ] && [ ! -f "$ST/dispatch/$wf@admin" ] && [ -n "$(git --git-dir="$(bare admin)" tag -l 'v*')" ]; then
+          # a v* tag push starts admin's publish; it finishes after two looks
+          if [ -f "$ST/admin_tagrun_fail" ]; then
+            echo '[{"databaseId":7002,"status":"completed","conclusion":"failure","createdAt":"2026-01-03T00:00:00Z"}]' | emit
+          else
+            c=$(cat "$ST/adminrun" 2>/dev/null || echo 0); echo $((c + 1)) > "$ST/adminrun"
+            if [ "$c" -lt 2 ]; then echo '[{"databaseId":7002,"status":"in_progress","createdAt":"2026-01-03T00:00:00Z"}]' | emit
+            else echo '[{"databaseId":7002,"status":"completed","conclusion":"success","createdAt":"2026-01-03T00:00:00Z"}]' | emit; fi
+          fi
+        elif [ -f "$ST/dispatch/$wf@$REPO" ]; then
+          echo '[{"databaseId":7001,"status":"completed","conclusion":"success","createdAt":"2026-01-02T00:00:00Z"}]' | emit
+        else echo '[]' | emit; fi ;;
+      *)
+        if [ -f "$ST/dispatch/$wf@$REPO" ]; then echo '[{"status":"completed","conclusion":"success"}]' | emit; else echo '[]' | emit; fi ;;
+    esac ;;
+  "run view")
+    id=$3; sha=$(git --git-dir="$(bare cli)" rev-parse "$(git --git-dir="$(bare cli)" tag --sort=-version:refname | head -1)^{commit}" 2>/dev/null)
+    [ "$id" = 5551 ] || sha=deadbeef
+    c=$(cat "$ST/buildviews" 2>/dev/null || echo 0)
+    if printf '%s' "$*" | grep -q 'jobs'; then echo $((c + 1)) > "$ST/buildviews"; fi
+    st=completed; [ "$c" -lt 2 ] && st=in_progress
+    lc=failure; [ -f "$ST/rerun" ] && lc=success
+    gc=success; [ -f "$ST/gate_fail" ] && gc=failure
+    concl=failure; [ -f "$ST/rerun" ] && concl=success
+    printf '{"status":"completed","conclusion":"%s","headSha":"%s","attempt":1,"jobs":[{"name":"Build release artifacts","status":"%s","conclusion":"success"},{"name":"Verify Homebrew formula lockstep","status":"completed","conclusion":"%s"},{"name":"Pre-Release Gate","status":"completed","conclusion":"%s"},{"name":"Generate SBOM","status":"completed","conclusion":"success"},{"name":"Sign and publish release","status":"queued","conclusion":null}]}\n' \
+      "$concl" "$sha" "$st" "$lc" "$gc" | emit ;;
+  "run download")
+    [ -f "$ST/artifact_expired" ] && { echo "no valid artifacts found" >&2; exit 1; }
+    dir=""; prev=""; for a in "$@"; do [ "$prev" = -D ] && dir=$a; prev=$a; done
+    mkdir -p "$dir"; cp "$FIXTURES/checksums.txt" "$dir/checksums.txt" ;;
+  "run rerun") touch "$ST/rerun" ;;
+  "release view")
+    published || { echo "release not found" >&2; exit 1; }
+    printf '{"publishedAt":"2026-01-01T00:00:00Z","assets":[{"name":"checksums.txt"},{"name":"nself-1.5.0-darwin-arm64.tar.gz"}]}\n' | emit ;;
+  "release download")
+    published || { echo "release not found" >&2; exit 1; }
+    dir=""; prev=""; for a in "$@"; do [ "$prev" = -D ] && dir=$a; prev=$a; done
+    mkdir -p "$dir"
+    if [ -f "$ST/published_differs" ]; then cp "$FIXTURES/checksums-alt.txt" "$dir/checksums.txt"; else cp "$FIXTURES/checksums.txt" "$dir/checksums.txt"; fi ;;
+  "workflow run")
+    mkdir -p "$ST/dispatch"; touch "$ST/dispatch/$3@$REPO" ;;
+  *) echo "stub gh: unhandled: $*" >&2; exit 1 ;;
+esac

@@ -19,8 +19,15 @@ import (
 // checkScheduleDestination validates one destination flag value (flag names it
 // in the error). Inline credentials are refused first with advice; then the
 // value must parse as a destination, so a host:// server missing from the
-// inventory is refused now, not at 02:00. Nothing is started.
+// inventory is refused now, not at 02:00. A bare path is settled first
+// (D-0676; relative to projectDir, the unit's WorkingDirectory): accepted
+// with a notice on v1.4, refused under v1.5. The unit keeps the value as
+// written and stream settles it again at run time. Nothing is started.
 func checkScheduleDestination(flag, v, projectDir string) error {
+	v, err := settleBarePath(v, projectDir)
+	if err != nil {
+		return fmt.Errorf("%s: %v", flag, err)
+	}
 	if destinations.HasInlineCredentials(v) {
 		return fmt.Errorf("%s carries inline options or credentials; the systemd unit file would hold them. Use a named remote from rclone.conf (rclone config), or define it in the environment (RCLONE_CONFIG_<NAME>_TYPE plus its keys) and pass it with --env-file, then give %s as <name>:<path>", flag, flag)
 	}

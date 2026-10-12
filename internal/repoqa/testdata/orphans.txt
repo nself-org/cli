@@ -16,9 +16,7 @@ internal/cost
 internal/domain
 internal/installmeta
 internal/model
-internal/objstore pending:P7-ADOPT-10
 internal/plugin/lifecycle
-internal/postgres/tablehash pending:P7-ADOPT-10
 internal/runbook
 internal/runtime
 internal/webhook

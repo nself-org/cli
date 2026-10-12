@@ -33,10 +33,10 @@ jobs:
     timeout-minutes: 90
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
 
@@ -48,7 +48,7 @@ jobs:
 
       - name: Keep the gremlins report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: license-mutation-report
           path: ${{ runner.temp }}/license-mutation.txt

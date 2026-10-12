@@ -36,9 +36,9 @@ jobs:
           - macos-15-intel    # Intel (darwin/amd64) — macos-13 retired Dec 2025
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
@@ -68,9 +68,9 @@ jobs:
           - macos-14
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum

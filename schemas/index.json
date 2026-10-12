@@ -374,6 +374,10 @@
       "id": "urn:nself:cli:schema:commands:db-drop:v1"
     },
     {
+      "path": "commands/db-export.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-export:v1"
+    },
+    {
       "path": "commands/db-fk-index-apply.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:db-fk-index-apply:v1"
     },
@@ -456,6 +460,10 @@
     {
       "path": "commands/db-import-firebase.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:db-import-firebase:v1"
+    },
+    {
+      "path": "commands/db-import-postgres.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-import-postgres:v1"
     },
     {
       "path": "commands/db-import-supabase.v1.schema.json",

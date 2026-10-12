@@ -65,7 +65,7 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0  # need full history to find the merge-base
           # The PR head, not the synthetic merge commit: HEAD must be the
@@ -73,7 +73,7 @@ jobs:
           # re-checked locally with git merge-base.
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
@@ -294,13 +294,13 @@ jobs:
       RUN_RUNS: "30"
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           # The PR head, not the synthetic merge commit (see Binary Size Gate).
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
@@ -454,7 +454,7 @@ jobs:
 
       - name: Upload cold start results
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: cold-start-gate-json
           path: ${{ runner.temp }}/perf-out/
@@ -527,9 +527,9 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
@@ -546,7 +546,7 @@ jobs:
             | tee bench-output.txt
 
       - name: Upload benchmark results
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: cli-bench-output
           path: bench-output.txt

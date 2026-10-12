@@ -1,29 +1,43 @@
 package commands
 
-// mcp_auth.go — bind and bearer-token policy for the SSE/HTTP MCP transports.
+// mcp_auth.go — bind, Host and bearer-token policy for the SSE/HTTP MCP
+// transports.
 //
-// Purpose: P7-SURF-25 (EPIC SURF D4). Decide, before the listener opens,
-//   whether the requested bind is allowed and which bearer token (if any)
-//   guards it. The token rules live in internal/machineauth; this file only
-//   wires them to `nself mcp`.
+// Purpose: P7-SURF-25 (EPIC SURF D4) and debt D-0327. Decide, before the
+//   listener opens, whether the requested bind is allowed, which bearer token
+//   (if any) guards it, and (v1.5) which Host headers are served. The token
+//   rules live in internal/machineauth; this file only wires them to
+//   `nself mcp`. The Host check closes DNS rebinding: a page on another origin
+//   whose name resolves to 127.0.0.1 sends its own name as Host.
 // Inputs:  --host, --allowed-host, NSELF_MCP_TOKEN, ~/.nself/mcp-token, and
-//   the compat mode (NSELF_V15).
-// Outputs: a handler wrapper, the warnings to print on stderr (one cleartext
-//   warning for an accepted non-loopback bind, one open-server warning in
-//   v1.4 mode with no token), or an E426 refusal.
+//   the compat mode (NSELF_V15). The Host check reads the listener port from
+//   the request context (http.LocalAddrContextKey), so it needs no extra
+//   parameter.
+// Outputs: a handler wrapper (Host check outside the bearer check), the
+//   warnings to print on stderr (one cleartext warning for an accepted
+//   non-loopback bind, one open-server warning in v1.4 mode with no token),
+//   an E426 refusal, an E430 refusal for a malformed --allowed-host (v1.5),
+//   or per request an E428 421 answer for a Host that is not allowed (v1.5).
 // Constraints: stdio never calls this. A refused start creates no token file:
 //   only the v1.5 loopback path with no configured token generates one. The
 //   v1.4 behaviour with a token set is byte-identical (same 401 body and
-//   header). No token value is ever printed or logged.
+//   header), and v1.4 has no Host check. The Host refusal never echoes the
+//   request Host, reads no body and sets no CORS header; with no local
+//   address on the request it refuses (fail closed). No token value is ever
+//   printed or logged.
 // SPORT: CLI-CMD-MCP-001
 
 import (
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/httpapi"
 	"github.com/nself-org/cli/internal/machineauth"
 )
 
@@ -51,6 +65,53 @@ func mcpBearerMiddleware(h http.Handler) http.Handler {
 	return mcpBearerWith(os.Getenv(mcpTokenEnv))(h)
 }
 
+// mcpHostRefusal is the body of the Host refusal. It names the code and the
+// fix and never repeats the request Host.
+const mcpHostRefusal = "E428 Host not allowed: use the listener host or pass --allowed-host\n"
+
+// mcpHostCheck returns the wrapper that serves only requests whose Host is
+// localhost, 127.0.0.1, [::1] or an allowed host, each with the listener
+// port. The comparison is case-insensitive and exact, as in
+// internal/httpapi/server.go. A Host without a port, or a request with no
+// local address, is refused with 421 before any body byte is read.
+func mcpHostCheck(allowed []string) func(http.Handler) http.Handler {
+	names := append([]string{"localhost", "127.0.0.1", "[::1]"}, allowed...)
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if port, ok := mcpListenerPort(r); ok {
+				host := strings.ToLower(r.Host)
+				for _, n := range names {
+					if host == strings.ToLower(n+":"+port) {
+						next.ServeHTTP(w, r)
+						return
+					}
+				}
+			}
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.WriteHeader(http.StatusMisdirectedRequest)
+			_, _ = io.WriteString(w, mcpHostRefusal)
+		})
+	}
+}
+
+// mcpListenerPort returns the port of the listener that accepted r, taken
+// from the request context. ok is false when the context carries no TCP
+// address.
+func mcpListenerPort(r *http.Request) (string, bool) {
+	addr, _ := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
+	tcp, ok := addr.(*net.TCPAddr)
+	if !ok || tcp == nil {
+		return "", false
+	}
+	return strconv.Itoa(tcp.Port), true
+}
+
+// mcpCompose puts outer outside inner: outer runs first.
+func mcpCompose(outer, inner func(http.Handler) http.Handler) func(http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler { return outer(inner(h)) }
+}
+
 // mcpAuthPolicy applies the bind and token policy for an sse/http start. It
 // returns the wrapper to put around the transport handler plus the warning
 // lines the caller prints to stderr. notice receives the generated-token
@@ -62,6 +123,14 @@ func mcpAuthPolicy(host string, allowed []string, notice io.Writer) (func(http.H
 	}
 	if err := machineauth.CheckBind(host, allowed, src); err != nil {
 		return nil, nil, err
+	}
+	hostGate := mcpPassthrough
+	// compat.V15(D-0327): no Host check on mcp sse/http -> Host must be localhost/127.0.0.1/[::1] or an --allowed-host, with the listener port
+	if compat.V15() {
+		if err := httpapi.ValidateAllowedHosts(allowed); err != nil {
+			return nil, nil, err
+		}
+		hostGate = mcpHostCheck(allowed)
 	}
 	var warns []string
 	if !machineauth.IsLoopback(host) {
@@ -77,7 +146,7 @@ func mcpAuthPolicy(host string, allowed []string, notice io.Writer) (func(http.H
 	} else if tok == "" {
 		warns = append(warns, "warning: nself mcp is serving without a bearer token on loopback; any local process can use it. Set NSELF_MCP_TOKEN to require one")
 	}
-	return mcpBearerWith(tok), warns, nil
+	return mcpCompose(hostGate, mcpBearerWith(tok)), warns, nil
 }
 
 // prepareMCPHTTP runs mcpAuthPolicy for the sse and http transports and
