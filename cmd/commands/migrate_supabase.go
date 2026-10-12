@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/nself-org/cli/internal/compat"
 	spmigrate "github.com/nself-org/cli/internal/migrate/supabase"
 	"github.com/nself-org/cli/internal/ui"
 
@@ -37,8 +38,21 @@ Examples:
   nself migrate supabase --project-ref=abcdefghijkl --supabase-key=eyJ... --out=./migration
 
 Note: CI/offline test environments should set NSELF_SUPABASE_SKIP=1 to skip
-live Supabase connectivity.`,
-	RunE: dataEnv(runMigrateSupabase),
+live Supabase connectivity.
+
+With NSELF_V15=1 (nself db import supabase) the command instead imports the project
+into this started nSelf project and verifies it: --db-url-env names the variable holding
+the direct database URL, --api-url (or --project-ref) and --service-key-env reach storage,
+and --plan, --keep-stage and --skip-storage behave as in nself db import. See
+Come-Home-Supabase in the wiki. --supabase-key and --out are not used in that mode.`,
+	PreRunE: supabaseRequiredFlags,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		// compat.V15(P7-ADOPT-13): artifact generator -> import pipeline
+		if compat.V15() {
+			return runSupabaseImport(cmd)
+		}
+		return dataEnv(runMigrateSupabase)(cmd, args)
+	},
 }
 
 func init() {
@@ -47,9 +61,13 @@ func init() {
 	migrateSupabaseCmd.Flags().String("out", ".", "Output directory for generated files (default: current dir)")
 	_ = migrateSupabaseCmd.MarkFlagRequired("project-ref")
 	_ = migrateSupabaseCmd.MarkFlagRequired("supabase-key")
+	registerSupabaseImportFlags(migrateSupabaseCmd)
 
 	migrateCmd.AddCommand(migrateSupabaseCmd)
 }
+
+// supabasePull is the network seam of the artifact generator; tests replace it.
+var supabasePull = spmigrate.Pull
 
 func runMigrateSupabase(cmd *cobra.Command, _ []string) error {
 	projectRef, _ := cmd.Flags().GetString("project-ref")
@@ -85,7 +103,7 @@ func runMigrateSupabase(cmd *cobra.Command, _ []string) error {
 
 	// Step 1: pull everything (schema + RLS + users + buckets in one call).
 	steps.Next()
-	result, err := spmigrate.Pull(cmd.Context(), cfg)
+	result, err := supabasePull(cmd.Context(), cfg)
 	if err != nil {
 		return fmt.Errorf("pulling from Supabase: %w", err)
 	}

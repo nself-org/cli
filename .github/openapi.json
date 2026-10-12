@@ -4507,6 +4507,15 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "compat_shims": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
           "detection": {
             "additionalProperties": false,
             "properties": {
@@ -4797,6 +4806,7 @@
           "storage",
           "hasura",
           "untranslated_policies",
+          "compat_shims",
           "exemptions",
           "mismatches",
           "wrote"
@@ -4809,6 +4819,15 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "compat_shims": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
           "detection": {
             "additionalProperties": false,
             "properties": {
@@ -5099,6 +5118,7 @@
           "storage",
           "hasura",
           "untranslated_policies",
+          "compat_shims",
           "exemptions",
           "mismatches",
           "wrote"
@@ -22383,15 +22403,45 @@
                   "flags": {
                     "additionalProperties": false,
                     "properties": {
+                      "api-url": {
+                        "default": "",
+                        "description": "Supabase API URL for storage (default https://<project-ref>.supabase.co) (v1.5 import)",
+                        "type": "string"
+                      },
+                      "db-url-env": {
+                        "default": "",
+                        "description": "Environment variable containing the Supabase direct database URL (v1.5 import)",
+                        "type": "string"
+                      },
+                      "keep-stage": {
+                        "default": false,
+                        "description": "Keep the private portable bundle after a successful import (v1.5 import)",
+                        "type": "boolean"
+                      },
                       "out": {
                         "default": ".",
                         "description": "Output directory for generated files (default: current dir)",
                         "type": "string"
                       },
+                      "plan": {
+                        "default": false,
+                        "description": "Check source and target and print the import plan without writing (v1.5 import)",
+                        "type": "boolean"
+                      },
                       "project-ref": {
                         "default": "",
                         "description": "Supabase project reference ID (required)",
                         "type": "string"
+                      },
+                      "service-key-env": {
+                        "default": "",
+                        "description": "Environment variable containing the service_role key (storage API) (v1.5 import)",
+                        "type": "string"
+                      },
+                      "skip-storage": {
+                        "default": false,
+                        "description": "Exempt each storage object from this import (v1.5 import)",
+                        "type": "boolean"
                       },
                       "supabase-key": {
                         "default": "",
