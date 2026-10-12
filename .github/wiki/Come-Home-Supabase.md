@@ -30,7 +30,7 @@ checks source and target and writes nothing. For a self-hosted or local Supabase
 | Part | How | Notes |
 |---|---|---|
 | Your tables | One `pg_dump` snapshot, restored with `pg_restore` | Every schema except the Supabase-owned ones |
-| Auth users | `auth.users` to nSelf `auth.users` | `encrypted_password` is bcrypt and is kept, so users sign in with the password they have today |
+| Auth users | `auth.users` to nSelf `auth.users` | `encrypted_password` is bcrypt and is kept, so users sign in with the password they have today. Every user gets the allowed role `user` |
 | Storage | Storage REST API with the service key | Each bucket and object; the object count must match `storage.objects` |
 | Access rules (RLS) | Translated or listed | See below |
 

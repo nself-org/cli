@@ -41,18 +41,24 @@ cleanup() {
   if [ "$owned" = 1 ]; then (cd "$TARGET" && docker compose down -v >/dev/null 2>&1) || true; fi
 }
 trap cleanup EXIT
-fail() { echo "FAIL: $1"; exit 1; }
+fail() {
+  echo "FAIL: $1"
+  docker compose -p "$PROJECT-src" -f "$FIXTURE" logs --tail 25 auth storage 2>&1 | sed 's/eyJ[A-Za-z0-9_.-]*/<jwt>/g' | head -60 || true
+  exit 1
+}
 docker compose -p "$PROJECT-src" -f "$FIXTURE" up -d
 AUTH=http://127.0.0.1:$FIXTURE_AUTH_PORT
-STORAGE=http://127.0.0.1:$FIXTURE_STORAGE_PORT
+STORAGE_ORIGIN=http://127.0.0.1:$FIXTURE_STORAGE_PORT
+STORAGE=$STORAGE_ORIGIN/storage/v1
+storage_up() { curl -fsS "$STORAGE/status"; }
 SRC=postgresql://postgres:$FIXTURE_PASSWORD@127.0.0.1:$FIXTURE_PORT/postgres
 for _ in $(seq 1 90); do
-  if curl -fsS "$AUTH/health" >/dev/null 2>&1 && curl -fsS "$STORAGE/status" >/dev/null 2>&1 \
+  if curl -fsS "$AUTH/health" >/dev/null 2>&1 && storage_up >/dev/null 2>&1 \
     && [ "$(psql "$SRC" -Atc "SELECT to_regclass('auth.users') IS NOT NULL AND to_regclass('storage.objects') IS NOT NULL" 2>/dev/null || true)" = t ]; then break; fi
   sleep 2
 done
 curl -fsS "$AUTH/health" >/dev/null || fail 'gotrue not up'
-curl -fsS "$STORAGE/status" >/dev/null || fail 'storage-api not up'
+storage_up >/dev/null || fail 'storage-api not up'
 for i in 1 2 3; do
   curl -fsS "$AUTH/signup" -H 'Content-Type: application/json' -H "apikey: $FIXTURE_ANON_KEY" \
     -d "{\"email\":\"fake-supabase-$i@example.invalid\",\"password\":\"FAKE-USER-PASSWORD-$i\"}" >"$W/signup-$i.json" || fail signup
@@ -103,10 +109,10 @@ nself start --timeout 300 --skip-build >"$W/start.log" 2>&1 || { tail -30 "$W/st
 PGC="${PROJECT}_postgres"
 PGDB="$(cat .env .env.local 2>/dev/null | sed -n 's/^POSTGRES_DB=//p' | tail -1)"
 tpg() { docker exec "$PGC" psql -X -U postgres -d "$PGDB" -v ON_ERROR_STOP=1 -At -c "$1"; }
-nself db import supabase --db-url-env SUPA_DB --api-url "$STORAGE" --service-key-env SUPA_KEY --plan --json >"$W/plan.json" || fail plan
+nself db import supabase --db-url-env SUPA_DB --api-url "$STORAGE_ORIGIN" --service-key-env SUPA_KEY --plan --json >"$W/plan.json" || fail plan
 jq -e '.data.result=="pass" and (.data.steps|length)>0' "$W/plan.json" >/dev/null || fail 'plan result'
 test ! -d .nself/import || fail 'plan wrote a stage'
-nself db import supabase --db-url-env SUPA_DB --api-url "$STORAGE" --service-key-env SUPA_KEY --json >"$W/import.json" 2>"$W/import.err" || { cat "$W/import.err" "$W/import.json" | head -40; fail import; }
+nself db import supabase --db-url-env SUPA_DB --api-url "$STORAGE_ORIGIN" --service-key-env SUPA_KEY --json >"$W/import.json" 2>"$W/import.err" || { cat "$W/import.err" "$W/import.json" | head -40; fail import; }
 jq -e '.data.result=="pass" and (.data.mismatches|length)==0 and (.data.tables|length)==2 and ([.data.tables[].equal]|all)' "$W/import.json" >/dev/null || fail 'tables'
 jq -e '.data.users.source==3 and .data.users.target==3 and .data.users.equal==true and (.data.users.reset_required|length)==0' "$W/import.json" >/dev/null || fail users
 jq -e '.data.storage.source_objects==3 and .data.storage.target_objects==3 and .data.storage.equal==true' "$W/import.json" >/dev/null || fail storage
@@ -133,7 +139,7 @@ jq -e --arg u "$UID1" '.data.insert_notes_one.user_id==$u' "$W/insert.json" >/de
 # The untranslated policy leaves the table closed to the user role.
 gql '{"query":"{ announcements { id } }"}' >"$W/announcements.json" || true
 jq -e '.errors!=null' "$W/announcements.json" >/dev/null || fail 'untranslated policy table is open'
-if nself db import supabase --db-url-env SUPA_DB --api-url "$STORAGE" --service-key-env SUPA_KEY --json >"$W/rerun.json" 2>"$W/rerun.err"; then fail 'rerun did not refuse'; fi
+if nself db import supabase --db-url-env SUPA_DB --api-url "$STORAGE_ORIGIN" --service-key-env SUPA_KEY --json >"$W/rerun.json" 2>"$W/rerun.err"; then fail 'rerun did not refuse'; fi
 grep -q E519 "$W/rerun.json" "$W/rerun.err" || fail 'rerun refusal is not E519'
 # Redaction: no credential and no password hash in any output or report.
 HASHES=$(psql "$SRC" -Atc 'SELECT encrypted_password FROM auth.users')
