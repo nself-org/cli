@@ -121,6 +121,7 @@ export function createTransport(options: ClientOptions): Transport {
       throw new ConfirmationRequired<T>(env.data as unknown as Confirmation, resend, env.command);
     }
     if (res.status >= 400 || env.error) throw fail(env, res);
+    if (env.data === undefined) throw clientError(`response envelope has no data (HTTP ${res.status})`, res.status);
     return env.data as T;
   }
 

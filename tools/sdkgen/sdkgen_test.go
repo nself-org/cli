@@ -5,6 +5,7 @@ package main
 // Constraints: no network; all writes go to t.TempDir().
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,7 +48,7 @@ func TestSdkgenTypeScript(t *testing.T) {
 		"export interface WidgetGetData {",
 		"id: number;",
 		"tags: Array<string>;",
-		"pair?: [string, number];",
+		"pair?: [string?, number?];",
 		"owner?: string | null;",
 		"extra?: Record<string, unknown>;",
 		"child?: WidgetListData;",
@@ -132,9 +133,30 @@ func TestCollisionsFail(t *testing.T) {
 	if _, _, err := Render(m); err == nil || !strings.Contains(err.Error(), "both map") {
 		t.Fatalf("collision not reported: %v", err)
 	}
+	m = &Model{Schemas: map[string]*Schema{"nself_a_b_data": {}, "nself_a-b_data": {}}}
+	if _, _, err := Render(m); err == nil || !strings.Contains(err.Error(), "both map to type") {
+		t.Fatalf("component collision not reported: %v", err)
+	}
 	m = &Model{Schemas: map[string]*Schema{}, Ops: []Operation{{ID: "nself_stream", Path: "/v1/commands/stream"}}}
 	if _, _, err := Render(m); err == nil || !strings.Contains(err.Error(), "reserved") {
 		t.Fatalf("reserved member not reported: %v", err)
+	}
+}
+
+func TestTupleEdges(t *testing.T) {
+	min1 := 1
+	s := &Schema{
+		Type:        []byte(`"array"`),
+		Items:       []byte("false"),
+		MinItems:    &min1,
+		PrefixItems: []*Schema{{Type: []byte(`"string"`)}, {Type: []byte(`["string","null"]`)}, {Enum: []json.RawMessage{json.RawMessage(`"a"`), json.RawMessage(`"b"`)}}},
+	}
+	if got, want := tsType(s, 0), `[string, (string | null)?, ("a" | "b")?]`; got != want {
+		t.Errorf("tuple = %s, want %s", got, want)
+	}
+	rest := &Schema{Type: []byte(`"array"`), Items: []byte(`{"type":"string"}`), PrefixItems: []*Schema{{Type: []byte(`"string"`)}}, MinItems: &min1}
+	if got, want := tsType(rest, 0), `[string, ...Array<string>]`; got != want {
+		t.Errorf("rest tuple = %s, want %s", got, want)
 	}
 }
 

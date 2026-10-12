@@ -63,7 +63,7 @@ try {
 
 ### Streams
 
-Commands whose output is a stream (for example `logs` with `follow`) are served as NDJSON, but the OpenAPI contract is document-only, so they have no generated method. Use `stream(path, request)`: it yields one item per line, every line a v1 envelope, and the last one is `final` (`data.type === "result"`). An error envelope that ends the stream throws `NselfError`; a stream that ends without a final line throws `CLIENT_PROTOCOL`. Breaking out of the loop cancels the request. The `X-Nself-Exit-Code` trailer is not readable through `fetch`.
+Commands whose output is a stream (for example `logs` with `follow`) are served as NDJSON, but the OpenAPI contract is document-only, so they have no generated method. Use `stream(path, request)`: it yields one item per line, every line a v1 envelope, and the last one is `final` (`data.type === "result"`). An error envelope that ends the stream throws `NselfError`; a stream that ends without a final line throws `CLIENT_PROTOCOL`. Breaking out of the loop cancels the request. Once streaming has started the HTTP status is already 200, so an error line that ends a stream has `httpStatus: 200`; read `code`, `class` and `exitCode`. The `X-Nself-Exit-Code` trailer is not readable through `fetch`.
 
 ```ts
 for await (const { envelope, final } of api.stream("/v1/commands/logs", { flags: { follow: true } })) {

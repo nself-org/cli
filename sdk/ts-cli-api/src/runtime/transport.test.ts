@@ -188,6 +188,65 @@ describe("stream", () => {
   });
 });
 
+describe("edge cases", () => {
+  const result = JSON.stringify({ schema_version: "1", command: "logs", data: { type: "result" } });
+
+  it("accepts CRLF line endings and a final line without a trailing newline", async () => {
+    const m = mock([ndjson([`{"schema_version":"1","command":"logs","data":{"type":"log"}}\r\n`, result])]);
+    const items = [];
+    for await (const i of createClient({ token: TOKEN, fetch: m.fetch }).stream("/v1/commands/logs")) items.push(i);
+    expect(items.map((i) => i.final)).toEqual([false, true]);
+  });
+
+  it("passes the AbortSignal to fetch for call() and stream()", async () => {
+    const seen: Array<AbortSignal | undefined> = [];
+    const fetch: FetchLike = async (_url, init) => {
+      seen.push(init.signal);
+      return json(200, { schema_version: "1", command: "x", data: {} })() as never;
+    };
+    const ctl = new AbortController();
+    const client = createClient({ token: TOKEN, fetch });
+    await client.backup({}, { signal: ctl.signal });
+    for await (const i of client.stream("/v1/commands/backup", {}, { signal: ctl.signal })) void i;
+    expect(seen).toEqual([ctl.signal, ctl.signal]);
+  });
+
+  it("treats a 428 without data as an error, not a confirmation", async () => {
+    const m = mock([json(428, errorEnvelope)]);
+    const e = await createClient({ token: TOKEN, fetch: m.fetch }).backup().catch((x: unknown) => x);
+    expect(e).toBeInstanceOf(NselfError);
+  });
+
+  it("throws CLIENT_PROTOCOL when a success envelope has no data", async () => {
+    const m = mock([json(200, { schema_version: "1", command: "backup" })]);
+    await expect(createClient({ token: TOKEN, fetch: m.fetch }).backup()).rejects.toMatchObject({ code: "CLIENT_PROTOCOL" });
+  });
+
+  it("surfaces a reused confirmation nonce as NselfError", async () => {
+    const confirm = "1".repeat(64);
+    const m = mock([
+      json(428, { schema_version: "1", command: "c", data: { confirmation_required: true, kind: "request", confirm, side_effect: "write", reason: "r", plan: null } }),
+      json(409, { ...errorEnvelope, error: { code: "E424", message: "confirmation already used", exit_code: 1, class: "user" } }),
+    ]);
+    const need = (await createClient({ token: TOKEN, fetch: m.fetch }).backup().catch((x: unknown) => x)) as ConfirmationRequired;
+    await expect(need.confirm()).rejects.toMatchObject({ code: "E424", httpStatus: 409 });
+  });
+
+  it("never puts the token into an error message or its string form", async () => {
+    const m = mock([json(401, errorEnvelope)]);
+    const e = (await createClient({ token: TOKEN, fetch: m.fetch }).backup().catch((x: unknown) => x)) as NselfError;
+    expect(`${e.message}${String(e)}${JSON.stringify(e)}${e.stack ?? ""}`).not.toContain(TOKEN);
+  });
+
+  it("reports httpStatus 200 for an error line that ends a stream", async () => {
+    const m = mock([ndjson([JSON.stringify(errorEnvelope) + "\n"])]);
+    const run = async () => {
+      for await (const i of createClient({ token: TOKEN, fetch: m.fetch }).stream("/v1/commands/logs")) void i;
+    };
+    await expect(run()).rejects.toMatchObject({ code: "E426", httpStatus: 200 });
+  });
+});
+
 describe("readLines", () => {
   it("cancels the reader when the consumer stops early", async () => {
     let cancelled = false;

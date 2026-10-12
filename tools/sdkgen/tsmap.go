@@ -106,17 +106,21 @@ func tsArray(s *Schema, depth int) string {
 		}
 		return "Array<" + rest + ">"
 	}
-	min := len(s.PrefixItems)
-	if s.MinItems != nil && *s.MinItems < min {
+	// JSON Schema: without minItems no element is required.
+	min := 0
+	if s.MinItems != nil {
 		min = *s.MinItems
 	}
 	parts := make([]string, 0, len(s.PrefixItems)+1)
 	for i, p := range s.PrefixItems {
-		opt := ""
+		el := tsType(p, depth)
 		if i >= min {
-			opt = "?"
+			if strings.ContainsAny(el, "|&") {
+				el = "(" + el + ")"
+			}
+			el += "?"
 		}
-		parts = append(parts, tsType(p, depth)+opt)
+		parts = append(parts, el)
 	}
 	if rest != "" {
 		parts = append(parts, "..."+"Array<"+rest+">")

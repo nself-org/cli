@@ -60,7 +60,7 @@ func execTemplate(name string, data any) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func componentDecls(m *Model) []typeDecl {
+func componentDecls(m *Model) ([]typeDecl, error) {
 	names := make([]string, 0, len(m.Schemas))
 	for n := range m.Schemas {
 		if !runtimeComponents[n] {
@@ -69,15 +69,20 @@ func componentDecls(m *Model) []typeDecl {
 	}
 	sort.Strings(names)
 	out := make([]typeDecl, 0, len(names))
+	owner := map[string]string{}
 	for _, n := range names {
 		s := m.Schemas[n]
+		if prev, dup := owner[typeName(n)]; dup {
+			return nil, fmt.Errorf("sdkgen: components %q and %q both map to type %s", prev, n, typeName(n))
+		}
+		owner[typeName(n)] = n
 		d := typeDecl{Name: typeName(n), Doc: comment(s.Description), Body: tsType(s, 0), Kind: "type"}
 		if strings.HasPrefix(d.Body, "{\n") {
 			d.Kind = "interface"
 		}
 		out = append(out, d)
 	}
-	return out
+	return out, nil
 }
 
 // requestDecls renders {Name}Args, {Name}Flags and {Name}Request for op.
@@ -110,7 +115,10 @@ func requestDecls(name string, op Operation) ([]typeDecl, bool, error) {
 
 // Render produces every generated TypeScript file keyed by path under the package dir.
 func Render(m *Model) (map[string][]byte, []opView, error) {
-	decls := componentDecls(m)
+	decls, err := componentDecls(m)
+	if err != nil {
+		return nil, nil, err
+	}
 	views := make([]opView, 0, len(m.Ops))
 	methods, typesSeen := map[string]string{}, map[string]string{}
 	for _, d := range decls {
@@ -144,7 +152,6 @@ func Render(m *Model) (map[string][]byte, []opView, error) {
 	}
 	sort.SliceStable(decls, func(i, j int) bool { return decls[i].Name < decls[j].Name })
 	files := map[string][]byte{}
-	var err error
 	if files["src/generated/types.ts"], err = execTemplate("types.ts.tmpl", map[string]any{"Header": header, "Decls": decls}); err != nil {
 		return nil, nil, err
 	}
