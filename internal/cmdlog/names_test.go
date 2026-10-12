@@ -20,9 +20,10 @@ func TestRedactSecretNamedFlagsAndURLs(t *testing.T) {
 		{"private-key", []string{"nself", "x", "--private-key=fakeV6"}, "nself x --private-key=[REDACTED]"},
 		{"credential", []string{"nself", "x", "--credentials", "fakeV7"}, "nself x --credentials [REDACTED]"},
 		{"plain flag kept", []string{"nself", "x", "--name=svc", "--port", "80"}, "nself x --name=svc --port 80"},
-		{"url positional", []string{"nself", "x", "postgres://admin:fakePw@db:5432/app"}, "nself x postgres://admin:[REDACTED]@db:5432/app"},
-		{"url in flag", []string{"nself", "x", "--url=https://u:p@w@host/p"}, "nself x --url=https://u:[REDACTED]@host/p"},
-		{"url without password kept", []string{"nself", "x", "https://host/p@x"}, "nself x https://host/p@x"},
+		{"url positional", []string{"nself", "x", "postgres://admin:fakePw@db:5432/app"}, "nself x postgres://****@db:5432/app"},
+		{"url in flag", []string{"nself", "x", "--url=https://u:p@w@host/p"}, "nself x --url=https://****@host/p"},
+		{"url with plain query kept", []string{"nself", "x", "https://host/p?page=2"}, "nself x https://host/p?page=2"},
+		{"url secret query param", []string{"nself", "x", "https://host/p?access_token=fakeV8&a=1"}, "nself x https://host/p?access_token=****&a=1"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
