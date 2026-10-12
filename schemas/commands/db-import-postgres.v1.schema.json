@@ -28,6 +28,9 @@
             "array"
           ]
         },
+        "source_users": {
+          "type": "integer"
+        },
         "version": {
           "type": "string"
         }

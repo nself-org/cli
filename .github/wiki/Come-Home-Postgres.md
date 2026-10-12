@@ -47,7 +47,10 @@ missing object store (E529), another import already running on the target (E519)
 a function or type in the bundle that the target already owns (E519), an archive
 that does not match the bundle, and a metadata conflict found in the preflight
 (E521). Each restore section runs in one transaction, so a failure inside a
-section undoes that section.
+section undoes that section; a failure in the first section (pre-data) when no
+compat step ran therefore also leaves `wrote` false. `--plan` runs the same
+bundle-free target checks (emptiness and, when the source has users, `auth.users`),
+so a plan does not pass where the real run would be refused with E519.
 
 If `wrote` is true, the load has no rollback beyond that: the target holds partial
 data and a rerun is refused with E519. Reset the target project database and start

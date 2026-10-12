@@ -86,6 +86,9 @@ func (Source) Detect(ctx context.Context, in importer.Input) (importer.Detection
 	}
 	if auth {
 		detection.Notes = append(detection.Notes, "looks like nhost")
+		if db.QueryRow(ctx, `SELECT count(*) FROM auth.users`).Scan(&detection.SourceUsers) != nil {
+			return detection, errs.New("E517", "source auth lookup failed")
+		}
 	}
 	return detection, nil
 }

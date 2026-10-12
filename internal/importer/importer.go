@@ -22,6 +22,9 @@ type Detection struct {
 	Version string   `json:"version"`
 	Notes   []string `json:"notes"`
 	Schemas []string `json:"schemas"`
+	// SourceUsers counts the source auth users seen at detection; --plan uses it to run the
+	// same auth.users preflight as the real run.
+	SourceUsers int `json:"source_users,omitempty"`
 }
 type Extracted struct{ Stage string }
 type Source interface {

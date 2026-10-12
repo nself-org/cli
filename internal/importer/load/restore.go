@@ -129,14 +129,7 @@ func Apply(ctx context.Context, cfg *config.Config, r *portable.Reader, opts Opt
 		return nil, errs.New("E521", "restore list write failed")
 	}
 	restore := func(section string) error {
-		opts.Progress.begin()
-		spec.Args = append([]string{"pg_restore", "--exit-on-error", "--single-transaction", "--no-owner", "--no-privileges", "--section=" + section, "--use-list=/import/restore.list"}, connectionArgs(cfg)...)
-		spec.Args = append(spec.Args, "/import/data.dump")
-		if _, _, e := runOneShot(ctx, spec); e != nil {
-			return errs.New("E521", "database restore failed in "+section)
-		}
-		opts.Progress.done(section)
-		return nil
+		return runSection(ctx, spec, cfg, section, opts.Progress)
 	}
 	if err = restore("pre-data"); err != nil {
 		return nil, err
@@ -208,4 +201,22 @@ func filterSchemas(ctx context.Context, db interface {
 		}
 	}
 	return strings.Join(lines, "\n"), nil
+}
+
+// runSection runs one pg_restore section in a single transaction. A failure rolls the section
+// back, so when the first section (pre-data) fails with no compat.sql run and no cancellation,
+// nothing was committed and Wrote goes back to false. After compat.sql, or on a cancel (the
+// one-shot may keep running), Wrote stays true.
+func runSection(ctx context.Context, spec docker.RunSpec, cfg *config.Config, section string, p *Progress) error {
+	p.begin()
+	spec.Args = append([]string{"pg_restore", "--exit-on-error", "--single-transaction", "--no-owner", "--no-privileges", "--section=" + section, "--use-list=/import/restore.list"}, connectionArgs(cfg)...)
+	spec.Args = append(spec.Args, "/import/data.dump")
+	if _, _, e := runOneShot(ctx, spec); e != nil {
+		if p != nil && section == "pre-data" && p.Step == "" && ctx.Err() == nil {
+			p.Wrote = false
+		}
+		return errs.New("E521", "database restore failed in "+section)
+	}
+	p.done(section)
+	return nil
 }

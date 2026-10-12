@@ -39,7 +39,11 @@ func acquireLock(ctx context.Context, cfg *config.Config) (func(), error) {
 	return func() { _ = db.Close(context.Background()) }, nil
 }
 
-func checkTarget(ctx context.Context, cfg *config.Config, schemas []string) error {
+// checkTarget runs every read-only target preflight that needs no bundle, so --plan and the real
+// run refuse the same targets: emptiness (E519) and, when the source has users, auth.users. The
+// bundle-dependent checks (metadata conflicts, function and type collisions) need the dump and
+// run in load.Apply before its first write.
+func checkTarget(ctx context.Context, cfg *config.Config, d Detection) error {
 	db, err := load.Connect(ctx, cfg)
 	if err != nil {
 		return err
@@ -49,7 +53,10 @@ func checkTarget(ctx context.Context, cfg *config.Config, schemas []string) erro
 	if err != nil {
 		return err
 	}
-	return load.Empty(ctx, db, schemas, store != nil)
+	if err = load.Empty(ctx, db, d.Schemas, store != nil); err != nil {
+		return err
+	}
+	return load.AuthPreflight(ctx, db, d.SourceUsers)
 }
 func Run(ctx context.Context, cfg *config.Config, s Source, in Input, opts RunOptions) (Report, error) {
 	report := Report{Result: "failed", Tables: []TableReport{}, Exemptions: []portable.Exemption{}, Mismatches: []verify.Mismatch{}, UntranslatedPolicies: []Policy{}, Hasura: HasuraReport{Diffs: []verify.Mismatch{}}}
@@ -92,7 +99,7 @@ func Run(ctx context.Context, cfg *config.Config, s Source, in Input, opts RunOp
 	if err != nil {
 		return report, publicError(err, "E517", "source detection failed")
 	}
-	if err = targetChecks(ctx, cfg, detection.Schemas); err != nil {
+	if err = targetChecks(ctx, cfg, detection); err != nil {
 		return report, err
 	}
 	report.Detection = &detection

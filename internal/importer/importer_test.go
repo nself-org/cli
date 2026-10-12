@@ -25,6 +25,7 @@ type testSource struct {
 	name    string
 	extract bool
 	failure error
+	users   int
 }
 
 func (s *testSource) Name() string    { return s.name }
@@ -34,7 +35,7 @@ func (s *testSource) Detect(_ context.Context, in Input) (Detection, error) {
 	if err != nil {
 		return Detection{}, err
 	}
-	return Detection{Kind: s.name, Version: "16", Schemas: []string{"public"}}, s.failure
+	return Detection{Kind: s.name, Version: "16", Schemas: []string{"public"}, SourceUsers: s.users}, s.failure
 }
 func (s *testSource) Extract(_ context.Context, _ Input, _ string) (Extracted, error) {
 	s.extract = true
@@ -44,7 +45,7 @@ func targetSeams(t *testing.T) {
 	t.Helper()
 	oldStarted, oldChecks, oldLock := started, targetChecks, lockTarget
 	started = func(context.Context, string) error { return nil }
-	targetChecks = func(context.Context, *config.Config, []string) error { return nil }
+	targetChecks = func(context.Context, *config.Config, Detection) error { return nil }
 	lockTarget = func(context.Context, *config.Config) (func(), error) { return func() {}, nil }
 	t.Cleanup(func() { started, targetChecks, lockTarget = oldStarted, oldChecks, oldLock })
 }
@@ -222,5 +223,23 @@ func TestPublicErrorKeepsSafeMessages(t *testing.T) {
 	hidden := publicError(errs.New("E520", PartitionedPrefix+"x; password=hunter2"), "E520", "source extraction failed")
 	if !errors.As(hidden, &cli) || strings.Contains(cli.What, "hunter2") {
 		t.Fatalf("unsafe name leaked: %v", hidden)
+	}
+}
+
+// --plan must run the same bundle-free target preflights as the real run, with the source's
+// user count, so a plan cannot pass and the real run then fail with E519.
+func TestImporterPlanRunsTargetPreflights(t *testing.T) {
+	targetSeams(t)
+	var seen Detection
+	targetChecks = func(_ context.Context, _ *config.Config, d Detection) error {
+		seen = d
+		return errs.New("E519", "target auth.users is not empty")
+	}
+	source := &testSource{name: "test-plan-auth", users: 3}
+	Register(source)
+	in := Input{Values: map[string]string{"from-env": "TEST_SOURCE"}, Env: func(string) string { return "in-memory" }}
+	_, err := Run(context.Background(), &config.Config{}, source, in, RunOptions{ProjectDir: t.TempDir(), Plan: true})
+	if err == nil || !strings.Contains(err.Error(), "auth.users is not empty") || seen.SourceUsers != 3 {
+		t.Fatalf("plan skipped the auth preflight: err=%v detection=%+v", err, seen)
 	}
 }
