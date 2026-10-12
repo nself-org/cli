@@ -481,6 +481,11 @@ Outputs the public key to add to `.env` as `BACKUP_AGE_RECIPIENTS`.
 
 ## Commands that need --yes
 
+```bash
+nself backup prune [--dry-run] [--yes]
+nself backup pitr restore --to <time> [--yes]
+```
+
 `backup prune` and `backup pitr restore` destroy data. In v1.4 they warn when called without `--yes`. In v1.5 (`NSELF_V15=1`) they refuse with `[E403]` unless you pass `--yes` or answer `y` on a terminal. `prune --dry-run` only previews, so it never needs `--yes`. An agent or HTTP caller gets a confirmation round trip first; the CLI adds `--yes` once the caller confirms.
 
 ---

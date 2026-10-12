@@ -116,6 +116,7 @@ Reverting drops what the migration created, so it needs consent. In v1.4 it warn
 |---|---|
 | `--migration-dir <path>` | Revert directory migrations: each reverted file `<name>.sql` needs `<name>_down.sql` or `<name>.down.sql` in `<path>` |
 | `--steps N` | With `--migration-dir`: number of most recent migrations to revert (default 1) |
+| `--yes` | Confirm the revert without a prompt (required from v1.5 unless you answer a terminal prompt) |
 
 With `--migration-dir`, every step runs the down file and removes the migration's rows from both ledgers in one transaction. The newest applied migration must be a file of `<path>`; otherwise nothing is reverted and the error names it. A missing down file is an error naming both expected paths, and every step is checked before the first one runs. The ledger keys on the file name only, so `down` also requires the file in `<path>` to match the checksum recorded for that name in `nself_ops.migrations`; a same-named file from another directory (or an edited one) is refused. `--steps` without `--migration-dir` is an error.
 

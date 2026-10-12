@@ -13,6 +13,7 @@ import (
 
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 // gateCmd builds a throwaway command with the flags the gate reads.
@@ -26,6 +27,15 @@ func gateCmd(buf *bytes.Buffer) *cobra.Command {
 	c.Flags().Bool("dry-run", false, "")
 	c.SetErr(buf)
 	return c
+}
+
+// skipOnTerminal skips a test that would block on the y/N prompt: the gate asks
+// only when both stdin and stderr are terminals.
+func skipOnTerminal(t *testing.T) {
+	t.Helper()
+	if term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stderr.Fd())) {
+		t.Skip("stdin and stderr are terminals: the v1.5 gate would prompt")
+	}
 }
 
 // withArgs sets os.Args for one test and restores it afterwards.
@@ -47,18 +57,23 @@ func TestDataLossGate(t *testing.T) {
 		wantErr  bool
 		wantWarn bool
 		wantRun  bool
+		// needNoTTY skips the case on a terminal, where the gate would prompt.
+		needNoTTY bool
 	}{
 		{name: "v1.4 bare warns and runs", v15: "0", wantWarn: true, wantRun: true},
 		{name: "v1.4 yes is silent", v15: "0", flags: map[string]string{"yes": "true"}, wantRun: true},
 		{name: "v1.4 silenced by --quiet", v15: "0", argv: []string{"nself", "backup", "prune", "--quiet"}, wantRun: true},
 		{name: "v1.4 silenced by --no-deprecation-warnings", v15: "0", argv: []string{"nself", "--no-deprecation-warnings"}, wantRun: true},
-		{name: "v1.5 bare non-tty refuses", v15: "1", wantErr: true},
+		{name: "v1.5 bare non-tty refuses", v15: "1", wantErr: true, needNoTTY: true},
 		{name: "v1.5 yes runs", v15: "1", flags: map[string]string{"yes": "true"}, wantRun: true},
 		{name: "v1.5 skip flag runs", v15: "1", flags: map[string]string{"dry-run": "true"}, wantRun: true},
 		{name: "v1.4 skip flag has no warning", v15: "0", flags: map[string]string{"dry-run": "true"}, wantRun: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.needNoTTY {
+				skipOnTerminal(t)
+			}
 			t.Setenv("NSELF_V15", tc.v15)
 			if tc.argv == nil {
 				tc.argv = []string{"nself", "backup", "prune"}
@@ -121,14 +136,19 @@ func TestDataLossGateCommands(t *testing.T) {
 			// Other tests may have left these flags set on the shared command.
 			for _, f := range []string{"yes", "dry-run", "list"} {
 				if fl := tc.cmd.Flags().Lookup(f); fl != nil {
-					old := fl.Value.String()
+					old, changed := fl.Value.String(), fl.Changed
 					_ = tc.cmd.Flags().Set(f, "false")
-					t.Cleanup(func() { _ = tc.cmd.Flags().Set(f, old) })
+					t.Cleanup(func() {
+						_ = fl.Value.Set(old)
+						fl.Changed = changed
+					})
 				}
 			}
+			skipOnTerminal(t)
 			t.Setenv("NSELF_V15", "1")
 			var buf bytes.Buffer
 			tc.cmd.SetErr(&buf)
+			t.Cleanup(func() { tc.cmd.SetErr(nil) })
 			err := tc.cmd.RunE(tc.cmd, nil)
 			var ce *errs.CLIError
 			if !errors.As(err, &ce) || ce.Code != "E403" {

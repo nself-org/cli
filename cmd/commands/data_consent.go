@@ -75,6 +75,8 @@ func withDataLossConsent(next func(*cobra.Command, []string) error, what string,
 // nothing. Without it, v1.4 prints one deprecation line (unless warnings are
 // silenced) and returns nil; v1.5 asks on a terminal and otherwise returns an
 // E403 error that nothing has changed behind.
+// Messages name cmd.CommandPath(): in v1.5 the canon engine has already moved
+// the command, so that is the canonical path; in v1.4 it is the legacy spelling.
 func requireDataLossConsent(cmd *cobra.Command, what string) error {
 	if yes, _ := cmd.Flags().GetBool("yes"); yes {
 		return nil

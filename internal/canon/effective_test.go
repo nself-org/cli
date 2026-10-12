@@ -169,6 +169,9 @@ func TestEffectivePresplitEquivalence(t *testing.T) {
 					// their rows declare confirm {flags: [yes]} and no longer say
 					// surface cli-only (the frozen pre-split table has neither).
 					got.Confirm, want.Confirm = nil, nil
+					if got.Surface == "cli-only" {
+						t.Errorf("v15=%v: %q is back to surface cli-only; it has a --yes consent flag (D-0285)", v15, k)
+					}
 					want.Surface = got.Surface
 				case "clean":
 					got.Confirm, got.Flags = nil, nil
