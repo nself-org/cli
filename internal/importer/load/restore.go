@@ -125,6 +125,11 @@ func Apply(ctx context.Context, cfg *config.Config, r *portable.Reader, opts Opt
 	if err != nil {
 		return nil, err
 	}
+	skip, err := SkipKinds(r)
+	if err != nil {
+		return nil, errs.New("E521", "restore skip list invalid")
+	}
+	filtered = dropEntries(filtered, skip)
 	if os.WriteFile(filepath.Join(work, "restore.list"), []byte(filtered), 0o600) != nil {
 		return nil, errs.New("E521", "restore list write failed")
 	}

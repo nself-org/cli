@@ -26,7 +26,13 @@ type Detection struct {
 	// same auth.users preflight as the real run.
 	SourceUsers int `json:"source_users,omitempty"`
 }
-type Extracted struct{ Stage string }
+
+// Extracted names the written bundle. UntranslatedPolicies lists the source access rules the
+// source could not express as Hasura permissions; they reach the report unchanged.
+type Extracted struct {
+	Stage                string
+	UntranslatedPolicies []Policy
+}
 type Source interface {
 	Name() string
 	Flags() []FlagSpec

@@ -27,6 +27,9 @@ func preflight(ctx context.Context, cfg *config.Config, db *pgx.Conn, r *portabl
 	if err := StoragePreflight(m, store, opts.SkipStorage); err != nil {
 		return nil, nil, err
 	}
+	if err := KeysFree(ctx, m, store, opts.SkipStorage); err != nil {
+		return nil, nil, err
+	}
 	users, err := verify.ReadUsers(r)
 	if err != nil {
 		return nil, nil, errs.New("E521", "bundle users invalid")

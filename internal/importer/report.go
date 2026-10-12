@@ -39,17 +39,19 @@ type Policy struct {
 	Reason string `json:"reason"`
 }
 type Report struct {
-	Source               string               `json:"source"`
-	RunID                string               `json:"run_id"`
-	Result               string               `json:"result"`
-	Tables               []TableReport        `json:"tables"`
-	Users                UsersReport          `json:"users"`
-	Storage              StorageReport        `json:"storage"`
-	Hasura               HasuraReport         `json:"hasura"`
-	UntranslatedPolicies []Policy             `json:"untranslated_policies"`
-	Exemptions           []portable.Exemption `json:"exemptions"`
-	Mismatches           []verify.Mismatch    `json:"mismatches"`
-	Steps                []string             `json:"steps,omitempty"`
+	Source               string        `json:"source"`
+	RunID                string        `json:"run_id"`
+	Result               string        `json:"result"`
+	Tables               []TableReport `json:"tables"`
+	Users                UsersReport   `json:"users"`
+	Storage              StorageReport `json:"storage"`
+	Hasura               HasuraReport  `json:"hasura"`
+	UntranslatedPolicies []Policy      `json:"untranslated_policies"`
+	// CompatShims names the source objects the bundle's db/compat.sql re-creates in the target.
+	CompatShims []string             `json:"compat_shims"`
+	Exemptions  []portable.Exemption `json:"exemptions"`
+	Mismatches  []verify.Mismatch    `json:"mismatches"`
+	Steps       []string             `json:"steps,omitempty"`
 	// Wrote is true once the target may have changed; LastStep is the last finished load step.
 	Wrote     bool       `json:"wrote"`
 	LastStep  string     `json:"last_step,omitempty"`

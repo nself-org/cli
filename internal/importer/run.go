@@ -59,7 +59,7 @@ func checkTarget(ctx context.Context, cfg *config.Config, d Detection) error {
 	return load.AuthPreflight(ctx, db, d.SourceUsers)
 }
 func Run(ctx context.Context, cfg *config.Config, s Source, in Input, opts RunOptions) (Report, error) {
-	report := Report{Result: "failed", Tables: []TableReport{}, Exemptions: []portable.Exemption{}, Mismatches: []verify.Mismatch{}, UntranslatedPolicies: []Policy{}, Hasura: HasuraReport{Diffs: []verify.Mismatch{}}}
+	report := Report{Result: "failed", Tables: []TableReport{}, Exemptions: []portable.Exemption{}, Mismatches: []verify.Mismatch{}, UntranslatedPolicies: []Policy{}, CompatShims: []string{}, Hasura: HasuraReport{Diffs: []verify.Mismatch{}}}
 	if s == nil {
 		return report, errs.New("E524", "source not registered")
 	}
@@ -123,7 +123,8 @@ func Run(ctx context.Context, cfg *config.Config, s Source, in Input, opts RunOp
 			_ = os.RemoveAll(stage)
 		}
 	}()
-	_, err = s.Extract(ctx, in, stage)
+	extracted, err := s.Extract(ctx, in, stage)
+	report.UntranslatedPolicies = append(report.UntranslatedPolicies, extracted.UntranslatedPolicies...)
 	if err != nil {
 		err = publicError(err, "E520", "source extraction failed")
 	} else {
@@ -150,6 +151,7 @@ func runBundle(ctx context.Context, cfg *config.Config, stage string, opts RunOp
 	if err != nil {
 		return err
 	}
+	report.CompatShims = append(report.CompatShims, m.Compat...)
 	report.Exemptions = append(m.Exemptions, exemptions...)
 	m.Exemptions = report.Exemptions
 	db, err := load.Connect(ctx, cfg)
@@ -201,7 +203,7 @@ func runBundle(ctx context.Context, cfg *config.Config, stage string, opts RunOp
 }
 
 // safeMessages are the fixed, credential-free texts a source or loader may surface unchanged.
-var safeMessages = []string{"source requires an environment variable name", "source environment variable is empty", "source connection configuration invalid", "source database unreachable", "source version unavailable", "source schema lookup failed", "source auth lookup failed", "target database connection failed", "target version unavailable", "source snapshot failed", "source snapshot export failed", "source tables unavailable", "source table hashing failed", "source key lookup failed", "independent source count failed", "target image unavailable", "snapshot staging unavailable", "pg_dump snapshot extraction failed", "bundle creation failed", "dump member write failed", "auth snapshot extraction failed", "snapshot commit failed", "bundle manifest write failed", "source partition lookup failed"}
+var safeMessages = []string{"source requires an environment variable name", "source environment variable is empty", "source connection configuration invalid", "source database unreachable", "source version unavailable", "source schema lookup failed", "source auth lookup failed", "target database connection failed", "target version unavailable", "source snapshot failed", "source snapshot export failed", "source tables unavailable", "source table hashing failed", "source key lookup failed", "independent source count failed", "target image unavailable", "snapshot staging unavailable", "pg_dump snapshot extraction failed", "bundle creation failed", "dump member write failed", "auth snapshot extraction failed", "snapshot commit failed", "bundle manifest write failed", "source partition lookup failed", "source is not a Supabase database (auth.users with encrypted_password is missing)", "source storage lookup failed", "source policy lookup failed", "storage api url invalid", "storage api request failed", "storage listing differs from the storage catalog", "storage bucket name not valid for the target object store", "storage object name not valid for the bundle", "source has storage objects; --api-url (or --project-ref) and --service-key-env are required"}
 
 var (
 	versionRe   = regexp.MustCompile(`POSTGRES_VERSION=([0-9]{1,3})`)
