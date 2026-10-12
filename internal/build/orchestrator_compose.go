@@ -50,8 +50,12 @@ func (st *buildState) applyProxyProvider(g *compose.Generator) error {
 		if proxyAPIDocsEnabled(st.cfg) {
 			slog.Warn("docs." + st.cfg.BaseDomain + " is not served by traefik (D-0310); api-docs is an accepted difference (API_DOCS_* parsing debt D-0455)")
 		}
-	} else if err := proxyFrontingStack(st.cfg, st.workdir); err != nil {
-		return err
+	} else {
+		if err := proxyFrontingStack(st.cfg, st.workdir); err != nil {
+			return err
+		}
+		// P7-DEPL-04: nginx serves again, so the traefik renderer's output goes.
+		return cleanupProviderOutput(st.sink, st.workdir, provider)
 	}
 	return nil
 }

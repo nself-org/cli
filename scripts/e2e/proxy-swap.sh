@@ -4,11 +4,17 @@ set -euo pipefail
 export LC_ALL=C
 # Keep every install/telemetry path away from the live ping service.
 export NSELF_PING_URL=http://127.0.0.1:9
-case ${1:-} in
-  --round-trip) echo 'round-trip leg is P7-DEPL-04' >&2; exit 2 ;;
-  --add) [[ $# == 1 ]] || exit 2 ;;
-  *) echo 'usage: proxy-swap.sh --add|--round-trip' >&2; exit 2 ;;
-esac
+usage() { echo 'usage: proxy-swap.sh --add | --round-trip [--assert-identical] | --kill-mid-remove' >&2; exit 2; }
+MODE='' ASSERT=0
+for arg in "$@"; do
+  case $arg in
+    --add|--round-trip|--kill-mid-remove) [[ -z $MODE ]] || usage; MODE=${arg#--} ;;
+    --assert-identical) ASSERT=1 ;;
+    *) usage ;;
+  esac
+done
+[[ -n $MODE ]] || usage
+[[ $ASSERT == 0 || $MODE == round-trip ]] || usage
 [[ $(uname -s) == Linux ]] || echo 'PROVISIONAL (Constitution §10.3): Linux evidence is required'
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 FIXTURE=$ROOT/scripts/e2e/fixtures/proxy
@@ -311,6 +317,59 @@ PY
   [[ -s $output ]]
 }
 matrix nginx
+if [[ $MODE != add ]]; then
+  # P7-DEPL-04: D5 round trip. rt-before is taken with nginx serving, before the add.
+  manifest "$W/a" rt-before.manifest
+  swap_started=1
+  # Compare two manifests. Without --assert-identical a difference is recorded, not fatal.
+  compare() {
+    if same "$1" "$2"; then return 0; fi
+    diff -u "$W/evidence/$1" "$W/evidence/$2" > "$W/evidence/round-trip.diff" || true
+    [[ $MODE == round-trip && $ASSERT == 0 ]] || return 1
+    echo 'RECORDED: manifests differ (no --assert-identical)' >&2
+  }
+  finish_restore() {
+    nself "$W/a" start --timeout 180
+    wait_healthy nginx
+    [[ ! -e $W/a/.nself/generated/traefik ]] || { echo 'FAIL: .nself/generated/traefik survived the remove' >&2; return 1; }
+    manifest "$W/a" rt-after.manifest
+    compare rt-before.manifest rt-after.manifest
+    matrix nginx-restored
+    same nginx.matrix nginx-restored.matrix
+  }
+  NSELF_V15=1 nself "$W/a" add traefik --force --yes
+  nself "$W/a" build --remove-orphans --yes
+  nself "$W/a" start --timeout 180
+  wait_healthy traefik
+  matrix traefik
+  same nginx.matrix traefik.matrix
+  [[ -f $W/a/.nself/generated/traefik/.nself-generated ]] || { echo 'FAIL: the swap left no renderer marker to clean' >&2; exit 1; }
+  nself "$W/a" remove traefik --yes
+  if [[ $MODE == round-trip ]]; then
+    nself "$W/a" build --remove-orphans --yes
+    finish_restore
+    echo "PASS: proxy round trip; rt-before.manifest vs rt-after.manifest compared; request parity restored; evidence: $EVIDENCE"
+  else
+    # kill -9 once the traefik service container is gone; this build is what stops it.
+    (cd "$W/a" && NSELF_PLUGIN_DIR="$W/a/.nself/plugins" exec "$W/nself" build --remove-orphans --yes) &
+    build_pid=$!
+    project=$(compose "$W/a" config --format json | jq -er .name)
+    gone=0
+    for _ in $(seq 1 1200); do
+      if [[ -z $(docker ps -aq --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=traefik') ]]; then gone=1; break; fi
+      sleep .02
+    done
+    alive=no
+    if kill -0 "$build_pid" 2>/dev/null; then alive=yes; fi
+    kill -9 "$build_pid" 2>/dev/null || true
+    wait "$build_pid" 2>/dev/null || true
+    printf 'traefik gone: %s\nbuild still running at kill: %s\n' "$gone" "$alive" | tee "$W/evidence/kill-mid-remove.txt"
+    [[ $gone == 1 ]] || { echo 'FAIL: the traefik container never stopped' >&2; exit 1; }
+    finish_restore
+    echo "PASS: proxy kill-mid-remove converged to rt-before.manifest; evidence: $EVIDENCE"
+  fi
+  exit 0
+fi
 python3 - "$W/a/.env" <<'PY'
 import pathlib,sys
 p=pathlib.Path(sys.argv[1]); p.write_text(p.read_text().replace('ENV=dev','ENV=prod'))

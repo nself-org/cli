@@ -67,6 +67,18 @@ nself start
 
 The add writes files through reconcile. The build removes the nginx orphan, and start brings up traefik. In v1.5, prod-class changes print the reconcile plan and require confirmation. A refused add leaves generated files and containers unchanged, but leaves traefik installed. Remove it with `nself remove traefik`, or fix the refusal before the next build. For measured downtime, see the e2e evidence.
 
+### Returning to nginx
+
+```bash
+nself remove traefik --yes
+nself build --remove-orphans --yes
+nself start
+```
+
+The remove deletes the plugin. The next build derives nginx again and deletes `.nself/generated/traefik/`, but only when the renderer's `.nself-generated` marker is inside it. A directory without that marker, a directory reached through a symlink, and every other path stay in place; the build prints one warning and carries on. The build also removes the traefik containers as orphans. After the sequence, the generated files, the compose service set and the containers match the project as it was before `nself add traefik`, and the request-parity matrix passes through nginx again.
+
+If the remove is interrupted (a crash, `kill -9`), the files are already final, because the build writes them before it removes any container. Run `nself start`: it removes the leftover traefik containers and starts nginx. Both paths are tested on Linux by `scripts/e2e/proxy-swap.sh --round-trip --assert-identical` and `--kill-mid-remove`.
+
 ## Plugin and hand-managed routes
 
 `routes.json` also describes the nginx files nself does not render itself: every `nginx/*.conf` a plugin ships (rendered into `nginx/sites/<plugin>-<file>`, see [Plugin Route Injection](#plugin-route-injection)) and every hand-managed `nginx/conf.d/*.conf` and `nginx/conf.d-<env>/*.conf` (not `default.conf`). Each `server { }` block becomes one route:
