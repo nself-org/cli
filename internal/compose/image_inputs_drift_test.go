@@ -31,11 +31,14 @@ var enableAll = map[string]string{
 }
 
 // renderVariants together reach every row of the table: the functions runtime,
-// the search engine, the cache engine and the postgres flavour each change the rendered image.
+// the search engine, the cache engine, the postgres flavour and the auth entry each change the rendered image.
 var renderVariants = map[string]map[string]string{
 	"node-meili-plain":   {"FUNCTIONS_RUNTIME": "node", "SEARCH_ENGINE": "meilisearch", "POSTGRES_EXTENSIONS": "uuid-ossp", "REDIS_ENGINE": "redis"},
 	"deno-typesense-pgv": {"FUNCTIONS_RUNTIME": "deno", "SEARCH_ENGINE": "typesense", "POSTGRES_EXTENSIONS": "uuid-ossp,pgvector", "REDIS_ENGINE": "valkey"},
 	"python-meili-plain": {"FUNCTIONS_RUNTIME": "python", "SEARCH_ENGINE": "meilisearch", "POSTGRES_EXTENSIONS": "uuid-ossp", "REDIS_ENGINE": "redis"},
+	// v1.5 with an AUTH_ENCRYPTION_KEY (fake) renders the current auth entry; every other variant renders auth-v14 (P7-LIVE-20).
+	"node-meili-v15-authkey": {"FUNCTIONS_RUNTIME": "node", "SEARCH_ENGINE": "meilisearch", "POSTGRES_EXTENSIONS": "uuid-ossp", "REDIS_ENGINE": "redis",
+		"NSELF_V15": "1", AuthEncryptionKeyEnv: strings.Repeat("0f", 32)},
 }
 
 // envCandidates lists every variable that could plausibly name an image.
