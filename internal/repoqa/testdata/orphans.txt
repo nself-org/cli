@@ -21,5 +21,4 @@ internal/plugin/lifecycle
 internal/postgres/tablehash pending:P7-ADOPT-10
 internal/runbook
 internal/runtime
-internal/upgrade
 internal/webhook

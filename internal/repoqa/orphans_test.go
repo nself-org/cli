@@ -25,7 +25,6 @@ var orphanBasis = map[string]bool{
 	"internal/plugin/lifecycle": true,
 	"internal/runbook":          true,
 	"internal/runtime":          true,
-	"internal/upgrade":          true,
 	"internal/webhook":          true,
 }
 

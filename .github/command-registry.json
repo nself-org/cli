@@ -22351,6 +22351,85 @@
       "surface": "all"
     },
     {
+      "path": "nself update stack",
+      "name": "stack",
+      "parent": "nself update",
+      "summary": "Upgrade the stack with a verified backup and resumable steps",
+      "hidden": false,
+      "deprecated": null,
+      "aliases": [],
+      "group": null,
+      "runnable": true,
+      "args": [],
+      "flags": [
+        {
+          "name": "dry-run",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "List the steps without changing anything",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": "stream",
+          "cli_only": false,
+          "secret": false
+        },
+        {
+          "name": "plan",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "List the steps without changing anything (alias of --dry-run)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": "stream",
+          "cli_only": false,
+          "secret": false
+        },
+        {
+          "name": "yes",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Confirm the upgrade and non-production migration rollback",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        }
+      ],
+      "canon": "subcommand",
+      "target": null,
+      "side_effect": "destructive",
+      "output": "document",
+      "json": "envelope",
+      "data_schema": "schemas/commands/update-stack.v1.schema.json",
+      "exit_codes": {},
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
+      "surface": "all"
+    },
+    {
       "path": "nself update upgrade",
       "name": "upgrade",
       "parent": "nself update",
@@ -22635,7 +22714,7 @@
     }
   ],
   "counts": {
-    "commands": 384,
+    "commands": 385,
     "top_level": 24,
     "core": 20,
     "pending": 4,

@@ -1,0 +1,11 @@
+# Authored command fragment, P7-PLUG-31.
+schema_version: 1
+commands:
+  # internal/upgrade/stack/rollback.go:56 restores a backup after non-production migration failure.
+  update stack:
+    side_effect: destructive
+    output: document
+    confirm: {flags: [yes]}
+    flags:
+      dry-run: {output: stream}
+      plan: {output: stream}

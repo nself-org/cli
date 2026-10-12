@@ -663,6 +663,7 @@ Subcommands:
 
 - `images` — Refresh Docker image digests from registries
 - `project` — Upgrade a project's layout from an older nself
+- `stack` — Upgrade the stack with a verified backup and resumable steps
 - `upgrade` — Upgrade the nSelf CLI (detects install method)
 - `verify-sbom` — Verify the SBOM signature for a CLI release
 

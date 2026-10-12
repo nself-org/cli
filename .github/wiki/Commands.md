@@ -121,7 +121,7 @@ Run `make cmd-inventory` to refresh. **Total top-level commands: 24**
 | `nself start` | Boot your nSelf stack | core | dev |
 | `nself status` | Show health status of all services | core | health, urls |
 | `nself stop` | Gracefully shut down all services or specific services | core | — |
-| `nself update` | Update the nSelf CLI and admin UI | account | images, project, upgrade, verify-sbom |
+| `nself update` | Update the nSelf CLI and admin UI | account | images, project, stack, upgrade, verify-sbom |
 
 <!-- END GENERATED:command-table -->
 ---

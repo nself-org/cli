@@ -41,6 +41,49 @@ The step list is shared with `nself update stack`: backup, images, plugins, buil
 
 Moving an existing project to Valkey, the renamed `nhost/auth` image or the newer Hasura: run `nself update --plan`, read the image rows (`redis`, `auth`, `hasura`), then `nself update --yes`. The `redis` row follows `REDIS_ENGINE` when it is set, else the mode default (Valkey under v1.5, Redis before); the lock pin does not decide it. A move shows a note on the row: the cache is recreated on volume `valkey_data` (or `redis_data`), the old volume is kept, and queued jobs are not migrated; the auth and Hasura catalog migrations are one-way, so take a backup first (`nself backup create`) and, to roll back, restore it before pinning back.
 
+## Resumable stack upgrade
+
+After reviewing and applying the desired pins, run:
+
+```bash
+nself update stack --plan                 # list steps without probes or writes
+nself update stack --dry-run --json       # one envelope with pending steps
+nself update stack --yes                  # authorize the upgrade and recovery policy
+nself update stack --yes --json           # one envelope with measured step results
+```
+
+The executor runs **backup → pull → build → start → migrate → readiness → health**.
+The backup is created with a unique run tag, verified in the current invocation,
+and bound to the journal by its digest. Build uses the reconcile preview and
+apply path; production and staging show the planned changes before applying.
+Core database migrations use the `db migrate` API. Plugins apply their own SQL
+at boot; readiness waits for every declared boot migration to report
+`applied == expected`.
+
+`.nself/state/update-stack.json` records each step atomically before and after it
+runs. Retry the same command after interruption to resume the first non-successful
+step. A process killed during `start` resumes at `start`. The operation lock
+prevents two updaters from changing the project concurrently. A missing, stale,
+changed or unverifiable production backup stops execution with E403 (exit 4)
+before pulling or changing the stack. Changing the environment class while a run
+is unfinished is also refused. A terminal confirmation or `--yes` is required
+before any step; unattended execution without `--yes` returns E403.
+
+On a non-production migration failure, recovery restores the step-one backup,
+restarts the saved immutable previous image set, and compares every table's exact
+row count with the pre-update counts. The backup and volumes remain retained.
+Recovery records `rolled-back`, `rollback-running`, or `rollback-failed`; those
+states require operator reconciliation before a new upgrade. Inspect and archive
+the journal after recovery rather than resuming migrations against restored data.
+
+Production and staging never restore automatically. A failed step records
+`awaiting-operator`, returns E139 (exit 2), and prints an exact
+`nself backup restore '<backup-id>'` command naming the retained run backup.
+Inspect the failed step before retrying; a retry re-verifies the backup first.
+Successful JSON output contains `data.steps[]` with `name`, `result`, and
+`duration_ms`. Failures use the standard error envelope; detailed step results
+remain in the journal.
+
 ## v0.9 legacy detection
 
 When running on a v0.9 CLI (any `0.x.y` binary), `nself update --check` queries `ping.nself.org/version`, receives a migration block in the response, and surfaces the migration guide URL directly in the terminal:
@@ -78,6 +121,7 @@ The check is read-only and non-destructive. It does not install anything. See [[
 |---|---|
 | `images` | Refresh Docker image digests from registries |
 | `project` | Upgrade a project's layout from an older nself |
+| `stack` | Upgrade the stack with a verified backup and resumable steps |
 | `upgrade` | Upgrade the ɳSelf CLI (detects install method) |
 | `verify-sbom` | Verify the SBOM signature for a CLI release |
 <!-- END GENERATED:subcommands -->
