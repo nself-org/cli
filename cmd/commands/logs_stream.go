@@ -8,7 +8,8 @@ package commands
 // LogsOptions for per-line filtering.
 // Outputs: filtered/formatted lines written to the given io.Writer; a list
 // of running service names.
-// Constraints: pure move, no behavior change.
+// Constraints: pure move, no behavior change; streamLogLines is the single
+// docker spawn of the logs stream (human, legacy JSON and v1.5 JSON paths).
 
 import (
 	"bufio"
@@ -22,6 +23,25 @@ import (
 
 // streamFilteredLogs runs docker with composeArgs and streams filtered/formatted output to w.
 func streamFilteredLogs(ctx context.Context, workdir string, composeArgs []string, opts LogsOptions, w io.Writer) error {
+	return streamLogLines(ctx, workdir, composeArgs, opts, func(line string) error {
+		if opts.JSON {
+			jsonLine := logLineToJSON(line)
+			_, _ = fmt.Fprintln(w, jsonLine)
+		} else {
+			formatted := formatLogLine(line, "", opts)
+			_, _ = fmt.Fprintln(w, formatted)
+		}
+		return nil
+	})
+}
+
+// streamLogLines runs docker with composeArgs and calls fn with every line that
+// passes the opts filters (the one place the logs commands spawn docker). An
+// error from fn stops the stream, kills docker and is returned. A cancelled
+// parent context ends the stream without an error.
+func streamLogLines(parent context.Context, workdir string, composeArgs []string, opts LogsOptions, fn func(line string) error) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
 	dockerCmd := exec.CommandContext(ctx, "docker", composeArgs...)
 	dockerCmd.Dir = workdir
 	dockerCmd.Stderr = os.Stderr
@@ -39,24 +59,24 @@ func streamFilteredLogs(ctx context.Context, workdir string, composeArgs []strin
 		return fmt.Errorf("starting docker: %w", err)
 	}
 
+	var fnErr error
 	scanner := bufio.NewScanner(stdout)
 	for scanner.Scan() {
-		line := scanner.Text()
-		filtered, ok := filterLogLine(line, opts)
+		filtered, ok := filterLogLine(scanner.Text(), opts)
 		if !ok {
 			continue
 		}
-		if opts.JSON {
-			jsonLine := logLineToJSON(filtered)
-			_, _ = fmt.Fprintln(w, jsonLine)
-		} else {
-			formatted := formatLogLine(filtered, "", opts)
-			_, _ = fmt.Fprintln(w, formatted)
+		if fnErr = fn(filtered); fnErr != nil {
+			cancel()
+			break
 		}
 	}
 
 	waitErr := dockerCmd.Wait()
-	if ctx.Err() != nil {
+	if fnErr != nil {
+		return fnErr
+	}
+	if parent.Err() != nil {
 		return nil
 	}
 	return waitErr
