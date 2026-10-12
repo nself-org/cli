@@ -199,7 +199,7 @@ func newIntegrationBackend(t *testing.T, ctx context.Context) *integrationBacken
 		cleanup, done := context.WithTimeout(context.Background(), 30*time.Second)
 		defer done()
 		if _, err := os.Stat(filepath.Join(dir, "compose.yaml")); err == nil {
-			if err := b.compose.ComposeDown(cleanup, dir, docker.DownOptions{}); err != nil {
+			if err := b.compose.ComposeDown(cleanup, dir, docker.DownOptions{RemoveOrphans: true}); err != nil {
 				t.Errorf("fixture container cleanup: %v", err)
 			}
 		} else if !os.IsNotExist(err) {
