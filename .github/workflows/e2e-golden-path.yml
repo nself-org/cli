@@ -59,7 +59,7 @@ jobs:
         uses: actions/checkout@v7.0.1
 
       - name: Set up Go (for any CLI build steps)
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
           cache: true

@@ -73,7 +73,7 @@ jobs:
           # re-checked locally with git merge-base.
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
@@ -300,7 +300,7 @@ jobs:
           # The PR head, not the synthetic merge commit (see Binary Size Gate).
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
@@ -529,7 +529,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
