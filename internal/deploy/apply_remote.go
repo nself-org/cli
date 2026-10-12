@@ -15,6 +15,10 @@ package deploy
 //   8 nginx -t   9 save image ids, pull   10 recreate preview + stateful confirm (E403)
 //   11 per service in compose order: up -d --no-deps, health gate (E250/E251)
 //   12 final regression recheck, nginx reload   13 hasura metadata apply.
+// A fronted project (Set.Front, D-0425) adds its fronting stack's nginx/sites as a
+// second root (apply_remote_front.go): guards and container lookup before the lock,
+// its own tar after step 4, its sync right after step 6, `docker exec <id> nginx -t`
+// as step 8 and the reload in step 12; a failure before the first `up` restores both.
 // A failure in steps 6-10 happens before any container is touched, so the
 // pre-deploy tar is restored in place (files only, plus removal of what the
 // deploy created), image tags the pull moved point back at their old images,
@@ -77,9 +81,10 @@ type ApplyResult struct {
 	Synced bool
 	// Changed are the paths this deploy shipped or pruned, Absent the subset the
 	// host did not have before. Recorded locally; they drive a rollback.
-	Changed   []string
-	Absent    []string
-	Recreated []string
+	Changed     []string
+	Absent      []string
+	Recreated   []string
+	FrontRecord // the fronting stack's tar and changed/absent lists (D-0425)
 	// Touched is true once the first `up` ran: containers may have changed, so
 	// the env's database backup belongs in the record.
 	Touched bool
@@ -97,11 +102,6 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 	}
 	r, rp := o.Remote, o.RemotePath
 	say := func(format string, a ...any) { emit(o.Out, "  [running] "+format, a...) }
-	// Defence in depth (D-0425): the apply has no way to ship a fronting stack's
-	// files yet, so a set that holds some is refused before any host contact.
-	if o.Set.Front != nil && len(o.Set.Front.Files) > 0 {
-		return res, errs.New("E485", fmt.Sprintf("this deploy has %d file(s) for the fronting stack at %s, which the v1.5 apply cannot ship yet; nothing was sent", len(o.Set.Front.Files), o.Set.Front.RemotePath))
-	}
 
 	say("target snapshot on %s", r.Label())
 	snap, err := TakeTargetSnapshot(ctx, r, rp)
@@ -119,29 +119,8 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 		return res, err
 	}
 
-	// A symlink that leaves remote_path is refused before the lock and the tar.
-	linked, err := ResolveDirs(ctx, r, rp, layoutDirs(append(o.Set.shippedPaths(), o.Previous...)))
+	fa, err := shipGuards(ctx, &o) // main and front root guards, E485 before the lock
 	if err != nil {
-		return res, err
-	}
-	noticeLinks(o.Out, linked, o.Set.shippedPaths())
-	// A hand-written nginx/conf.d file on the host is kept, not overwritten and not
-	// an error (D-0424): it leaves the set before the lock, the tar and the sync.
-	kept, err := KeptHostConfD(ctx, r, rp, o.Set.Files)
-	if err != nil {
-		return res, err
-	}
-	keptPaths := make([]string, 0, len(kept))
-	for _, k := range kept {
-		keptPaths = append(keptPaths, k.Path)
-		if k.DefaultServerIn != "" {
-			emit(o.Out, "  [kept] %s (the host already declares a default_server in %s; not shipped)", k.Path, k.DefaultServerIn)
-		} else {
-			emit(o.Out, "  [kept] %s (hand-written on the host; not overwritten)", k.Path)
-		}
-	}
-	o.Set = o.Set.Without(keptPaths)
-	if err := CheckNotOverwritingForeign(ctx, r, rp, o.Set.Files, o.Previous); err != nil {
 		return res, err
 	}
 	id := NewBackupID(o.Now())
@@ -157,6 +136,9 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 	}
 	res.BackupHost, res.PreDeployTar = r.Label(), bk.Tar
 	res.Changed, res.Absent = o.Set.shippedPaths(), bk.Absent
+	if err = fa.makeTar(ctx, o, id, &res); err != nil { // the front root's own tar, after the main one
+		return res, err
+	}
 	switch {
 	case o.ProdClass && o.BackupID != "":
 		res.BackupID = o.BackupID
@@ -189,7 +171,8 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 			}
 		}
 		if err != nil && res.Synced && !touched {
-			if rerr := RestorePreDeployTar(ctx, r, rp, bk.Tar, RestoreSpec{Changed: res.Changed, Absent: res.Absent}); rerr != nil {
+			rerr := RestorePreDeployTar(ctx, r, rp, bk.Tar, RestoreSpec{Changed: res.Changed, Absent: res.Absent})
+			if rerr = fa.restore(ctx, o, rerr); rerr != nil { // both roots, in place
 				// The host may be half restored: keep the record, but never offer the
 				// database backup for a deploy that changed no containers.
 				res.BackupID = ""
@@ -218,12 +201,15 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 	if err = SyncArtifacts(ctx, r, o.Set); err != nil {
 		return res, err
 	}
+	if err = fa.sync(ctx, o, &res); err != nil { // front root right after the main sync
+		return res, err
+	}
 	model, err := ReadComposeModel(ctx, r, rp, o.Set.Compose, o.Set.EnvManifest)
 	if err != nil {
 		return res, err
 	}
 	say("nginx -t in a throwaway container")
-	if err = CheckNginx(ctx, r, rp, model, o.Out); err != nil {
+	if err = fa.checkNginx(ctx, o, model); err != nil {
 		return res, err
 	}
 	base := composeBase(o.Set.Compose, o.Set.EnvManifest)
@@ -252,6 +238,9 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 		return res, err
 	}
 	if err = reloadNginx(ctx, o, model); err != nil {
+		return res, err
+	}
+	if err = fa.reload(ctx, o.Out, r); err != nil {
 		return res, err
 	}
 	if err = applyHasuraMetadata(ctx, o); err != nil {

@@ -75,6 +75,11 @@ func PrunePreDeployTars(ctx context.Context, r Remote, remotePath string, keep i
 	if len(drop) == 0 {
 		return nil, nil
 	}
+	// A dropped tar takes its front tar (pre-deploy-<id>-front.tar.gz, D-0425) along;
+	// the protected tar keeps its own, since a front tar is only dropped with its main one.
+	for _, n := range drop {
+		drop = append(drop, strings.TrimSuffix(n, ".tar.gz")+"-front.tar.gz")
+	}
 	rm := fmt.Sprintf(backupsDirProof, q(remotePath)) +
 		fmt.Sprintf(`for n in %s; do f="$x/$n"; if [ -f "$f" ] && [ ! -L "$f" ]; then rm -f -- "$f" && printf 'RM %%s\n' "$n"; fi; done`, strings.Join(quoteAll(drop), " "))
 	out, err = r.Run(ctx, shScript(rm))

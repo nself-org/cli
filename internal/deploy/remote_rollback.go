@@ -37,6 +37,11 @@ type RollbackOptions struct {
 	// before the re-apply, so the caller can persist it.
 	DBRestored   bool
 	OnDBRestored func() error
+	// FrontTar, FrontChanged and FrontAbsent are the record of the fronting
+	// stack's root (D-0425); all empty for a deploy that did not touch one.
+	FrontTar     string
+	FrontChanged []string
+	FrontAbsent  []string
 	StrictHasura bool
 	Clock        docker.Clock
 	Out          io.Writer
@@ -51,6 +56,10 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 	if _, err := ResolveDirs(ctx, r, rp, layoutDirs(o.Changed)); err != nil {
 		return err
 	}
+	fb, err := prepareFrontRollback(ctx, o) // the fronting stack's guards and container, before the lock
+	if err != nil {
+		return err
+	}
 	release, err := AcquireLock(ctx, r, rp, strings.TrimSuffix(strings.TrimPrefix(path.Base(o.Tar), "pre-deploy-"), ".tar.gz"))
 	if err != nil {
 		return err
@@ -58,6 +67,9 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 	defer release()
 	emit(o.Out, "  [running] restore %s in place on %s", path.Base(o.Tar), r.Label())
 	if err := RestorePreDeployTar(ctx, r, rp, o.Tar, RestoreSpec{Changed: o.Changed, Absent: o.Absent}); err != nil {
+		return err
+	}
+	if err := fb.restore(ctx, o); err != nil {
 		return err
 	}
 	switch {
@@ -74,6 +86,26 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 			}
 		}
 	}
+	// The front files are back: the live fronting nginx is tested and reloaded even
+	// when the re-apply failed, else it keeps serving the rolled-back confs.
+	aerr := reapplyRestored(ctx, o)
+	ferr := fb.reload(ctx, o)
+	switch {
+	case aerr != nil && ferr != nil:
+		return fmt.Errorf("%w; the fronting nginx reload also failed: %v", aerr, ferr)
+	case aerr != nil && fb != nil:
+		return fmt.Errorf("%w; the fronting nginx was tested and reloaded with the restored files", aerr)
+	case aerr != nil:
+		return aerr
+	}
+	return ferr
+}
+
+// reapplyRestored re-applies the restored artifact set: the pull, the services
+// in compose order with the health gate, nginx and hasura. A host whose tar held
+// no compose set (a first deploy) is restored but not re-applied.
+func reapplyRestored(ctx context.Context, o RollbackOptions) error {
+	r, rp := o.Remote, o.RemotePath
 	compose, err := remoteLines(ctx, r, path.Join(rp, ".nself", "compose-files.txt"))
 	if err != nil {
 		return err

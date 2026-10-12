@@ -304,24 +304,6 @@ func TestApplyOverwritesMarkedConfDAndRollsBackACreatedOne(t *testing.T) {
 	}
 }
 
-func TestApplyRefusesAFrontRootWithFiles(t *testing.T) {
-	f, o, _ := applyFixture(t, "")
-	o.Set.Front = &FrontRoot{RemotePath: "/srv/nself-web", Files: []string{"nginx/sites/api.conf"}}
-	if _, err := ApplyRemote(context.Background(), o); err == nil || !strings.Contains(err.Error(), "fronting stack") {
-		t.Fatalf("err = %v", err)
-	}
-	if n := len(f.commands()); n != 0 {
-		t.Errorf("%d host commands ran before the refusal: %v", n, f.commands())
-	}
-	// A front root with no files changes nothing.
-	f2, o2, _ := applyFixture(t, "")
-	o2.Set.Front = &FrontRoot{RemotePath: "/srv/nself-web"}
-	if _, err := ApplyRemote(context.Background(), o2); err != nil {
-		t.Fatal(err)
-	}
-	_ = f2
-}
-
 func TestSyncShipsGeneratedConfDOnly(t *testing.T) {
 	needTools(t)
 	f := newFakeRemote(t)

@@ -92,6 +92,9 @@ func prepareRemoteApply(ctx context.Context, p v15Params) (*controlplane.RemoteA
 	if err != nil {
 		return nil, "", fmt.Errorf("deploy: %w; nothing was sent", err)
 	}
+	if err = snapshotFrontSSL(ctx, r, p, &snap); err != nil { // a fronted project: <front>/ssl/certificates too
+		return nil, "", fmt.Errorf("deploy: %w; nothing was sent", err)
+	}
 	local, err := localPluginRefs()
 	if err != nil {
 		return nil, "", err
@@ -108,6 +111,7 @@ func prepareRemoteApply(ctx context.Context, p v15Params) (*controlplane.RemoteA
 	if err != nil {
 		return nil, "", err
 	}
+	markFrontPrevious(&set, p.workdir, p.target)
 	backupID, backupHost := "", ""
 	if p.prodClass {
 		// One verified database backup per env, on its primary, before any server is touched.
@@ -153,6 +157,7 @@ func recordRemoteApply(workdir, target string, start time.Time, backupID, backup
 			}
 			st.PreDeployTars[res.BackupHost] = res.PreDeployTar
 			st.PreDeployChanged[res.BackupHost], st.PreDeployAbsent[res.BackupHost] = res.Changed, res.Absent
+			recordFront(&st, res)
 			if srv.Primary || st.PreDeployTar == "" {
 				st.PreDeployTar = res.PreDeployTar
 				if backupHost == "" {

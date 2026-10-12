@@ -16,8 +16,7 @@ package deploy
 //              nothing is sent. Paths are rewritten in this order: the project
 //              root (<front>/<leaf>) to remote_path, then the front root to
 //              path.Dir(remote_path) (PathMap.FrontRoot, longest first).
-//              The v1.5 apply cannot ship a Front yet (follow-up of D-0425):
-//              ApplyRemote refuses one that has files.
+//              ApplyRemote ships a Front with the same guards (apply_remote_front.go).
 
 import (
 	"fmt"
@@ -35,6 +34,13 @@ type FrontRoot struct {
 	StageDir   string   // where the files are staged locally
 	RemotePath string   // the fronting stack's directory on the host
 	Files      []string // relative to StageDir and RemotePath ("nginx/sites/<x>.conf")
+	// Previous are, per host (the Remote label), the front paths this project's
+	// previous deploy shipped there (the local deploy.json record); only they may
+	// be pruned. Set by the command.
+	Previous map[string][]string
+	// PreviousNames are, per host and path, the server_name set that deploy shipped
+	// there; a path without an entry is unknown (an old record) and is never pruned.
+	PreviousNames map[string]map[string][]string
 }
 
 // checkFrontLayout validates the fronted inputs of in: both or neither of

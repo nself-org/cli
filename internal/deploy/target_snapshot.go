@@ -42,6 +42,9 @@ type TargetSnapshot struct {
 	PluginDir string
 	Plugins   []PluginRef
 	SSL       []CertDir
+	// FrontSSL is the fronting stack's <front>/ssl/certificates layout for a
+	// fronted project (TakeFrontSSL); nil for a project that fronts itself.
+	FrontSSL []CertDir
 }
 
 // TakeTargetSnapshot reads the snapshot of the host behind r.
