@@ -4,6 +4,7 @@ package ledger
 
 import (
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -70,8 +71,8 @@ func TestIntentFileShape(t *testing.T) {
 	if !strings.HasPrefix(string(data), "{\n  \"_generated\": ") || !strings.Contains(string(data), `"started_at": "2026-10-11T09:08:07Z"`) {
 		t.Errorf("unexpected file:\n%s", data)
 	}
-	if st, _ := os.Stat(s.IntentPath()); st.Mode().Perm() != 0o644 {
-		t.Errorf("mode = %v, want 0644", st.Mode().Perm())
+	if st, err := os.Stat(s.IntentPath()); err != nil || (runtime.GOOS != "windows" && st.Mode().Perm() != 0o644) {
+		t.Errorf("mode = %v, %v; want 0644", st.Mode(), err)
 	}
 }
 
