@@ -4,8 +4,10 @@ package deploy
 // same-named site, the strict marker, and what counts as "shipped before".
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -81,8 +83,27 @@ func TestFrontSiblingCollision(t *testing.T) {
 	z.shipSite(t, "hasura.conf", "api.new.example.org")
 	z.hostSite(t, "hasura.conf", markedConf+"server { server_name api.old.example.org; }\n")
 	z.o.Set.Front.Previous = map[string][]string{"fake-host": {"nginx/sites/hasura.conf"}}
+	z.o.Set.Front.PreviousNames = map[string]map[string][]string{"fake-host": {"nginx/sites/hasura.conf": {"api.old.example.org"}}}
 	if _, err := ApplyRemote(context.Background(), z.o); err != nil {
 		t.Fatalf("a file this project shipped before must be replaced: %v", err)
+	}
+	// A recorded path is no pass by itself: if another project's marked file with other
+	// names now sits there, the record does not cover it (E485).
+	b := frontFixture(t)
+	b.shipSite(t, "hasura.conf", "api.new.example.org")
+	b.hostSite(t, "hasura.conf", markedConf+"server { server_name api.other-project.example.org; }\n")
+	b.o.Set.Front.Previous = map[string][]string{"fake-host": {"nginx/sites/hasura.conf"}}
+	b.o.Set.Front.PreviousNames = map[string]map[string][]string{"fake-host": {"nginx/sites/hasura.conf": {"api.old.example.org"}}}
+	if _, err := ApplyRemote(context.Background(), b.o); !e485(err) || !strings.Contains(err.Error(), "api.other-project.example.org") {
+		t.Fatalf("a replaced recorded path must be refused: %v", err)
+	}
+	// An old record (the path, no names) is treated like an unknown path.
+	o := frontFixture(t)
+	o.shipSite(t, "hasura.conf", "api.new.example.org")
+	o.hostSite(t, "hasura.conf", markedConf+"server { server_name api.old.example.org; }\n")
+	o.o.Set.Front.Previous = map[string][]string{"fake-host": {"nginx/sites/hasura.conf"}}
+	if _, err := ApplyRemote(context.Background(), o.o); !e485(err) {
+		t.Fatalf("a recorded path without names must follow the unknown-path rule: %v", err)
 	}
 	// ... but the record of another host grants nothing here.
 	w := frontFixture(t)
@@ -131,6 +152,7 @@ func TestFrontPrunedIsNotShippedBefore(t *testing.T) {
 	x := frontFixture(t)
 	search := x.hostSite(t, "search.conf", markedConf+"server { server_name search.example.org; }\n")
 	x.o.Set.Front.Previous = map[string][]string{"fake-host": {"nginx/sites/search.conf"}}
+	x.o.Set.Front.PreviousNames = map[string]map[string][]string{"fake-host": {"nginx/sites/search.conf": {"search.example.org"}}}
 	res, err := ApplyRemote(context.Background(), x.o)
 	if err != nil {
 		t.Fatal(err)
@@ -148,6 +170,7 @@ func TestFrontPrunedIsNotShippedBefore(t *testing.T) {
 		n := frontFixture(t)
 		writeFile(t, filepath.Join(n.front, "nginx", "sites", "search.conf"), other, 0o644)
 		n.o.Set.Front.Previous = map[string][]string{"fake-host": res.FrontShipped}
+		n.o.Set.Front.PreviousNames = map[string]map[string][]string{"fake-host": res.FrontNames}
 		return n
 	}
 	n1 := next()
@@ -213,9 +236,10 @@ func TestFrontMountCoversLinkedDirs(t *testing.T) {
 		ok     bool
 	}{
 		{"no links", nil, "bind|/srv/web/nginx|/etc/nginx\n", true},
-		{"sites is a link the mount does not cover", map[string]string{"nginx/sites": "/srv/web/sites-available"}, "bind|/srv/web/nginx|/etc/nginx\n", false},
-		{"sites link covered by its own mount", map[string]string{"nginx/sites": "/srv/web/sites-available"}, "bind|/srv/web/nginx|/etc/nginx\nbind|/srv/web/sites-available|/etc/nginx/sites\n", true},
-		{"sites link mounted as a path", map[string]string{"nginx/sites": "/srv/web/sites-available"}, "bind|/srv/web/nginx/sites|/etc/nginx/sites\n", true},
+		{"sites link inside nginx, covered by the nginx mount", map[string]string{"nginx/sites": "/srv/web/nginx/sites-v2"}, "bind|/srv/web/nginx|/etc/nginx\n", true},
+		{"sites link inside nginx, mounted as a path", map[string]string{"nginx/sites": "/srv/web/nginx/sites-v2"}, "bind|/srv/web/nginx/sites|/etc/nginx/sites\n", true},
+		{"sites link the mount does not cover", map[string]string{"nginx/sites": "/srv/web/sites-v2"}, "bind|/srv/web/nginx|/etc/nginx\n", false},
+		{"sites link covered by its own mount", map[string]string{"nginx/sites": "/srv/web/sites-v2"}, "bind|/srv/web/nginx|/etc/nginx\nbind|/srv/web/sites-v2|/etc/nginx/sites\n", true},
 		{"nginx link mounted as a path", map[string]string{"nginx": "/srv/web/nginx-real", "nginx/sites": "/srv/web/nginx-real/sites"}, "bind|/srv/web/nginx|/etc/nginx\n", true},
 		{"nginx link, mount of a parent real path", map[string]string{"nginx": "/srv/web/nginx-real"}, "bind|/srv/web/nginx-real|/etc/nginx\nbind|/srv/web/nginx|/etc/x\n", true},
 	}
@@ -231,4 +255,88 @@ func TestFrontMountCoversLinkedDirs(t *testing.T) {
 		})
 	}
 
+}
+
+func TestFrontRecordedPathContentDecidesPrune(t *testing.T) {
+	// A shipped hasura.conf; later project B puts its own marked hasura.conf there.
+	const bConf = markedConf + "server { server_name api.b.example.org; }\n"
+	run := func(prev map[string]map[string][]string) (*frontFx, *bytes.Buffer) {
+		x := frontFixture(t)
+		host := x.hostSite(t, "hasura.conf", bConf)
+		_ = host
+		x.o.Set.Front.Previous = map[string][]string{"fake-host": {"nginx/sites/hasura.conf"}} // not shipped now: a prune candidate
+		x.o.Set.Front.PreviousNames = prev
+		var out bytes.Buffer
+		x.o.Out = &out
+		if _, err := ApplyRemote(context.Background(), x.o); err != nil {
+			t.Fatal(err)
+		}
+		return x, &out
+	}
+	// Names changed since A shipped it: kept, with a line saying why.
+	x, out := run(map[string]map[string][]string{"fake-host": {"nginx/sites/hasura.conf": {"api.a.example.org"}}})
+	if got := readFile(t, filepath.Join(x.front, "nginx", "sites", "hasura.conf")); got != bConf {
+		t.Errorf("B's file was pruned or changed: %q", got)
+	}
+	if !strings.Contains(out.String(), "[kept] ") || !strings.Contains(out.String(), "server_name changed since this project shipped it") {
+		t.Errorf("no kept line:\n%s", out.String())
+	}
+	// An old record without names prunes nothing.
+	y, out2 := run(nil)
+	if !exists(filepath.Join(y.front, "nginx", "sites", "hasura.conf")) || !strings.Contains(out2.String(), "no server_name set recorded") {
+		t.Errorf("a path without a recorded set was pruned:\n%s", out2.String())
+	}
+	// Names as recorded: pruned.
+	z, _ := run(map[string]map[string][]string{"fake-host": {"nginx/sites/hasura.conf": {"api.b.example.org"}}})
+	if exists(filepath.Join(z.front, "nginx", "sites", "hasura.conf")) {
+		t.Error("a file that still matches the record was not pruned")
+	}
+}
+
+func TestFrontHostFileChangedBetweenGuardAndSync(t *testing.T) {
+	x := frontFixture(t)
+	const sibling = markedConf + "server { server_name api.sibling.example.org; }\n# sibling\n"
+	host := filepath.Join(x.front, "nginx", "sites", "api.conf")
+	base, reads := x.f.handler, 0
+	x.f.handler = func(s string) (string, bool) {
+		if strings.Contains(s, "head -c") && strings.Contains(s, "@@") {
+			if reads++; reads == 2 { // the re-check inside the sync, after the tar
+				writeFile(t, host, sibling, 0o644)
+			}
+		}
+		return base(s)
+	}
+	res, err := ApplyRemote(context.Background(), x.o)
+	if !e485(err) || !strings.Contains(err.Error(), "api.sibling.example.org") {
+		t.Fatalf("err = %v, want E485 from the re-check", err)
+	}
+	if got := readFile(t, host); got != sibling {
+		t.Errorf("the sibling's file was overwritten or restored over: %q", got)
+	}
+	if exists(filepath.Join(x.front, "nginx", "sites", "new.conf")) {
+		t.Error("a front file was shipped after the failed re-check")
+	}
+	if got := readFile(t, filepath.Join(x.rp, "docker-compose.yml")); !strings.Contains(got, "# v1") || res.Synced {
+		t.Errorf("the main root was not restored (synced=%v): %q", res.Synced, got)
+	}
+	if len(x.d.execLog()) != 0 {
+		t.Errorf("exec ran: %v", x.d.execLog())
+	}
+}
+
+func TestFrontSyncCreatesOnlyAMissingSitesLeaf(t *testing.T) {
+	x := frontFixture(t)
+	if err := os.RemoveAll(filepath.Join(x.front, "nginx", "sites")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ApplyRemote(context.Background(), x.o); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, filepath.Join(x.front, "nginx", "sites", "api.conf")); got != frontNew {
+		t.Errorf("api.conf = %q", got)
+	}
+	resolve, mk := x.index("okdir()"), x.index("mkdir 'sites'")
+	if mk < 0 || resolve < 0 || resolve > mk {
+		t.Fatalf("no plain mkdir of the leaf (%d) or resolve (%d)", mk, resolve)
+	}
 }

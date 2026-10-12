@@ -109,7 +109,7 @@ func describeRows(rows []psRow) string {
 // checkMounts requires a bind mount of <front>/nginx or <front>/nginx/sites
 // (given or real path), so a file shipped there is the file the container reads.
 func (c frontContainer) checkMounts(ctx context.Context, r Remote, front, realFront string, linked map[string]string) error {
-	out, err := r.Run(ctx, shScript(fmt.Sprintf(`docker inspect --format %s %s`, q(`{{range .Mounts}}{{.Type}}|{{.Source}}|{{.Destination}}{{"\n"}}{{end}}`), q(c.ID))))
+	out, err := r.Run(ctx, shScript(fmt.Sprintf(`docker inspect --type container --format %s %s`, q(`{{range .Mounts}}{{.Type}}|{{.Source}}|{{.Destination}}{{"\n"}}{{end}}`), q(c.ID))))
 	if err != nil {
 		return fmt.Errorf("reading the mounts of the fronting nginx container on %s: %w", r.Label(), err)
 	}
@@ -168,7 +168,7 @@ func (c frontContainer) stillRunning(ctx context.Context, r Remote) error {
 	if !containerIDRe.MatchString(c.ID) {
 		return errs.New("E485", "the fronting nginx container id is not a plain container id")
 	}
-	out, err := r.Run(ctx, shScript(fmt.Sprintf(`docker inspect --format %s %s`, q("{{.State.Running}}"), q(c.ID))))
+	out, err := r.Run(ctx, shScript(fmt.Sprintf(`docker inspect --type container --format %s %s`, q("{{.State.Running}}"), q(c.ID))))
 	if err != nil {
 		return errs.Wrap("E485", fmt.Sprintf("the fronting nginx container %s (%s) could not be inspected on %s: %v; nginx was not tested or reloaded", safeText(c.Name), safeText(c.ID), r.Label(), err), err).
 			WithFix("check that docker answers on the host and the fronting stack's nginx still exists, then deploy again (or run 'nself deploy rollback' to put the files back)")

@@ -31,8 +31,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-
-	"github.com/nself-org/cli/internal/errs"
 )
 
 // frontConfMax caps how much of a host conf is read.
@@ -72,63 +70,40 @@ func serverNameSet(conf string) []string {
 	return out
 }
 
-// checkFrontForeign refuses (E485, nothing sent) to replace a host file that is
-// not this project's: unmarked, or marked but from another project.
-func checkFrontForeign(ctx context.Context, r Remote, front, stage string, files, prev []string) error {
-	if len(files) == 0 {
-		return nil
+// readFrontConfs reads (head -c) the existing regular, non-symlink files among
+// paths in the front root, in one quoted script. A nonce line frames each file.
+func readFrontConfs(ctx context.Context, r Remote, front string, paths []string) (map[string]string, error) {
+	out := map[string]string{}
+	if len(paths) == 0 {
+		return out, nil
 	}
 	var nb [8]byte
 	_, _ = rand.Read(nb[:])
 	nonce := "@@" + hex.EncodeToString(nb[:])
 	script := fmt.Sprintf(`cd %s 2>/dev/null || exit 0; for f in %s; do if [ -f "$f" ] && [ ! -L "$f" ]; then printf '%%s %%s\n' %s "$f"; head -c %d -- "$f"; printf '\n'; fi; done; exit 0`,
-		q(front), strings.Join(quoteAll(files), " "), q(nonce), frontConfMax)
-	out, err := r.Run(ctx, shScript(script))
+		q(front), strings.Join(quoteAll(paths), " "), q(nonce), frontConfMax)
+	raw, err := r.Run(ctx, shScript(script))
 	if err != nil {
-		return fmt.Errorf("checking the fronting stack's existing sites on %s: %w", r.Label(), err)
+		return nil, fmt.Errorf("reading the fronting stack's existing sites on %s: %w", r.Label(), err)
 	}
 	inSet := map[string]bool{}
-	for _, f := range files {
+	for _, f := range paths {
 		inSet[f] = true
 	}
-	host := map[string]*strings.Builder{}
 	var cur *strings.Builder
-	var order []string
-	for _, line := range strings.Split(string(out), "\n") {
-		if p, ok := strings.CutPrefix(line, nonce+" "); ok && inSet[p] && host[p] == nil {
+	got := map[string]*strings.Builder{}
+	for _, line := range strings.Split(string(raw), "\n") {
+		if p, ok := strings.CutPrefix(line, nonce+" "); ok && inSet[p] && got[p] == nil {
 			cur = &strings.Builder{}
-			host[p] = cur
-			order = append(order, p)
+			got[p] = cur
 		} else if cur != nil {
 			cur.WriteString(line + "\n")
 		}
 	}
-	known := map[string]bool{}
-	for _, p := range prev {
-		known[p] = true
+	for p, b := range got {
+		out[p] = b.String()
 	}
-	for _, p := range order {
-		conf := host[p].String()
-		if !hasBuildMarker(conf) {
-			return errs.New("E485", fmt.Sprintf("unmarked file would be overwritten: %q in the fronting stack", p)).
-				WithFix("move or delete that hand-written file on the host (or add the nself generated marker to it), then deploy again; nothing was sent")
-		}
-		if known[p] {
-			continue
-		}
-		ours, err := localServerNames(stage, p)
-		if err != nil {
-			return err
-		}
-		// An empty set on either side is a mismatch: a snippet with only upstream or map
-		// blocks (or a shipped file without server_name) is never taken over.
-		if theirs := serverNameSet(conf); len(theirs) == 0 || len(ours) == 0 || strings.Join(theirs, " ") != strings.Join(ours, " ") {
-			return errs.New("E485", fmt.Sprintf("%q in the fronting stack is a generated file of another project: its server_name set is [%s], this deploy ships [%s]",
-				p, safeText(strings.Join(theirs, " ")), safeText(strings.Join(ours, " ")))).
-				WithFix("rename or remove the other project's file, or deploy that project instead; this project's previous deploy did not ship " + p + "; nothing was sent")
-		}
-	}
-	return nil
+	return out, nil
 }
 
 func localServerNames(stage, rel string) ([]string, error) {

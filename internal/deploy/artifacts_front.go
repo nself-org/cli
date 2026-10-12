@@ -38,6 +38,9 @@ type FrontRoot struct {
 	// previous deploy shipped there (the local deploy.json record); only they may
 	// be pruned. Set by the command.
 	Previous map[string][]string
+	// PreviousNames are, per host and path, the server_name set that deploy shipped
+	// there; a path without an entry is unknown (an old record) and is never pruned.
+	PreviousNames map[string]map[string][]string
 }
 
 // checkFrontLayout validates the fronted inputs of in: both or neither of

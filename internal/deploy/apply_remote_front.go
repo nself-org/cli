@@ -41,6 +41,8 @@ type FrontRecord struct {
 	// FrontShipped are the front files this deploy shipped (not the pruned ones):
 	// the only paths the next deploy may prune.
 	FrontShipped []string
+	// FrontNames is the server_name set of each shipped file (the file as shipped).
+	FrontNames map[string][]string
 }
 
 // frontPathRe is the only shape of path that ships from or is pruned in the front root.
@@ -52,7 +54,8 @@ func frontPathOK(p string) bool { return frontPathRe.MatchString(p) && pruneable
 type frontApply struct {
 	fr      *FrontRoot
 	ctr     frontContainer
-	prev    []string // earlier-shipped paths from the local record, validated
+	prev    []string            // earlier-shipped paths from the local record, validated
+	names   map[string][]string // that record's server_name set per path
 	tar     string
 	changed []string
 	absent  []string
@@ -72,6 +75,7 @@ func prepareFront(ctx context.Context, o ApplyOptions) (*frontApply, error) {
 			fa.prev = append(fa.prev, p)
 		}
 	}
+	fa.names = fr.PreviousNames[o.Remote.Label()]
 	if len(fr.Files) == 0 && len(fa.prev) == 0 {
 		return nil, nil
 	}
@@ -88,11 +92,8 @@ func prepareFront(ctx context.Context, o ApplyOptions) (*frontApply, error) {
 	if err != nil {
 		return nil, err
 	}
-	linked, err := ResolveFrontDirs(ctx, r, front, append(append([]string{}, fr.Files...), fa.prev...))
+	linked, err := fa.hostChecks(ctx, r)
 	if err != nil {
-		return nil, err
-	}
-	if err = checkFrontForeign(ctx, r, front, fr.StageDir, fr.Files, fa.prev); err != nil {
 		return nil, err
 	}
 	if o.Expected != nil {
@@ -184,7 +185,31 @@ for p in %s; do if [ ! -e "$p" ] && [ ! -L "$p" ]; then printf 'ABSENT %%s\n' "$
 	fa.tar, fa.changed = tar, append([]string{}, fa.fr.Files...)
 	res.FrontTar, res.FrontChanged, res.FrontAbsent = fa.tar, fa.changed, fa.absent
 	res.FrontShipped = append([]string{}, fa.fr.Files...)
+	res.FrontNames = map[string][]string{}
+	for _, f := range fa.fr.Files {
+		n, err := localServerNames(fa.fr.StageDir, f)
+		if err != nil {
+			return err
+		}
+		res.FrontNames[f] = n
+	}
 	return nil
+}
+
+// hostChecks resolves the nginx dirs and checks the host files against the
+// record. It runs before the lock and again right before the first front write
+// (the front root has no lock, so a sibling's deploy can change a file between).
+func (fa *frontApply) hostChecks(ctx context.Context, r Remote) (map[string]string, error) {
+	front := fa.fr.RemotePath
+	linked, err := ResolveFrontDirs(ctx, r, front, append(append([]string{}, fa.fr.Files...), fa.prev...))
+	if err != nil {
+		return nil, err
+	}
+	return linked, checkFrontForeign(ctx, r, front, fa.view())
+}
+
+func (fa *frontApply) view() frontView {
+	return frontView{Stage: fa.fr.StageDir, Files: fa.fr.Files, Prev: fa.prev, Names: fa.names}
 }
 
 // sync prunes the front files this project shipped before and no longer does,
@@ -195,18 +220,20 @@ func (fa *frontApply) sync(ctx context.Context, o ApplyOptions, res *ApplyResult
 	}
 	r, front := o.Remote, fa.fr.RemotePath
 	emit(o.Out, "  [running] sync the fronting stack's nginx/sites to %s:%s", r.Label(), front)
+	// Checked again, before anything is written: a failure here leaves the front root
+	// untouched (fa.synced is still false), so the restore never overwrites a sibling's file.
+	if _, err := fa.hostChecks(ctx, r); err != nil {
+		return err
+	}
 	fa.synced = true
-	keep := map[string]bool{}
-	for _, f := range fa.fr.Files {
-		keep[f] = true
+	prune, kept, err := frontPrunable(ctx, r, front, fa.view())
+	if err != nil {
+		return err
 	}
-	var cand []string
-	for _, p := range fa.prev {
-		if !keep[p] {
-			cand = append(cand, p)
-		}
+	for _, k := range kept {
+		emit(o.Out, "  %s", k)
 	}
-	pruned, err := pruneFrontMarked(ctx, r, front, cand)
+	pruned, err := pruneFrontMarked(ctx, r, front, prune)
 	for _, f := range pruned {
 		emit(o.Out, "  [pruned] %s/%s (generated file the new set dropped)", front, f)
 		fa.changed = append(fa.changed, f)

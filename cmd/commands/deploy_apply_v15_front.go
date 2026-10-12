@@ -44,6 +44,7 @@ func markFrontPrevious(set *deploy.ArtifactSet, workdir, target string) {
 	for host, paths := range st.FrontShipped { // shipped, not pruned: an old record has none, so nothing is pruned
 		set.Front.Previous[host] = append([]string{}, paths...)
 	}
+	set.Front.PreviousNames = st.FrontNames // the server_name set of each: a path without one is never pruned
 }
 
 // recordFront adds the host's front tar and lists to the deploy record. A deploy
@@ -61,6 +62,10 @@ func recordFront(st *deploy.StrategyState, res deploy.ApplyResult) {
 		st.FrontShipped = map[string][]string{}
 	}
 	st.FrontShipped[res.BackupHost] = res.FrontShipped
+	if st.FrontNames == nil {
+		st.FrontNames = map[string]map[string][]string{}
+	}
+	st.FrontNames[res.BackupHost] = res.FrontNames
 	st.FrontTars[res.BackupHost] = res.FrontTar
 	st.FrontChanged[res.BackupHost], st.FrontAbsent[res.BackupHost] = res.FrontChanged, res.FrontAbsent
 }

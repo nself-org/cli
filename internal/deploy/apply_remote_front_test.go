@@ -58,9 +58,9 @@ func (d *frontDocker) handler(base func(string) (string, bool)) func(string) (st
 		switch {
 		case strings.Contains(s, "docker ps --no-trunc"):
 			return d.ps, true
-		case strings.Contains(s, "docker inspect --format '{{range .Mounts}}"):
+		case strings.Contains(s, "docker inspect --type container --format '{{range .Mounts}}"):
 			return d.mounts, true
-		case strings.Contains(s, "docker inspect --format '{{.State.Running}}'"):
+		case strings.Contains(s, "docker inspect --type container --format '{{.State.Running}}'"):
 			if len(d.runSeq) > 0 {
 				v := d.runSeq[0]
 				if len(d.runSeq) > 1 {
@@ -204,6 +204,9 @@ func TestApplyShipsFrontRoot(t *testing.T) {
 	}
 	// The fronting stack's own files appear in no command, tar or rsync argument.
 	for _, c := range x.f.commands() {
+		if strings.Contains(c, "docker inspect") && !strings.Contains(c, "inspect -f") && !strings.Contains(c, "--type container") {
+			t.Errorf("a docker inspect without --type container: %q", c)
+		}
 		if strings.Contains(c, x.front+"/.env") || strings.Contains(c, x.front+"/docker-compose") || strings.Contains(c, x.front+"/ssl") {
 			t.Errorf("a command names the fronting stack's own files: %q", c)
 		}
@@ -337,6 +340,24 @@ func TestFrontRefusalsBeforeLock(t *testing.T) {
 				t.Fatal(err)
 			}
 		}, "regular files"},
+		{"nginx is a symlink", func(x *frontFx) {
+			p := filepath.Join(x.front, "nginx")
+			if err := os.Rename(p, filepath.Join(x.front, "nginx-real")); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink("nginx-real", p); err != nil {
+				t.Fatal(err)
+			}
+		}, "nginx dir must be a real directory"},
+		{"nginx/sites is a symlink to a dir outside nginx", func(x *frontFx) {
+			p := filepath.Join(x.front, "nginx", "sites")
+			if err := os.Rename(p, filepath.Join(x.front, "sites-available")); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink("../sites-available", p); err != nil {
+				t.Fatal(err)
+			}
+		}, "symlink outside"},
 		{"a shipped front file is a dangling symlink", func(x *frontFx) {
 			p := filepath.Join(x.front, "nginx", "sites", "api.conf")
 			if err := os.Remove(p); err != nil {
@@ -478,6 +499,7 @@ func TestFrontPruneOnlyOwnShipped(t *testing.T) {
 	sites := filepath.Join(x.front, "nginx", "sites")
 	writeFile(t, filepath.Join(sites, "old.conf"), markedConf+"# shipped by the previous deploy\n", 0o644)
 	writeFile(t, filepath.Join(sites, "mine-but-edited.conf"), "# hand edited, marker removed\n", 0o644)
+	x.o.Set.Front.PreviousNames = map[string]map[string][]string{"fake-host": {"nginx/sites/old.conf": {}}} // old.conf shipped with no server_name
 	x.o.Set.Front.Previous = map[string][]string{
 		"fake-host":  {"nginx/sites/old.conf", "nginx/sites/mine-but-edited.conf", "nginx/sites/api.conf", ".env", "nginx/sites/../../.env"},
 		"other-host": {"nginx/sites/sibling.conf"}, // another host's record never prunes here

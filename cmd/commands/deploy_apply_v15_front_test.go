@@ -41,7 +41,7 @@ func (s *frontStub) Run(_ context.Context, cmd string) ([]byte, error) {
 	switch {
 	case strings.Contains(c, "docker ps --no-trunc"):
 		return []byte(frontTestCID + "\tnself-web-nginx-1\t/srv/nself-web\n"), nil
-	case strings.Contains(c, "docker inspect --format '{{range .Mounts}}"):
+	case strings.Contains(c, "docker inspect --type container --format '{{range .Mounts}}"):
 		return []byte("bind|/srv/nself-web/nginx|/etc/nginx\n"), nil
 	case strings.Contains(c, "{{.State.Running}}"):
 		return []byte("true\n"), nil
@@ -151,6 +151,7 @@ func TestRecordFrontAndPreviousRoundTrip(t *testing.T) {
 	res.BackupHost, res.FrontTar = "h1", "/srv/a/backend/.nself/backups/pre-deploy-x-front.tar.gz"
 	res.FrontChanged, res.FrontAbsent = []string{"nginx/sites/a.conf", "nginx/sites/b.conf", "nginx/sites/pruned.conf"}, []string{"nginx/sites/b.conf"}
 	res.FrontShipped = []string{"nginx/sites/a.conf", "nginx/sites/b.conf"} // pruned.conf was pruned, not shipped
+	res.FrontNames = map[string][]string{"nginx/sites/a.conf": {"a.example.org"}, "nginx/sites/b.conf": {}}
 	recordFront(&st, res)
 	st.Target = "prod"
 	if err := deploy.SaveDeployState(proj, st); err != nil {
@@ -169,6 +170,9 @@ func TestRecordFrontAndPreviousRoundTrip(t *testing.T) {
 	}
 	set := deploy.ArtifactSet{Front: &deploy.FrontRoot{}}
 	markFrontPrevious(&set, proj, "prod")
+	if n, ok := set.Front.PreviousNames["h1"]["nginx/sites/a.conf"]; !ok || strings.Join(n, ",") != "a.example.org" {
+		t.Errorf("recorded names = %v", set.Front.PreviousNames)
+	}
 	if strings.Join(set.Front.Previous["h1"], ",") != "nginx/sites/a.conf,nginx/sites/b.conf" || strings.Join(set.Front.Previous["h2"], ",") != "nginx/sites/c.conf" || len(set.Front.Previous) != 2 {
 		t.Errorf("previous = %v", set.Front.Previous)
 	}
