@@ -39,12 +39,15 @@ type column struct {
 	Related            string // related collection id for a single-valued relationship
 }
 
+// note is one thing the import cannot map; it becomes an exemption so the report shows it.
+type note struct{ ID, Reason string }
+
 // collection is a mapped collection: its table and ordered columns.
 type collection struct {
 	ID, DB, Schema, Table string
 	Columns               []column
 	Permissions           []string
-	notes                 []string
+	notes                 []note
 }
 
 // ident turns an Appwrite id or key into a Postgres identifier: other characters become `_`.
@@ -54,21 +57,37 @@ func ident(s string) (string, error) {
 		out = "_" + out
 	}
 	if _, err := database.SanitizeIdentifier(out); err != nil {
-		return "", errs.New("E520", "unsupported source table")
+		return "", errs.New("E520", "source tables unavailable")
 	}
 	return out, nil
+}
+
+// reservedSchemas are nSelf-owned or Postgres-owned; a database with such an id gets an aw_ prefix.
+var reservedSchemas = map[string]bool{"auth": true, "storage": true, "public": true, "hdb_catalog": true, "nself_ops": true, "information_schema": true}
+
+// schemaName maps an Appwrite database id to a schema that cannot shadow a system schema.
+func schemaName(id string) (string, error) {
+	n, err := ident(id)
+	if err != nil {
+		return "", err
+	}
+	if reservedSchemas[n] || strings.HasPrefix(n, "pg_") || strings.HasPrefix(n, "np_") {
+		n = "aw_" + n
+	}
+	return n, nil
 }
 
 // reserved column names written for every document.
 var fixedColumns = map[string]bool{"id": true, "created_at": true, "updated_at": true}
 
 // mapAttributes maps attributes (in the order given) to columns after the three fixed ones.
-func mapAttributes(attrs []attribute) ([]column, []string, error) {
+func mapAttributes(attrs []attribute) ([]column, []note, error) {
 	cols := []column{{Name: "id", Key: "$id", SQLType: "text PRIMARY KEY", Kind: "text"}, {Name: "created_at", Key: "$createdAt", SQLType: "timestamptz", Kind: "time"}, {Name: "updated_at", Key: "$updatedAt", SQLType: "timestamptz", Kind: "time"}}
 	used := map[string]bool{"id": true, "created_at": true, "updated_at": true}
-	notes := []string{}
+	notes := []note{}
 	for _, a := range attrs {
 		if a.Status != "" && a.Status != "available" {
+			notes = append(notes, note{"attribute:" + a.Key, fmt.Sprintf("attribute %s has status %q and was not imported", a.Key, a.Status)})
 			continue
 		}
 		name, err := ident(a.Key)
@@ -79,7 +98,7 @@ func mapAttributes(attrs []attribute) ([]column, []string, error) {
 			name = "attr_" + name
 		}
 		if used[name] {
-			return nil, nil, errs.New("E520", "unsupported source table")
+			return nil, nil, errs.New("E520", "source tables unavailable")
 		}
 		used[name] = true
 		c := column{Name: name, Key: a.Key}
@@ -88,14 +107,14 @@ func mapAttributes(attrs []attribute) ([]column, []string, error) {
 			c.Kind, c.SQLType, c.Related = "rel", "text", a.Related
 			if isMany(a) {
 				c.Kind, c.SQLType, c.Related = "reljson", "jsonb", ""
-				notes = append(notes, fmt.Sprintf("%s: %s relationship stored as a JSON id list, no Hasura relationship", a.Key, a.RelatedType))
+				notes = append(notes, note{"relationship:" + a.Key, fmt.Sprintf("%s: %s relationship stored as a JSON id list, no Hasura relationship", a.Key, a.RelatedType)})
 			}
 		case a.Array:
 			c.Kind, c.SQLType = "json", "jsonb"
 		default:
 			c.Kind, c.SQLType = scalar(a.Type)
 			if c.Kind == "json" {
-				notes = append(notes, fmt.Sprintf("%s: unknown attribute type kept as jsonb", a.Key))
+				notes = append(notes, note{"type:" + a.Key, fmt.Sprintf("%s: unknown attribute type kept as jsonb", a.Key)})
 			}
 		}
 		cols = append(cols, c)
@@ -139,7 +158,7 @@ func ddl(cols []*collection) (string, error) {
 	for _, c := range cols {
 		s, err := database.SanitizeIdentifier(c.Schema)
 		if err != nil {
-			return "", errs.New("E520", "unsupported source schema")
+			return "", errs.New("E520", "source tables unavailable")
 		}
 		if !schemas[c.Schema] {
 			schemas[c.Schema] = true
@@ -147,13 +166,13 @@ func ddl(cols []*collection) (string, error) {
 		}
 		t, err := database.SanitizeIdentifier(c.Table)
 		if err != nil {
-			return "", errs.New("E520", "unsupported source table")
+			return "", errs.New("E520", "source tables unavailable")
 		}
 		defs := make([]string, 0, len(c.Columns))
 		for _, col := range c.Columns {
 			q, err := database.SanitizeIdentifier(col.Name)
 			if err != nil {
-				return "", errs.New("E520", "unsupported source table")
+				return "", errs.New("E520", "source tables unavailable")
 			}
 			defs = append(defs, q+" "+col.SQLType)
 		}

@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -35,6 +36,9 @@ func newClient(endpoint, project, key string) (*client, error) {
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return nil, errs.New("E517", "source connection configuration invalid")
 	}
+	if u.Scheme == "http" && !loopback(u.Hostname()) {
+		return nil, errs.New("E517", "source connection configuration invalid")
+	}
 	if !idRe.MatchString(project) {
 		return nil, errs.New("E517", "source connection configuration invalid")
 	}
@@ -44,6 +48,16 @@ func newClient(endpoint, project, key string) (*client, error) {
 	}
 	u.Path = path
 	return &client{base: u.String(), project: project, key: key, http: httptimeout.NoProxy(60 * time.Second), dl: httptimeout.NoProxy(2 * time.Hour)}, nil
+}
+
+// loopback reports whether host is localhost or a loopback address: the only place the API key
+// may travel over plain http.
+func loopback(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func (c *client) do(ctx context.Context, hc *http.Client, path string, q url.Values) (*http.Response, error) {

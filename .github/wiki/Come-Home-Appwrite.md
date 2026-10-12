@@ -12,8 +12,8 @@ Appwrite REST API with an API key, builds a portable bundle (the same bundle
 
 Create a key in the Appwrite console (project settings, API keys) with read scopes
 only: `databases.read`, `collections.read`, `attributes.read`, `documents.read`,
-`users.read`, `buckets.read`, `files.read`, and `health.read` (used for the version
-line; the import works without it). Put the key in an environment variable using your
+`users.read`, `buckets.read` and `files.read`. The server version line shows `unknown`
+with an API key (Appwrite hides it from keys). Put the key in an environment variable using your
 secret manager. The key must not appear in a command argument or shell history.
 
 ```bash
@@ -21,7 +21,9 @@ nself db import appwrite --endpoint https://cloud.appwrite.io/v1 --project <proj
 nself db import appwrite --endpoint https://cloud.appwrite.io/v1 --project <project-id> --api-key-env APPWRITE_KEY --json
 ```
 
-`--api-key-env` takes the variable name, never the key. `--endpoint` is your Appwrite
+`--api-key-env` takes the variable name, never the key. The endpoint must be `https`
+(plain `http` is accepted only for `localhost` and loopback addresses, so the key never
+crosses a network in clear text). `--endpoint` is your Appwrite
 API URL (a self-hosted server looks like `https://appwrite.example.com/v1`; the `/v1`
 suffix is added when missing). In v1.4 mode the command is `nself migrate appwrite`.
 The plan checks the source and target and writes nothing.
@@ -46,6 +48,14 @@ The plan checks the source and target and writes nothing.
 | user | `auth.users` row; the id becomes a stable UUID, the Appwrite id is kept in `metadata.appwrite_id` |
 | bucket | object-store bucket (lowercased, `_` and `.` become `-`) |
 | file | object `<file id>/<file name>` in that bucket |
+
+An attribute that is not `available` in Appwrite (still processing or failed) is not imported
+and is listed in the report's `exemptions`. A database with a reserved id (`auth`, `storage`,
+`public`, `pg_*`, `np_*`) becomes the schema `aw_<id>`.
+
+Columns in your own tables that hold Appwrite user ids keep the Appwrite id; the imported
+users get a stable UUID instead, with the Appwrite id in `metadata.appwrite_id`. Map them
+with a one-off `UPDATE ... FROM auth.users WHERE metadata->>'appwrite_id' = ...`.
 
 An attribute whose name collides with `id`, `created_at` or `updated_at` is stored as
 `attr_<name>`. Two attributes that map to the same column name stop the import.
@@ -73,7 +83,9 @@ The result appears in the JSON envelope and in `.nself/import/<run-id>/report.js
 A pass means every row count, content hash, user hash algorithm, object checksum,
 relationship and independent source count matched. Source counts come from the
 `total` field of each Appwrite list call (documents per collection, users, files per
-bucket), so a page lost on the way shows as a mismatch (E523). Treat E522 and E523 as
+bucket), so a page lost on the way shows as a mismatch (E523). Appwrite caps list totals at 5000;
+for a list of 5000 or more the count of items read is used instead and the report says
+that count is not independent. Treat E522 and E523 as
 an incomplete import. After a failed import follow the recovery steps in
 [Come home from PostgreSQL](Come-Home-Postgres).
 

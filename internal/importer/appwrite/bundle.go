@@ -31,12 +31,13 @@ func (c *client) assemble(ctx context.Context, in importer.Input, cols []*collec
 		}
 		id := col.Schema + "." + col.Table
 		copies = append(copies, scratch.CopyFile{Schema: col.Schema, Table: col.Table, Path: got.Path, Columns: names})
-		counts = append(counts, portable.SourceCount{Kind: "table", ID: id, Count: got.Total, Method: "documents list total"})
+		counts, exemptions = addCount(counts, exemptions, "table", id, "documents", got.Total, got.Rows)
+		// Exemption ids carry a #suffix so they never silence a tracking or relationship check.
 		if len(col.Permissions) > 0 || got.DocPerms > 0 {
-			exemptions = append(exemptions, portable.Exemption{Kind: "metadata", ID: id, Reason: fmt.Sprintf("Appwrite permissions not mapped to Hasura permissions (collection: %d, documents with $permissions: %d)", len(col.Permissions), got.DocPerms)})
+			exemptions = append(exemptions, portable.Exemption{Kind: "metadata", ID: id + "#permissions", Reason: fmt.Sprintf("Appwrite permissions not mapped to Hasura permissions (collection: %d, documents with $permissions: %d)", len(col.Permissions), got.DocPerms)})
 		}
-		for _, note := range col.notes {
-			exemptions = append(exemptions, portable.Exemption{Kind: "metadata", ID: id, Reason: note})
+		for _, n := range col.notes {
+			exemptions = append(exemptions, portable.Exemption{Kind: "metadata", ID: id + "#" + n.ID, Reason: n.Reason})
 		}
 	}
 	sql, err := ddl(cols)
@@ -78,12 +79,23 @@ func (c *client) assemble(ctx context.Context, in importer.Input, cols []*collec
 		}
 	}
 	m.Auth = auth
-	counts = append(counts, portable.SourceCount{Kind: "users", Count: total, Method: "users list total"})
+	counts, exemptions = addCount(counts, exemptions, "users", "", "users", total, int64(auth.Users))
 	st, err := c.exportStorage(ctx, w)
 	if err != nil {
 		return err
 	}
 	m.Storage = st.Storage
+	var sum, read int64
+	for i, t := range st.Totals {
+		sum += t.Total
+		read += int64(st.Storage.Buckets[i].Objects)
+		if t.Total > 0 {
+			counts, exemptions = addCount(counts, exemptions, "objects", t.Bucket, "files", t.Total, int64(st.Storage.Buckets[i].Objects))
+		}
+	}
+	if len(st.Totals) > 0 {
+		counts, exemptions = addCount(counts, exemptions, "objects", "", "files", sum, read)
+	}
 	meta, rels, err := hasuraMetadata(cols)
 	if err != nil {
 		return errs.New("E520", "bundle manifest write failed")
@@ -92,10 +104,26 @@ func (c *client) assemble(ctx context.Context, in importer.Input, cols []*collec
 		return errs.New("E520", "bundle manifest write failed")
 	}
 	m.Hasura.Tables, m.Hasura.Relationships = len(cols), rels
-	m.SourceCounts = append(counts, st.Counts...)
+	m.SourceCounts = counts
 	m.Exemptions = append(m.Exemptions, exemptions...)
 	if _, err = w.Finish(m); err != nil {
 		return errs.New("E520", "bundle manifest write failed")
 	}
 	return os.RemoveAll(base)
+}
+
+// totalCap is the most Appwrite reports in a list `total` (APP_LIMIT_COUNT). At the cap the total
+// is not independent of the rows read, so the count falls back to the rows and the report says so.
+const totalCap = 5000
+
+// addCount appends the source count for one list. total is the first page's `total`, read the
+// number of items actually read; a lost page still shows as read < total.
+func addCount(counts []portable.SourceCount, ex []portable.Exemption, kind, id, what string, total, read int64) ([]portable.SourceCount, []portable.Exemption) {
+	method := what + " list total"
+	if total >= totalCap && read >= total {
+		total = read
+		method = what + " read (Appwrite caps list totals at 5000)"
+		ex = append(ex, portable.Exemption{Kind: "metadata", ID: kind + ":" + id + "#count", Reason: "the " + what + " count is not independent: Appwrite caps list totals at 5000, so the count of items read is used"})
+	}
+	return append(counts, portable.SourceCount{Kind: kind, ID: id, Count: total, Method: method}), ex
 }

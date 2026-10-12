@@ -17,8 +17,8 @@ api POST /account "{\"userId\":\"admin1\",\"email\":\"admin@fixture.invalid\",\"
 api POST /account/sessions/email "{\"email\":\"admin@fixture.invalid\",\"password\":\"${FIXTURE_PASSWORD}\"}" >/dev/null
 api POST /teams '{"teamId":"team1","name":"Fixture"}' >/dev/null
 api POST /projects '{"projectId":"proj1","name":"Fixture","teamId":"team1","region":"default"}' >/dev/null
-WRITE_SCOPES='"databases.read","databases.write","collections.read","collections.write","attributes.read","attributes.write","documents.read","documents.write","users.read","users.write","buckets.read","buckets.write","files.read","files.write","health.read"'
-READ_SCOPES='"databases.read","collections.read","attributes.read","documents.read","users.read","buckets.read","files.read","health.read"'
+WRITE_SCOPES='"databases.read","databases.write","collections.read","collections.write","attributes.read","attributes.write","documents.read","documents.write","users.read","users.write","buckets.read","buckets.write","files.read","files.write"'
+READ_SCOPES='"databases.read","collections.read","attributes.read","documents.read","users.read","buckets.read","files.read"'
 wkey=$(api POST /projects/proj1/keys "{\"name\":\"seed\",\"scopes\":[$WRITE_SCOPES]}" | jq -r .secret)
 api POST /projects/proj1/keys "{\"name\":\"import\",\"scopes\":[$READ_SCOPES]}" | jq -r .secret > "$OUT/read.key"
 chmod 600 "$OUT/read.key"
@@ -59,7 +59,7 @@ api POST /users/bcrypt "{\"userId\":\"ub1\",\"email\":\"bcrypt1@fixture.invalid\
 api POST /users/bcrypt "{\"userId\":\"ub2\",\"email\":\"bcrypt2@fixture.invalid\",\"password\":\"$bc\",\"name\":\"Bcrypt Two\"}" >/dev/null
 api POST /users/argon2 "{\"userId\":\"ua1\",\"email\":\"argon1@fixture.invalid\",\"password\":\"$ar\",\"name\":\"Argon One\"}" >/dev/null
 api POST /users/argon2 "{\"userId\":\"ua2\",\"email\":\"argon2@fixture.invalid\",\"password\":\"$ar\",\"name\":\"Argon Two\"}" >/dev/null
-api POST /storage/buckets '{"bucketId":"files","name":"Files","fileSecurity":true,"permissions":["read(\"any\")"]}' >/dev/null
+api POST /storage/buckets '{"bucketId":"files","name":"Files","maximumFileSize":1000000,"fileSecurity":true,"permissions":["read(\"any\")"]}' >/dev/null
 for i in 1 2 3; do
   printf 'fixture file %s\n' "$i" > "$OUT/file$i.txt"
   curl -fsS -X POST "$ENDPOINT/storage/buckets/files/files" -H "X-Appwrite-Project: proj1" -H "X-Appwrite-Key: $wkey" -F "fileId=f$i" -F "file=@$OUT/file$i.txt;filename=file$i.txt" >/dev/null

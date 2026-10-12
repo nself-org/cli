@@ -58,7 +58,7 @@ func (Source) Detect(ctx context.Context, in importer.Input) (importer.Detection
 		if json.Unmarshal(raw, &db) != nil {
 			return errs.New("E517", "source schema lookup failed")
 		}
-		name, e := ident(db.ID)
+		name, e := schemaName(db.ID)
 		if e != nil {
 			return errs.New("E517", "source schema lookup failed")
 		}
@@ -109,7 +109,7 @@ func (s Source) Extract(ctx context.Context, in importer.Input, stage string) (i
 // schema lists databases, collections and attributes and maps them to tables.
 func (c *client) schema(ctx context.Context) ([]*collection, error) {
 	var cols []*collection
-	names := map[string]string{}
+	names, schemaOwner := map[string]string{}, map[string]string{}
 	_, err := c.each(ctx, "/databases", "databases", func(raw json.RawMessage) error {
 		var db struct {
 			ID string `json:"$id"`
@@ -117,10 +117,14 @@ func (c *client) schema(ctx context.Context) ([]*collection, error) {
 		if json.Unmarshal(raw, &db) != nil {
 			return errs.New("E520", "source tables unavailable")
 		}
-		schema, e := ident(db.ID)
+		schema, e := schemaName(db.ID)
 		if e != nil {
 			return e
 		}
+		if owner, dup := schemaOwner[schema]; dup && owner != db.ID {
+			return errs.New("E520", "source tables unavailable")
+		}
+		schemaOwner[schema] = db.ID
 		path := "/databases/" + url.PathEscape(db.ID) + "/collections"
 		_, e = c.each(ctx, path, "collections", func(raw json.RawMessage) error {
 			var meta struct {
@@ -135,7 +139,7 @@ func (c *client) schema(ctx context.Context) ([]*collection, error) {
 				return e
 			}
 			if prev, dup := names[schema+"."+table]; dup && prev != meta.ID {
-				return errs.New("E520", "unsupported source table")
+				return errs.New("E520", "source tables unavailable")
 			}
 			names[schema+"."+table] = meta.ID
 			var attrs []attribute

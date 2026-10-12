@@ -29,7 +29,7 @@ func TestAttributeMappingGolden(t *testing.T) {
 	if strings.Join(got, "|") != want {
 		t.Fatalf("mapping\n got %s\nwant %s", strings.Join(got, "|"), want)
 	}
-	if len(notes) != 1 || !strings.Contains(notes[0], "manyToMany") {
+	if len(notes) != 2 || !strings.Contains(notes[0].Reason, "manyToMany") || notes[1].ID != "attribute:pending" {
 		t.Fatalf("notes %v", notes)
 	}
 	sql, err := ddl([]*collection{{ID: "x", Schema: "main", Table: "x", Columns: cols[:4]}})
@@ -114,7 +114,7 @@ func TestWrongKeyIsRefusedWithoutEcho(t *testing.T) {
 }
 
 func TestEndpointValidation(t *testing.T) {
-	for _, bad := range []string{"", "ftp://x", "http://user:pw@host/v1", "http://host/v1?key=1", "://"} {
+	for _, bad := range []string{"", "ftp://x", "http://user:pw@host/v1", "http://host/v1?key=1", "://", "http://appwrite.example.invalid/v1"} {
 		if _, err := newClient(bad, "proj1", "k"); err == nil {
 			t.Errorf("accepted %q", bad)
 		}
@@ -172,8 +172,8 @@ func TestExtractBuildsPortableBundle(t *testing.T) {
 	if len(want) != 0 {
 		t.Errorf("missing source counts %v", want)
 	}
-	if len(m.Exemptions) == 0 || !strings.Contains(m.Exemptions[0].Reason, "permissions") {
-		t.Errorf("permissions not reported: %+v", m.Exemptions)
+	if len(m.Exemptions) != 1 || !strings.Contains(m.Exemptions[0].Reason, "permissions") || m.Exemptions[0].ID != "main.notes#permissions" {
+		t.Errorf("permissions not reported under a #-suffixed id: %+v", m.Exemptions)
 	}
 	if m.Storage.Objects[0].Bucket != "files-one" || !strings.HasPrefix(m.Storage.Objects[0].Key, "f1/") {
 		t.Errorf("object naming %+v", m.Storage.Objects)
@@ -198,5 +198,34 @@ func TestDetectNeverEchoesKey(t *testing.T) {
 	d, err := (Source{}).Detect(context.Background(), in)
 	if err != nil || d.Kind != "appwrite" || d.Version != "1.5.10" || d.SourceUsers != 4 || len(d.Schemas) != 1 {
 		t.Fatalf("detect %+v %v", d, err)
+	}
+}
+
+func TestListTotalCapFallsBackToRowsRead(t *testing.T) {
+	counts, ex := addCount(nil, nil, "table", "main.big", "documents", totalCap, 12000)
+	if counts[0].Count != 12000 || len(ex) != 1 || ex[0].ID != "table:main.big#count" {
+		t.Fatalf("capped %+v %+v", counts, ex)
+	}
+	// Below the cap, or with a lost page, the server total stays authoritative.
+	counts, ex = addCount(nil, nil, "table", "main.small", "documents", 250, 240)
+	if counts[0].Count != 250 || len(ex) != 0 {
+		t.Fatalf("uncapped %+v %+v", counts, ex)
+	}
+	counts, _ = addCount(nil, nil, "table", "main.lost", "documents", totalCap, 4900)
+	if counts[0].Count != totalCap {
+		t.Fatalf("lost page at the cap hidden: %+v", counts)
+	}
+}
+
+func TestNameMapping(t *testing.T) {
+	for in, want := range map[string]string{"main": "main", "auth": "aw_auth", "np_x": "aw_np_x", "1db": "_1db", "my-db.v2": "my_db_v2"} {
+		if got, err := schemaName(in); err != nil || got != want {
+			t.Errorf("schemaName(%q) = %q, %v; want %q", in, got, err, want)
+		}
+	}
+	for in, want := range map[string]string{"uploads_": "uploads-0", "a": "a00", "Files_One": "files-one"} {
+		if got, err := bucketName(in); err != nil || got != want {
+			t.Errorf("bucketName(%q) = %q, %v; want %q", in, got, err, want)
+		}
 	}
 }

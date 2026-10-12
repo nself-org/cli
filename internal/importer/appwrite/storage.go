@@ -23,8 +23,11 @@ func bucketName(id string) (string, error) {
 	if len(n) < 3 {
 		n += strings.Repeat("0", 3-len(n))
 	}
+	if strings.HasSuffix(n, "-") {
+		n += "0"
+	}
 	if !bucketRe.MatchString(n) {
-		return "", errs.New("E520", "unsupported source table")
+		return "", errs.New("E520", "source tables unavailable")
 	}
 	return n, nil
 }
@@ -40,13 +43,18 @@ func objectKey(id, name string) string {
 
 type storageResult struct {
 	Storage portable.Storage
-	Counts  []portable.SourceCount
+	// Totals holds each bucket's files-list `total`, in bucket order.
+	Totals []bucketTotal
+}
+
+type bucketTotal struct {
+	Bucket string
+	Total  int64
 }
 
 func (c *client) exportStorage(ctx context.Context, w *portable.Writer) (storageResult, error) {
 	res := storageResult{Storage: portable.Storage{Buckets: []portable.Bucket{}, Objects: []portable.Object{}}}
 	seen := map[string]bool{}
-	var sum int64
 	_, err := c.each(ctx, "/storage/buckets", "buckets", func(raw json.RawMessage) error {
 		var b struct {
 			ID string `json:"$id"`
@@ -59,7 +67,7 @@ func (c *client) exportStorage(ctx context.Context, w *portable.Writer) (storage
 			return e
 		}
 		if seen[name] {
-			return errs.New("E520", "unsupported source table")
+			return errs.New("E520", "source tables unavailable")
 		}
 		seen[name] = true
 		bucket := portable.Bucket{Name: name}
@@ -75,7 +83,7 @@ func (c *client) exportStorage(ctx context.Context, w *portable.Writer) (storage
 			key := objectKey(f.ID, f.Name)
 			member, e := portable.StorageMember(name, key)
 			if e != nil {
-				return errs.New("E520", "unsupported source table")
+				return errs.New("E520", "source tables unavailable")
 			}
 			body, e := c.download(ctx, b.ID, f.ID)
 			if e != nil {
@@ -99,14 +107,8 @@ func (c *client) exportStorage(ctx context.Context, w *portable.Writer) (storage
 			return e
 		}
 		res.Storage.Buckets = append(res.Storage.Buckets, bucket)
-		if total > 0 {
-			res.Counts = append(res.Counts, portable.SourceCount{Kind: "objects", ID: name, Count: total, Method: "files list total"})
-		}
-		sum += total
+		res.Totals = append(res.Totals, bucketTotal{name, total})
 		return nil
 	})
-	if err == nil && len(res.Storage.Buckets) > 0 {
-		res.Counts = append(res.Counts, portable.SourceCount{Kind: "objects", Count: sum, Method: "files list total"})
-	}
 	return res, err
 }

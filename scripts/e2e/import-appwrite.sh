@@ -62,7 +62,7 @@ export BAD_KEY=wrong-fixture-key
 if nself db import appwrite --endpoint "$ENDPOINT" --project proj1 --api-key-env BAD_KEY --plan --json > "$W/badkey.json" 2> "$W/badkey.err"; then echo 'FAIL: bad key accepted'; exit 1; fi
 grep -q E517 "$W/badkey.json" "$W/badkey.err"
 n=0
-for f in "$W"/*.json "$W"/*.err; do
+for f in "$W"/*.json "$W"/*.err "$TARGET"/.nself/import/*/report.json; do
   [[ -f $f ]] || continue
   n=$((n + 1))
   if grep -qF -e "$AW_KEY" -e "$FIXTURE_PASSWORD" -e "$BAD_KEY" "$f"; then echo "FAIL: credential appeared in $f"; exit 1; fi
