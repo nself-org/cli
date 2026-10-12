@@ -1,0 +1,6 @@
+# Authored import source fragment, contract:cli.canon-fragments v1.
+schema_version: 1
+commands:
+  db import nself: {side_effect: write}
+moves:
+  - {from: migrate nself, to: db import nself, since: v1.5.0, removal_at: v1.6.0}

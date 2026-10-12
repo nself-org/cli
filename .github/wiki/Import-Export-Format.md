@@ -73,6 +73,18 @@ Schema and table names must match `^[A-Za-z_][A-Za-z0-9_]{0,62}$`. A table outsi
 
 Limits of the definition: the hash covers the row text in column order, so a target table must have the same columns in the same order as the source. It does not cover indexes, constraints or sequence values.
 
+## Round trip: import an exported bundle
+
+`nself db import nself <dir> [--plan] [--keep-stage] [--skip-storage] [--json]` reads a bundle written by `nself db export` into a fresh started project. It is the shared importer (see [[Leaving-nSelf]] for the other direction) with one thin source:
+
+1. The whole bundle is verified first (`portable.Open`): an unknown format or major is E515, a changed, missing, extra or unsafe file is E516 and names the member. This happens in `--plan` too, before the target is touched, and also on a target that already holds data.
+2. The bundle is copied into the private stage `.nself/import/<run>/stage` byte for byte (the manifest is never rewritten; a hard link is not used because the reader refuses linked files). The stage is verified again and its manifest must equal the one verified in your directory, so a bundle that changes while it is staged is refused.
+3. The shared loader leaves the platform's own `public.uuidv7()` out of the restore (every started project has it), restores the database, loads users (bcrypt hashes are kept, so users sign in with their original passwords), uploads the objects, restores constraints and applies the Hasura metadata, then the verifier compares tables (row count and hash), users, objects by SHA-256, tracked tables, relationships and permissions. The result is `pass` only with zero mismatches.
+
+The integrity checks prove a bundle is intact, not that it is safe: the dump's SQL runs as the database owner, so import only bundles you trust. A bundle that carries `db/compat.sql` is refused (E516), because `nself db export` never writes one. Object keys are compared in the object store's canonical form (`a//b` and `/a/b` are `a/b`), so a key cannot slip past the overwrite check; a key with a `.` or `..` segment is refused.
+
+The target must be a fresh project with the same plugins installed: plugin-owned data (`np_*`) is not part of a bundle, and a target that already has the bundle's tables or users, or an object under one of the bundle's keys, is refused with E519 before any write (nothing is overwritten). The target's Postgres major must be at least the bundle's (E518). Run `scripts/e2e/export-round-trip.sh` for the end to end proof: a seeded project is exported, imported into a second project and checked for zero mismatches, a second import (E519), a flipped byte (E516) and `schema_version` 2 (E515).
+
 ## Reading a bundle (untrusted input)
 
 `portable.Open(dir)` treats the directory as untrusted and refuses it unless every check passes:

@@ -1885,6 +1885,23 @@
           "output": null,
           "cli_only": false,
           "secret": false
+        },
+        {
+          "name": "yes",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Confirm the data loss without a prompt (required from v1.5 unless you answer a terminal prompt)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
         }
       ],
       "canon": "subcommand",
@@ -1894,8 +1911,13 @@
       "json": "envelope",
       "data_schema": "schemas/commands/backup-pitr-restore.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
-      "surface": "cli-only"
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
+      "surface": "all"
     },
     {
       "path": "nself backup pitr status",
@@ -2015,6 +2037,23 @@
           "output": null,
           "cli_only": false,
           "secret": false
+        },
+        {
+          "name": "yes",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Confirm the data loss without a prompt (required from v1.5 unless you answer a terminal prompt)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
         }
       ],
       "canon": "subcommand",
@@ -2025,7 +2064,9 @@
       "data_schema": "schemas/commands/backup-prune.v1.schema.json",
       "exit_codes": {},
       "confirm": {
-        "flags": [],
+        "flags": [
+          "yes"
+        ],
         "plan": null
       },
       "surface": "all"
@@ -11515,6 +11556,121 @@
       "surface": "all"
     },
     {
+      "path": "nself db import nself",
+      "name": "nself",
+      "parent": "nself db import",
+      "summary": "Import and verify a portable bundle written by `nself db export`",
+      "hidden": false,
+      "deprecated": null,
+      "aliases": [],
+      "group": null,
+      "runnable": true,
+      "args": [
+        {
+          "name": "dir",
+          "required": true,
+          "variadic": false,
+          "secret": false
+        }
+      ],
+      "flags": [
+        {
+          "name": "dir",
+          "shorthand": null,
+          "type": "string",
+          "default": "",
+          "usage": "Portable bundle directory written by `nself db export` (positional argument)",
+          "hidden": true,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        },
+        {
+          "name": "json",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Print the structured import report",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        },
+        {
+          "name": "keep-stage",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Keep the private portable bundle after a successful import",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        },
+        {
+          "name": "plan",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Check source and target and print the import plan without writing",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        },
+        {
+          "name": "skip-storage",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Exempt each storage object from this import",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        }
+      ],
+      "canon": "subcommand",
+      "target": null,
+      "side_effect": "write",
+      "output": "document",
+      "json": "envelope",
+      "data_schema": "schemas/commands/db-import-nself.v1.schema.json",
+      "exit_codes": {},
+      "confirm": null,
+      "surface": "all"
+    },
+    {
       "path": "nself db import postgres",
       "name": "postgres",
       "parent": "nself db import",
@@ -12191,6 +12347,23 @@
           "output": null,
           "cli_only": false,
           "secret": false
+        },
+        {
+          "name": "yes",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Confirm the data loss without a prompt (required from v1.5 unless you answer a terminal prompt)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
         }
       ],
       "canon": "subcommand",
@@ -12200,8 +12373,13 @@
       "json": "envelope",
       "data_schema": "schemas/commands/db-migrate-down.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
-      "surface": "cli-only"
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
+      "surface": "all"
     },
     {
       "path": "nself db migrate generate",
@@ -12878,6 +13056,23 @@
           "output": null,
           "cli_only": false,
           "secret": false
+        },
+        {
+          "name": "yes",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Confirm the data loss without a prompt (required from v1.5 unless you answer a terminal prompt)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
         }
       ],
       "canon": "subcommand",
@@ -12887,8 +13082,13 @@
       "json": "envelope",
       "data_schema": "schemas/commands/db-pitr-restore.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
-      "surface": "cli-only"
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
+      "surface": "all"
     },
     {
       "path": "nself db pitr status",
@@ -19562,6 +19762,28 @@
       "surface": "all"
     },
     {
+      "path": "nself migrate nself",
+      "name": "nself",
+      "parent": "nself migrate",
+      "summary": "Moved to nself db import nself",
+      "hidden": true,
+      "deprecated": "moved to 'nself db import nself'; the old spelling is removed in v1.6.0",
+      "aliases": [],
+      "group": null,
+      "runnable": true,
+      "args": [],
+      "flags": [],
+      "canon": "deprecated-shim",
+      "target": "nself db import nself",
+      "side_effect": "write",
+      "output": "document",
+      "json": "none",
+      "data_schema": null,
+      "exit_codes": {},
+      "confirm": null,
+      "surface": "all"
+    },
+    {
       "path": "nself migrate postgres",
       "name": "postgres",
       "parent": "nself migrate",
@@ -22696,6 +22918,23 @@
           "output": null,
           "cli_only": false,
           "secret": false
+        },
+        {
+          "name": "yes",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Confirm the data loss without a prompt (required from v1.5 unless you answer a terminal prompt)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
         }
       ],
       "canon": "subcommand",
@@ -22705,8 +22944,13 @@
       "json": "envelope",
       "data_schema": "schemas/commands/update-project-rollback.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
-      "surface": "cli-only"
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
+      "surface": "all"
     },
     {
       "path": "nself update project run",
@@ -23094,14 +23338,14 @@
     }
   ],
   "counts": {
-    "commands": 388,
+    "commands": 390,
     "top_level": 24,
     "core": 20,
     "pending": 4,
-    "deprecated_shims": 44,
+    "deprecated_shims": 45,
     "plugin": 11,
     "core_missing": [],
-    "json_envelope": 197,
+    "json_envelope": 198,
     "json_legacy": 33
   }
 }

@@ -14,7 +14,8 @@ import (
 // recoveryHint is the real reset sequence of this CLI: `db reset` drops and recreates the
 // project database, and a stop/start lets Hasura and hasura-auth initialise it again.
 const recoveryHint = "The target was written and now holds partial or unverified data; a rerun is refused with E519. " +
-	"To import again, reset the target project database: run `nself db reset --yes`, then `nself stop` and `nself start`."
+	"To import again, reset the target project database: run `nself db reset --yes`, then `nself stop` and `nself start`. " +
+	"If the bundle had objects and they were already loaded, remove them from the target object store as well: a rerun is refused with E519 while a bundle key exists there (`nself reset` removes all project data, storage included)."
 
 const untouchedHint = "Nothing was written to the target. Fix the cause named above and rerun the import; no reset is needed."
 

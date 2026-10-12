@@ -4,11 +4,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"github.com/nself-org/cli/internal/importer/verify"
 	"github.com/nself-org/cli/internal/objstore"
 	"github.com/nself-org/cli/internal/portable"
 	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -52,34 +52,66 @@ func TestStorageMissingAndExemptions(t *testing.T) {
 	}
 }
 
-func TestKeysFreeRefusesExistingKey(t *testing.T) {
-	var buckets = map[string]string{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, ok := buckets[strings.Trim(strings.SplitN(r.URL.Path, "/", 3)[1], "/")]
-		if !ok {
-			w.WriteHeader(http.StatusNotFound)
-			_, _ = w.Write([]byte(`<Error><Code>NoSuchBucket</Code></Error>`))
-			return
-		}
-		_, _ = w.Write([]byte(body))
-	}))
-	defer srv.Close()
-	store := &objstore.Client{Endpoint: srv.URL, AccessKey: "fixtureaccess", SecretKey: "fixturesecretvalue"}
-	m := portable.Manifest{Storage: portable.Storage{Objects: []portable.Object{{Bucket: "avatars", Key: "a.png"}}}}
+type fakeLister struct {
+	held map[string][]string
+	err  error
+}
+
+func (f fakeLister) List(_ context.Context, bucket, _ string) ([]objstore.Object, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	objs := []objstore.Object{}
+	for _, k := range f.held[bucket] {
+		objs = append(objs, objstore.Object{Key: k})
+	}
+	return objs, nil
+}
+
+func TestStorageCollisions(t *testing.T) {
+	m := portable.Manifest{Storage: portable.Storage{Objects: []portable.Object{{Bucket: "b", Key: "one.txt"}, {Bucket: "b", Key: "nested/two.txt"}}}}
 	ctx := context.Background()
-	if err := KeysFree(ctx, m, store, false); err != nil {
-		t.Fatalf("missing bucket must be free: %v", err)
+	if err := StorageCollisions(ctx, m, fakeLister{held: map[string][]string{"b": {"other.txt", "ONE.txt"}}}, false); err != nil {
+		t.Fatalf("different keys (case-sensitive) must pass: %v", err)
 	}
-	buckets["avatars"] = `<ListBucketResult><IsTruncated>false</IsTruncated><Contents><Key>other.png</Key><Size>1</Size></Contents></ListBucketResult>`
-	if err := KeysFree(ctx, m, store, false); err != nil {
-		t.Fatalf("other keys must be free: %v", err)
+	err := StorageCollisions(ctx, m, fakeLister{held: map[string][]string{"b": {"x", "nested/two.txt"}}}, false)
+	if codeOf(err) != "E519" || strings.Contains(err.Error(), "two.txt") {
+		t.Fatalf("an existing key must be refused with E519 and no key name: %v", err)
 	}
-	buckets["avatars"] = `<ListBucketResult><IsTruncated>false</IsTruncated><Contents><Key>a.png</Key><Size>1</Size></Contents></ListBucketResult>`
-	err := KeysFree(ctx, m, store, false)
-	if err == nil || !strings.Contains(err.Error(), "E519") || strings.Contains(err.Error(), "a.png") {
-		t.Fatalf("existing key must be refused without naming the key: %v", err)
+	if err = StorageCollisions(ctx, m, fakeLister{err: &objstore.Error{Op: "list", Status: http.StatusNotFound, Code: "NoSuchBucket"}}, false); err != nil {
+		t.Fatalf("a missing bucket is empty: %v", err)
 	}
-	if KeysFree(ctx, m, store, true) != nil || KeysFree(ctx, m, nil, false) != nil {
-		t.Fatal("skip and no store must pass")
+	if codeOf(StorageCollisions(ctx, m, fakeLister{err: errors.New("boom")}, false)) != "E521" {
+		t.Fatal("a failed listing must stop the import before any write")
+	}
+	if err = StorageCollisions(ctx, m, fakeLister{err: errors.New("boom")}, true); err != nil {
+		t.Fatalf("--skip-storage loads no object, so nothing can collide: %v", err)
+	}
+	if err = StorageCollisions(ctx, portable.Manifest{}, fakeLister{err: errors.New("boom")}, false); err != nil {
+		t.Fatalf("a bundle without objects never lists: %v", err)
+	}
+	// SeaweedFS stores "a//one.txt" and "/a/one.txt" as "a/one.txt": they must collide with it.
+	for _, key := range []string{"a//one.txt", "/a/one.txt", "a/one.txt/"} {
+		bm := portable.Manifest{Storage: portable.Storage{Objects: []portable.Object{{Bucket: "b", Key: key}}}}
+		if codeOf(StorageCollisions(ctx, bm, fakeLister{held: map[string][]string{"b": {"a/one.txt"}}}, false)) != "E519" {
+			t.Fatalf("key %q must collide with a/one.txt", key)
+		}
+		if err = StorageCollisions(ctx, bm, fakeLister{held: map[string][]string{"b": {"other"}}}, false); err != nil {
+			t.Fatalf("key %q with nothing held must pass: %v", key, err)
+		}
+	}
+	for _, key := range []string{"a/../b", "./a", "a/./b", "/", "//"} {
+		bm := portable.Manifest{Storage: portable.Storage{Objects: []portable.Object{{Bucket: "b", Key: key}}}}
+		if codeOf(StorageCollisions(ctx, bm, fakeLister{}, false)) != "E519" {
+			t.Fatalf("key %q has no canonical form and must be refused", key)
+		}
+	}
+	twin := portable.Manifest{Storage: portable.Storage{Objects: []portable.Object{{Bucket: "b", Key: "a/x"}, {Bucket: "b", Key: "a//x"}}}}
+	if codeOf(StorageCollisions(ctx, twin, fakeLister{}, false)) != "E519" {
+		t.Fatal("two keys that collapse to one must be refused")
+	}
+	other := portable.Manifest{Storage: portable.Storage{Objects: []portable.Object{{Bucket: "b", Key: "a/x"}, {Bucket: "c", Key: "a//x"}}}}
+	if err = StorageCollisions(ctx, other, fakeLister{}, false); err != nil {
+		t.Fatalf("the same key in two buckets is fine: %v", err)
 	}
 }

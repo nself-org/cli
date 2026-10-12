@@ -104,6 +104,9 @@ func Apply(ctx context.Context, cfg *config.Config, r *portable.Reader, opts Opt
 	if err = validateArchive(toc, m); err != nil {
 		return nil, errs.New("E521", "archive does not match the bundle: "+err.Error())
 	}
+	if toc, err = SkipPlatformOwned(ctx, db, toc, m.Producer.Source); err != nil {
+		return nil, err
+	}
 	if err = TypeFunctionCollisions(ctx, db, toc, m.DB.Schemas); err != nil {
 		return nil, err
 	}
