@@ -5,14 +5,17 @@ package bluegreen
 // Purpose: apply config defaults and drive the docker compose project through pull, start-green, stop-green/blue and health-wait, used by Deploy and Rollback in bluegreen.go, split out for file size.
 // Inputs: a DeployConfig and the compose project name for the blue or green side.
 // Outputs: started or stopped containers, or an error if a step fails or health never converges.
-// Constraints: pure move from bluegreen.go (CLI-R12 Batch E); no behaviour change.
+// Constraints: every compose call goes through internal/docker with the
+// project's env files (D-0550), so ${VAR} values that live only in
+// .nself/compose.env resolve for the blue and green stacks.
 
 import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"time"
+
+	"github.com/nself-org/cli/internal/docker"
 )
 
 func applyDefaults(cfg *DeployConfig) {
@@ -46,53 +49,43 @@ func composeProjectName(env string) string {
 	return "nself-" + env
 }
 
+// newCompose returns the compose client for the project at projectRoot; tests
+// replace it. internal/deploy may not import internal/build, so the env file
+// list comes from docker.ProjectEnvFiles (same rule as build.ComposeEnvFiles).
+var newCompose = func(projectRoot string) *docker.Compose {
+	c := docker.NewCompose()
+	c.EnvFiles = docker.ProjectEnvFiles(projectRoot)
+	return c
+}
+
+// streamed is a ProjectRun for project that shows compose output on the
+// terminal, with env added to the inherited environment.
+func streamed(project string, env ...string) docker.ProjectRun {
+	return docker.ProjectRun{Project: project, Env: env, Stdout: os.Stdout, Stderr: os.Stderr}
+}
+
 func pullImages(ctx context.Context, projectRoot string) error {
-	cmd := exec.CommandContext(ctx, "docker", "compose", "pull")
-	cmd.Dir = projectRoot
-	cmd.Env = os.Environ()
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return newCompose(projectRoot).RunProject(ctx, projectRoot, streamed(""), "pull")
 }
 
 func startGreen(ctx context.Context, cfg DeployConfig) error {
 	portEnv := fmt.Sprintf("PORT_OFFSET=%d", cfg.GreenPortOffset)
-	cmd := exec.CommandContext(ctx,
-		"docker", "compose",
-		"-p", composeProjectName(EnvGreen),
-		"up", "-d",
-	)
-	cmd.Dir = cfg.ProjectRoot
-	cmd.Env = append(os.Environ(), portEnv, "NSELF_ENV=green")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	run := streamed(composeProjectName(EnvGreen), portEnv, "NSELF_ENV=green")
+	return newCompose(cfg.ProjectRoot).RunProject(ctx, cfg.ProjectRoot, run, "up", "-d")
 }
 
 func stopGreen(ctx context.Context, cfg DeployConfig) error {
-	cmd := exec.CommandContext(ctx,
-		"docker", "compose",
-		"-p", composeProjectName(EnvGreen),
-		"down", "--remove-orphans",
-	)
-	cmd.Dir = cfg.ProjectRoot
-	cmd.Env = os.Environ()
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return downProject(ctx, cfg, EnvGreen)
 }
 
 func stopBlue(ctx context.Context, cfg DeployConfig) error {
-	cmd := exec.CommandContext(ctx,
-		"docker", "compose",
-		"-p", composeProjectName(EnvBlue),
-		"down", "--remove-orphans",
-	)
-	cmd.Dir = cfg.ProjectRoot
-	cmd.Env = os.Environ()
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return downProject(ctx, cfg, EnvBlue)
+}
+
+// downProject removes the env's compose project and its orphans.
+func downProject(ctx context.Context, cfg DeployConfig, env string) error {
+	run := streamed(composeProjectName(env))
+	return newCompose(cfg.ProjectRoot).RunProject(ctx, cfg.ProjectRoot, run, "down", "--remove-orphans")
 }
 
 // waitForHealth polls the health endpoint on the given env until healthy or timeout.
@@ -125,11 +118,8 @@ func waitForHealth(ctx context.Context, cfg DeployConfig, env string, timeout ti
 		default:
 		}
 
-		out, err := exec.CommandContext(ctx,
-			"docker", "compose",
-			"-p", project,
-			"ps", "--format", containerStatusFormat,
-		).Output()
+		out, err := newCompose(cfg.ProjectRoot).OutputProject(ctx, cfg.ProjectRoot,
+			docker.ProjectRun{Project: project}, "ps", "--format", containerStatusFormat)
 		if err == nil {
 			if ready, total := allContainersReady(string(out)); ready && total > 0 {
 				return nil
