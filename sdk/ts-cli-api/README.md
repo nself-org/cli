@@ -88,7 +88,7 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 
 <!-- BEGIN GENERATED: operations (tools/sdkgen, DO NOT HAND EDIT) -->
 
-184 operations. Every method takes `{ args, flags }` (plus `confirm` where the operation declares it) and resolves to the typed `data` member.
+205 operations. Every method takes `{ args, flags }` (plus `confirm` where the operation declares it) and resolves to the typed `data` member.
 
 | Method | Route | Summary |
 | --- | --- | --- |
@@ -248,11 +248,29 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 | `dbSoftDeleteGenerate` | `POST /v1/commands/db/soft-delete/generate` | Print soft-delete migration SQL to stdout |
 | `dbVerify` | `POST /v1/commands/db/verify` | Verify what a Hasura role can actually reach via role-scoped introspection |
 | `dbVerifyChecksums` | `POST /v1/commands/db/verify-checksums` | Verify migration file checksums against stored values |
+| `deploy` | `POST /v1/commands/deploy` | Deploy the stack to a target environment |
+| `deployAccess` | `POST /v1/commands/deploy/access` | Manage SSH key access on an already-deployed server |
+| `deployAccessGrant` | `POST /v1/commands/deploy/access/grant` | Grant a person SSH key access to a host |
+| `deployAccessList` | `POST /v1/commands/deploy/access/list` | List who has SSH key access to a host |
+| `deployAccessRevoke` | `POST /v1/commands/deploy/access/revoke` | Revoke a person's SSH key access to a host |
+| `deployCheckAccess` | `POST /v1/commands/deploy/check-access` | Verify access to configured deploy targets (deprecated: use 'nself env target probe') |
+| `deployEnvironments` | `POST /v1/commands/deploy/environments` | List configured deploy environments and server capabilities |
+| `deployHealth` | `POST /v1/commands/deploy/health` | Run health checks against a target deployment |
+| `deployOps` | `POST /v1/commands/deploy/ops` | Deploy with the ops profile to the ops server |
+| `deployPromote` | `POST /v1/commands/deploy/promote` | Promote a canary or an environment |
+| `deployPromoteEnv` | `POST /v1/commands/deploy/promote-env` | Promote one environment to another (e.g. staging to prod) |
+| `deployPromoteEnvRollback` | `POST /v1/commands/deploy/promote-env/rollback` | Rollback to pre-promotion backup |
+| `deployRollback` | `POST /v1/commands/deploy/rollback` | Roll back the last deployment for a target |
+| `deploySecuritySetup` | `POST /v1/commands/deploy/security/setup` | Apply baseline server hardening |
+| `deployStatus` | `POST /v1/commands/deploy/status` | Show deployment status for a target |
 | `deployTargets` | `POST /v1/commands/deploy/targets` | List deploy targets without connecting to them |
+| `deployWeb` | `POST /v1/commands/deploy/web` | Build web apps locally and deploy prebuilt output to Vercel |
 | `doctor` | `POST /v1/commands/doctor` | Run comprehensive system diagnostics |
 | `doctorHeal` | `POST /v1/commands/doctor/heal` | Run targeted self-healing routines for nSelf components |
 | `doctorImages` | `POST /v1/commands/doctor/images` | Check availability of every locked image |
 | `doctorReport` | `POST /v1/commands/doctor/report` | Write a redacted support bundle (tar.gz) to share in an issue |
+| `doctorSecurityAudit` | `POST /v1/commands/doctor/security/audit` | Run a read-only security audit |
+| `doctorSecurityStatus` | `POST /v1/commands/doctor/security/status` | Show current security posture |
 | `helpTopics` | `POST /v1/commands/help/topics` | Browse help topics (quickstart, plugins, license, envs, doctor, errors) |
 | `initTemplate` | `POST /v1/commands/init/template` | Browse and publish full-stack app templates |
 | `initTemplateInfo` | `POST /v1/commands/init/template/info` | Show detail for a single template |
@@ -270,11 +288,14 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 | `statusHealthService` | `POST /v1/commands/status/health/service` | Check a single service |
 | `statusUrls` | `POST /v1/commands/status/urls` | Display all service URLs with route conflict detection |
 | `update` | `POST /v1/commands/update` | Update the nSelf CLI and admin UI |
+| `updateImages` | `POST /v1/commands/update/images` | Refresh Docker image digests from registries |
 | `updateProjectDetect` | `POST /v1/commands/update/project/detect` | Detect v1 artifacts in the current project |
 | `updateProjectFromBash` | `POST /v1/commands/update/project/from-bash` | Migrate a v0.9.9 Bash-era project to the current nSelf CLI |
 | `updateProjectFromV099` | `POST /v1/commands/update/project/from-v099` | Migrate v0.9.9 home-level state (license key, channel, ssh keys) to v1.x layout |
 | `updateProjectRollback` | `POST /v1/commands/update/project/rollback` | Restore a v1 backup created by migrate run |
 | `updateProjectRun` | `POST /v1/commands/update/project/run` | Migrate v1 project to v2 |
 | `updateStack` | `POST /v1/commands/update/stack` | Upgrade the stack with a verified backup and resumable steps |
+| `updateUpgrade` | `POST /v1/commands/update/upgrade` | Upgrade the nSelf CLI (detects install method) |
+| `updateVerifySbom` | `POST /v1/commands/update/verify-sbom` | Verify the SBOM signature for a CLI release |
 
 <!-- END GENERATED: operations -->

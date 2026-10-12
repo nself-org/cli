@@ -14540,10 +14540,15 @@
       "target": null,
       "side_effect": "remote",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -14562,8 +14567,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-access.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -14789,10 +14794,15 @@
       "target": null,
       "side_effect": "remote",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-access-grant.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -14914,8 +14924,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-access-list.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -15090,10 +15100,15 @@
       "target": null,
       "side_effect": "remote",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-access-revoke.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -15130,8 +15145,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-check-access.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -15152,8 +15167,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-environments.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -15216,8 +15231,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-health.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -15320,10 +15335,13 @@
       "target": null,
       "side_effect": "remote",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-ops.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -15421,7 +15439,12 @@
       "json": "envelope",
       "data_schema": "schemas/commands/deploy-promote.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -15539,10 +15562,15 @@
       "target": null,
       "side_effect": "remote",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-promote-env.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -15596,10 +15624,15 @@
       "target": null,
       "side_effect": "destructive",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-promote-env-rollback.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -15660,10 +15693,15 @@
       "target": null,
       "side_effect": "destructive",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-rollback.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -15722,10 +15760,15 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-security-setup.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "apply"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -15813,8 +15856,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-status.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -15951,10 +15994,13 @@
       "target": null,
       "side_effect": "remote",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-web.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -16559,8 +16605,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/doctor-security-audit.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -16581,8 +16627,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/doctor-security-status.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -22672,7 +22718,12 @@
       "json": "envelope",
       "data_schema": "schemas/commands/update.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -22709,8 +22760,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/update-images.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -23172,8 +23223,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/update-upgrade.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -23229,8 +23280,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/update-verify-sbom.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -23345,7 +23396,7 @@
     "deprecated_shims": 45,
     "plugin": 11,
     "core_missing": [],
-    "json_envelope": 198,
-    "json_legacy": 33
+    "json_envelope": 218,
+    "json_legacy": 27
   }
 }

@@ -1,0 +1,20 @@
+{
+  "schema_version": "1",
+  "command": "deploy security setup",
+  "data": {
+    "dry_run": true,
+    "supported": true,
+    "applied": false,
+    "failed": [],
+    "steps": [
+      {
+        "name": "Allow SSH (22)",
+        "command": [
+          "ufw",
+          "allow",
+          "22/tcp"
+        ]
+      }
+    ]
+  }
+}

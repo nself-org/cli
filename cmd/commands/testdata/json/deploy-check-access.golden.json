@@ -1,0 +1,14 @@
+{
+  "schema_version": "1",
+  "command": "deploy check-access",
+  "data": {
+    "servers": [
+      {
+        "env": "staging",
+        "server": "staging-app",
+        "capability": "manage"
+      }
+    ],
+    "all_ok": true
+  }
+}

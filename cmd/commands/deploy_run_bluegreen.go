@@ -14,7 +14,6 @@ package commands
 // Constraints: pure move, same checks/output/errors, no behavior change.
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"time"
@@ -47,10 +46,14 @@ func runDeployBlueGreenCanary(cmd *cobra.Command, target, workdir string, canary
 		DryRun:         dryRun,
 	}
 	result := bluegreen.Deploy(cmd.Context(), cfg)
-	if jsonOut {
-		b, _ := json.MarshalIndent(result, "", "  ")
-		fmt.Println(string(b))
-	} else if result.RolledBack {
+	if jsonOut && !streaming(cmd.Context()) {
+		var runErr error
+		if !result.Success {
+			runErr = fmt.Errorf("%s", result.Error)
+		}
+		return true, emitDeployDoc("deploy", result, deployBlueGreenData(target, dryRun, result), runErr)
+	}
+	if result.RolledBack {
 		ui.Error("Canary auto-rolled back: " + result.Error)
 	} else if !result.Success {
 		ui.Error("Blue/green deploy failed: " + result.Error)

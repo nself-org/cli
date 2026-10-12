@@ -51,6 +51,7 @@ func runUpdateImages(cmd *cobra.Command, args []string) error {
 
 	// Fetch digests for all default images.
 	newDigests := make(map[string]string)
+	data := updateImagesData{DryRun: dryRun, Images: []updateImageRow{}, Failed: []string{}}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
@@ -67,6 +68,7 @@ func runUpdateImages(cmd *cobra.Command, args []string) error {
 		digest, fetchErr := fetchImageDigest(ctx, image)
 		if fetchErr != nil {
 			ui.Warn(fmt.Sprintf("  %s: failed to fetch digest (%v)", service, fetchErr))
+			data.Failed = append(data.Failed, service)
 			continue
 		}
 		newDigests[service] = digest
@@ -80,8 +82,10 @@ func runUpdateImages(cmd *cobra.Command, args []string) error {
 			status = "new"
 		}
 
+		data.Images = append(data.Images, updateImageRow{Service: service, Digest: digest, Status: status})
 		fmt.Printf("  %-16s %s [%s]\n", service, digest[:16]+"...", status)
 	}
+	setData(cmd, data)
 
 	if dryRun {
 		ui.Info("Dry run — no changes written.")
@@ -91,6 +95,8 @@ func runUpdateImages(cmd *cobra.Command, args []string) error {
 	if err := compose.SaveImageDigests(workdir, newDigests); err != nil {
 		return fmt.Errorf("saving digests: %w", err)
 	}
+	data.Saved = true
+	setData(cmd, data)
 
 	ui.Success(fmt.Sprintf("Saved %d image digests to %s", len(newDigests), compose.DigestConfigFile))
 	ui.Info("Run 'nself build' to regenerate docker-compose.yml with pinned digests.")

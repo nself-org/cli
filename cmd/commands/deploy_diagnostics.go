@@ -6,7 +6,6 @@ package commands
 // Constraints: split out of deploy.go (CLI-R12) as a pure move, no behavior change.
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -147,19 +146,13 @@ func runDeployCheckAccess(cmd *cobra.Command, args []string) error {
 					fmt.Println()
 				}
 
-				type accessRow struct {
-					Env        string `json:"env"`
-					Server     string `json:"server"`
-					Capability string `json:"capability"`
-					Reason     string `json:"reason,omitempty"`
-				}
-				var rows []accessRow
+				var rows []deployAccessRow
 				allOK := true
 				for _, ts := range statuses {
 					if ts.Capability == controlplane.CapHidden {
 						continue
 					}
-					rows = append(rows, accessRow{
+					rows = append(rows, deployAccessRow{
 						Env:        ts.Env,
 						Server:     ts.Server,
 						Capability: string(ts.Capability),
@@ -171,9 +164,8 @@ func runDeployCheckAccess(cmd *cobra.Command, args []string) error {
 				}
 
 				if jsonOut {
-					b, _ := json.MarshalIndent(map[string]interface{}{"servers": rows, "all_ok": allOK}, "", "  ")
-					fmt.Println(string(b))
-					return nil
+					legacy := map[string]interface{}{"servers": rows, "all_ok": allOK}
+					return emitDeployDoc("deploy check-access", legacy, newDeployCheckAccessData(rows, allOK), nil)
 				}
 
 				for _, row := range rows {
@@ -201,6 +193,9 @@ func runDeployCheckAccess(cmd *cobra.Command, args []string) error {
 			continue
 		}
 		ui.Success(fmt.Sprintf("%s = %s", name, v))
+	}
+	if jsonOut && deployDocEnvelope() {
+		return emitDeployDoc("deploy check-access", nil, newDeployCheckAccessData(nil, ok), nil)
 	}
 	if !ok {
 		return nil

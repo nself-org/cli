@@ -678,12 +678,72 @@
       "id": "urn:nself:cli:schema:commands:db:v1"
     },
     {
+      "path": "commands/deploy-access-grant.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:deploy-access-grant:v1"
+    },
+    {
+      "path": "commands/deploy-access-list.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:deploy-access-list:v1"
+    },
+    {
+      "path": "commands/deploy-access-revoke.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:deploy-access-revoke:v1"
+    },
+    {
+      "path": "commands/deploy-access.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:deploy-access:v1"
+    },
+    {
+      "path": "commands/deploy-check-access.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:deploy-check-access:v1"
+    },
+    {
+      "path": "commands/deploy-environments.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:deploy-environments:v1"
+    },
+    {
+      "path": "commands/deploy-health.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:deploy-health:v1"
+    },
+    {
+      "path": "commands/deploy-ops.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:deploy-ops:v1"
+    },
+    {
+      "path": "commands/deploy-promote-env-rollback.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:deploy-promote-env-rollback:v1"
+    },
+    {
+      "path": "commands/deploy-promote-env.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:deploy-promote-env:v1"
+    },
+    {
       "path": "commands/deploy-promote.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:deploy-promote:v1"
     },
     {
+      "path": "commands/deploy-rollback.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:deploy-rollback:v1"
+    },
+    {
+      "path": "commands/deploy-security-setup.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:deploy-security-setup:v1"
+    },
+    {
+      "path": "commands/deploy-status.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:deploy-status:v1"
+    },
+    {
       "path": "commands/deploy-targets.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:deploy-targets:v1"
+    },
+    {
+      "path": "commands/deploy-web.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:deploy-web:v1"
+    },
+    {
+      "path": "commands/deploy.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:deploy:v1"
     },
     {
       "path": "commands/doctor-heal.v1.schema.json",
@@ -696,6 +756,14 @@
     {
       "path": "commands/doctor-report.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:doctor-report:v1"
+    },
+    {
+      "path": "commands/doctor-security-audit.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:doctor-security-audit:v1"
+    },
+    {
+      "path": "commands/doctor-security-status.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:doctor-security-status:v1"
     },
     {
       "path": "commands/doctor.v1.schema.json",
@@ -778,6 +846,10 @@
       "id": "urn:nself:cli:schema:commands:uninstall:v1"
     },
     {
+      "path": "commands/update-images.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:update-images:v1"
+    },
+    {
       "path": "commands/update-project-detect.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:update-project-detect:v1"
     },
@@ -800,6 +872,14 @@
     {
       "path": "commands/update-stack.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:update-stack:v1"
+    },
+    {
+      "path": "commands/update-upgrade.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:update-upgrade:v1"
+    },
+    {
+      "path": "commands/update-verify-sbom.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:update-verify-sbom:v1"
     },
     {
       "path": "commands/update.v1.schema.json",
