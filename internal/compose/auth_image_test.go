@@ -75,6 +75,9 @@ func TestAuthImageByMode(t *testing.T) {
 		{"current version without key in v1.5", cur.Version, "", "1", PinningLock, v14.String()},
 		{"explicit other version in v1.4", "0.40.0", "", "", PinningLock, "nhost/auth:0.40.0"},
 		{"explicit other version in v1.5", "0.40.0", fakeAuthKey, "1", PinningLock, "nhost/auth:0.40.0"},
+		{"latest stays on the frozen line in v1.4", "latest", "", "", PinningLock, "nhost/hasura-auth:latest"},
+		{"latest stays on the frozen line in v1.5", "latest", fakeAuthKey, "1", PinningLegacy, "nhost/hasura-auth:latest"},
+		{"explicit newer release without key renders (with a notice)", "0.45.0", "", "", PinningLock, "nhost/auth:0.45.0"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -230,4 +233,28 @@ func TestAuthCurrentReleaseNeedsKey(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestAuthTagNeedsKey(t *testing.T) {
+	for tag, want := range map[string]bool{"0.36.0": false, "0.42.4": false, "0.43.0": true, "0.52.1-beta1": true, "v0.45.2": true,
+		"1.0.0": true, "0.100.0": true, "0.9.0": false, "latest": false, "0.52": false, "": false} {
+		if got := authTagNeedsKey(tag); got != want {
+			t.Errorf("authTagNeedsKey(%q) = %t, want %t", tag, got, want)
+		}
+	}
+}
+
+func TestAuthExplicitNewerTagNotice(t *testing.T) {
+	setMode(t, PinningLock)
+	defer SetProjectPins(nil)()
+	notices := captureAuthNotice(t)
+	authImageFor(t, "0.45.0", "")
+	if !strings.Contains(notices.String(), "AUTH_VERSION=0.45.0") {
+		t.Errorf("no notice for an explicit 0.45.0 without the key: %q", notices.String())
+	}
+	quiet := captureAuthNotice(t)
+	authImageFor(t, "0.45.0", fakeAuthKey)
+	if quiet.Len() != 0 {
+		t.Errorf("notice printed with a key: %q", quiet.String())
+	}
 }

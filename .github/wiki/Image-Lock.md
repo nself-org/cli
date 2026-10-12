@@ -35,7 +35,7 @@ A `*_VERSION` key in the env cascade is an explicit override and is used as give
 
 An `IMAGE_PINNING` value other than `lock` or `legacy` (case ignored) is an error: `nself build` and every command that loads the config refuse to run rather than fall back silently.
 
-A project digest file written by `nself update images` (`.nself-image-digests.json`) still applies to unpinned references; a lock reference already carries its digest and is left alone.
+`nself update images` writes a project digest file (`.nself-image-digests.json`); `nself build` does not read it today (debt D-0673). A lock reference already carries its digest.
 
 ## Valkey, the default cache
 
@@ -65,11 +65,12 @@ Upstream renamed `nhost/hasura-auth` to `nhost/auth`; the old name stops at 0.42
 | the lock pins 0.52.0 but the key is missing or malformed | `nself build` stops with an error naming `AUTH_ENCRYPTION_KEY` |
 | `AUTH_VERSION=0.52.0`, no lock pin | `auth` with the key; without it `auth-v14` and the notice |
 | the project lock pins auth 0.36.0 (either repository name) | the pin, in both modes, until `nself update` moves it |
-| `AUTH_VERSION` set to another tag | that tag of `nhost/auth`, unpinned, in any mode |
+| `AUTH_VERSION` set to another release (`0.45.0`) | that tag of `nhost/auth`, unpinned, in any mode; 0.43.0 and later without the key print a notice |
+| `AUTH_VERSION=latest` or another non-release tag | `nhost/hasura-auth:<tag>`, the frozen line it always named |
 
 `AUTH_VERSION=0.36.0` (what `nself init` writes into `.env`) and `AUTH_VERSION=0.52.0` are defaults, not overrides: neither drops a lock pin.
 
-nhost/auth 0.43.0 and later refuse to start without `AUTH_ENCRYPTION_KEY` (32 bytes, hex) and encrypt every TOTP secret in `auth.users` with it on first start. The CLI does not generate the key yet, so v1.5 moves to the current release only once you set it. Keep the key with your backups: after the first start, losing or changing it locks out every user who signs in with TOTP.
+nhost/auth 0.43.0 and later refuse to start without `AUTH_ENCRYPTION_KEY` (32 bytes, hex) and encrypt every TOTP secret in `auth.users` with it on first start. The CLI does not generate the key yet, so v1.5 moves to the current release only once you set it. Setting it moves a project that has no auth lock pin (no `nself.lock.yaml` yet, or no auth line in it) on its next build. Keep the key with your backups: after the first start, losing or changing it locks out every user who signs in with TOTP.
 
 ### Upgrade an existing project (one way)
 

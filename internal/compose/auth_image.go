@@ -29,7 +29,20 @@ import (
 // AuthEncryptionKeyEnv is the key nhost/auth 0.43.0 and later require: 32 bytes, hex.
 const AuthEncryptionKeyEnv = "AUTH_ENCRYPTION_KEY"
 
-var authKeyRE = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
+// frozenAuthRepo is the pre-rename repository, frozen at 0.42.x upstream.
+const frozenAuthRepo = "nhost/hasura-auth"
+
+var (
+	authKeyRE = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
+	// authVersionRE reads an AUTH_VERSION that names a release (0.45.0, v0.52.1-beta1).
+	authVersionRE = regexp.MustCompile(`^v?(\d+)\.(\d+)\.\d+(-[0-9A-Za-z.-]+)?$`)
+)
+
+// authTagNeedsKey reports whether an explicit release tag is 0.43.0 or later.
+func authTagNeedsKey(tag string) bool {
+	m := authVersionRE.FindStringSubmatch(tag)
+	return m != nil && (m[1] != "0" || len(m[2]) > 2 || (len(m[2]) == 2 && m[2] >= "43"))
+}
 
 // authKeySet reports whether passthrough (config.Passthrough, forwarded to the
 // container verbatim) holds a valid AUTH_ENCRYPTION_KEY.
@@ -77,12 +90,21 @@ func (g *Generator) authImage() (string, error) {
 		}
 	}
 	image := ""
-	if version == "" {
+	switch {
+	case version != "" && !authVersionRE.MatchString(version):
+		// A moving tag (latest) stays on the frozen line it always named; only a
+		// release number moves to nhost/auth (lens review, cli#702).
+		return frozenAuthRepo + ":" + version, nil
+	case version != "":
+		if authTagNeedsKey(version) && !authKeySet(g.cfg.Passthrough) {
+			noticeAuth("AUTH_VERSION=%s needs %s (64 hex characters); auth will not start without it", version, AuthEncryptionKeyEnv)
+		}
+	default:
 		pin := ProjectPins()["auth"]
-		if pin != "" && repoOf(pin) == "nhost/hasura-auth" {
+		if pin != "" && repoOf(pin) == frozenAuthRepo {
 			image = pin
 		} else if pin == "" && keyMissing && entry == "auth-v14" {
-			noticeAuthKey()
+			noticeAuth("auth stays on nhost/auth 0.36.0 until %s is set (64 hex characters); the current release requires it", AuthEncryptionKeyEnv)
 		}
 	}
 	switch {
@@ -99,14 +121,14 @@ func (g *Generator) authImage() (string, error) {
 	return image, nil
 }
 
-var ( // authNoticeW receives the key notice, once per process (authNoticed)
+var ( // authNoticeW receives the auth notice, once per process (authNoticed)
 	authNoticeW io.Writer = os.Stderr
 	authNoticed atomic.Bool
 )
 
-// noticeAuthKey says once why v1.5 still runs auth 0.36.0; never the key itself.
-func noticeAuthKey() {
+// noticeAuth prints one auth notice per process; callers never pass the key.
+func noticeAuth(format string, args ...any) {
 	if !authNoticed.Swap(true) && authNoticeW != nil {
-		_, _ = fmt.Fprintf(authNoticeW, "notice: auth stays on nhost/auth 0.36.0 until %s is set (64 hex characters); the current release requires it\n", AuthEncryptionKeyEnv)
+		_, _ = fmt.Fprintf(authNoticeW, "notice: "+format+"\n", args...)
 	}
 }
