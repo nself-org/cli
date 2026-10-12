@@ -1,0 +1,82 @@
+{
+  "schema_version": "1",
+  "command": "deploy promote",
+  "data": {
+    "status": "ok",
+    "source": "ls",
+    "target": "prodsim",
+    "steps": [
+      {
+        "name": "resolve",
+        "status": "planned",
+        "detail": "resolve source and target environments"
+      },
+      {
+        "name": "confirm",
+        "status": "planned",
+        "detail": "confirm production promotion"
+      },
+      {
+        "name": "verify",
+        "status": "planned",
+        "detail": "verify the release manifest"
+      },
+      {
+        "name": "preflight",
+        "status": "planned",
+        "detail": "check target architecture and access"
+      },
+      {
+        "name": "source-health",
+        "status": "planned",
+        "detail": "check source health"
+      },
+      {
+        "name": "capture",
+        "status": "planned",
+        "detail": "capture source image identities"
+      },
+      {
+        "name": "build",
+        "status": "planned",
+        "detail": "build target artifacts in scratch space"
+      },
+      {
+        "name": "compare",
+        "status": "planned",
+        "detail": "compare per-platform image identities"
+      },
+      {
+        "name": "snapshot",
+        "status": "planned",
+        "detail": "create and verify the target backup"
+      },
+      {
+        "name": "save",
+        "status": "planned",
+        "detail": "save the target artifact set"
+      },
+      {
+        "name": "apply",
+        "status": "planned",
+        "detail": "apply artifacts to the target"
+      },
+      {
+        "name": "migrate",
+        "status": "planned",
+        "detail": "run target database migrations"
+      },
+      {
+        "name": "health",
+        "status": "planned",
+        "detail": "check target health"
+      },
+      {
+        "name": "record",
+        "status": "planned",
+        "detail": "record the completed promotion"
+      }
+    ],
+    "dry_run": true
+  }
+}

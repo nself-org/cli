@@ -773,8 +773,13 @@
       {
         "name": "promote",
         "path": "nself deploy promote",
-        "short": "Promote a canary deploy to 100% green traffic",
-        "hidden": false
+        "short": "Promote a canary or an environment",
+        "hidden": false,
+        "flags": [
+          "--dry-run",
+          "--json",
+          "--yes"
+        ]
       },
       {
         "name": "promote-env",
@@ -785,14 +790,19 @@
           "--approve-id",
           "--confirm",
           "--dry-run",
-          "--json"
+          "--json",
+          "--yes"
         ]
       },
       {
         "name": "rollback",
         "path": "nself deploy rollback",
         "short": "Roll back the last deployment for a target",
-        "hidden": false
+        "hidden": false,
+        "flags": [
+          "--db-restore-done",
+          "--yes"
+        ]
       },
       {
         "name": "security",

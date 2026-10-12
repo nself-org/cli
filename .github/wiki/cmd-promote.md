@@ -14,6 +14,18 @@ See [[cmd-deploy]] for the current command. [[Command-Canon]] lists every move.
 ### Description
 
 <!-- BEGIN PROSE:description -->
+In v1.5, use `nself deploy promote <source> <target>` for environment promotion.
+The existing `promote` spelling reaches the same runner through
+`deploy promote-env`, with one deprecation warning per process. See
+[[cmd-deploy]] for the ordered plan, per-platform digest check, verified target
+backup, and rollback behavior. A prod-tier target requires `--yes` or terminal
+confirmation. `promote rollback` restores the latest promotion record on its
+target, including the verified target backup.
+In v1.5, `--confirm` and `--approve-id` are ignored. Use `--yes` or terminal
+confirmation for a production-class target.
+
+In v1.4, the following legacy behavior remains available:
+
 `nself promote` moves configurations, migrations, and services from one environment to another. The most common path is `staging → prod`, but any source-to-target pair is allowed. Use `--dry-run` first to preview what would change without writing anything.
 
 Production promotions are gated: a target of `prod` requires `--confirm prod` and an `--approve-id` (a ticket or change-management ID). Before applying, the command snapshots the current state into a backup tag so the operation is reversible. If the promotion fails, the message includes the rollback command with the snapshot tag.
@@ -28,6 +40,16 @@ Production promotions are gated: a target of `prod` requires `--confirm prod` an
 
 <!-- BEGIN PROSE:examples -->
 ```bash
+# v1.5: preview the canonical promotion plan
+NSELF_V15=1 nself deploy promote ls prodsim --dry-run
+
+# v1.5: apply with production confirmation
+NSELF_V15=1 nself deploy promote ls prodsim --yes
+
+# v1.5: restore the recorded target artifacts and verified backup
+NSELF_V15=1 nself deploy rollback prodsim
+
+# v1.4 legacy examples:
 # Preview a staging-to-prod promotion
 nself promote staging prod --dry-run
 

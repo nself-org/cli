@@ -261,7 +261,7 @@ Subcommands:
 - `health` — Run health checks against a target deployment
 - `logs` — Show deployment logs for a target
 - `ops` — Deploy with the ops profile to the ops server
-- `promote` — Promote a canary deploy to 100% green traffic
+- `promote` — Promote a canary or an environment
 - `promote-env` — Promote one environment to another (e.g. staging to prod)
 - `rollback` — Roll back the last deployment for a target
 - `security` — Apply server security

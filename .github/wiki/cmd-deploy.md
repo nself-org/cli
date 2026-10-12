@@ -85,6 +85,68 @@ warning. In v1.5, `nself deploy ops` and `nself ops deploy` use the same
 pipeline path as `nself deploy --profile ops`. `--dry-run` prints the profile,
 target environment, host, and remote path before any build or SSH action.
 
+### Environment promotion (v1.5)
+
+`nself deploy promote <source> <target> --yes` promotes between inventory environments.
+Tiers must move forward or stay equal: `local`, `local-servers`, then `prod`.
+Source and target must differ. A prod-tier target requires `--yes` or terminal
+confirmation; an unconfirmed noninteractive promotion exits 4 (`E403`).
+
+`--dry-run` prints the ordered plan without contacting or changing a host. With
+`--json`, it emits one v1 envelope containing the result and planned steps.
+The steps are resolve, confirm, verify, preflight, source-health, capture, build,
+compare, snapshot, save, apply, migrate, health, and record. Builds use the target
+cascade in a scratch directory. Production values never enter the operator's tree.
+
+Compare proves per-platform image digest equality before taking a snapshot or
+changing the target. It resolves every staged compose fragment with the target's
+environment files and captures the source using its compose manifest. Each service's
+`platform` override selects its manifest; a source platform mismatch is drift.
+`linux/arm64/v8` and `linux/arm64` select the same platform. Other variants,
+including `linux/arm/v6` and `linux/arm/v7`, remain distinct.
+Drift exits 1 (`E490`) and names the affected services and lookup failures.
+Services with a compose `build:` context are unverifiable: prod refuses them;
+other tiers warn. The snapshot is created, located by tag, and verified before
+save or apply. A failed verification exits with `E206` without applying anything.
+After apply, running image identities are inspected again before migration. A
+changed tag fails promotion and restores files without restoring the database.
+
+Failures after the verified snapshot restore the saved artifacts. The database
+is restored only if migration started, followed by another health check.
+Successful rollback exits 2 (`E488`) naming the failed step. Failed rollback
+stops immediately with `E489`, the snapshot tag, backup ID, and a manual restore
+command. The local `.nself/state/promote.json` records each host's saved tar and
+changed or absent files. `nself deploy rollback <target>` and the v1.5
+`nself promote rollback` shim restore that record when it is the latest change,
+using the verified backup on its recorded target host.
+Before a promotion database restore starts, recovery persists `db_restore_started`;
+after success it persists `DBRestoredAt`. If completion cannot be saved or the
+process stops, a retry refuses with `E489`, naming the backup and warning that
+the restore may already have run. Verify the database on the backup host first.
+If the restore completed (including a restore performed by hand), run
+`nself deploy rollback <target> --db-restore-done` to record completion and finish
+recovery without restoring again. The flag asserts operator verification; it
+does not run a database restore.
+
+Record rollback reapplies all saved stacks before restoring the database, only
+when migration started and the backup has not already been restored. An already
+rolled-back record changes nothing. The project deploy operation lock covers record
+reload, file reapply, database restore, health, and persistence. For `deploy rollback`,
+foreign or superseded promotion records use the v1.5 deploy record; an unusable
+same-target record is refused with `E485` before remote writes.
+Supersession uses the deployment identity saved by the promotion, rather than
+timestamp order. On platforms without operation-lock support, rollback follows
+the deploy guard's unlocked fallback. If `promote.json` is corrupt, the `E485`
+message names the file and tells you to move it aside; `deploy rollback <target>`
+then uses `deploy.json`.
+Promotions also update the record used by `deploy status` and the next deployment.
+
+With no arguments, `deploy promote` keeps the existing canary flip. In v1.4,
+its arguments retain their previous behavior and `promote` keeps its legacy
+implementation. In v1.5, `promote <source> <target>` and
+`deploy promote-env <source> <target>` delegate to the environment promotion
+runner with one deprecation warning per process.
+
 ## Deploy Strategies
 
 | Strategy | Status | Behavior |
@@ -568,6 +630,28 @@ deploy lock is released; after the first `up` the new files stay and the error n
 This is tested with real signals sent to the apply and to the rollback. SIGKILL, a lost connection or a powered-off
 laptop are not covered: the lock stays, and the error for the next deploy says how to remove it.
 
+For v1.5 environment promotion, Ctrl-C cancels the current step and runs compensation
+on a fresh context, returning `E488` when recovery succeeds. A provisional
+`.nself/state/promote-attempt.json` keeps snapshot and pre-sync tar evidence until
+a host keeps changes, when it atomically becomes the `promote.json` authority.
+A failed attempt with no changed hosts preserves the previous live promotion.
+Interrupted records can be recovered with `deploy rollback
+<target>`; the database is restored only if migration started and it has not already
+been restored. If the final record write fails after health succeeds, `E489` says
+the promotion is live and names the snapshot, backup and pre-deploy tars. It leaves
+the provisional record available and does not undo the healthy promotion.
+
+Record rollback checks each recorded remote path, backup tar location, and the
+host's applied compose manifest identity before changing any host. A changed path
+or artifact identity refuses with `E485`. Restoring a production-class database
+requires `deploy rollback <target> --yes` or terminal confirmation; without either,
+non-interactive use returns `E403` (exit 4). The `promote rollback --yes` shim uses
+the same confirmation rule in v1.5.
+Recovery checkpoints completed file and database restores. After a transient DB
+restore failure, retry accepts the restored prior manifest (including absence)
+and skips file restoration. An interrupted apply without matching tar evidence
+refuses with `E485` and names the verified backup for operator recovery.
+
 All ssh and rsync commands use the strict host-key policy; an unknown key is `E487`.
 
 ### Rollback in v1.5 mode
@@ -759,7 +843,7 @@ configure an nginx static page via `nginx/conf.d/`.
 | `health` | Run health checks against a target deployment |
 | `logs` | Show deployment logs for a target |
 | `ops` | Deploy with the ops profile to the ops server |
-| `promote` | Promote a canary deploy to 100% green traffic |
+| `promote` | Promote a canary or an environment |
 | `promote-env` | Promote one environment to another (e.g. staging to prod) |
 | `rollback` | Roll back the last deployment for a target |
 | `security` | Apply server security |

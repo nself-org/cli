@@ -14789,20 +14789,79 @@
       "path": "nself deploy promote",
       "name": "promote",
       "parent": "nself deploy",
-      "summary": "Promote a canary deploy to 100% green traffic",
+      "summary": "Promote a canary or an environment",
       "hidden": false,
       "deprecated": null,
       "aliases": [],
       "group": null,
       "runnable": true,
-      "args": [],
-      "flags": [],
+      "args": [
+        {
+          "name": "source target",
+          "required": false,
+          "variadic": false,
+          "secret": false
+        }
+      ],
+      "flags": [
+        {
+          "name": "dry-run",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Print the promotion plan without remote writes",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        },
+        {
+          "name": "json",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Emit JSON output",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        },
+        {
+          "name": "yes",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Confirm promotion to a production-class target",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        }
+      ],
       "canon": "subcommand",
       "target": null,
       "side_effect": "remote",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-promote.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -14899,6 +14958,23 @@
           "output": null,
           "cli_only": false,
           "secret": false
+        },
+        {
+          "name": "yes",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Confirm promotion to a production-class target",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
         }
       ],
       "canon": "subcommand",
@@ -14939,6 +15015,23 @@
           "output": null,
           "cli_only": false,
           "secret": false
+        },
+        {
+          "name": "yes",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Confirm restoring a production-class database",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
         }
       ],
       "canon": "subcommand",
@@ -14969,7 +15062,42 @@
           "secret": false
         }
       ],
-      "flags": [],
+      "flags": [
+        {
+          "name": "db-restore-done",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Record operator verification that an uncertain database restore completed",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        },
+        {
+          "name": "yes",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Confirm restoring a production-class database",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        }
+      ],
       "canon": "subcommand",
       "target": null,
       "side_effect": "destructive",
@@ -22514,7 +22642,7 @@
     "deprecated_shims": 43,
     "plugin": 11,
     "core_missing": [],
-    "json_envelope": 192,
+    "json_envelope": 193,
     "json_legacy": 34
   }
 }

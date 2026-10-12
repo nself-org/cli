@@ -1,8 +1,6 @@
 package commands
 
-// Purpose: RunE implementations for "nself deploy status", "rollback", and
-// "promote". Inputs are the cobra command/args; outputs are printed status or
-// promotion results, or an error.
+// Purpose: RunE implementations for deploy status, rollback, and promote.
 // Constraints: split out of deploy.go (CLI-R12) as a pure move, no behavior change.
 
 import (
@@ -19,6 +17,7 @@ import (
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/deploy"
 	"github.com/nself-org/cli/internal/deploy/bluegreen"
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/promote"
 	"github.com/nself-org/cli/internal/ui"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
@@ -147,7 +146,6 @@ func runDeployRollback(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Blue/green rollback path (Y17).
 	bgEnabled := os.Getenv("NSELF_FEATURE_BLUE_GREEN_DEPLOY") == "true"
 	if bgEnabled {
 		ui.Info(fmt.Sprintf("Rolling back blue/green deploy for target: %s", target))
@@ -162,9 +160,14 @@ func runDeployRollback(cmd *cobra.Command, args []string) error {
 
 	// compat.V15(P7-DEPL-24): promote snapshot rollback -> restore the remote pre-deploy tar (and the prod database backup) in place
 	if compat.V15() {
+		// compat.V15(P7-DEPL-15): local promote snapshot -> latest verified remote promotion record
+		if handled, rbErr := rollbackPromoteForTarget(withPromoteRollbackConfirmation(cmd.Context(), cmd), workdir, target); handled {
+			return rbErr
+		}
 		if handled, rbErr := rollbackRemoteV15(cmd, workdir, target); handled {
 			return rbErr
 		}
+		return errs.New("E485", "no usable v1.5 rollback record; nothing was changed")
 	}
 
 	// PREVIEW: rollback is a PREVIEW feature. It restores the last promote snapshot
@@ -174,11 +177,7 @@ func runDeployRollback(cmd *cobra.Command, args []string) error {
 	ui.Info(fmt.Sprintf("Rolling back last deployment for target: %s", target))
 
 	// DEP-04: wire to last promote tag written by nself promote.
-	// promote.Rollback with an empty tag reads the latest promote record from
-	// <projectDir>/.nself/promotions/ and restores the backup snapshot created
-	// before that promotion was applied. This ensures rollback always targets
-	// the last honest production-change surface (nself promote), not an
-	// arbitrary git tag or manual state.
+	// An empty tag reads the latest promote record and restores its snapshot.
 	if err := promote.Rollback(cmd.Context(), workdir, ""); err != nil {
 		return fmt.Errorf("rollback failed: %w", err)
 	}
@@ -188,7 +187,7 @@ func runDeployRollback(cmd *cobra.Command, args []string) error {
 }
 
 // runDeployPromote flips Nginx to 100% green after a manual canary review.
-func runDeployPromote(cmd *cobra.Command, args []string) error {
+func runDeployCanaryPromote(cmd *cobra.Command, args []string) error {
 	workdir, err := projectRoot()
 	if err != nil {
 		return err
