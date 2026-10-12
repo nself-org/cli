@@ -1,0 +1,82 @@
+=== <TS>_001_firebase_schema.sql
+-- Firebase → nSelf schema migration
+-- Project: golden_proj
+-- Generated: <TS>
+-- Review carefully before applying to production.
+
+BEGIN;
+
+-- Collection: users
+-- Documents sampled: 2
+CREATE TABLE IF NOT EXISTS public.users (
+  id TEXT NOT NULL PRIMARY KEY,
+  active BOOLEAN,
+  age BIGINT,
+  name TEXT
+);
+
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+-- TODO: add RLS policies for public.users (Firebase security rules → Postgres RLS)
+
+COMMIT;
+
+=== MIGRATION_SUMMARY.md
+# Firebase → nSelf Migration Summary
+
+**Project:** golden_proj  
+**Generated:** <TS>
+
+## Inferred Tables
+
+| Firestore Collection | PostgreSQL Table | Columns | Documents Sampled |
+|---|---|---|---|
+| `users` | `users` | 4 | 2 |
+
+## Next Steps
+
+1. **Review the generated SQL** — column types are inferred from a sample and may need adjustment.
+2. **Apply the schema migration**: `nself db migrate`
+3. **Apply Hasura metadata**: `nself hasura metadata apply`
+4. **Migrate data**: write a data migration script that reads your Firestore export and inserts rows.
+5. **Add RLS policies**: replace `-- TODO: add RLS policies` with your actual row-level security rules.
+6. **Reset user passwords**: Firebase passwords cannot be migrated. Send password-reset emails to all imported auth users.
+7. **Test thoroughly** before decommissioning the Firebase project.
+
+=== auth_import.sql
+-- Firebase Auth user import
+-- Source: ../../test/fixtures/import/firebase/auth-export.json
+-- Users: 3
+-- Review carefully; passwords are NOT migrated (users must reset).
+
+BEGIN;
+
+INSERT INTO auth.users (id, email, email_confirmed_at, raw_user_meta_data, created_at, is_sso_user)
+VALUES (gen_random_uuid(), 'ann@example.test', NOW(), '{"display_name":"Ann Example","firebase_uid":"fbuid-ann-0001"}'::jsonb, NOW(), false)
+ON CONFLICT (email) DO NOTHING;
+
+INSERT INTO auth.users (id, email, email_confirmed_at, raw_user_meta_data, created_at, is_sso_user)
+VALUES (gen_random_uuid(), 'bob@example.test', NULL, '{"display_name":"Bob Example","firebase_uid":"fbuid-bob-0002"}'::jsonb, NOW(), false)
+ON CONFLICT (email) DO NOTHING;
+
+INSERT INTO auth.users (id, email, email_confirmed_at, raw_user_meta_data, created_at, is_sso_user)
+VALUES (gen_random_uuid(), 'cy@example.test', NOW(), '{"display_name":"","firebase_uid":"fbuid-cy-0003"}'::jsonb, NOW(), false)
+ON CONFLICT (email) DO NOTHING;
+
+COMMIT;
+
+=== hasura_metadata.yaml
+# Hasura metadata — Firebase migration scaffold
+# Apply via: nself hasura metadata apply
+
+version: 3
+
+sources:
+  - name: default
+    kind: postgres
+    tables:
+      - table:
+          schema: public
+          name: users
+        # Collection: users (2 documents sampled)
+        # TODO: configure select/insert/update/delete permissions
+
