@@ -81,7 +81,8 @@ func AuthEntry(passthrough map[string]string) (entry string, keyMissing bool) {
 // (Ref.IsDefaultVersion), so a project lock pin wins over both; a pin in the
 // pre-rename nhost/hasura-auth spelling is returned as is (same digest;
 // ResolveImage would drop it as another repository). Any other value is an
-// explicit nhost/auth tag and outranks the pin. The current release without a
+// explicit tag and outranks the pin: a release from 0.43.0 on nhost/auth, any
+// other tag on the frozen nhost/hasura-auth line it always named. The current release without a
 // valid key, rendered or pinned at any release from 0.43.0 (for example a pin
 // `nself update` moved), is an error, not a container that crash-loops.
 func (g *Generator) authImage() (string, error) {
@@ -100,12 +101,13 @@ func (g *Generator) authImage() (string, error) {
 	}
 	image := ""
 	switch {
-	case version != "" && !authVersionRE.MatchString(version):
-		// A moving tag (latest) stays on the frozen line it always named; only a
-		// release number moves to nhost/auth (lens review, cli#702).
+	case version != "" && !authTagNeedsKey(version):
+		// A moving tag (latest) or a release before 0.43.0 keeps the exact string it
+		// rendered before the rename: nhost/auth lacks some of those tags (0.42.0),
+		// and latest there would be 0.52+ (lens and adversarial reviews, cli#702).
 		return frozenAuthRepo + ":" + version, nil
 	case version != "":
-		if authTagNeedsKey(version) && !authKeySet(g.cfg.Passthrough) {
+		if !authKeySet(g.cfg.Passthrough) {
 			noticeAuth("AUTH_VERSION=%s needs %s (64 hex characters); auth will not start without it", version, AuthEncryptionKeyEnv)
 		}
 	default:
@@ -123,8 +125,9 @@ func (g *Generator) authImage() (string, error) {
 	default:
 		image = ResolveImage("auth", ImageRef("auth-v14", version))
 	}
-	if version == "" && authTagNeedsKey(authTag(image)) && !authKeySet(g.cfg.Passthrough) {
-		return "", fmt.Errorf("auth image %s needs %s (64 hex characters) in the env: set it in .env.secrets, or keep auth on 0.36.0 (see the Image-Lock wiki page)", imageBase(image), AuthEncryptionKeyEnv)
+	needsKey := authTagNeedsKey(authTag(image)) || (cur.IndexDigest != "" && strings.HasSuffix(image, "@"+cur.IndexDigest))
+	if version == "" && needsKey && !authKeySet(g.cfg.Passthrough) {
+		return "", fmt.Errorf("auth image %s needs %s (64 hex characters) in the env: put back the key this project ran with (.env.secrets); a database it migrated cannot go back to 0.36.0 without restoring the pre-upgrade backup (Image-Lock wiki page, Roll back)", imageBase(image), AuthEncryptionKeyEnv)
 	}
 	return image, nil
 }

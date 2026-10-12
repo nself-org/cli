@@ -62,11 +62,11 @@ Upstream renamed `nhost/hasura-auth` to `nhost/auth`; the old name stops at 0.42
 | v1.4 | `auth-v14`: `docker.io/nhost/auth:0.36.0@sha256:...` in lock mode, `nhost/auth:0.36.0` in legacy mode |
 | v1.5, no `AUTH_ENCRYPTION_KEY` | `auth-v14`; `nself build` prints one notice |
 | v1.5, `AUTH_ENCRYPTION_KEY` set (64 hex characters) before the first build, so no auth pin yet | `auth` (0.52.0) |
-| the lock pins 0.52.0 but the key is missing or malformed | `nself build` stops with an error naming `AUTH_ENCRYPTION_KEY` |
+| the lock pins 0.43.0 or later (0.52.0) but the key is missing or malformed | `nself build` stops with an error naming `AUTH_ENCRYPTION_KEY` |
 | `AUTH_VERSION=0.52.0`, no lock pin | `auth` with the key; without it `auth-v14` and the notice |
 | the project lock pins auth 0.36.0 (either repository name) | the pin, in both modes, until `nself update` moves it |
-| `AUTH_VERSION` set to another release (`0.45.0`) | that tag of `nhost/auth`, unpinned, in any mode; 0.43.0 and later without the key print a notice |
-| `AUTH_VERSION=latest` or another non-release tag | `nhost/hasura-auth:<tag>`, the frozen line it always named |
+| `AUTH_VERSION` set to a release from 0.43.0 (`0.45.0`) | `nhost/auth:<tag>`, unpinned, in any mode; without the key `nself build` prints a notice |
+| `AUTH_VERSION=latest`, a release before 0.43.0 (`0.42.0`) or another tag | `nhost/hasura-auth:<tag>`, the exact string earlier releases rendered (the frozen line) |
 
 `AUTH_VERSION=0.36.0` (what `nself init` writes into `.env`) and `AUTH_VERSION=0.52.0` are defaults, not overrides: neither drops a lock pin.
 
@@ -88,7 +88,7 @@ Auth migrates its schema one way, so rolling back means restoring the backup fro
 1. `nself stop auth hasura`, so neither reconnects during the restore.
 2. `nself db reset --yes` recreates the database. A plain restore over the migrated database fails (E207: `pg_restore --clean` cannot drop `auth.users` while objects the newer release added depend on it; debt D-0663).
 3. `nself backup restore <id> --only pg --yes`.
-4. Put the saved `nself.lock.yaml` back (a project without a lock removes its `AUTH_VERSION=0.52.0` line instead).
+4. Put the saved `nself.lock.yaml` back. A project without a lock removes `AUTH_VERSION=0.52.0` and `AUTH_ENCRYPTION_KEY` instead (keep a copy of the key): while the key is set, v1.5 renders 0.52.0 again and re-migrates the restored database.
 5. `nself build`, then `nself start`.
 
 Pinning back without the restore is unsupported: 0.36.0 starts on the migrated schema, but every TOTP sign-in fails because the secrets are now encrypted. `scripts/ci/auth-smoke.sh` proves the upgrade and both rollback paths on Linux with users, sessions, a refresh token and a TOTP user (`NSELF_V15=1 bash scripts/ci/auth-smoke.sh`; it needs Docker, Go, curl, python3 and free ports 80, 443, 4000, 5432 and 8080).

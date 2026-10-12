@@ -278,12 +278,19 @@ set_pin() {
   sed "s|^  auth: .*|  auth: $1|" "$PDIR/nself.lock.yaml" > "$PDIR/nself.lock.yaml.new" \
     && mv "$PDIR/nself.lock.yaml.new" "$PDIR/nself.lock.yaml"
 }
-# wait_stack: wait up to 240 s for auth and Hasura to answer /healthz.
+# own_ports: 127.0.0.1:4000 and :8080 are published by this run's auth and Hasura
+# containers, so no request can land in another stack.
+own_ports() {
+  docker port "${PROJECT}_auth" 2>/dev/null | grep -q '127.0.0.1:4000$' \
+    && docker port "${PROJECT}_hasura" 2>/dev/null | grep -q '127.0.0.1:8080$'
+}
+# wait_stack: wait up to 240 s for this run's auth and Hasura to answer /healthz.
 wait_stack() {
   local i=0
   while [ "$i" -lt 80 ]; do
     if [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$AUTH_URL/healthz" 2>/dev/null)" = 200 ] \
-      && [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$HASURA_URL/healthz" 2>/dev/null)" = 200 ]; then
+      && [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$HASURA_URL/healthz" 2>/dev/null)" = 200 ] \
+      && own_ports; then
       return 0
     fi
     i=$((i + 1))
@@ -305,6 +312,20 @@ build_start() {
 
 # ---- step 1: new project on auth-v14 -----------------------------------------------
 step "1 new project, auth-v14"
+# The stack publishes fixed loopback ports: refuse to start when any is taken.
+if ! python3 -c 'import socket,sys
+for p in (80, 443, 4000, 5432, 8080):
+    s = socket.socket()
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        s.bind(("127.0.0.1", p))
+    except OSError:
+        sys.exit("port %d is in use" % p)
+    finally:
+        s.close()' 2>"$WORK/ports.err"; then
+  fatal "ports 80, 443, 4000, 5432 and 8080 are free on 127.0.0.1" "$(cat "$WORK/ports.err")"
+fi
+pass "ports 80, 443, 4000, 5432 and 8080 are free on 127.0.0.1"
 nsf init --non-interactive --name "$PROJECT" --domain local.nself.org --no-pgvector
 [ "$RC" -eq 0 ] || fatal "nself init --non-interactive exits 0" "rc=$RC $(nsf_tail)"
 pass "nself init --non-interactive exits 0"

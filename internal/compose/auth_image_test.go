@@ -73,8 +73,9 @@ func TestAuthImageByMode(t *testing.T) {
 		{"current version with key in v1.4", cur.Version, fakeAuthKey, "", PinningLock, cur.String()},
 		{"current version without key stays on auth-v14", cur.Version, "", "", PinningLock, v14.String()},
 		{"current version without key in v1.5", cur.Version, "", "1", PinningLock, v14.String()},
-		{"explicit other version in v1.4", "0.40.0", "", "", PinningLock, "nhost/auth:0.40.0"},
-		{"explicit other version in v1.5", "0.40.0", fakeAuthKey, "1", PinningLock, "nhost/auth:0.40.0"},
+		{"explicit older release in v1.4", "0.40.0", "", "", PinningLock, "nhost/hasura-auth:0.40.0"},
+		{"explicit 0.42.0 keeps the frozen line", "0.42.0", "", "", PinningLock, "nhost/hasura-auth:0.42.0"},
+		{"explicit older release in v1.5", "0.40.0", fakeAuthKey, "1", PinningLock, "nhost/hasura-auth:0.40.0"},
 		{"latest stays on the frozen line in v1.4", "latest", "", "", PinningLock, "nhost/hasura-auth:latest"},
 		{"latest stays on the frozen line in v1.5", "latest", fakeAuthKey, "1", PinningLegacy, "nhost/hasura-auth:latest"},
 		{"explicit newer release without key renders (with a notice)", "0.45.0", "", "", PinningLock, "nhost/auth:0.45.0"},
@@ -120,8 +121,8 @@ func TestAuthLockPinKept(t *testing.T) {
 				}
 				// Any other AUTH_VERSION is explicit and outranks the pin.
 				t.Setenv("AUTH_VERSION", "0.40.0")
-				if got := authImageFor(t, "0.40.0", ""); got != "nhost/auth:0.40.0" {
-					t.Errorf("explicit AUTH_VERSION=0.40.0: auth image = %q, want nhost/auth:0.40.0", got)
+				if got := authImageFor(t, "0.40.0", ""); got != "nhost/hasura-auth:0.40.0" {
+					t.Errorf("explicit AUTH_VERSION=0.40.0: auth image = %q, want nhost/hasura-auth:0.40.0", got)
 				}
 			})
 		})
@@ -211,7 +212,7 @@ func TestAuthCatalogShowsModeEntry(t *testing.T) {
 
 func TestAuthCurrentReleaseNeedsKey(t *testing.T) {
 	cur, _ := LockedRef("auth")
-	for _, pinAt := range []string{cur.String(), "docker.io/nhost/auth:0.45.0@sha256:" + strings.Repeat("ab", 32)} {
+	for _, pinAt := range []string{cur.String(), "docker.io/nhost/auth:0.45.0@sha256:" + strings.Repeat("ab", 32), "docker.io/nhost/auth@" + cur.IndexDigest} {
 		compattest.Both(t, func(t *testing.T) {
 			for _, mode := range []string{PinningLock, PinningLegacy} {
 				setMode(t, mode)
