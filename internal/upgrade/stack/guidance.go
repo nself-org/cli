@@ -105,5 +105,12 @@ func failureFix(o Options, j *Journal, cause error) string {
 	if !stateMayHaveChanged(j) {
 		return "Nothing was changed: the old stack is still running. Retry with `nself update stack --yes`. Do not restore the backup."
 	}
-	return recoveryFix(j)
+	return recoveryFix(j) + "; " + archiveAfterRestoreFix(j)
+}
+
+// archiveAfterRestoreFix tells a production operator to archive the journal after a manual restore.
+// Inputs: journal. Outputs: the archive step and the retry alternative.
+// Constraints: a plain retry resumes the failed step against whatever stack is running.
+func archiveAfterRestoreFix(j *Journal) string {
+	return fmt.Sprintf("3. After restoring, archive the journal before any new update: move .nself/state/update-stack.json to .nself/state/update-stack.%s.json. A retry without archiving resumes this run at the failed step, so retry `nself update stack --yes` only if you fixed the cause and did not restore.", j.RunID)
 }

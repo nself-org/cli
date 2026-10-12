@@ -111,7 +111,11 @@ step-one restore command, the pinned snapshot path
 Production and staging never restore automatically. A failed `start`, `migrate`,
 `readiness` or `health` step records `awaiting-operator`, returns E139 (exit 2),
 and prints the exact `nself backup restore '<backup-id>'` command plus the
-snapshot restart command, because the database may have changed. A failed `pull`
+snapshot restart command, because the database may have changed. It also tells
+you to archive the journal (move `.nself/state/update-stack.json` to
+`.nself/state/update-stack.<run_id>.json`) after a manual restore: a retry without
+archiving resumes the run at the failed step, which is right only when you fixed
+the cause and did not restore. A failed `pull`
 or `build` changes nothing: the message says so, tells you to retry, and prints no
 restore command. If a resume cannot re-verify the step-one backup (digest changed,
 file missing or truncated), it returns E403 and prints `nself backup verify

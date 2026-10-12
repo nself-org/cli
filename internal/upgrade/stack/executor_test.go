@@ -248,6 +248,11 @@ func TestStackUpdateProdFailureE139(t *testing.T) {
 	if !strings.Contains(err.Error(), "nself backup restore 'step-one-backup'") {
 		t.Fatalf("missing exact recovery guidance: %v", err)
 	}
+	// After restoring by hand the operator must archive the journal; a plain retry
+	// would resume at migrate against the restored old stack.
+	if !strings.Contains(err.Error(), "move .nself/state/update-stack.json to .nself/state/update-stack."+j.RunID+".json") {
+		t.Fatalf("recovery guidance does not say to archive the journal: %v", err)
+	}
 	stored, err := loadJournal(o.ProjectDir)
 	if err != nil || stored.Status != "awaiting-operator" {
 		t.Fatalf("journal did not retain operator status: %+v %v", stored, err)
