@@ -40,6 +40,10 @@ export interface ResponseInfo {
 
 export interface CallOptions {
   signal?: AbortSignal;
+  /**
+   * Called once per response with the headers. For streams it runs before the body is read,
+   * so exitCode stays undefined: the stream's exit code is an HTTP trailer fetch does not expose.
+   */
   onResponse?: (info: ResponseInfo) => void;
 }
 

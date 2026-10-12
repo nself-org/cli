@@ -160,6 +160,17 @@ func TestTupleEdges(t *testing.T) {
 	}
 }
 
+func TestRequiredArgsHonoured(t *testing.T) {
+	req := &Schema{Required: []string{"args"}, Properties: map[string]*Schema{"args": {Type: []byte(`"array"`), Items: []byte(`{"type":"string"}`)}}}
+	decls, optional, err := requestDecls("X", Operation{ID: "nself_x", Request: req})
+	if err != nil || optional {
+		t.Fatalf("args listed in required must make the request mandatory: optional=%v err=%v", optional, err)
+	}
+	if !strings.Contains(decls[2].Body, "args: XArgs;") {
+		t.Errorf("request body = %q", decls[2].Body)
+	}
+}
+
 func readFile(t *testing.T, p string) string {
 	t.Helper()
 	b, err := os.ReadFile(p)

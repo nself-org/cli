@@ -104,6 +104,11 @@ func requestDecls(name string, op Operation) ([]typeDecl, bool, error) {
 		flags = &Schema{Type: []byte(`"object"`), Properties: map[string]*Schema{}, AdditionalProperties: []byte("false")}
 	}
 	argsRequired := args.MinItems != nil && *args.MinItems > 0
+	if op.Request != nil {
+		for _, r := range op.Request.Required {
+			argsRequired = argsRequired || r == "args"
+		}
+	}
 	req := "{\n  args" + map[bool]string{true: "", false: "?"}[argsRequired] + ": " + name + "Args;\n  flags?: " + name + "Flags;\n  confirm?: string;\n}"
 	decls := []typeDecl{
 		{Name: name + "Args", Body: tsType(args, 0), Kind: "type"},
