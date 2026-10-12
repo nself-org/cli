@@ -50,7 +50,7 @@ func authCandidate(pin string, passthrough map[string]string) plan.Candidate {
 // missing or malformed: the rebuild would refuse it after plugins were already
 // installed, and restoring the lock does not uninstall them.
 func authKeyPreflight(l lock.Lock) error {
-	pin := l.Images["auth"]
+	pin := l.Pins()["auth"] // digest pins and tag-only (unpinned) entries alike
 	if pin == "" || !compose.AuthRefNeedsKey(pin) {
 		return nil
 	}

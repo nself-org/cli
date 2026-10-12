@@ -135,6 +135,14 @@ func TestUpdatePlanAuthFromConfig(t *testing.T) {
 // plugin install, no image pin move, no CLI update, and the tree is untouched.
 func TestUpdateYesAuthKeyPreflight(t *testing.T) {
 	cur, _ := compose.LockedRef("auth")
+	for _, unpinned := range []bool{false, true} {
+		t.Run(map[bool]string{false: "digest pin", true: "tag-only unpinned entry"}[unpinned], func(t *testing.T) {
+			testAuthKeyPreflight(t, cur, unpinned)
+		})
+	}
+}
+
+func testAuthKeyPreflight(t *testing.T, cur compose.Ref, unpinned bool) {
 	dir := updateProject(t)
 	t.Setenv(compose.AuthEncryptionKeyEnv, "")
 	_ = os.Unsetenv(compose.AuthEncryptionKeyEnv)
@@ -142,7 +150,11 @@ func TestUpdateYesAuthKeyPreflight(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	l.Images["auth"] = cur.String()
+	if unpinned {
+		l.Unpinned["auth"] = "docker.io/nhost/auth:0.45.0"
+	} else {
+		l.Images["auth"] = cur.String()
+	}
 	if err := writeLockFile(dir, *l); err != nil {
 		t.Fatal(err)
 	}
