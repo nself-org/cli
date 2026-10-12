@@ -94,7 +94,14 @@ func unwritableIn(parent, dir string) string {
 	}
 	var bad string
 	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || !d.IsDir() || bad != "" {
+		if bad != "" {
+			return nil
+		}
+		if err != nil { // an unreadable directory cannot be emptied either
+			bad = p
+			return nil
+		}
+		if !d.IsDir() {
 			return nil
 		}
 		if !dirWritable(p) {

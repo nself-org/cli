@@ -332,7 +332,9 @@ if [[ $MODE != add ]]; then
   finish_restore() {
     nself "$W/a" start --timeout 180
     wait_healthy nginx
-    [[ ! -e $W/a/.nself/generated/traefik ]] || { echo 'FAIL: .nself/generated/traefik survived the remove' >&2; return 1; }
+    for d in traefik traefik-static; do
+      [[ ! -e $W/a/.nself/generated/$d ]] || { echo "FAIL: .nself/generated/$d survived the remove" >&2; return 1; }
+    done
     manifest "$W/a" rt-after.manifest
     compare rt-before.manifest rt-after.manifest
     matrix nginx-restored
@@ -376,7 +378,9 @@ if [[ $MODE != add ]]; then
     if kill -0 "$build_pid" 2>/dev/null; then alive=yes; fi
     kill -9 "$build_pid" 2>/dev/null || true
     wait "$build_pid" 2>/dev/null || true
+    build_pid=''
     printf 'traefik gone: %s\nbuild still running at kill: %s\n' "$gone" "$alive" | tee "$W/evidence/kill-mid-remove.txt"
+    [[ $alive == yes ]] || echo 'WARN: the build had already exited when killed; this run proves the recovery path only, not a mid-build kill' >&2
     [[ $gone == 1 ]] || { echo 'FAIL: the traefik container never stopped' >&2; exit 1; }
     # Recovery re-runs the interrupted step: build is idempotent and removes the orphans the kill left
     # (start never removes orphans, DEPL EPIC 2026-10-11 ruling 2), then start brings nginx back.
