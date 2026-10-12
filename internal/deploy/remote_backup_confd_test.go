@@ -256,3 +256,29 @@ func TestApplyRefusesAFrontRootWithFiles(t *testing.T) {
 	}
 	_ = f2
 }
+
+func TestSyncShipsGeneratedConfDOnly(t *testing.T) {
+	needTools(t)
+	f := newFakeRemote(t)
+	rp := t.TempDir()
+	stage := t.TempDir()
+	writeFile(t, filepath.Join(stage, "nginx", "conf.d", "default.conf"), buildMarker+"# new\n", 0o644)
+	writeFile(t, filepath.Join(stage, "nginx", "conf.d-prod", "x.conf"), buildMarker, 0o644)
+	set := ArtifactSet{StageDir: stage, RemotePath: rp, Files: []string{"nginx/conf.d/default.conf"}}
+	if err := SyncArtifacts(context.Background(), f, set); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, filepath.Join(rp, "nginx", "conf.d", "default.conf")); got != buildMarker+"# new\n" {
+		t.Errorf("default.conf on the host = %q", got)
+	}
+	for _, bad := range []string{"nginx/conf.d-prod/x.conf", "nginx/conf.d/sub/x.conf", "nginx/conf.d/.x.conf"} {
+		rp2 := t.TempDir()
+		set2 := ArtifactSet{StageDir: stage, RemotePath: rp2, Files: []string{"nginx/conf.d/default.conf", bad}}
+		if err := SyncArtifacts(context.Background(), f, set2); err == nil || !strings.Contains(err.Error(), "conf.d") {
+			t.Errorf("%s: err = %v", bad, err)
+		}
+		if exists(filepath.Join(rp2, "nginx")) {
+			t.Errorf("%s: something was synced before the refusal", bad)
+		}
+	}
+}

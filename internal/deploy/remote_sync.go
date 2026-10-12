@@ -35,6 +35,9 @@ const ShippedFile = ".nself/deploy-shipped.txt"
 // SyncArtifacts copies the set into remotePath in place, then checks the env
 // file modes. It never deletes anything.
 func SyncArtifacts(ctx context.Context, r Remote, set ArtifactSet) error {
+	if err := checkConfDFiles(set.Files); err != nil {
+		return err
+	}
 	if set.KeepHostEnv {
 		script := fmt.Sprintf(`umask 077; mkdir -p %s; if [ ! -e %s ]; then : > %s; fi`, q(set.RemotePath), q(path.Join(set.RemotePath, ".env")), q(path.Join(set.RemotePath, ".env")))
 		if _, err := r.Run(ctx, shScript(script)); err != nil {
@@ -55,6 +58,17 @@ func SyncArtifacts(ctx context.Context, r Remote, set ArtifactSet) error {
 		}
 	}
 	return writeShipped(ctx, r, set)
+}
+
+// checkConfDFiles refuses a set that lists a path under a conf.d* dir other than
+// a generated nginx/conf.d/<name>.conf (see shippable): conf.d stays hand-managed.
+func checkConfDFiles(files []string) error {
+	for _, f := range files {
+		if strings.Contains(f, "conf.d") && !shippable(f) {
+			return fmt.Errorf("the artifact set lists %q under conf.d, which only a generated nginx/conf.d/<name>.conf may enter; nothing was synced", f)
+		}
+	}
+	return nil
 }
 
 // writeShipped records what this deploy shipped (atomically: temp file, rename).
