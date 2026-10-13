@@ -8,6 +8,7 @@
   "server_names": [
     "api.a.test",
     "auth.a.test",
+    "docs.a.test",
     "notify.a.test"
   ],
   "service_names": [

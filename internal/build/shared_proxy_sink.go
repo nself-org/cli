@@ -37,8 +37,8 @@ func sharedMarker(project string) string {
 
 // inSites reports whether p is a path directly inside the owner's sites dir.
 func (w *sharedSink) inSites(p string) bool {
-	if !filepath.IsAbs(p) {
-		p = filepath.Join(w.sp.workdir, p)
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
 	}
 	return filepath.Clean(filepath.Dir(p)) == w.sp.sitesDir
 }
@@ -66,7 +66,9 @@ func (w *sharedSink) body(data []byte) []byte {
 	} else {
 		text = sharedMarker(w.sp.project) + "\n" + text
 	}
-	return []byte(routemodel.QualifyText(text, w.sp.qualify))
+	text = routemodel.QualifyText(text, w.sp.qualify)
+	// One http{} context: names a snippet declares must not repeat across projects.
+	return []byte(routemodel.PrefixDeclared(text, w.sp.project+"_"))
 }
 
 // record notes a written conf and the certificate directories it references.
@@ -74,6 +76,9 @@ func (w *sharedSink) record(path string, data []byte) {
 	w.sp.files["nginx/sites/"+filepath.Base(path)] = true
 	for _, g := range certDirRE.FindAllStringSubmatch(string(data), -1) {
 		w.sp.certDirs[g[1]] = true
+	}
+	for _, n := range confServerNames(string(data)) {
+		w.sp.written[n] = true
 	}
 }
 

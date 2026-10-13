@@ -110,9 +110,16 @@ func hasSymlink(root, rel string) bool {
 	return false
 }
 
+// CertMarker is the file installCert writes into a certificate directory it
+// created for a project; it holds the project name. A certificate file is
+// removable only from a directory carrying this marker (a hand-made
+// registration cannot name the owner's own pair).
+const CertMarker = ".nself-project"
+
 // Removable reports whether project may delete rel (owner-relative): a valid
-// registered path that no other project lists and that does not pass through a
-// symlink (an ACME-managed pair is a symlink, and is never removed here).
+// registered path that no other project lists, that does not pass through a
+// symlink (an ACME-managed pair is a symlink, and is never removed here) and,
+// for a certificate file, that sits in a directory this project created.
 func (s Set) Removable(ownerDir, project, rel string) bool {
 	if !ValidFile(rel) || hasSymlink(ownerDir, rel) {
 		return false
@@ -123,6 +130,11 @@ func (s Set) Removable(ownerDir, project, rel string) bool {
 				return false
 			}
 		}
+	}
+	if strings.HasPrefix(rel, "ssl/certificates/") {
+		dir := filepath.Dir(filepath.Join(ownerDir, filepath.FromSlash(rel)))
+		got, err := os.ReadFile(filepath.Join(dir, CertMarker))
+		return err == nil && strings.TrimSpace(string(got)) == project
 	}
 	return true
 }
@@ -171,6 +183,7 @@ func Unregister(ownerDir, project string) ([]string, error) {
 		return nil, nil
 	}
 	var removed []string
+	certDirs := map[string]bool{}
 	for _, rel := range reg.Files {
 		if !set.Removable(ownerDir, project, rel) {
 			continue
@@ -182,8 +195,12 @@ func Unregister(ownerDir, project string) ([]string, error) {
 			return removed, err
 		}
 		if strings.HasPrefix(rel, "ssl/certificates/") {
-			_ = os.Remove(filepath.Dir(path)) // fails while the directory is not empty
+			certDirs[filepath.Dir(path)] = true
 		}
+	}
+	for d := range certDirs { // the marker goes last, then the directory if empty
+		_ = os.Remove(filepath.Join(d, CertMarker))
+		_ = os.Remove(d)
 	}
 	if err := os.Remove(filepath.Join(dir, FileName(project))); err != nil && !os.IsNotExist(err) {
 		return removed, err

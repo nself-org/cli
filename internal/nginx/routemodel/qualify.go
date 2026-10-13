@@ -100,3 +100,48 @@ func QualifyText(text string, container func(host string) (string, bool)) string
 	sub(upstreamServerRE)
 	return text
 }
+
+var (
+	upstreamDeclRE = regexp.MustCompile(`(?m)^\s*upstream\s+([A-Za-z0-9_.-]+)\s*\{`)
+	zoneDeclRE     = regexp.MustCompile(`(?:limit_req_zone|limit_conn_zone)\s[^;]*?\bzone=([A-Za-z0-9_.-]+):`)
+	keysZoneRE     = regexp.MustCompile(`\bkeys_zone=([A-Za-z0-9_.-]+):`)
+	mapDeclRE      = regexp.MustCompile(`(?m)^\s*(?:map|geo)\s[^{;]*?\$([A-Za-z_][A-Za-z0-9_]*)\s*\{`)
+)
+
+// PrefixDeclared prefixes the http-level names a conf declares (`upstream X`,
+// limit_req_zone/limit_conn_zone zone=X, proxy_cache_path keys_zone=X, and the
+// variable of a `map`/`geo` block) and every reference to them in the same text.
+// One nginx has one http{} context: two projects' copies of one plugin snippet
+// would otherwise declare the same name twice, and nginx refuses to load that.
+func PrefixDeclared(text, prefix string) string {
+	names := func(re *regexp.Regexp) (out []string) {
+		for _, m := range re.FindAllStringSubmatch(text, -1) {
+			if !strings.HasPrefix(m[1], prefix) { // already prefixed: idempotent
+				out = append(out, m[1])
+			}
+		}
+		return out
+	}
+	rewrite := func(re string, name string) {
+		r := regexp.MustCompile(re)
+		text = r.ReplaceAllString(text, "${1}"+prefix+name+"${2}")
+	}
+	for _, n := range names(upstreamDeclRE) {
+		q := regexp.QuoteMeta(n)
+		rewrite(`(?m)(^\s*upstream\s+)`+q+`(\s*\{)`, n)
+		rewrite(`((?:://|proxy_pass\s+|grpc_pass\s+|fastcgi_pass\s+))`+q+`([:/;\s"']|$)`, n)
+	}
+	for _, n := range append(names(zoneDeclRE), names(keysZoneRE)...) {
+		q := regexp.QuoteMeta(n)
+		rewrite(`(\bzone=)`+q+`(:)`, n)
+		rewrite(`(\bkeys_zone=)`+q+`(:)`, n)
+		rewrite(`(\blimit_req\s+zone=)`+q+`(\b[^.\w-]|\s|;|$)`, n)
+		rewrite(`(\blimit_conn\s+)`+q+`(\s)`, n)
+		rewrite(`(\bproxy_cache\s+)`+q+`(\s*;)`, n)
+	}
+	for _, n := range names(mapDeclRE) {
+		q := regexp.QuoteMeta(n)
+		rewrite(`(\$)`+q+`([^A-Za-z0-9_]|$)`, n)
+	}
+	return text
+}

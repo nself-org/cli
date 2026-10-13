@@ -123,6 +123,7 @@ func TestUnregister(t *testing.T) {
 	put("nginx/sites/b.a.conf", "x")
 	put("nginx/sites/c.x.conf", "x")
 	put("ssl/certificates/b-test/fullchain.pem", "x")
+	put("ssl/certificates/b-test/"+CertMarker, "b\n")
 	gen := filepath.Join(root, "ssl", "certificates", ".acme.gen-1")
 	put("ssl/certificates/.acme.gen-1/fullchain.pem", "keep")
 	if err := os.Symlink(gen, filepath.Join(root, "ssl", "certificates", "acme")); err != nil {

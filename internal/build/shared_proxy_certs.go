@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/sharedproxy"
 )
 
 type certAction int
@@ -175,7 +176,7 @@ func probeWritable(target string) error {
 	}
 	f, err := os.CreateTemp(dir, ".nself-probe-*")
 	if err != nil {
-		return certRefusal("the owner's ssl directory %s is not writable: %v", dir, err)
+		return certRefusal("the owner's directory %s is not writable: %v", dir, err)
 	}
 	name := f.Name()
 	_ = f.Close()
@@ -197,6 +198,7 @@ func (st *buildState) installCert(sp *sharedProxy, dir string, replace bool) err
 		pair[f] = data
 	}
 	modes := map[string]os.FileMode{"fullchain.pem": 0o644, "privkey.pem": 0o600}
+	marker := []byte(sp.project + "\n")
 	if _, disk := st.sink.(*diskSink); !disk {
 		if err := st.sink.MkdirAll(target, 0o700); err != nil {
 			return err
@@ -206,7 +208,7 @@ func (st *buildState) installCert(sp *sharedProxy, dir string, replace bool) err
 				return err
 			}
 		}
-		return nil
+		return st.sink.WriteFile(filepath.Join(target, sharedproxy.CertMarker), marker, 0o600)
 	}
 	tmp, err := os.MkdirTemp(filepath.Join(sp.sslDir, "certificates"), "."+dir+".tmp-")
 	if err != nil {
@@ -228,6 +230,9 @@ func (st *buildState) installCert(sp *sharedProxy, dir string, replace bool) err
 		if err := os.Chmod(filepath.Join(tmp, f), modes[f]); err != nil {
 			return err
 		}
+	}
+	if err := os.WriteFile(filepath.Join(tmp, sharedproxy.CertMarker), marker, 0o600); err != nil {
+		return err
 	}
 	if !replace {
 		return os.Rename(tmp, target)

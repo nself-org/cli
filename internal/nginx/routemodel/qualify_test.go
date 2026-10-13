@@ -74,3 +74,36 @@ server {
 		t.Errorf("QualifyText is not idempotent")
 	}
 }
+
+func TestPrefixDeclared(t *testing.T) {
+	in := `limit_req_zone $binary_remote_addr zone=geo_ip:10m rate=5r/s;
+proxy_cache_path /tmp/c keys_zone=geo_cache:1m;
+upstream geo_backend {
+    server notify:3709;
+}
+map $http_x_tier $geo_tier { default 1; }
+server {
+    server_name geo.b.test;
+    location /api/ {
+        limit_req zone=geo_ip burst=5;
+        proxy_cache geo_cache;
+        proxy_pass http://geo_backend;
+        set $x http://geo_backend/path;
+        add_header X-Tier $geo_tier;
+    }
+}
+`
+	out := PrefixDeclared(in, "bproj_")
+	for _, want := range []string{"zone=bproj_geo_ip:10m", "keys_zone=bproj_geo_cache:1m", "upstream bproj_geo_backend {", "limit_req zone=bproj_geo_ip burst=5", "proxy_cache bproj_geo_cache;",
+		"proxy_pass http://bproj_geo_backend;", "http://bproj_geo_backend/path", "map $http_x_tier $bproj_geo_tier {", "X-Tier $bproj_geo_tier", "location /api/", "server_name geo.b.test", "server notify:3709"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "bproj_bproj_") {
+		t.Error("double prefix")
+	}
+	if PrefixDeclared("server { location /api/ { proxy_pass http://svc:80; } }", "p_") != "server { location /api/ { proxy_pass http://svc:80; } }" {
+		t.Error("a conf with no declarations must be unchanged")
+	}
+}

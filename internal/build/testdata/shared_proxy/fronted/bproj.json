@@ -13,6 +13,7 @@
   "server_names": [
     "api.b.test",
     "auth.b.test",
+    "docs.b.test",
     "mail.b.test"
   ],
   "service_names": [

@@ -29,7 +29,14 @@ func (st *buildState) registration(sp *sharedProxy, files []string) sharedproxy.
 	if st.cfg.DockerNetwork != "" {
 		r.Network = st.cfg.DockerNetwork
 	}
-	r.Files, r.ServerNames = files, sp.facts.names
+	names := map[string]bool{}
+	for _, n := range sp.facts.names {
+		names[n] = true
+	}
+	for n := range sp.written { // every name the written confs serve, whatever the model said
+		names[n] = true
+	}
+	r.Files, r.ServerNames = files, keys(names)
 	r.ServiceNames, r.UpstreamHosts = sp.serviceNames(), sp.facts.verbatim
 	return r
 }
@@ -114,6 +121,7 @@ func (st *buildState) finishFronted(sp *sharedProxy) error {
 // sharedproxy.Set.Removable allows (valid, not held by another project, never
 // through a symlink). Cert directories left empty go too.
 func (st *buildState) removeListed(sp *sharedProxy, old, keep []string) {
+	dirs := map[string]bool{}
 	for _, rel := range old {
 		if inSorted(keep, rel) || !sp.set.Removable(sp.ownerRoot, sp.project, rel) {
 			continue
@@ -121,8 +129,12 @@ func (st *buildState) removeListed(sp *sharedProxy, old, keep []string) {
 		path := filepath.Join(sp.ownerRoot, filepath.FromSlash(rel))
 		_ = st.sink.Remove(path)
 		if strings.HasPrefix(rel, "ssl/certificates/") {
-			_ = st.sink.Remove(filepath.Dir(path)) // fails while the dir is not empty
+			dirs[filepath.Dir(path)] = true
 		}
+	}
+	for dir := range dirs { // the ownership marker goes last, then the (now empty) directory
+		_ = st.sink.Remove(filepath.Join(dir, sharedproxy.CertMarker))
+		_ = st.sink.Remove(dir) // fails while the dir is not empty
 	}
 }
 

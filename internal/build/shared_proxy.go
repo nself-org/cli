@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
@@ -56,6 +57,7 @@ type sharedProxy struct {
 	container map[string]string         // bare compose service name -> container name
 	facts     sharedFacts
 	files     map[string]bool // owner-relative files written by this build (fronted)
+	written   map[string]bool // server names of the confs this build wrote (fronted)
 	certDirs  map[string]bool // certificate directory names the site confs reference
 	// dropRoot is set when this project has no active shared role but may hold
 	// a registration from an earlier build under that owner dir.
@@ -67,7 +69,7 @@ func (sp *sharedProxy) active() bool { return sp != nil && sp.role == sharedFron
 
 // qualify maps a bare compose service name to its container name.
 func (sp *sharedProxy) qualify(host string) (string, bool) {
-	name, ok := sp.container[host]
+	name, ok := sp.container[normHost(host)]
 	return name, ok
 }
 
@@ -115,10 +117,24 @@ func (st *buildState) sharedBegin(m *routemodel.Model) error {
 		routemodel.PrefixSiteFiles(m, sp.project)
 	}
 	sp.facts = sp.collect(m, set)
+	if proxyAPIDocsEnabled(st.cfg) && m.BaseDomain != "" { // api-docs.conf serves docs.<base>
+		sp.facts.names = append(sp.facts.names, "docs."+strings.ToLower(m.BaseDomain))
+		sort.Strings(sp.facts.names)
+	}
 	if err := sp.check(); err != nil {
 		return err
 	}
-	return st.checkCertTargets(sp)
+	if err := st.checkCertTargets(sp); err != nil {
+		return err
+	}
+	if sp.role == sharedFronted && !st.planning() {
+		// The registration is written last; fail now if it could not be.
+		if err := os.MkdirAll(sp.sharedDir, 0o755); err != nil {
+			return certRefusal("cannot create %s: %v", sp.sharedDir, err)
+		}
+		return probeWritable(sp.sharedDir)
+	}
+	return nil
 }
 
 // sharedDetect decides the role and loads what is on disk.
@@ -127,7 +143,7 @@ func (st *buildState) sharedDetect() (*sharedProxy, error) {
 	if err != nil {
 		return nil, err
 	}
-	sp := &sharedProxy{project: st.cfg.ProjectName, workdir: abs, files: map[string]bool{}, certDirs: map[string]bool{}}
+	sp := &sharedProxy{project: st.cfg.ProjectName, workdir: abs, files: map[string]bool{}, written: map[string]bool{}, certDirs: map[string]bool{}}
 	switch {
 	case st.cfg.NginxSharedOwner():
 		sp.role, sp.ownerRoot = sharedOwner, abs
