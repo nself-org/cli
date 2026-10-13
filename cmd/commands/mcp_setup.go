@@ -124,7 +124,7 @@ func emitMCPSetup(cmd *cobra.Command, res mcpSetupResult, fullPath string, asJSO
 	}
 	if res.Path != agentsetup.FileName {
 		cwd, _ := os.Getwd()
-		fmt.Fprintln(errOut, agentsetup.Note(cwd))
+		_, _ = fmt.Fprintln(errOut, agentsetup.Note(cwd))
 	}
 	content := res.Content
 	if !strings.HasSuffix(content, "\n") {

@@ -114,9 +114,9 @@ func writeIfChanged(p string, old, next []byte) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	defer os.Remove(tmp.Name())
+	defer func() { _ = os.Remove(tmp.Name()) }()
 	if _, err := tmp.Write(next); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return false, err
 	}
 	if err := tmp.Close(); err != nil {
