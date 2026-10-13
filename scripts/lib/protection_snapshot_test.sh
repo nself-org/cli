@@ -46,8 +46,8 @@ if [ -x /bin/bash ]; then ln -s /bin/bash "${TMP}/bin/bash"; fi
 
 # -- helpers ------------------------------------------------------------------
 setup() { # <fixture-name>: fresh server state and logs
-  unset STUB_DROP STUB_PUT_FAIL STUB_KILL_PARENT STUB_SLOW_CI STUB_FAIL_AFTER_LAND_ONCE STUB_GET_STDERR STUB_MERGE_MODE STUB_MERGE_LAG
-  rm -rf "${STUB_DIR}/calls" "${STUB_DIR}/watchdog.rc" "${STUB_DIR}/runcount" "${STUB_DIR}/landed" "${STUB_DIR}/automerge" "${STUB_DIR}/viewcount" "${HOME}/.nself" "${TMP}"/work/*
+  unset STUB_DROP STUB_PUT_FAIL STUB_KILL_PARENT STUB_SLOW_CI STUB_FAIL_AFTER_LAND_ONCE STUB_GET_STDERR STUB_MERGE_MODE STUB_MERGE_LAG STUB_LATE_MERGE STUB_VIEW
+  rm -rf "${STUB_DIR}/calls" "${STUB_DIR}/watchdog.rc" "${STUB_DIR}/runcount" "${STUB_DIR}/landed" "${STUB_DIR}/armed" "${STUB_DIR}/disabled" "${STUB_DIR}/merged" "${STUB_DIR}/viewcount" "${HOME}/.nself" "${TMP}"/work/*
   cp "${FX}/$1.json" "${STUB_DIR}/state.json"
   cp "${FX}/$1.json" "${STUB_DIR}/snapshot.json"
 }
@@ -225,12 +225,13 @@ case_merge_verify() {
   # `gh pr merge --auto` exits 0 when it only enables auto-merge; the script must
   # read the state back, skip the CI wait when the PR is not MERGED, restore
   # protection (verified) and exit non-zero.
-  local mode lag secs want_rc want_ci want_audit rc d
+  local mode lag secs view want_rc want_ci want_audit rc d
   export WATCHDOG_DEADLINE=30 MERGE_POLL_SECONDS=1 CI_POLL_SECONDS=1
-  while read -r d mode lag secs want_rc want_ci want_audit; do
+  while read -r d mode lag secs view want_rc want_ci want_audit; do
     [ -n "${d}" ] || continue
     setup cli-like
     [ "${mode}" = merge ] || export STUB_MERGE_MODE="${mode}"
+    case "${view}" in late) export STUB_LATE_MERGE=1 ;; open) ;; *) export STUB_VIEW="${view}" ;; esac
     export STUB_MERGE_LAG="${lag}" MERGE_VERIFY_SECONDS="${secs}"; rc=0
     printf 'y\n' | bash "${AM}" --repo "${REPO}" --branch feat --pr 7 --wait-minutes 1 > "${TMP}/am.out" 2>&1 || rc=$?
     check "${d}: exit ${want_rc}" test "${rc}" -eq "${want_rc}"
@@ -242,12 +243,20 @@ case_merge_verify() {
     fi
     check "${d}: protection restored and equals the snapshot" compare "$(cat "${FX}/cli-like.json")" "$(server)"
     check "${d}: restore audited, no RESTORE_FAILED" bash -c 'grep -q "RESTORE .*post_merge" "$1" && ! grep -qE "RESTORE_FAILED|restore_mismatch" "$1"' _ "${AUDIT_LOG}"
+    if [ "${want_audit}" = auto_merge_only ] && [ "${view}" != late ] && [ "${view}" != NONE ]; then
+      check "${d}: auto-merge disabled again" test -f "${STUB_DIR}/disabled"
+    fi
+    unset STUB_LATE_MERGE STUB_VIEW STUB_MERGE_MODE
     wait_watchdog || true
   done <<'TABLE'
-    merged-at-once    merge 0 5 0 yes success
-    auto-then-merged  auto  2 20 0 yes success
-    auto-only         auto  999 3 1 no  auto_merge_only
-    merge-call-fails  fail  0 3 1 no  failed
+    merged-at-once    merge 0 5 open 0 yes success
+    auto-then-merged  auto  2 20 open 0 yes success
+    auto-only         auto  999 3 open 1 no  auto_merge_only
+    merge-call-fails  fail  0 3 open 1 no  failed
+    pr-closed         auto  999 30 CLOSED 1 no  closed
+    state-unreadable  auto  999 2 NONE 1 no  auto_merge_only
+    merged-late       auto  999 2 late 0 yes success
+    bad-verify-secs   auto  1 abc open 0 yes success
 TABLE
   unset WATCHDOG_DEADLINE MERGE_POLL_SECONDS CI_POLL_SECONDS MERGE_VERIFY_SECONDS
 }
