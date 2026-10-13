@@ -337,3 +337,20 @@ func TestAcmeTraefikServedEnv(t *testing.T) {
 		t.Errorf("traefik addrs = %s %s, want 127.0.0.1:9443 and 127.0.0.1:80", got, http)
 	}
 }
+
+// A symlink inside the project that leads out of it must not pass the mount-root check.
+func TestAcmeTraefikSpecRefusesSymlinkEscape(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX symlinks")
+	}
+	root, _ := filepath.EvalSymlinks(t.TempDir())
+	outside, _ := filepath.EvalSymlinks(t.TempDir())
+	if err := os.Symlink(outside, filepath.Join(root, "out")); err != nil {
+		t.Fatal(err)
+	}
+	raw := `{"services":{"traefik-config":{"image":"nself/r:1","command":["x"],"volumes":[{"type":"bind","source":"` +
+		filepath.Join(root, "out") + `","target":"/dynamic"}]}}}`
+	if _, err := traefikConfigSpec([]byte(raw), []string{root}); err == nil {
+		t.Error("a mount source that is a symlink out of the project was accepted")
+	}
+}

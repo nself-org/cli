@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -85,8 +86,15 @@ func traefikConfigSpec(raw []byte, roots []string) (docker.RunSpec, error) {
 
 // under reports whether p is inside one of roots (a root itself does not count).
 func under(p string, roots []string) bool {
+	real := func(x string) string { // a symlink inside a root must not lead out of it
+		if r, err := filepath.EvalSymlinks(x); err == nil {
+			return r
+		}
+		return filepath.Clean(x)
+	}
+	p = real(p)
 	for _, r := range roots {
-		if rel, err := filepath.Rel(r, filepath.Clean(p)); err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		if rel, err := filepath.Rel(real(r), p); err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			return true
 		}
 	}
@@ -121,13 +129,20 @@ func prepareGenerations(workdir, sslDir string) error {
 		}
 		if fi.Mode().Perm()&0o001 == 0 {
 			if err := os.Chmod(d, fi.Mode().Perm()|0o011); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				if d == certs { // owned by another user (a root timer created it): the render reports it if it matters
+					slog.Warn("cannot make the certificates directory traversable for the renderer", "dir", d, "error", err)
+					continue
+				}
 				return fmt.Errorf("making %s traversable for the renderer: %w", d, err)
 			}
 		}
 		if d == certs || uid < 0 || traefikEuid() != 0 {
 			continue
 		}
-		entries, _ := os.ReadDir(d)
+		entries, err := os.ReadDir(d)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("reading %s to hand it to traefik's user: %w", d, err)
+		}
 		for _, e := range append([]os.DirEntry{nil}, entries...) {
 			p := d
 			if e != nil {
