@@ -10,6 +10,7 @@ import (
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/hasura"
 	"github.com/nself-org/cli/internal/health"
+	"github.com/nself-org/cli/internal/license/entitlement"
 	"github.com/nself-org/cli/internal/lifecycle"
 	"github.com/nself-org/cli/internal/migration"
 	"github.com/nself-org/cli/internal/search"
@@ -146,6 +147,11 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	// Compose manifest read + --skip-plugins filter extracted to
 	// start_config.go (T-P6-E2-W1-S1-T3).
 	composeFiles := loadStartComposeFiles(projectDir, opts)
+	if !opts.skipPlugins {
+		if err := entitlement.RefreshInstalled(ctx, projectDir); err != nil {
+			return err
+		}
+	}
 
 	// ── Step 3: Port availability check ──────────────────────────────
 	currentStep++

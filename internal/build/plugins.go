@@ -13,6 +13,7 @@ package build
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,6 +24,7 @@ import (
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/license/entitlement"
 	"github.com/nself-org/cli/internal/ui"
 )
 
@@ -74,6 +76,7 @@ func discoverPluginComposeFilesFx(fx Effects, sink Sink, workdir, pluginDir stri
 	}
 
 	var composePaths []string
+	var entitlementErr error
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -132,6 +135,22 @@ func discoverPluginComposeFilesFx(fx Effects, sink Sink, workdir, pluginDir stri
 			// — see plugins_core_env.go for the full rationale (E2E golden
 			// path step 13, testproject_ai/testproject_mux).
 			normalized = normalizeComposePluginCoreEnv(normalized, pluginDir, entry.Name())
+			normalized, mountErr := normalizeComposeEntitlement(normalized, pluginDir, entry.Name())
+			if mountErr != nil {
+				return nil, mountErr
+			}
+			// compat.V15(P7-PLUG-24): discovery needs no JWT -> licensed runtime files refresh before build completes
+			if compat.V15() && !skipEntitlementMount() {
+				licensed, lerr := licensedPlugin(pluginDir, entry.Name())
+				if lerr != nil {
+					return nil, lerr
+				}
+				if licensed {
+					if !fx.Planning() {
+						entitlementErr = entitlement.Refresh(context.Background(), workdir)
+					}
+				}
+			}
 			if !bytes.Equal(normalized, content) {
 				// Write the corrected file back so the manifest references a valid compose.
 				// The bytes go through the Sink in both modes (P7-LIVE-03) so a plan
@@ -150,7 +169,7 @@ func discoverPluginComposeFilesFx(fx Effects, sink Sink, workdir, pluginDir stri
 		composePaths = append(composePaths, absPath)
 	}
 
-	return composePaths, nil
+	return composePaths, entitlementErr
 }
 
 // fragmentWarned holds the fragment warnings already printed by this process.

@@ -14,6 +14,10 @@ package build
 import (
 	"bytes"
 	"fmt"
+	"strings"
+
+	"github.com/nself-org/cli/internal/errs"
+	"gopkg.in/yaml.v3"
 )
 
 // envBlockShape classifies the child lines of an environment: block that
@@ -162,6 +166,47 @@ func spliceAt(content []byte, at int, add []byte) []byte {
 	out.Write(add)
 	out.Write(content[at:])
 	return out.Bytes()
+}
+
+// injectEntitlementEnv enforces the container path in mapping or list environments.
+// Inputs: licensed service mapping. Outputs: fixed path; unsupported shapes fail.
+// Constraints: a fragment cannot override the guard into the absence rule.
+// SPORT: contract:plugin.entitlement-token.
+func injectEntitlementEnv(svc *yaml.Node) error {
+	env := yamlGet(svc, "environment")
+	if env == nil {
+		env = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		svc.Content = append(svc.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: "environment"}, env)
+	}
+	const key = "NSELF_ENTITLEMENT_FILE"
+	switch env.Kind {
+	case yaml.MappingNode:
+		kept := env.Content[:0]
+		for i := 0; i < len(env.Content); i += 2 {
+			if env.Content[i].Value == key {
+				continue
+			}
+			if env.Content[i].Value == "<<" {
+				return errs.New("E125", "licensed environment merge is unsupported")
+			}
+			kept = append(kept, env.Content[i:i+2]...)
+		}
+		env.Content = append(kept, &yaml.Node{Kind: yaml.ScalarNode, Value: key}, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: entitlementContainerFile})
+	case yaml.SequenceNode:
+		kept := env.Content[:0]
+		for _, item := range env.Content {
+			if item.Kind != yaml.ScalarNode {
+				return errs.New("E125", "licensed environment list must contain strings")
+			}
+			if item.Value != key && !strings.HasPrefix(item.Value, key+"=") {
+				kept = append(kept, item)
+			}
+		}
+		env.Content = append(kept, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key + "=" + entitlementContainerFile})
+	default:
+		return errs.New("E125", "licensed environment must be a map or list")
+	}
+	return nil
 }
 
 // normalizeServiceCoreEnv applies the core-env rewrite to bytes that start at
