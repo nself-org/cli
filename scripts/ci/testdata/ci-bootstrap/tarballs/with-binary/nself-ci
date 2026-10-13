@@ -1,0 +1,3 @@
+#!/bin/sh
+# Fixture stand-in for the nself-ci binary: prints one fixed line per argument set.
+echo "nself-ci fixture: $*"
