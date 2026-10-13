@@ -8,6 +8,7 @@ package signature
 // Constraints: pure (no I/O, no clock). Fail closed: any problem, including a broken key table, is an error. The checksum compare (E124) happens before this, in the installer.
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -40,16 +41,8 @@ func cleanField(s string) bool {
 
 // isLowerHex64 reports whether s is a 64-character lowercase hex string.
 func isLowerHex64(s string) bool {
-	if len(s) != 64 {
-		return false
-	}
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
-			return false
-		}
-	}
-	return true
+	_, err := hex.DecodeString(s)
+	return err == nil && len(s) == 64 && s == strings.ToLower(s)
 }
 
 // Verify checks rel for the given tier, slug, version and tarball sha256.
@@ -61,7 +54,7 @@ func Verify(tier, slug, version, sha256hex string, rel *Release) error {
 		return fail("E121", "release identity is malformed (slug, version or sha256)", nil)
 	}
 	if rel.Alg != Alg {
-		return fail("E121", fmt.Sprintf("release signature algorithm %q is not %s", clip(rel.Alg), Alg), nil)
+		return fail("E121", fmt.Sprintf("release signature algorithm %.64q is not %s", rel.Alg, Alg), nil)
 	}
 	sigBytes, err := signing.DecodeSig(rel.Sig)
 	if err != nil {
@@ -76,27 +69,18 @@ func Verify(tier, slug, version, sha256hex string, rel *Release) error {
 	case err == nil:
 		return nil
 	case errors.Is(err, signing.ErrRevoked):
-		return fail("E123", fmt.Sprintf("release key %q is revoked", clip(rel.KeyID)), err)
+		return fail("E123", fmt.Sprintf("release key %.64q is revoked", rel.KeyID), err)
 	case errors.Is(err, signing.ErrUnknownKey), errors.Is(err, signing.ErrWrongScope),
 		errors.Is(err, signing.ErrWrongPurpose), errors.Is(err, signing.ErrExpired), errors.Is(err, signing.ErrNotYetValid):
-		return fail("E122", fmt.Sprintf("release key %q is not trusted for the %s tier", clip(rel.KeyID), tier), err)
+		return fail("E122", fmt.Sprintf("release key %.64q is not trusted for the %s tier", rel.KeyID, tier), err)
 	default:
-		return fail("E121", fmt.Sprintf("release signature by key %q does not verify", clip(rel.KeyID)), err)
+		return fail("E121", fmt.Sprintf("release signature by key %.64q does not verify", rel.KeyID), err)
 	}
 }
 
-// fail builds the coded error; the underlying signing error rides along for errors.Is.
+// fail builds the coded error; the underlying signing error (nil for none)
+// rides along for errors.Is. Echoed key ids and algorithms are cut to 64
+// characters because they come from the registry.
 func fail(code, what string, cause error) error {
-	if cause != nil {
-		return errs.Wrap(code, what, cause)
-	}
-	return errs.New(code, what)
-}
-
-// clip bounds attacker-controlled text echoed in messages.
-func clip(s string) string {
-	if len(s) > 64 {
-		return s[:64] + "..."
-	}
-	return s
+	return errs.Wrap(code, what, cause)
 }

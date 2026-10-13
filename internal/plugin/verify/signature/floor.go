@@ -10,6 +10,8 @@ package signature
 import (
 	_ "embed"
 	"encoding/json"
+	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -26,10 +28,7 @@ func mustLoadFloor(data []byte) map[string]map[string]string {
 		Tiers map[string]map[string]string `json:"tiers"`
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
-		panic("signature: signed_since.json is not valid: " + err.Error())
-	}
-	if doc.Tiers == nil {
-		doc.Tiers = map[string]map[string]string{}
+		panic(fmt.Errorf("signature: signed_since.json: %w", err))
 	}
 	return doc.Tiers
 }
@@ -52,26 +51,23 @@ func FloorRequires(tier, slug, version string) bool {
 // side that does not parse as MAJOR.MINOR.PATCH[-pre][+build] (optional
 // leading "v") is "not less", so the floor rule applies.
 func versionLess(a, b string) bool {
-	pa, ok := parseVersion(a)
-	if !ok {
+	pa, okA := parseVersion(a)
+	pb, okB := parseVersion(b)
+	if !okA || !okB {
 		return false
 	}
-	pb, ok := parseVersion(b)
-	if !ok {
+	c := slices.Compare(pa.num[:], pb.num[:])
+	if c < 0 {
+		return true
+	}
+	if c > 0 {
 		return false
 	}
-	for i := 0; i < 3; i++ {
-		if pa.num[i] != pb.num[i] {
-			return pa.num[i] < pb.num[i]
-		}
+	if pa.pre == "" {
+		return false // a is the release: b is the same release or a pre-release of it
 	}
-	switch {
-	case pa.pre == "" && pb.pre == "":
-		return false
-	case pa.pre != "" && pb.pre == "":
+	if pb.pre == "" {
 		return true // a pre-release sorts below its release
-	case pa.pre == "" && pb.pre != "":
-		return false
 	}
 	return pa.pre < pb.pre
 }
@@ -82,15 +78,10 @@ type parsedVersion struct {
 }
 
 func parseVersion(s string) (parsedVersion, bool) {
-	s = strings.TrimPrefix(s, "v")
-	if i := strings.IndexByte(s, '+'); i >= 0 {
-		s = s[:i]
-	}
 	var pv parsedVersion
-	if i := strings.IndexByte(s, '-'); i >= 0 {
-		pv.pre = s[i+1:]
-		s = s[:i]
-	}
+	s = strings.TrimPrefix(s, "v")
+	s, _, _ = strings.Cut(s, "+")
+	s, pv.pre, _ = strings.Cut(s, "-")
 	parts := strings.Split(s, ".")
 	if len(parts) != 3 {
 		return pv, false

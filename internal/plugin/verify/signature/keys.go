@@ -58,7 +58,7 @@ func verifierFor(tier string) (*signing.Verifier, error) {
 	keys := make([]signing.Key, 0, len(Keys))
 	for _, k := range Keys {
 		if !validTier(k.Tier) {
-			return nil, fmt.Errorf("%w: key %q has unknown tier %q", signing.ErrMalformed, k.ID, clip(k.Tier))
+			return nil, fmt.Errorf("%w: key %q has unknown tier %.64q", signing.ErrMalformed, k.ID, k.Tier)
 		}
 		keys = append(keys, signing.Key{ID: k.ID, Purpose: signing.PurposePlugins, Scope: k.Tier, Public: k.PublicKey})
 	}
