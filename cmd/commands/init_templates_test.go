@@ -234,3 +234,17 @@ func TestTemplateSourceNoCatalogIsE115(t *testing.T) {
 		t.Fatalf("templateSource with no catalog and no cache = %v, want E115", err)
 	}
 }
+
+// TestTemplateLicenseKeysOwnerFirst: the owner key leads even when the
+// collected list already holds it behind another key (the shared deadline must
+// not run out before the key most likely to cover is asked).
+func TestTemplateLicenseKeysOwnerFirst(t *testing.T) {
+	isolateSource(t, func(http.ResponseWriter, *http.Request) {})
+	t.Setenv("NSELF_PLUGIN_LICENSE_KEY_OWNER", "fake-key-bravo")
+	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "fake-key-alpha")
+	t.Setenv("NSELF_LICENSE_KEY_1", "fake-key-bravo")
+	t.Setenv("NSELF_LICENSE_KEY_2", "fake-key-charlie")
+	if got := strings.Join(templateLicenseKeys(), ","); got != "fake-key-bravo,fake-key-alpha,fake-key-charlie" {
+		t.Errorf("keys = %s, want the owner key first, each once", got)
+	}
+}
