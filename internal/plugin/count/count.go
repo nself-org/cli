@@ -45,16 +45,13 @@ import (
 //go:embed counts.json
 var countsJSON []byte
 
-// RepoSource identifies the registry file a count was computed from.
-type RepoSource struct {
-	Repo string `json:"repo"`
-	SHA  string `json:"sha"`
-}
-
-// Sources names the two registries the artifact was computed from.
-type Sources struct {
-	Free RepoSource `json:"free"`
-	Pro  RepoSource `json:"pro"`
+// GeneratedFrom records the inputs the artifact was generated from (tools/catalog):
+// the nself-org/bundles commit the licensed side was read at and, for a tagged
+// release, the plugins ref. generated_at inside it is a build stamp.
+type GeneratedFrom struct {
+	BundlesRef  string `json:"bundles_ref"`
+	GeneratedAt string `json:"generated_at"`
+	PluginsRef  string `json:"plugins_ref"`
 }
 
 // RegistryCount is the entries/installable/nonInstallable breakdown for one
@@ -101,8 +98,7 @@ type Totals struct {
 type Artifact struct {
 	Generated     string        `json:"_generated"`
 	SchemaVersion int           `json:"schema_version"`
-	GeneratedAt   string        `json:"generated_at"`
-	Sources       Sources       `json:"sources"`
+	GeneratedFrom GeneratedFrom `json:"generated_from"`
 	Free          RegistryCount `json:"free"`
 	Pro           RegistryCount `json:"pro"`
 	Overlap       Overlap       `json:"overlap"`

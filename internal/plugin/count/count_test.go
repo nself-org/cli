@@ -19,18 +19,15 @@ func TestLoad_ParsesEmbeddedArtifact(t *testing.T) {
 	if a.SchemaVersion != 1 {
 		t.Errorf("SchemaVersion = %d, want 1", a.SchemaVersion)
 	}
-	if a.Sources.Free.Repo != "nself-org/plugins" {
-		t.Errorf("Sources.Free.Repo = %q, want nself-org/plugins", a.Sources.Free.Repo)
-	}
-	if a.Sources.Pro.Repo != "nself-org/bundles" {
-		t.Errorf("Sources.Pro.Repo = %q, want nself-org/bundles", a.Sources.Pro.Repo)
+	if len(a.GeneratedFrom.BundlesRef) != 40 {
+		t.Errorf("GeneratedFrom.BundlesRef = %q, want a 40-hex nself-org/bundles commit", a.GeneratedFrom.BundlesRef)
 	}
 }
 
 // TestLoad_AdvertisedMatchesMeasuredGroundTruth pins the vendored snapshot
-// to the ground truth recorded in COUNTS-SCHEMA.md on 2026-09-11: free
-// 129/127, pro 46/46, overlap {cron,notify}, totals 173/171, advertised
-// 171. If this ever fails after a legitimate resync, update the expected
+// to the ground truth of the plugins v1.2.7 release data (2026-10-13): free
+// 133/131, pro 46/46, overlap {cron,notify}, totals 177/175, advertised
+// 175. If this ever fails after a legitimate resync, update the expected
 // values here to match the new vendored counts.json — never the reverse.
 func TestLoad_AdvertisedMatchesMeasuredGroundTruth(t *testing.T) {
 	a, err := Load()
@@ -38,17 +35,17 @@ func TestLoad_AdvertisedMatchesMeasuredGroundTruth(t *testing.T) {
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	if a.Free.Entries != 129 || a.Free.Installable != 127 {
-		t.Errorf("Free = %+v, want entries=129 installable=127", a.Free)
+	if a.Free.Entries != 133 || a.Free.Installable != 131 {
+		t.Errorf("Free = %+v, want entries=133 installable=131", a.Free)
 	}
 	if a.Pro.Entries != 46 || a.Pro.Installable != 46 {
 		t.Errorf("Pro = %+v, want entries=46 installable=46", a.Pro)
 	}
-	if a.Totals.Entries != 173 || a.Totals.Installable != 171 {
-		t.Errorf("Totals = %+v, want entries=173 installable=171", a.Totals)
+	if a.Totals.Entries != 177 || a.Totals.Installable != 175 {
+		t.Errorf("Totals = %+v, want entries=177 installable=175", a.Totals)
 	}
-	if a.Advertised != 171 {
-		t.Errorf("Advertised = %d, want 171", a.Advertised)
+	if a.Advertised != 175 {
+		t.Errorf("Advertised = %d, want 175", a.Advertised)
 	}
 }
 
