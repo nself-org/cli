@@ -24,6 +24,8 @@ import (
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/plugin/verify/signature"
+	"github.com/nself-org/cli/internal/plugin/verify/signature/signaturetest"
 	"github.com/nself-org/cli/internal/reconcile"
 )
 
@@ -75,12 +77,14 @@ func localPluginRegistry(t *testing.T) {
 		t.Fatal(err)
 	}
 	sum := sha256.Sum256(archive.Bytes())
+	checksum := hex.EncodeToString(sum[:])
+	releaseSig := signedFixtureEntry(t, "zzfixture", "1.0.0", checksum)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/tarball") {
 			_, _ = w.Write(archive.Bytes())
 			return
 		}
-		_, _ = fmt.Fprintf(w, `{"plugins":[{"name":"zzfixture","version":"1.0.0","description":"fixture","category":"utility","tier":"free","license":"MIT","checksum":"%s"}]}`, hex.EncodeToString(sum[:]))
+		_, _ = fmt.Fprintf(w, `{"plugins":[{"name":"zzfixture","version":"1.0.0","description":"fixture","category":"utility","tier":"free","license":"MIT","checksum":"%s",%s}]}`, checksum, releaseSig)
 	}))
 	t.Cleanup(server.Close)
 	t.Setenv("NSELF_PLUGIN_REGISTRY", server.URL)
@@ -89,6 +93,18 @@ func localPluginRegistry(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = pluginInstallCmd.Flags().Set("skip-sbom-check", "false") })
+}
+
+// signedFixtureEntry pins a throwaway free-tier key for the test and returns the
+// `"release_signature":{...}` JSON fragment that signs slug/version/sha256, so a
+// fixture registry installs under v1.5 (unsigned installs are refused, E107).
+func signedFixtureEntry(t *testing.T, slug, version, sha256hex string) string {
+	t.Helper()
+	key, signer := signaturetest.NewKey(t, signature.TierFree)
+	signaturetest.UseKeys(t, []signature.Key{key}, nil)
+	signaturetest.UseFloor(t, map[string]map[string]string{})
+	rel := signaturetest.Sign(t, signer, slug, version, sha256hex)
+	return fmt.Sprintf(`"release_signature":{"key_id":%q,"alg":%q,"sig":%q}`, rel.KeyID, rel.Alg, rel.Sig)
 }
 
 func assertEmptyBuildPlan(t *testing.T, project string) {
