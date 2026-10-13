@@ -45,6 +45,10 @@ bash scripts/ci/compat-markers.sh --check       # exit 1 when the table is stale
 
 Test both modes with `compattest.Both` from `internal/compat/compattest`; it runs the body as subtests `v1.4` and `v1.5`. Use `compattest.Set(t, on)` for one mode. Tests never branch on a bare `compat.V15()`.
 
+## MCP tool results (P7-SURF-03)
+
+In v1.5 mode `nself mcp` registers generated tools only. Thirteen legacy tool names are the generated name of their command, so each is now one tool whose result is the command's `data` (`structuredContent`, with the full envelope as text) and whose output schema is the command's committed data schema. The hand tool's result shape is gone. Affected tools: `nself_status`, `nself_doctor`, `nself_logs`, `nself_config_get`, `nself_config_show`, `nself_config_set`, `nself_build`, `nself_start`, `nself_stop`, `nself_restart`, `nself_db_migrate_status`, `nself_backup_list`, `nself_deploy_status`. The old parameters still work for one minor (the call adds `meta.deprecations`, removal v1.6.0); read the new result from `structuredContent`. Details and the alias table: [[MCP-Server]].
+
 ## Gated behaviours
 
 The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`.
