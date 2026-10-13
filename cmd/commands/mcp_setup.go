@@ -152,6 +152,13 @@ func agentsMDVerbs() ([]agentsetup.Verb, error) {
 // file is absent or still the unedited generated one. It reports on stderr
 // only (init's stdout is a contract) and never fails init.
 func scaffoldAgentsMD(dir string, quiet bool) {
+	// Best effort after init's real work is done: a failure here, even a panic
+	// from a command tree that is not the live one, must not fail init.
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not write AGENTS.md: %v\n", r)
+		}
+	}()
 	verbs, err := agentsMDVerbs()
 	if err == nil {
 		var written bool

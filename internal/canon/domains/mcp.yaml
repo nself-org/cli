@@ -4,5 +4,5 @@ schema_version: 1
 commands:
   # cmd/commands/mcp.go:69 starting the server changes nothing persistent; tool calls are gated per tool (P7-SURF)
   mcp: {canon: core, side_effect: read, output: stream}
-  # cmd/commands/mcp_setup.go prints the client config; --write adds the nself entry to .mcp.json or .cursor/mcp.json (project dir only, merge, idempotent)
+  # cmd/commands/mcp_setup.go:88 prints the client config by default; --write adds the nself entry to .mcp.json or .cursor/mcp.json (project dir only, merge, idempotent)
   mcp setup: {side_effect: read, flags: {write: {side_effect: write}}}
