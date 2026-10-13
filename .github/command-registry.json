@@ -17990,6 +17990,53 @@
       "surface": "all"
     },
     {
+      "path": "nself help capabilities",
+      "name": "capabilities",
+      "parent": "nself help",
+      "summary": "Search commands and plugins by what you want to do",
+      "hidden": false,
+      "deprecated": null,
+      "aliases": [],
+      "group": null,
+      "runnable": true,
+      "args": [
+        {
+          "name": "query",
+          "required": true,
+          "variadic": true,
+          "secret": false
+        }
+      ],
+      "flags": [
+        {
+          "name": "limit",
+          "shorthand": null,
+          "type": "int",
+          "default": "5",
+          "usage": "Maximum number of hits (1 to 50)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        }
+      ],
+      "canon": "subcommand",
+      "target": null,
+      "side_effect": "read",
+      "output": "document",
+      "json": "envelope",
+      "data_schema": "schemas/commands/help-capabilities.v1.schema.json",
+      "exit_codes": {},
+      "confirm": null,
+      "surface": "all"
+    },
+    {
       "path": "nself help topics",
       "name": "topics",
       "parent": "nself help",
@@ -24237,14 +24284,14 @@
     }
   ],
   "counts": {
-    "commands": 398,
+    "commands": 399,
     "top_level": 24,
     "core": 20,
     "pending": 4,
     "deprecated_shims": 48,
     "plugin": 11,
     "core_missing": [],
-    "json_envelope": 222,
+    "json_envelope": 223,
     "json_legacy": 27
   }
 }

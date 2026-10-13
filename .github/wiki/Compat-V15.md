@@ -45,6 +45,10 @@ bash scripts/ci/compat-markers.sh --check       # exit 1 when the table is stale
 
 Test both modes with `compattest.Both` from `internal/compat/compattest`; it runs the body as subtests `v1.4` and `v1.5`. Use `compattest.Set(t, on)` for one mode. Tests never branch on a bare `compat.V15()`.
 
+## MCP tool results (P7-SURF-03)
+
+In v1.5 mode `nself mcp` registers generated tools only. Thirteen legacy tool names are the generated name of their command, so each is now one tool whose result is the command's `data` (`structuredContent`, with the full envelope as text) and whose output schema is the command's committed data schema. The hand tool's result shape is gone. Affected tools: `nself_status`, `nself_doctor`, `nself_logs`, `nself_config_get`, `nself_config_show`, `nself_config_set`, `nself_build`, `nself_start`, `nself_stop`, `nself_restart`, `nself_db_migrate_status`, `nself_backup_list`, `nself_deploy_status`. The old parameters still work for one minor (the call adds `meta.deprecations`, removal v1.6.0); read the new result from `structuredContent`. Details and the alias table: [[MCP-Server]].
+
 ## Gated behaviours
 
 The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`.
@@ -176,6 +180,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-REG-09 | doctor exits 1 (failed) or 2 (warnings only) | 10 (failed) or 12 (warnings only) | `cmd/commands/doctor_health_report.go` |
 | P7-REG-09 | human status exits 2 | 10 (unhealthy) or 11 (starting) | `cmd/commands/status.go` |
 | P7-REG-09 | status exits 2 (unhealthy) or 1 (starting), 0 with --json | 10 (unhealthy) or 11 (starting) in both modes | `cmd/commands/status_print.go` |
+| P7-SURF-03 | 26 hand tools primary | generated tools, merged same-name tools, deprecated aliases | `cmd/commands/mcp.go` |
 | P7-SURF-07 | nself.yaml type errors and unknown keys warn | fail (E435/E436) | `internal/build/manifest_validate.go` |
 | P7-SURF-11 | health history --json with no history prints a text line | the v1 envelope with an empty entries list | `cmd/commands/health_handlers.go` |
 | P7-SURF-12 | an empty list is the JSON array [] (v1.4 and NSELF_JSON_LEGACY=1 print null) | v1 envelope with an array | `cmd/commands/config_envelope.go` |

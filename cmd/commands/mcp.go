@@ -28,6 +28,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/health"
 	"github.com/spf13/cobra"
@@ -99,17 +100,11 @@ func runMCPServe(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	s := server.NewMCPServer(
-		"nSelf MCP Server",
-		"2.0.0",
-		server.WithToolCapabilities(true),
-		server.WithResourceCapabilities(true, true),
-		server.WithPromptCapabilities(true),
-	)
-
-	registerMCPTools(s)
-	registerMCPResources(s)
-	registerMCPPrompts(s)
+	// compat.V15(P7-SURF-03): 26 hand tools primary -> generated tools, merged same-name tools, deprecated aliases
+	s, err := newMCPServer(transport, compat.V15())
+	if err != nil {
+		return err
+	}
 
 	return serveMCP(s, transport, host, port, wrap)
 }

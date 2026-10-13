@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "_generated": "fixture",
+  "generated_from": {"plugins_ref": "fixture", "bundles_ref": "fixture", "generated_at": "2026-01-01T00:00:00Z"},
+  "plugins": [
+    {"slug": "k8s", "tier": "free", "version": "1.0.0", "description": "Deploy and manage the stack on a Kubernetes cluster", "category": "infrastructure", "maturity": "implemented", "installable": true, "service_kind": "cli", "commands": null, "docs_url": null, "bundles": [], "tier_pair": false},
+    {"slug": "notify", "tier": "free", "version": "1.0.0", "description": "Send notifications by email, push and chat", "category": "communication", "maturity": "implemented", "installable": true, "service_kind": "service", "commands": null, "docs_url": null, "bundles": [], "tier_pair": false},
+    {"slug": "mlflow", "tier": "free", "version": "1.0.0", "description": "Track machine learning experiments", "category": "ai", "maturity": "implemented", "installable": true, "service_kind": "service", "commands": null, "docs_url": null, "bundles": [], "tier_pair": false},
+    {"slug": "planned", "tier": "free", "version": "0.0.1", "description": "A plugin that is not installable yet and mentions kubernetes", "category": "infrastructure", "maturity": "planned", "installable": false, "service_kind": "service", "commands": null, "docs_url": null, "bundles": [], "tier_pair": false}
+  ],
+  "bundles": {}
+}

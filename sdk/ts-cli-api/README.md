@@ -88,7 +88,7 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 
 <!-- BEGIN GENERATED: operations (tools/sdkgen, DO NOT HAND EDIT) -->
 
-209 operations. Every method takes `{ args, flags }` (plus `confirm` where the operation declares it) and resolves to the typed `data` member.
+210 operations. Every method takes `{ args, flags }` (plus `confirm` where the operation declares it) and resolves to the typed `data` member.
 
 | Method | Route | Summary |
 | --- | --- | --- |
@@ -275,6 +275,7 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 | `doctorReport` | `POST /v1/commands/doctor/report` | Write a redacted support bundle (tar.gz) to share in an issue |
 | `doctorSecurityAudit` | `POST /v1/commands/doctor/security/audit` | Run a read-only security audit |
 | `doctorSecurityStatus` | `POST /v1/commands/doctor/security/status` | Show current security posture |
+| `helpCapabilities` | `POST /v1/commands/help/capabilities` | Search commands and plugins by what you want to do |
 | `helpTopics` | `POST /v1/commands/help/topics` | Browse help topics (quickstart, plugins, license, envs, doctor, errors) |
 | `initTemplate` | `POST /v1/commands/init/template` | Browse and publish full-stack app templates |
 | `initTemplateInfo` | `POST /v1/commands/init/template/info` | Show detail for a single template |

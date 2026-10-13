@@ -146,6 +146,7 @@ func TestFragmentAssignment(t *testing.T) {
 	delete(where, "migrate appwrite")       // Added after the pre-split snapshot (P7-ADOPT-16).
 	delete(where, "db image")               // Added after the pre-split snapshot (P7-ADOPT-22).
 	delete(where, "db image switch")        // Added after the pre-split snapshot (P7-ADOPT-22).
+	delete(where, "help capabilities")      // Added after the pre-split snapshot (P7-SURF-03).
 	for _, key := range []string{
 		"secrets resolve",
 		"secrets recipients",
