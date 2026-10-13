@@ -1,17 +1,20 @@
 package ssl
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/nself-org/cli/internal/trust/sysexec"
 )
 
 // mkcertAvailable returns true if the mkcert binary is on PATH.
 func mkcertAvailable() bool {
-	_, err := exec.LookPath("mkcert")
+	_, err := sysexec.LookPath("mkcert")
 	return err == nil
 }
 
@@ -28,8 +31,7 @@ func generateWithMkcert(certDir string, domains []string) (int, error) {
 	}
 	args = append(args, domains...)
 
-	cmd := exec.Command("mkcert", args...)
-	output, err := cmd.CombinedOutput()
+	output, err := sysexec.Output(context.Background(), "mkcert", args...)
 	if err != nil {
 		return 0, fmt.Errorf("mkcert failed: %w\n%s", err, string(output))
 	}

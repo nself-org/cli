@@ -1,16 +1,16 @@
 package ssl
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/nself-org/cli/internal/trust/sysexec"
 )
 
 // ErrSudoRequired is returned when an operation requires elevated privileges
@@ -24,8 +24,9 @@ const mkcertCATimeout = 10 * time.Second
 // MkcertCARoot returns the path to the mkcert CA root directory as reported
 // by `mkcert -CAROOT`. Returns an error if mkcert is not on PATH or fails.
 func mkcertCARoot() (string, error) {
-	cmd := exec.Command("mkcert", "-CAROOT")
-	out, err := cmd.Output()
+	ctx, cancel := context.WithTimeout(context.Background(), mkcertCATimeout)
+	defer cancel()
+	out, err := sysexec.Stdout(ctx, "mkcert", "-CAROOT")
 	if err != nil {
 		return "", fmt.Errorf("mkcert -CAROOT: %w", err)
 	}
@@ -85,6 +86,13 @@ func installCA(caPath string) error {
 		return nil
 	}
 
+	// Headless (NSELF_HEADLESS=1 or CI=1): trusting a CA needs an admin
+	// prompt that nobody can answer. Make no change; callers turn
+	// ErrSudoRequired into the manual command to run later.
+	if sysexec.Headless() {
+		return ErrSudoRequired
+	}
+
 	switch runtime.GOOS {
 	case "darwin":
 		return installCADarwin(caPath)
@@ -127,8 +135,7 @@ func isCAInstalledDarwin(caPath string) (bool, error) {
 	defer cancel()
 
 	// Use security verify-cert which exits 0 if trusted, non-zero if not.
-	cmd := exec.CommandContext(ctx, "security", "verify-cert", "-c", caPath)
-	err := cmd.Run()
+	err := sysexec.Run(ctx, "security", "verify-cert", "-c", caPath)
 	if err == nil {
 		return true, nil
 	}
@@ -140,17 +147,13 @@ func installCADarwin(caPath string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), mkcertCATimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx,
+	out, err := sysexec.Output(ctx,
 		"security", "add-trusted-cert",
 		"-d",
 		"-r", "trustRoot",
 		"-k", "/Library/Keychains/System.keychain",
 		caPath,
 	)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
 	if err == nil {
 		return nil
 	}
@@ -161,7 +164,7 @@ func installCADarwin(caPath string) error {
 	}
 
 	// Check if it's a permission error.
-	errStr := stderr.String()
+	errStr := string(out)
 	if strings.Contains(errStr, "permission") ||
 		strings.Contains(errStr, "authorization") ||
 		strings.Contains(errStr, "Permission denied") {
@@ -206,15 +209,12 @@ func installCALinux(caPath string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), mkcertCATimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "update-ca-certificates")
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		if os.IsPermission(err) || strings.Contains(stderr.String(), "permission") {
+	out, err := sysexec.Output(ctx, "update-ca-certificates")
+	if err != nil {
+		if os.IsPermission(err) || strings.Contains(string(out), "permission") {
 			return ErrSudoRequired
 		}
-		return fmt.Errorf("update-ca-certificates: %w\n%s", err, stderr.String())
+		return fmt.Errorf("update-ca-certificates: %w\n%s", err, string(out))
 	}
 
 	return nil
@@ -225,8 +225,9 @@ func installCALinux(caPath string) error {
 func isCAInstalledWindows(caPath string) (bool, error) {
 	// certutil -store Root lists all trusted root certs. We check for exit 0
 	// with the thumbprint. Simple approach: just check if certutil exits 0.
-	cmd := exec.Command("certutil", "-store", "Root")
-	out, err := cmd.Output()
+	ctx, cancel := context.WithTimeout(context.Background(), mkcertCATimeout)
+	defer cancel()
+	out, err := sysexec.Stdout(ctx, "certutil", "-store", "Root")
 	if err != nil {
 		return false, nil
 	}
@@ -240,12 +241,8 @@ func installCAWindows(caPath string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), mkcertCATimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "certutil", "-addstore", "Root", caPath)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		errStr := stderr.String()
+	if out, err := sysexec.Output(ctx, "certutil", "-addstore", "Root", caPath); err != nil {
+		errStr := string(out)
 		if strings.Contains(errStr, "Access is denied") ||
 			strings.Contains(errStr, "0x80070005") {
 			return ErrSudoRequired

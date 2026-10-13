@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
 
 	"github.com/nself-org/cli/internal/ssl"
+	"github.com/nself-org/cli/internal/trust/sysexec"
 )
 
 const mkcertInstallTimeout = 5 * time.Minute
@@ -19,7 +19,7 @@ const mkcertCertTimeout = 60 * time.Second
 // CheckMkcert checks the current state of mkcert, its CA, and project certs.
 // Returns (installed, caInstalled, certsValid).
 func CheckMkcert(cfg TrustConfig) (installed bool, caInstalled bool, certsValid bool) {
-	_, err := exec.LookPath("mkcert")
+	_, err := sysexec.LookPath("mkcert")
 	installed = err == nil
 
 	if installed {
@@ -56,15 +56,22 @@ func MkcertCAPath() (string, error) {
 // Idempotency: each sub-step (CA trust, cert generation) is checked
 // independently before any admin-privilege operation is attempted.
 func SetupMkcert(cfg TrustConfig) (alreadyDone bool, err error) {
-	_, caInstalled, certsValid := CheckMkcert(cfg)
+	mkcertInstalled, caInstalled, certsValid := CheckMkcert(cfg)
 
 	// If both CA is trusted and certs are valid, nothing to do.
 	if caInstalled && certsValid {
 		return true, nil
 	}
 
+	// Headless: state was checked above (read-only). Installing mkcert and
+	// trusting its CA are system changes behind an admin prompt, so skip.
+	// Generating certs for an already-trusted CA writes only into the project.
+	if isHeadless() && (!mkcertInstalled || !caInstalled) {
+		return false, fmt.Errorf("ssl setup: %w", ErrSkippedHeadless)
+	}
+
 	// Ensure mkcert is installed.
-	if _, lookErr := exec.LookPath("mkcert"); lookErr != nil {
+	if _, lookErr := sysexec.LookPath("mkcert"); lookErr != nil {
 		if err = installMkcert(); err != nil {
 			return false, fmt.Errorf("installing mkcert: %w", err)
 		}
@@ -100,10 +107,7 @@ func installMkcert() error {
 		ctx, cancel := context.WithTimeout(context.Background(), mkcertInstallTimeout)
 		defer cancel()
 
-		cmd := exec.CommandContext(ctx, "brew", "install", "mkcert")
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
+		if err := sysexec.Stream(ctx, "brew", "install", "mkcert"); err != nil {
 			return fmt.Errorf("brew install mkcert: %w", err)
 		}
 		return nil
@@ -136,7 +140,7 @@ func installMkcertCA(caPath string) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		out, err := exec.CommandContext(ctx, "osascript", "-e", script).CombinedOutput()
+		out, err := sysexec.Output(ctx, "osascript", "-e", script)
 		if err != nil {
 			return fmt.Errorf("trusting mkcert CA in keychain: %w — %s", err, strings.TrimSpace(string(out)))
 		}
@@ -202,10 +206,7 @@ func generateCerts(cfg TrustConfig) error {
 	ctx, cancel := context.WithTimeout(context.Background(), mkcertCertTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "mkcert", args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	if err := sysexec.Stream(ctx, "mkcert", args...); err != nil {
 		return fmt.Errorf("mkcert certificate generation failed: %w", err)
 	}
 

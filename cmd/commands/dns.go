@@ -5,14 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/ssl"
+	"github.com/nself-org/cli/internal/trust/sysexec"
 	"github.com/nself-org/cli/internal/ui"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -125,6 +124,10 @@ func runDNSSetup(cmd *cobra.Command, args []string) error {
 
 	added, err := ssl.AddHosts(hostable)
 	if err != nil {
+		if errors.Is(err, sysexec.ErrSkippedHeadless) {
+			ui.Warn("Headless mode (NSELF_HEADLESS=1 or CI=1): /etc/hosts not changed. Run `nself dns-setup` on a machine with admin rights, or set NSELF_HEADLESS=0.")
+			return nil
+		}
 		if errors.Is(err, ssl.ErrSudoRequired) {
 			if runtime.GOOS == "darwin" {
 				return rerunWithOsascript(cmd.Context(), workdir)
@@ -157,13 +160,15 @@ func runDNSSetup(cmd *cobra.Command, args []string) error {
 // blocking on a native OS auth dialog. This prevents test harnesses from
 // hanging when they cancel the context via a deadline.
 //
-// WaitDelay bounds how long we wait for I/O to drain after the context fires,
-// preventing "exec: WaitDelay expired before I/O complete" orphan reports.
-//
 // Only an interactive TTY session shows the native macOS admin dialog. In
 // non-TTY contexts (tests, CI, piped output) the dialog would block
 // indefinitely — return the sudo hint message instead.
 func rerunWithOsascript(ctx context.Context, workdir string) error {
+	// Never raise a native admin dialog on a headless host.
+	if sysexec.Headless() {
+		return sysexec.ErrSkippedHeadless
+	}
+
 	// Refuse to launch a blocking OS dialog if the context is already done.
 	select {
 	case <-ctx.Done():
@@ -202,9 +207,7 @@ func rerunWithOsascript(ctx context.Context, workdir string) error {
 	escapedWorkdir := strings.ReplaceAll(filepath.Clean(workdir), `\`, `\\`)
 	escapedWorkdir = strings.ReplaceAll(escapedWorkdir, `"`, `\"`)
 	script := fmt.Sprintf(`do shell script "%s dns-setup --project %s" with administrator privileges`, escapedSelf, escapedWorkdir)
-	cmd := exec.CommandContext(ctx, "osascript", "-e", script)
-	cmd.WaitDelay = 5 * time.Second
-	out, err := cmd.CombinedOutput()
+	out, err := sysexec.Output(ctx, "osascript", "-e", script)
 	if err != nil {
 		ui.Error(fmt.Sprintf("Permission denied — /etc/hosts requires root. Run: sudo nself dns-setup --project %s", workdir))
 		return fmt.Errorf("permission denied writing /etc/hosts")

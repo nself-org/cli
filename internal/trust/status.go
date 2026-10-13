@@ -1,10 +1,12 @@
 package trust
 
 import (
-	"os/exec"
+	"context"
 	"runtime"
+	"time"
 
 	"github.com/nself-org/cli/internal/ssl"
+	"github.com/nself-org/cli/internal/trust/sysexec"
 )
 
 // TrustStatus holds the current state of all trust components.
@@ -25,7 +27,7 @@ func CheckStatus(cfg TrustConfig) TrustStatus {
 	s := TrustStatus{}
 
 	// --- mkcert ---
-	_, err := exec.LookPath("mkcert")
+	_, err := sysexec.LookPath("mkcert")
 	s.MkcertInstalled = err == nil
 
 	if s.MkcertInstalled {
@@ -80,6 +82,7 @@ func CheckStatus(cfg TrustConfig) TrustStatus {
 
 // isDnsmasqInstalledDarwin checks if dnsmasq is listed in Homebrew's installed packages.
 func isDnsmasqInstalledDarwin() bool {
-	cmd := exec.Command("brew", "list", "dnsmasq")
-	return cmd.Run() == nil
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return sysexec.Run(ctx, "brew", "list", "dnsmasq") == nil
 }

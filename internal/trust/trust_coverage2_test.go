@@ -188,24 +188,19 @@ func TestSetupDarwin_SkipPortsOnly(t *testing.T) {
 
 // --- installMkcertCA platform branches ---
 
-// TestInstallMkcertCA_Darwin_Skip documents why the macOS osascript branch
-// of installMkcertCA cannot be covered in automated tests.
-// unreachable: the darwin case of installMkcertCA calls osascript with
-// "administrator privileges" which blocks on a native OS password dialog in
-// any headless or CI environment; the 30-second exec timeout means the test
-// hangs until the entire test binary times out.
-func TestInstallMkcertCA_Darwin_Skip(t *testing.T) {
+// TestInstallMkcertCA_Darwin drives the macOS branch of installMkcertCA with
+// the fake runner and checks the admin command it would have run.
+func TestInstallMkcertCA_Darwin(t *testing.T) {
 	if runtime.GOOS != "darwin" {
-		t.Skip("darwin-only documentation test")
+		t.Skip("darwin-only")
 	}
-	// The darwin branch of installMkcertCA invokes:
-	//   exec.CommandContext(ctx, "osascript", "-e", script)
-	// where script contains "with administrator privileges".
-	// This raises a macOS native auth dialog that cannot be dismissed
-	// programmatically in a test environment. Calling it would hang the
-	// test binary for 30 seconds (the context timeout) every run.
-	// Coverage of this branch requires an interactive session with admin access.
-	t.Skip("darwin installMkcertCA branch requires interactive admin session — unreachable in automated tests")
+	fake := hermetic(t)
+	if err := installMkcertCA("/fake/rootCA.pem"); err != nil {
+		t.Fatalf("installMkcertCA under the fake runner: %v", err)
+	}
+	if !fake.Saw("osascript -e do shell script \"security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain /fake/rootCA.pem\" with administrator privileges") {
+		t.Errorf("unexpected admin command: %v", fake.Calls())
+	}
 }
 
 // --- CheckPortsDarwin with pfctl unavailable ---

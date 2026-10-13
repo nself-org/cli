@@ -1,8 +1,12 @@
 package ssl
 
 import (
+	"errors"
 	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/nself-org/cli/internal/trust/sysexec"
 )
 
 func TestIsCAInstalled_NonexistentPath(t *testing.T) {
@@ -36,9 +40,13 @@ func TestIsCAInstalled_EmptyFile(t *testing.T) {
 }
 
 func TestMkcertCACertPath_Format(t *testing.T) {
-	if !mkcertAvailable() {
-		t.Skip("mkcert not available")
-	}
+	fake := &sysexec.Fake{Reply: func(c sysexec.Call) ([]byte, error) {
+		if c.String() == "mkcert -CAROOT" {
+			return []byte("/fake/caroot\n"), nil
+		}
+		return nil, errors.New("unexpected command " + c.String())
+	}}
+	defer sysexec.Set(fake)()
 
 	caPath, err := MkcertCACertPath()
 	if err != nil {
@@ -48,8 +56,8 @@ func TestMkcertCACertPath_Format(t *testing.T) {
 		t.Error("MkcertCACertPath returned empty string")
 	}
 	// Path must end with rootCA.pem.
-	if len(caPath) < 10 || caPath[len(caPath)-10:] != "rootCA.pem" {
-		t.Errorf("expected path to end with rootCA.pem, got: %s", caPath)
+	if want := filepath.Join("/fake/caroot", "rootCA.pem"); caPath != want {
+		t.Errorf("MkcertCACertPath = %q, want %q", caPath, want)
 	}
 }
 

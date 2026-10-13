@@ -85,18 +85,8 @@ func TestRestartDnsmasq_Direct(t *testing.T) {
 	_ = restartDnsmasq()
 }
 
-// --- setupResolver direct call ---
-
-// TestSetupResolver_Direct documents why setupResolver cannot be called in automated tests.
-// unreachable: setupResolver calls osascript "with administrator privileges" with a
-// 30-second timeout; in headless/CI environments this blocks until timeout, causing the
-// test binary to exhaust its timeout budget. Coverage requires an interactive admin session.
-func TestSetupResolver_Direct(t *testing.T) {
-	if runtime.GOOS != "darwin" {
-		t.Skip("darwin-only")
-	}
-	t.Skip("setupResolver invokes osascript with admin privileges — hangs in headless environments")
-}
+// setupResolver is covered by TestSetupResolver_WritesViaOsascriptFake in
+// headless_darwin_test.go (darwin-only symbol).
 
 // --- flushDNSCache direct call ---
 

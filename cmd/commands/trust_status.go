@@ -94,7 +94,15 @@ func printTrustSummary(result *trust.TrustResult) {
 		}
 	}
 
-	if len(result.Errors) == 0 {
+	if len(result.Skipped) > 0 {
+		fmt.Println()
+		for _, step := range result.Skipped {
+			fmt.Printf("  - %s — skipped (headless): no system change made\n", step)
+		}
+		ui.Warn("Headless mode (NSELF_HEADLESS=1 or CI=1): run `nself trust` once on a machine with admin rights, or set NSELF_HEADLESS=0.")
+	}
+
+	if len(result.Errors) == 0 && len(result.Skipped) == 0 {
 		fmt.Println()
 		ui.Success("Local dev trust setup complete — your *.local projects are ready for HTTPS.")
 	}
