@@ -344,6 +344,53 @@ const sshdReadyWait = 90 * time.Second
 // so an attempt can stall on the banner; the poll then retries.
 const sshdAttemptWait = 15 * time.Second
 
+// sshdImage is the fixture sshd image of TestDBHasuraRemoteIntegration.
+const sshdImage = "linuxserver/openssh-server:latest"
+
+// dockerVisibleFixtureRoot returns a world-writable directory the docker
+// daemon can bind-mount. A daemon in a VM (Colima, Docker Desktop) shares only
+// some host paths, usually $HOME; a CI host whose TMPDIR is on another volume
+// then mounts an empty directory and the fixture fails with "nself: command
+// not found" after the full 90 s poll. The test temp dir is tried first, then
+// a directory under $HOME; when neither is visible the test skips with the
+// reason instead of failing.
+func dockerVisibleFixtureRoot(t *testing.T, image string) string {
+	t.Helper()
+	candidates := []func() (string, error){
+		func() (string, error) { return t.TempDir(), nil },
+		func() (string, error) {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return "", err
+			}
+			d, err := os.MkdirTemp(home, ".nself-sshd-fixture-")
+			if err == nil {
+				t.Cleanup(func() { os.RemoveAll(d) })
+			}
+			return d, err
+		},
+	}
+	for _, next := range candidates {
+		d, err := next()
+		if err != nil {
+			continue
+		}
+		if err := os.Chmod(d, 0777); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(d, "visible"), nil, 0644); err != nil {
+			t.Fatal(err)
+		}
+		out, err := exec.Command("docker", "run", "--rm", "--entrypoint", "test", "-v", d+":/probe:ro", image, "-f", "/probe/visible").CombinedOutput()
+		if err == nil {
+			return d
+		}
+		t.Logf("docker cannot see %s: %v %s", d, err, strings.TrimSpace(string(out)))
+	}
+	t.Skip("the docker daemon cannot bind-mount the test temp dir or $HOME (VM without shared paths): the sshd fixture cannot run here")
+	return ""
+}
+
 // isolateSSHKnownHosts points every streamed ssh call of the db remote transport at a
 // throwaway known_hosts file and a short connect timeout. The fixture sshd
 // listens on 127.0.0.1:<docker-assigned port>, and docker hands out ports in
@@ -366,10 +413,7 @@ func TestDBHasuraRemoteIntegration(t *testing.T) {
 		t.Skip("Linux sshd bind-mount fixture")
 	}
 	dockertest.Require(t) // skips without docker, fails on a GitHub Linux runner (D-0286)
-	root := t.TempDir()
-	if err := os.Chmod(root, 0777); err != nil {
-		t.Fatal(err)
-	}
+	root := dockerVisibleFixtureRoot(t, sshdImage)
 	key := filepath.Join(root, "id_ed25519")
 	if out, err := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", key).CombinedOutput(); err != nil {
 		t.Fatal(string(out), err)
@@ -387,7 +431,7 @@ func TestDBHasuraRemoteIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	name := fmt.Sprintf("nself-l12-%d", time.Now().UnixNano())
-	run := exec.Command("docker", "run", "--rm", "-d", "--name", name, "-p", "127.0.0.1::2222", "-e", "USER_NAME=test", "-e", "PUBLIC_KEY="+strings.TrimSpace(string(pub)), "-v", root+":/fixtures", "-v", filepath.Join(root, "nself")+":/usr/local/bin/nself:ro", "linuxserver/openssh-server:latest")
+	run := exec.Command("docker", "run", "--rm", "-d", "--name", name, "-p", "127.0.0.1::2222", "-e", "USER_NAME=test", "-e", "PUBLIC_KEY="+strings.TrimSpace(string(pub)), "-v", root+":/fixtures", "-v", filepath.Join(root, "nself")+":/usr/local/bin/nself:ro", sshdImage)
 	if out, err := run.CombinedOutput(); err != nil {
 		t.Fatalf("start sshd: %s %v", out, err)
 	}
