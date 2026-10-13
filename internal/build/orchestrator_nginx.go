@@ -48,6 +48,10 @@ func (st *buildState) modelRoutes(hasSSL bool) (*routemodel.Model, error) {
 	if err := st.checkProxyProvider(m); err != nil {
 		return nil, err
 	}
+	// P7-ADOPT-03: shared host proxy (qualifies m, writes nothing).
+	if err := st.sharedBegin(m); err != nil {
+		return nil, err
+	}
 	return m, nil
 }
 
@@ -60,6 +64,9 @@ func (st *buildState) checkProxyProvider(m *routemodel.Model) error {
 	}
 	provider, err := ProxyProvider(st.cfg, st.workdir, pluginDir)
 	if err != nil {
+		return err
+	}
+	if err := st.sharedModeCheck(provider); err != nil {
 		return err
 	}
 	if provider == ProviderNginx {

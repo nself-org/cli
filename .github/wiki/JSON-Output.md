@@ -102,6 +102,7 @@ Every JSON contract is published as a JSON Schema (draft 2020-12) under `schemas
 | `schemas/plugin-manifest.v2.schema.json` | The plugin manifest v2 (`plugin.json` with `manifest_version` 2) |
 | `schemas/portable-export.v1.schema.json` | The portable bundle manifest (contract `cli.portable-export` v1) |
 | `schemas/proxy-routes.v1.schema.json` | The provider-neutral model of generated proxy routes |
+| `schemas/shared-proxy.v1.schema.json` | A project's registration on a shared host proxy (contract `cli.shared-proxy` v1) |
 | `schemas/index.json` | Every generated schema with its `$id` |
 
 `make contract-check` fails when a schema in `schemas/index.json` has no row here or a row names a file that does not exist (`scripts/contract-check-wiki.sh`).

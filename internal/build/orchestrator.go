@@ -205,6 +205,9 @@ func Build(workdir string, opts BuildOptions) (*BuildResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := st.sharedFinish(); err != nil { // P7-ADOPT-03
+		return nil, err
+	}
 	if es, ok := st.sink.(*expectSink); ok {
 		if err := es.verify(); err != nil {
 			return nil, err
@@ -265,6 +268,7 @@ type buildState struct {
 	start   time.Time
 	cfg     *config.Config
 	routes  *routemodel.Model
+	shared  *sharedProxy // P7-ADOPT-03: shared host proxy plan (nil before modelRoutes)
 
 	// sink receives every file the pipeline writes; fx performs or records
 	// every host effect. Both are chosen by newBuildState from opts.Mode.

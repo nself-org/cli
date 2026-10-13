@@ -110,6 +110,7 @@ Optional services (enable per project): **Redis** | **MinIO** (S3 storage) | **S
 | [[Config-Hasura]] | Hasura: admin secret, JWT, console, dev mode, metadata |
 | [[Config-Auth]] | Auth: OAuth providers, SMTP, rate limiting, JWT settings |
 | [[Config-Nginx]] | Nginx: domains, SSL mode, rate limits, custom locations |
+| [[Shared-Proxy]] | One host Nginx for several projects: NGINX_MODE=shared, registrations, collisions |
 | [[Config-Optional-Services]] | Redis, MinIO, Functions, Search, Email, MLflow, Admin |
 | [[Config-Custom-Services]] | Custom service slots CS_1 through CS_10 with 40+ templates |
 | [[Config-System]] | System-level settings: Docker, networking, ports |
