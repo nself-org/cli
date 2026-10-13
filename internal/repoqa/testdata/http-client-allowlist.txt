@@ -5,7 +5,6 @@ cmd/commands/ci_forgejo.go 1
 cmd/commands/controller.go 1
 cmd/commands/doctor_ai_health.go 3
 cmd/commands/doctor_checks_license.go 1
-cmd/commands/init_templates.go 1
 cmd/commands/mcp_sentry.go 1
 cmd/commands/plugin_marketplace.go 1
 cmd/commands/template_registry.go 2

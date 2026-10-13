@@ -20,12 +20,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nself-org/cli/internal/httptimeout"
 	clonetemplate "github.com/nself-org/cli/internal/templates/clone"
 	"github.com/nself-org/cli/internal/ui"
 )
 
 // runInitCloneTemplate scaffolds one of the six embedded app-clone templates
-// into destDir. No network access is required.
+// into destDir. The files are embedded; the plugin entitlement check before them
+// reads the plugin catalog (the cached copy works offline).
 func runInitCloneTemplate(name, destDir string, noSeed, dryRun, force, quiet bool) error {
 	if !quiet {
 		verb := "Scaffolding"
@@ -38,6 +40,10 @@ func runInitCloneTemplate(name, destDir string, noSeed, dryRun, force, quiet boo
 	m, err := clonetemplate.GetManifest(name)
 	if err != nil {
 		return fmt.Errorf("loading template manifest: %w", err)
+	}
+
+	if err := clonetemplate.Enforce(os.Stderr, name, m.RequiredPlugins, templateSource); err != nil {
+		return err
 	}
 
 	// Resolve destination directory.
@@ -166,7 +172,7 @@ func runInitMarketplaceTemplate(slug, destDir string, force, quiet bool) error {
 		req.Header.Set("X-Nself-License", licKey)
 	}
 
-	client := &http.Client{Timeout: 120 * time.Second}
+	client := httptimeout.WithTimeout(120 * time.Second)
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("downloading template tarball: %w", err)
