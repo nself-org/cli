@@ -1,11 +1,15 @@
 package compose
 
+import "strings"
+
 // buildVolumes returns the docker-compose volume definitions.
 // Core volumes (postgres_data) are always included.
 // Optional service volumes are added conditionally based on config.
 func (g *Generator) buildVolumes() map[string]VolumeConfig {
 	vols := map[string]VolumeConfig{
-		"postgres_data": {},
+		// POSTGRES_DATA_VOLUME names the volume `nself db image switch` moved the
+		// data to; unset renders exactly the volume compose names itself.
+		"postgres_data": {Name: strings.TrimSpace(g.cfg.Postgres.DataVolume)},
 	}
 
 	if g.cfg.Redis.Enabled {

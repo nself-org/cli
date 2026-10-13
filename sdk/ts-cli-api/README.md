@@ -88,7 +88,7 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 
 <!-- BEGIN GENERATED: operations (tools/sdkgen, DO NOT HAND EDIT) -->
 
-208 operations. Every method takes `{ args, flags }` (plus `confirm` where the operation declares it) and resolves to the typed `data` member.
+209 operations. Every method takes `{ args, flags }` (plus `confirm` where the operation declares it) and resolves to the typed `data` member.
 
 | Method | Route | Summary |
 | --- | --- | --- |
@@ -195,6 +195,7 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 | `dbHasuraSnapshot` | `POST /v1/commands/db/hasura/snapshot` | Capture or compare Hasura metadata snapshots |
 | `dbHasuraSync` | `POST /v1/commands/db/hasura/sync` | Export live Hasura metadata and commit to git |
 | `dbHasuraValidate` | `POST /v1/commands/db/hasura/validate` | Validate Hasura metadata consistency and permission coverage |
+| `dbImageSwitch` | `POST /v1/commands/db/image/switch` | Move the database to the pgvector Postgres image (the old volume is kept) |
 | `dbImportAppwrite` | `POST /v1/commands/db/import/appwrite` | Import and verify data from appwrite |
 | `dbImportFirebase` | `POST /v1/commands/db/import/firebase` | Generate nSelf migration artifacts from a Firebase export |
 | `dbImportHasuraCloud` | `POST /v1/commands/db/import/hasura-cloud` | Import and verify data from hasura-cloud |

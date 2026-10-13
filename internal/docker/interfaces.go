@@ -38,6 +38,7 @@ type ContainerInfo struct {
 	Name      string
 	Service   string // Docker Compose service name (e.g. "postgres", "hasura")
 	Image     string
+	ImageRef  string // the reference the container was created from (Config.Image), e.g. postgres:16-alpine
 	State     string
 	Health    string
 	Ports     []string

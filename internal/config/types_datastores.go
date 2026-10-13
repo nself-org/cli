@@ -14,7 +14,11 @@ type PostgresConfig struct {
 	// over every other resolution (see compose.ResolvePostgresImage). Set this
 	// to pin a running image (e.g. pgvector/pgvector:pg16) across regens
 	// without relying on POSTGRES_EXTENSIONS inference (cli#384).
-	Image      string   `env:"POSTGRES_IMAGE"`
+	Image string `env:"POSTGRES_IMAGE"`
+	// DataVolume, when set, is the docker volume the postgres service keeps its
+	// data in (compose volumes.postgres_data.name). `nself db image switch`
+	// writes it; unset keeps the compose project's own postgres_data volume.
+	DataVolume string   `env:"POSTGRES_DATA_VOLUME"`
 	Host       string   `env:"POSTGRES_HOST"` // postgres (container name)
 	Port       int      `env:"POSTGRES_PORT"` // 5432
 	DB         string   `env:"POSTGRES_DB"`   // nself

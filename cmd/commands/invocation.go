@@ -159,9 +159,9 @@ func enterInvocation(cmd *cobra.Command) error {
 	}
 	output.SetInvocation(invokedKey(cmd), on)
 	if on {
-		return refuseUnsupportedJSON(cmd)
+		return firstErr(refuseUnsupportedJSON(cmd), imageSwitchGuard(cmd))
 	}
-	return nil
+	return imageSwitchGuard(cmd) // E512 while a postgres image switch is incomplete (P7-ADOPT-22)
 }
 
 // invokedKey is the canonical registry path without the root name ("" for the

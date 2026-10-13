@@ -62,6 +62,7 @@ func parseEnvCore(cfg *Config) {
 	cfg.Postgres = PostgresConfig{
 		Version:    os.Getenv("POSTGRES_VERSION"),
 		Image:      os.Getenv("POSTGRES_IMAGE"),
+		DataVolume: os.Getenv("POSTGRES_DATA_VOLUME"),
 		Host:       os.Getenv("POSTGRES_HOST"),
 		Port:       getEnvInt("POSTGRES_PORT", 0),
 		DB:         os.Getenv("POSTGRES_DB"),

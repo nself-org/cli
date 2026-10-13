@@ -47,6 +47,11 @@ type RunSpec struct {
 	CapDrop []string
 	// SecurityOpt lists `--security-opt` values, e.g. "no-new-privileges:true".
 	SecurityOpt []string
+	// Name is the container name (`--name`); a caller that sets one can remove a
+	// container a killed run left behind (RemoveContainer).
+	Name string
+	// Labels are `--label key=value` pairs, rendered in key order.
+	Labels map[string]string
 }
 
 // dockerSocketPath is the daemon socket no one-shot container may mount.
@@ -56,6 +61,17 @@ const dockerSocketPath = "docker.sock"
 // the argv is deterministic. It refuses a mount of the Docker socket.
 func buildRunArgs(spec RunSpec) ([]string, error) {
 	args := []string{"run", "--rm"}
+	if spec.Name != "" {
+		args = append(args, "--name", spec.Name)
+	}
+	labels := make([]string, 0, len(spec.Labels))
+	for k := range spec.Labels {
+		labels = append(labels, k)
+	}
+	sort.Strings(labels)
+	for _, k := range labels {
+		args = append(args, "--label", k+"="+spec.Labels[k])
+	}
 	if spec.User != "" {
 		args = append(args, "--user", spec.User)
 	}

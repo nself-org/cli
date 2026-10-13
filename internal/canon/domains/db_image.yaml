@@ -1,0 +1,9 @@
+# Authored command fragment, P7-ADOPT-22.
+schema_version: 1
+commands:
+  # cmd/commands/db_image.go:30 hub of the image commands; prints help only
+  db image: {side_effect: read}
+  # cmd/commands/db_image.go:32 moves the data to a new volume and rewrites env, compose and lock; --yes is the consent flag; --plan previews, --rollback undoes
+  db image switch:
+    side_effect: destructive
+    confirm: {flags: [yes]}

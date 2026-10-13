@@ -210,6 +210,8 @@ export interface Operations {
   dbHasuraSync(request?: T.DbHasuraSyncRequest, options?: CallOptions): Promise<T.DbHasuraSyncData>;
   /** Validate Hasura metadata consistency and permission coverage (POST /v1/commands/db/hasura/validate) */
   dbHasuraValidate(request?: T.DbHasuraValidateRequest, options?: CallOptions): Promise<T.DbHasuraValidateData>;
+  /** Move the database to the pgvector Postgres image (the old volume is kept) (POST /v1/commands/db/image/switch) */
+  dbImageSwitch(request?: T.DbImageSwitchRequest, options?: CallOptions): Promise<T.DbImageSwitchData>;
   /** Import and verify data from appwrite (POST /v1/commands/db/import/appwrite) */
   dbImportAppwrite(request?: T.DbImportAppwriteRequest, options?: CallOptions): Promise<T.DbImportAppwriteData>;
   /** Generate nSelf migration artifacts from a Firebase export (POST /v1/commands/db/import/firebase) */
@@ -527,6 +529,7 @@ export function createOperations(transport: Transport): Operations {
     dbHasuraSnapshot: (request, options) => transport.call<T.DbHasuraSnapshotData>("/v1/commands/db/hasura/snapshot", request, options),
     dbHasuraSync: (request, options) => transport.call<T.DbHasuraSyncData>("/v1/commands/db/hasura/sync", request, options),
     dbHasuraValidate: (request, options) => transport.call<T.DbHasuraValidateData>("/v1/commands/db/hasura/validate", request, options),
+    dbImageSwitch: (request, options) => transport.call<T.DbImageSwitchData>("/v1/commands/db/image/switch", request, options),
     dbImportAppwrite: (request, options) => transport.call<T.DbImportAppwriteData>("/v1/commands/db/import/appwrite", request, options),
     dbImportFirebase: (request, options) => transport.call<T.DbImportFirebaseData>("/v1/commands/db/import/firebase", request, options),
     dbImportHasuraCloud: (request, options) => transport.call<T.DbImportHasuraCloudData>("/v1/commands/db/import/hasura-cloud", request, options),

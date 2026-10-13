@@ -123,6 +123,7 @@ internal/plugin/verify 85  # measured 87.2 2026-10-05
 internal/portable 85  # measured 87.5 2026-10-05
 internal/ports 9  # measured 11.5 2026-10-05
 internal/postgres 49  # measured 51.4 2026-10-05
+internal/postgres/imageswitch 77  # measured 80.7 2026-10-12 (P7-ADOPT-22; the docker runtime wrapper and the scripts run only in scripts/e2e/pgvector-switch.sh)
 internal/postgres/tablehash 64  # measured 66.7 2026-10-05 (unit only; the integration run adds ListTables)
 internal/promote 13  # measured 15.7 2026-10-05
 internal/reconcile 94  # measured 96.5 2026-10-05
