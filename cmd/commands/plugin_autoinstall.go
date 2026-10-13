@@ -124,6 +124,9 @@ func autoInstallResolve(ctx context.Context, slug, version string) (*plugin.Plug
 	if m.RequiresLicense || m.IsCommercial || (m.Tier != "" && m.Tier != plugin.WireTierFree) {
 		return nil, nil, fmt.Errorf("auto-install of %q: the catalogue entry is licensed, and only free plugins are auto-installed (install it by hand: %s)", slug, manual)
 	}
+	if !autoInstallSafeBinaryName(autoInstallBinaryName(slug, m)) {
+		return nil, nil, fmt.Errorf("auto-install of %q: the catalogue entry names an unsafe command binary %q (install it by hand: %s)", slug, autoInstallBinaryName(slug, m), manual)
+	}
 	if len(m.Dependencies) > 0 || len(m.OptionalDependencies) > 0 {
 		return nil, nil, fmt.Errorf("auto-install of %q: the entry has dependencies, which the installer would add before verifying it (install it by hand: %s)", slug, manual)
 	}
@@ -220,4 +223,18 @@ func autoInstallMoveAside(pluginDir, slug string) (func(), error) {
 			_ = os.Rename(aside, dir)
 		}
 	}, nil
+}
+
+// autoInstallSafeBinaryName reports whether name is a plain nself-<x> file name:
+// no separator, no dot-dot, so publishing or removing it stays in the bin dir.
+func autoInstallSafeBinaryName(name string) bool {
+	if !strings.HasPrefix(name, "nself-") || name != filepath.Base(name) || strings.ContainsAny(name, `/\`) || strings.Contains(name, "..") {
+		return false
+	}
+	for _, r := range name {
+		if !(r == '-' || r == '_' || r == '.' || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')) {
+			return false
+		}
+	}
+	return true
 }

@@ -348,3 +348,19 @@ func TestAutoInstallRefusesUnreadableInstalledVersion(t *testing.T) {
 		t.Fatal("a binary stayed published after the refusal")
 	}
 }
+
+func TestAutoInstallRefusesUnsafeBinaryName(t *testing.T) {
+	for _, bn := range []string{"../../victim", "nself-../x", "evil", "nself-a/b"} {
+		tb := aiTarball(t, nil)
+		sum := aiSum(tb)
+		signed := aiSigned(t, sum)
+		signed["binaryName"] = bn
+		downloads := aiServe(t, tb, sum, signed)
+		if _, err := autoInstallPlugin(aiSlug, ""); err == nil || !strings.Contains(err.Error(), "unsafe command binary") {
+			t.Fatalf("binaryName %q: want an unsafe-name refusal, got %v", bn, err)
+		}
+		if n := atomic.LoadInt32(downloads); n != 0 {
+			t.Fatalf("binaryName %q: %d downloads before the refusal", bn, n)
+		}
+	}
+}
