@@ -12,16 +12,18 @@ import (
 )
 
 // runMCPSetupFlags runs `mcp setup` with the given flags and returns stdout,
-// stderr and the error. Flags are reset afterwards.
+// stderr and the error. Flags are reset before and after, so calls do not leak.
 func runMCPSetupFlags(t *testing.T, flags map[string]string) (string, string, error) {
 	t.Helper()
-	t.Cleanup(func() {
+	reset := func() {
 		for _, n := range []string{"client", "write", "agents-md", "json"} {
 			f := mcpSetupCmd.Flags().Lookup(n)
 			_ = f.Value.Set(f.DefValue)
 			f.Changed = false
 		}
-	})
+	}
+	reset()
+	t.Cleanup(reset)
 	for k, v := range flags {
 		if err := mcpSetupCmd.Flags().Set(k, v); err != nil {
 			t.Fatal(err)
