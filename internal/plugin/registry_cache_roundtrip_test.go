@@ -187,7 +187,7 @@ func TestCacheKeepsSignatureMaterial(t *testing.T) {
 	t.Setenv(pluginRequireChecksumEnv, "1")
 	stripped := *got
 	stripped.ReleaseSignature = nil
-	if err := verifyReleaseSignature(&stripped, false, false); err == nil {
+	if err := verifyReleaseSignature(&stripped, false, false, ArtifactKindSource); err == nil {
 		t.Error("a stable plugin with no signature was accepted even in hard mode")
 	}
 }

@@ -47,7 +47,7 @@ func releaseSignatureRaw(rel *signature.Release) json.RawMessage {
 	}
 	b, err := json.Marshal(rel)
 	if err != nil {
-		return nil
+		return json.RawMessage(`{}`) // stays present-but-invalid (E121), never "absent"
 	}
 	return b
 }

@@ -5,7 +5,7 @@ package plugin
 // Purpose: verify the registry's release_signature (hq PLUG D7, contract plugins.release-signature v1) against the keys compiled into the CLI, for both tiers, after the tarball checksum (E124) and before anything is extracted. Split out of installer_locked.go (299-line ratchet).
 // Inputs: the resolved registry manifest and whether the entry is licensed (paid).
 // Outputs: nil (verified, or a one-line warning printed), or a coded error: E121 bad signature, E122 unknown key, E123 revoked key, E107 unsigned where signatures are required.
-// Constraints: the signature covers the SOURCE tarball's sha256 (manifest.Checksum); a binary tarball is held to platform_checksums and the same signed release row. The manifest's author_public_key is never read for trust. --allow-unsigned is honoured for local path or link installs only; registry installs pass local=false and cannot opt out. Pure policy lives in verify/signature.Decide.
+// Constraints: the signature covers the SOURCE tarball's sha256 (manifest.Checksum). A binary tarball is held to platform_checksums, which the signature does not cover (D7 limit, debt row D-P23-PLATFORM-SIG): the install prints a warning saying so. The manifest's author_public_key is never read for trust. --allow-unsigned is honoured for local path or link installs only; registry installs pass local=false and cannot opt out. Pure policy lives in verify/signature.Decide.
 
 import (
 	"fmt"
@@ -36,7 +36,7 @@ func unsignedAllowed(local bool) bool {
 
 // verifyReleaseSignature runs the signature decision for one registry
 // manifest and prints its warning, if any.
-func verifyReleaseSignature(manifest *PluginManifest, paid, local bool) error {
+func verifyReleaseSignature(manifest *PluginManifest, paid, local bool, artifactKind string) error {
 	// compat.V15(P7-PLUG-23): a plugin with no verifiable release signature installs with a warning -> refused with E107
 	v15 := compat.V15()
 	out, err := signature.Decide(signature.Input{
@@ -54,6 +54,12 @@ func verifyReleaseSignature(manifest *PluginManifest, paid, local bool) error {
 	}
 	if out.Warning != "" {
 		fmt.Fprintf(os.Stderr, "warning: %s\n", out.Warning)
+	}
+	// D7 signs the source tarball only. A binary tarball is held to the
+	// registry's platform_checksums (unsigned) and the GitHub attestation, so
+	// say so instead of implying the signature covers the bytes installed.
+	if out.Verified && artifactKind != "" && artifactKind != ArtifactKindSource {
+		fmt.Fprintf(os.Stderr, "warning: plugin %q: the %s binary package is checked against the registry platform checksum; the release signature covers the source package only\n", manifest.Name, artifactKind)
 	}
 	return nil
 }

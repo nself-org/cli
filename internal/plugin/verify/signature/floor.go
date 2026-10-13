@@ -21,21 +21,26 @@ var signedSinceJSON []byte
 
 // Floor maps tier -> slug -> first signed version. Tests swap it with
 // signaturetest.UseFloor.
-var Floor = mustLoadFloor(signedSinceJSON)
+var Floor, floorErr = loadFloor(signedSinceJSON)
 
-func mustLoadFloor(data []byte) map[string]map[string]string {
+// loadFloor decodes the embedded file. A file that does not decode is an
+// error, and FloorRequires then fails closed (every entry needs a signature).
+func loadFloor(data []byte) (map[string]map[string]string, error) {
 	var doc struct {
 		Tiers map[string]map[string]string `json:"tiers"`
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
-		panic(fmt.Errorf("signature: signed_since.json: %w", err))
+		return nil, fmt.Errorf("signature: signed_since.json: %w", err)
 	}
-	return doc.Tiers
+	return doc.Tiers, nil
 }
 
 // FloorRequires reports whether an entry of tier/slug/version must carry a
 // release_signature because of the floor.
 func FloorRequires(tier, slug, version string) bool {
+	if floorErr != nil {
+		return true
+	}
 	m := Floor[tier]
 	if len(m) == 0 {
 		return false
@@ -69,7 +74,31 @@ func versionLess(a, b string) bool {
 	if pb.pre == "" {
 		return true // a pre-release sorts below its release
 	}
-	return pa.pre < pb.pre
+	return preLess(pa.pre, pb.pre)
+}
+
+// preLess orders two non-empty pre-release strings by semver 2.0.0 rules:
+// dot-separated identifiers left to right, numeric ones by value and below
+// alphanumeric ones, a shorter list below a longer one it prefixes.
+func preLess(a, b string) bool {
+	x, y := strings.Split(a, "."), strings.Split(b, ".")
+	for i := 0; i < len(x) && i < len(y); i++ {
+		if x[i] == y[i] {
+			continue
+		}
+		nx, errX := strconv.Atoi(x[i])
+		ny, errY := strconv.Atoi(y[i])
+		switch {
+		case errX == nil && errY == nil:
+			return nx < ny
+		case errX == nil:
+			return true
+		case errY == nil:
+			return false
+		}
+		return x[i] < y[i]
+	}
+	return len(x) < len(y)
 }
 
 type parsedVersion struct {
@@ -88,8 +117,8 @@ func parseVersion(s string) (parsedVersion, bool) {
 	}
 	for i, p := range parts {
 		n, err := strconv.Atoi(p)
-		if err != nil || n < 0 {
-			return pv, false
+		if err != nil || p[0] < '0' || p[0] > '9' {
+			return pv, false // Atoi also takes "+1" and "-1"; only plain digits are a version part
 		}
 		pv.num[i] = n
 	}

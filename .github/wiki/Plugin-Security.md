@@ -19,7 +19,9 @@ The public keys are compiled into the CLI (`internal/plugin/verify/signature/key
 
 1. Download to a temporary file. 2. SHA-256 against the registry checksum: a mismatch is E124. 3. Release signature against the pinned keys: E121 (bad), E122 (unknown key or wrong tier), E123 (revoked key). 4. Only then extract. A failure at 2 or 3 leaves the plugin directory untouched.
 
-A binary tarball is held to its `platform_checksums` entry; the signature covers the source tarball row of the same release.
+A binary tarball is held to its `platform_checksums` entry. The signature covers the source tarball row of the same release only, so the registry data that names a binary package is not signed; the install prints a warning saying so, and the GitHub build attestation is the provenance for binaries. Closing this needs a contract change (sign the platform checksums); it is tracked as a follow-up.
+
+Two limits to know: the tier of an entry comes from the registry, so while a tier has no pinned key (the state until the production keys ship) an entry can be moved to it and its signature is then read as missing; once both tiers are pinned a moved entry fails with E122. And the long-standing developer bypass (`NSELF_LICENSE_SKIP_VERIFY=1` together with `NSELF_LICENSE_SKIP_VERIFY_FORCE=1`, refused in production and staging, written to the audit log) skips the signature step, not the checksum.
 
 ### Unsigned plugins
 

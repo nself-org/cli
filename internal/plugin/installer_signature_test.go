@@ -325,17 +325,17 @@ func TestInstallAllowUnsignedLocalOnly(t *testing.T) {
 	}
 	m := &PluginManifest{Name: sigPlugin, Version: "1.0.0", Checksum: sha256Hex(tb)}
 	for _, paid := range []bool{false, true} {
-		if err := verifyReleaseSignature(m, paid, false); codeOf(err) != "E107" {
+		if err := verifyReleaseSignature(m, paid, false, ArtifactKindSource); codeOf(err) != "E107" {
 			t.Errorf("registry (paid=%v) with the flag: want E107, got %v", paid, err)
 		}
 		var werr error
-		out := captureStderr(t, func() { werr = verifyReleaseSignature(m, paid, true) })
+		out := captureStderr(t, func() { werr = verifyReleaseSignature(m, paid, true, ArtifactKindSource) })
 		if werr != nil || !strings.Contains(out, "--allow-unsigned") {
 			t.Errorf("local (paid=%v) with the flag: err=%v stderr=%q", paid, werr, out)
 		}
 	}
 	t.Setenv(allowUnsignedEnv, "")
-	if err := verifyReleaseSignature(m, false, true); codeOf(err) != "E107" {
+	if err := verifyReleaseSignature(m, false, true, ArtifactKindSource); codeOf(err) != "E107" {
 		t.Errorf("local without the flag: want E107, got %v", err)
 	}
 	if !compat.V15() {
@@ -354,18 +354,18 @@ func TestReleaseSignatureTierRouting(t *testing.T) {
 		sum := sha256Hex([]byte("x"))
 		m := &PluginManifest{Name: sigPlugin, Version: "1.0.0", Checksum: strings.ToUpper(sum)}
 		m.ReleaseSignature = signaturetest.Sign(t, licSigner, sigPlugin, "1.0.0", sum)
-		if err := verifyReleaseSignature(m, true, false); err != nil {
+		if err := verifyReleaseSignature(m, true, false, ArtifactKindSource); err != nil {
 			t.Fatalf("licensed entry, licensed key (checksum upper-cased in the registry): %v", err)
 		}
-		if codeOf(verifyReleaseSignature(m, false, false)) != "E122" {
+		if codeOf(verifyReleaseSignature(m, false, false, ArtifactKindSource)) != "E122" {
 			t.Error("licensed-key signature on a free entry must be E122")
 		}
 		m.ReleaseSignature = signaturetest.Sign(t, freeSigner, sigPlugin, "1.0.0", sum)
-		if codeOf(verifyReleaseSignature(m, true, false)) != "E122" {
+		if codeOf(verifyReleaseSignature(m, true, false, ArtifactKindSource)) != "E122" {
 			t.Error("free-key signature on a licensed entry must be E122")
 		}
 		m.Checksum = ""
-		if codeOf(verifyReleaseSignature(m, false, false)) != "E121" {
+		if codeOf(verifyReleaseSignature(m, false, false, ArtifactKindSource)) != "E121" {
 			t.Error("a signature with no checksum to bind it to must be E121")
 		}
 	})
@@ -383,4 +383,47 @@ func genAuthorKey(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
 
 func signHex(priv ed25519.PrivateKey, msg []byte) string {
 	return hex.EncodeToString(ed25519.Sign(priv, msg))
+}
+
+// TestInstallStrictModeRefusesUnsigned: NSELF_PLUGIN_REQUIRE_CHECKSUM=1 keeps
+// refusing a stable unsigned plugin (E107) in v1.4 mode, before extraction.
+func TestInstallStrictModeRefusesUnsigned(t *testing.T) {
+	compattest.Set(t, false)
+	tb := sigTarball(t)
+	signaturetest.UseKeys(t, nil, nil)
+	signaturetest.UseFloor(t, map[string]map[string]string{})
+	sigServer(t, tb, sha256Hex(tb), nil)
+	t.Setenv(pluginRequireChecksumEnv, "1")
+	dir, err, _ := installSig(t)
+	if codeOf(err) != "E107" || !dirEmpty(t, dir) {
+		t.Fatalf("want E107 and an empty plugin dir, got %v", err)
+	}
+}
+
+// TestBinaryPackageWarnsSignatureCoversSource: a verified signature on a
+// platform (binary) artifact prints that the signature covers the source
+// package only; a source artifact prints nothing.
+func TestBinaryPackageWarnsSignatureCoversSource(t *testing.T) {
+	compattest.Both(t, func(t *testing.T) {
+		key, signer := signaturetest.NewKey(t, signature.TierFree)
+		signaturetest.UseKeys(t, []signature.Key{key}, nil)
+		signaturetest.UseFloor(t, map[string]map[string]string{})
+		sum := sha256Hex([]byte("source"))
+		m := &PluginManifest{Name: sigPlugin, Version: "1.0.0", Checksum: sum}
+		m.ReleaseSignature = signaturetest.Sign(t, signer, sigPlugin, "1.0.0", sum)
+		var err error
+		out := captureStderr(t, func() { err = verifyReleaseSignature(m, false, false, "linux-amd64") })
+		if err != nil || !strings.Contains(out, "covers the source package only") {
+			t.Fatalf("binary: err=%v stderr=%q", err, out)
+		}
+		out = captureStderr(t, func() { err = verifyReleaseSignature(m, false, false, ArtifactKindSource) })
+		if err != nil || out != "" {
+			t.Fatalf("source: err=%v stderr=%q", err, out)
+		}
+		// A bad signature still refuses on a binary artifact.
+		m.ReleaseSignature.Sig = m.ReleaseSignature.Sig[:len(m.ReleaseSignature.Sig)-4] + "AAAA"
+		if codeOf(verifyReleaseSignature(m, false, false, "linux-amd64")) != "E121" {
+			t.Fatal("bad signature on a binary artifact must be E121")
+		}
+	})
 }
