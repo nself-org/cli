@@ -100,12 +100,16 @@ snap() {
   for db in $(pgs "SELECT datname FROM pg_database WHERE NOT datistemplate ORDER BY 1"); do
     out+="== $db"$'\n'
     for t in $(DB=$db pg "SELECT quote_ident(n.nspname) || '.' || quote_ident(c.relname) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind IN ('r','p') AND n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname !~ '^pg_toast' ORDER BY 1"); do
-      out+="$t $(DB=$db pg "SELECT count(*), coalesce(sum(hashtextextended(t::text, 0)::numeric), 0) FROM $t AS t")"$'\n'
+      case "$t" in
+        # Hasura rewrites these two on every boot (instance id, notification): only their row count is stable.
+        hdb_catalog.hdb_metadata|hdb_catalog.hdb_schema_notifications) out+="$t $(DB=$db pg "SELECT count(*) FROM $t")"$'\n' ;;
+        *) out+="$t $(DB=$db pg "SELECT count(*), coalesce(sum(hashtextextended(t::text, 0)::numeric), 0) FROM $t AS t")"$'\n' ;;
+      esac
     done
     out+="$(docker exec "$PGC" pg_dump -U postgres -s -d "$db" | grep -v '^--\|^SET \|^\\restrict\|^\\unrestrict\|^$\|set_config' | sha)"$'\n'
     out+="$(DB=$db pg "SELECT schemaname || '.' || sequencename || '=' || last_value FROM pg_sequences ORDER BY 1")"$'\n'
     out+="$(DB=$db pg "SELECT grantee, table_schema, table_name, privilege_type FROM information_schema.role_table_grants WHERE table_schema NOT IN ('pg_catalog','information_schema') ORDER BY 1,2,3,4")"$'\n'
-    out+="$(DB=$db pg "SELECT pg_get_userbyid(defaclrole), defaclnamespace::regnamespace, defaclobjtype, defaclacl FROM pg_default_acl ORDER BY 1,2,3")"$'\n'
+    out+="$(DB=$db pg "SELECT pg_get_userbyid(defaclrole), defaclnamespace::regnamespace::text, defaclobjtype, defaclacl FROM pg_default_acl ORDER BY 1,2,3")"$'\n'
     out+="$(DB=$db pg "SELECT schemaname, tablename, policyname, roles, cmd, qual FROM pg_policies ORDER BY 1,2,3")"$'\n'
     out+="$(DB=$db pg "SELECT n.nspname, c.relname, pg_get_userbyid(c.relowner) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname !~ '^pg_toast' ORDER BY 1,2")"$'\n'
     out+="$(DB=$db pg "SELECT extname, extversion FROM pg_extension ORDER BY 1")"$'\n'
@@ -163,6 +167,11 @@ running_all && writable || fail 'E510 left the old stack down or read-only'
 pass 'a row committed during the restore (E510): nothing switched, the row is on the old volume, read-only reset, stack serving'
 pg "DELETE FROM app.notes WHERE body LIKE 'committed during%'; SELECT setval('app.notes_id_seq', 1000)" >>"$LOG" 2>&1 || fail 'remove the late row'
 
+# ---- autovacuum is active on the old cluster while the switch reads it (R4) -------------------
+# The dump and the captures read every table, which moves pg_stat counters; the recheck must not
+# compare them. Dead tuples plus a 1 s autovacuum naptime keep autovacuum working through the switch.
+pgs "ALTER SYSTEM SET autovacuum_naptime = '1s'" >>"$LOG" 2>&1 && pgs "SELECT pg_reload_conf()" >>"$LOG" 2>&1 || fail 'autovacuum settings'
+pg "ALTER TABLE app.notes SET (autovacuum_vacuum_threshold = 5, autovacuum_vacuum_scale_factor = 0); UPDATE app.notes SET body = body WHERE id <= 200" >>"$LOG" 2>&1 || fail 'dead tuples'
 # ---- the switch, killed after env is written ---------------------------------------------------
 BEFORE="$(snap)"; echo "$BEFORE" >"$W/snap.before"
 OLDVOL="$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' "$PGC")"
@@ -174,7 +183,7 @@ kill -9 "$SW"; wait "$SW" 2>/dev/null || true
 phase_is switched || fail 'state is not switched after the kill'
 if nself start --skip-build >"$W/start-blocked.out" 2>&1; then fail 'start ran while a switch was incomplete'; fi
 grep -q E512 "$W/start-blocked.out" && grep -q -- '--resume' "$W/start-blocked.out" && grep -q -- '--rollback' "$W/start-blocked.out" || fail 'start was not refused with E512 naming --resume and --rollback'
-pass 'SIGKILL after env was written: nself start is refused with E512 naming --resume and --rollback'
+pass 'SIGKILL after env was written: start is refused with E512, which names both ways out'
 nself db image switch --to pgvector --yes >"$W/switch-again.out" 2>&1 && fail 'a second run was accepted while incomplete'
 grep -q E512 "$W/switch-again.out" || fail 'a second run did not say E512'
 nself db image switch --resume --json >"$W/resume.json" 2>>"$LOG" || fail 'resume'
@@ -188,12 +197,12 @@ test "$NEWVOL" != "$OLDVOL" && test "$NEWVOL" = "$(sed -n 's/^POSTGRES_DATA_VOLU
 grep -q "name: $NEWVOL" docker-compose.yml || fail 'compose does not name the new volume'
 wait_for 120 writable || fail 'the new cluster is not writable'
 snap >"$W/snap.after"
-cmp "$W/snap.before" "$W/snap.after" || { diff "$W/snap.before" "$W/snap.after" | head -20; fail 'the data differs after the switch'; }
+cmp "$W/snap.before" "$W/snap.after" || { diff "$W/snap.before" "$W/snap.after" | head -20 || true; fail 'the data differs after the switch'; }
 pass 'tables, hashes, schema dumps, sequences, roles, grants, default privileges, owners and policies equal the pre-switch capture'
 pg "CREATE EXTENSION IF NOT EXISTS vector" >>"$LOG" 2>&1 || fail 'CREATE EXTENSION vector'
 test "$(pg "SELECT count(*) FROM public.np_plugins WHERE name='a10-fixture'")" = 1 || fail 'plugin row lost'
 test "$(pg "SELECT id FROM app.notes ORDER BY id DESC LIMIT 1")" = 500 || fail 'last row'
-test "$(pg "INSERT INTO app.notes(body) VALUES ('x') RETURNING id")" = 1001 || fail 'the sequence did not continue at 1001'
+test "$(pg "WITH i AS (INSERT INTO app.notes(body) VALUES ('x') RETURNING id) SELECT id FROM i")" = 1001 || fail 'the sequence did not continue at 1001'
 pg "DELETE FROM app.notes WHERE id = 1001; SELECT setval('app.notes_id_seq', 1000)" >>"$LOG" 2>&1 || fail 'undo the probe row'
 pass 'vector works, the plugin row is there, the sequence continues at 1001'
 # The old volume still has its data: copy it from a read-only mount and count in a throwaway server.
@@ -209,7 +218,7 @@ docker rm -f "$OC" >/dev/null; docker volume rm "$SCRATCH" >/dev/null
 pass 'the old volume still holds the data (counted on a copy of a read-only mount)'
 AFTER_SWITCH_FILES="$(files_sha)"
 nself db image switch --to pgvector --yes >"$W/again.out" 2>>"$LOG" || fail 'second run'
-grep -q 'already runs a pgvector image' "$W/again.out" || fail 'second run did not say it is already pgvector'
+grep -q 'already on pgvector' "$W/again.out" || fail 'second run did not say it is already pgvector'
 test "$(files_sha)" = "$AFTER_SWITCH_FILES" || fail 'the second run changed the project'
 pass 'a second run prints that postgres is already pgvector and changes nothing'
 
@@ -225,7 +234,7 @@ diff -q "$W/compose.alpine" docker-compose.yml >/dev/null || fail 'compose is no
 docker volume ls -q | grep -qx "$NEWVOL" || fail 'rollback removed the new volume'
 wait_for 60 writable || fail 'the old cluster is still read-only after the rollback'
 snap >"$W/snap.rolledback"
-cmp "$W/snap.before" "$W/snap.rolledback" || fail 'the data differs after the rollback'
+cmp "$W/snap.before" "$W/snap.rolledback" || { diff "$W/snap.before" "$W/snap.rolledback" | head -20 || true; fail 'the data differs after the rollback'; }
 pass 'rollback restores env, compose and lock, starts the old volume (writable), keeps and names the new volume'
 
 # ---- SIGKILL during the restore, then --resume ------------------------------------------------
@@ -241,7 +250,7 @@ wait_for 120 running_all || fail 'the stack is not running after the second resu
 case "$(image_of)" in *pgvector*) ;; *) fail 'the second switch is not on pgvector' ;; esac
 wait_for 120 writable || fail 'the new cluster is not writable after the second resume'
 snap >"$W/snap.after2"
-cmp "$W/snap.before" "$W/snap.after2" || fail 'the data differs after a kill during the restore and a resume'
+cmp "$W/snap.before" "$W/snap.after2" || { diff "$W/snap.before" "$W/snap.after2" | head -20 || true; fail 'the data differs after a kill during the restore and a resume'; }
 test "$(docker ps -aq --filter "name=^nself-imgswitch-${P}" | wc -l | tr -d ' ')" = 0 || fail 'a one-shot container was left behind'
 pass 'SIGKILL during the restore: --resume converges to the same data, no one-shot container is left'
 echo 'PASS: pgvector-switch e2e'

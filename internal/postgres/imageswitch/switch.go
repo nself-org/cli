@@ -13,11 +13,17 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 
 	"github.com/nself-org/cli/internal/errs"
 )
+
+// onWindows is true on native Windows, where the switch is not supported: its
+// stage directory is a POSIX bind mount owned by the host uid:gid. A variable so
+// tests on every platform exercise the same path.
+var onWindows = runtime.GOOS == "windows"
 
 // Switch runs one image switch.
 type Switch struct {

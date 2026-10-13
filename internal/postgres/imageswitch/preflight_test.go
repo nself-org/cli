@@ -49,6 +49,15 @@ func TestPreflightRefusals(t *testing.T) {
 	}
 }
 
+func TestPreflightRefusesNativeWindows(t *testing.T) {
+	f, s := newFake(t)
+	onWindows = true
+	_, err := s.Run(context.Background(), RunOptions{})
+	if code(t, err) != "E509" || !strings.Contains(err.Error(), "WSL2") || f.called("oneshot") {
+		t.Fatalf("err = %v, calls %v", err, f.calls)
+	}
+}
+
 func TestPreflightRefusesPreexistingReadOnly(t *testing.T) {
 	f, s := newFake(t)
 	s.d.Runtime = roRuntime{f}

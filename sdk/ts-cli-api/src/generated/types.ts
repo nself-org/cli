@@ -2381,6 +2381,7 @@ export interface DbImageSwitchData {
   data_bytes?: number;
   databases?: number;
   downtime_seconds?: number;
+  dumps?: null | Array<string>;
   new_image?: string;
   new_volume?: string;
   next_steps?: null | Array<string>;
@@ -2393,6 +2394,7 @@ export interface DbImageSwitchData {
     ok: boolean;
   }>;
   sequences?: number;
+  stage?: string;
   status: string;
   steps?: null | Array<string>;
   tables?: number;

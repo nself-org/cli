@@ -150,7 +150,7 @@ func renderImageSwitch(cmd *cobra.Command, r *imageswitch.Report) error {
 	p := func(format string, a ...any) { _, _ = fmt.Fprintf(out, format+"\n", a...) }
 	switch r.Status {
 	case "already-pgvector":
-		p("Postgres already runs a pgvector image (%s); nothing changed.", r.OldImage)
+		p("Postgres is already on pgvector (%s); nothing changed.", r.OldImage)
 		return nil
 	case "rolled-back":
 		p("Rolled back: the project runs on the old volume %s again.", r.OldVolume)
@@ -159,7 +159,7 @@ func renderImageSwitch(cmd *cobra.Command, r *imageswitch.Report) error {
 		p("Verified %d databases, %d tables, %d sequences; downtime %ds.", r.Databases, r.Tables, r.Sequences, r.DowntimeSeconds)
 	default:
 		p("Plan: move %s (%s) to %s on a new volume %s.", r.OldVolume, r.OldImage, r.NewImage, r.NewVolume)
-		p("Data %d bytes, %d databases; estimated downtime %ds.", r.DataBytes, r.Databases, r.DowntimeSeconds)
+		p("Data %d bytes, %d databases; estimated downtime %ds; dumps go to %s (mode 0700).", r.DataBytes, r.Databases, r.DowntimeSeconds, r.Stage)
 		for _, s := range r.Steps {
 			p("  - %s", s)
 		}

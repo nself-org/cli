@@ -119,6 +119,9 @@ func (s *Switch) removeNewVolume(ctx context.Context) error {
 	if !s.st.NewVolumeCreated {
 		return nil
 	}
+	if s.st.NewVolume == "" || s.st.NewVolume == s.st.OldVolume {
+		return fmt.Errorf("refusing to remove volume %q: it is empty or the old data volume (is %s edited?)", s.st.NewVolume, StatePath(s.cfg.ProjectDir))
+	}
 	if err := s.d.Runtime.VolumeRemove(ctx, s.st.NewVolume); err != nil {
 		return fmt.Errorf("removing the new volume %s: %w", s.st.NewVolume, err)
 	}

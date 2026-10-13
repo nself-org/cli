@@ -4494,6 +4494,15 @@
           "downtime_seconds": {
             "type": "integer"
           },
+          "dumps": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
           "new_image": {
             "type": "string"
           },
@@ -4545,6 +4554,9 @@
           },
           "sequences": {
             "type": "integer"
+          },
+          "stage": {
+            "type": "string"
           },
           "status": {
             "type": "string"

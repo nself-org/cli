@@ -158,7 +158,11 @@ type Report struct {
 	// Preflight lists every check; a failed one stops the switch with E509.
 	Preflight []Check `json:"preflight,omitempty"`
 	// Steps names what a run does, in order.
-	Steps     []string `json:"steps,omitempty"`
+	Steps []string `json:"steps,omitempty"`
+	// Stage is the directory the dump is written to (mode 0700); Dumps names the dump
+	// files in it, one per database. Both are for --plan; the stage is removed at the end.
+	Stage     string   `json:"stage,omitempty"`
+	Dumps     []string `json:"dumps,omitempty"`
 	Databases int      `json:"databases,omitempty"`
 	Tables    int      `json:"tables,omitempty"`
 	Sequences int      `json:"sequences,omitempty"`

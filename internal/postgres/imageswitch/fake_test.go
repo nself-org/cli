@@ -66,6 +66,9 @@ type fakeEnv struct {
 // newFake returns a world with a running alpine postgres, two databases and a stack.
 func newFake(t *testing.T) (*fakeEnv, *Switch) {
 	t.Helper()
+	was := onWindows
+	onWindows = false
+	t.Cleanup(func() { onWindows = was })
 	f := &fakeEnv{
 		t: t, dir: t.TempDir(), pgRunning: true, volumes: map[string]bool{"proj_postgres_data": true}, labels: map[string]map[string]string{},
 		running: map[string]bool{"postgres": true, "hasura": true, "auth": true, "nginx": true}, roSet: map[string]bool{},
@@ -234,6 +237,10 @@ func (f *fakeEnv) Running(context.Context) ([]string, error) {
 // Stop implements Stack.
 func (f *fakeEnv) Stop(_ context.Context, services ...string) error {
 	f.log("stack.stop: %s", strings.Join(services, ","))
+	if f.killAt == "stop" && len(services) > 0 && services[0] == "auth" {
+		f.killAt = ""
+		panic(killed{"stop"})
+	}
 	for _, s := range services {
 		f.running[s] = false
 		if s == "postgres" {

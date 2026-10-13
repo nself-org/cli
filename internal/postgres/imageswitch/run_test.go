@@ -195,6 +195,10 @@ func TestResumeAfterKill(t *testing.T) {
 			if rep.Status != "switched" {
 				t.Fatalf("report = %+v", rep)
 			}
+			// Env, compose and lock were written exactly once, whatever point the kill hit.
+			if len(f.envApplied) != 1 || f.envApplied[0][EnvImage] != newImage || !f.pgvector {
+				t.Errorf("after the resume the new env must be applied once: %v (pgvector %v)", f.envApplied, f.pgvector)
+			}
 			if _, incomplete := Incomplete(f.dir); incomplete {
 				t.Error("still incomplete after resume")
 			}
@@ -292,7 +296,7 @@ func TestPlanChangesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rep.Status != "planned" || rep.NewVolume == "" || rep.Build == nil || rep.DowntimeSeconds < 60 || len(rep.Steps) == 0 {
+	if rep.Status != "planned" || rep.NewVolume == "" || rep.Build == nil || rep.DowntimeSeconds < 60 || len(rep.Steps) == 0 || rep.Stage == "" || len(rep.Dumps) != 3 {
 		t.Fatalf("plan = %+v", rep)
 	}
 	if f.called("stack.stop") || f.called("ALTER DATABASE") || len(f.envApplied) != 0 {
@@ -300,5 +304,39 @@ func TestPlanChangesNothing(t *testing.T) {
 	}
 	if _, err := os.Stat(StatePath(f.dir)); !os.IsNotExist(err) {
 		t.Error("plan wrote a state")
+	}
+}
+
+func TestKillDuringQuiesceKeepsTheStoppedServices(t *testing.T) {
+	f, s := newFake(t)
+	f.killAt = "stop"
+	if k := runKilled(func() { _, _ = s.Run(context.Background(), RunOptions{}) }); k == nil || k.at != "stop" {
+		t.Fatalf("expected a kill while stopping, got %v", k)
+	}
+	st, err := LoadState(f.dir)
+	if err != nil || st == nil {
+		t.Fatalf("state: %v %v", st, err)
+	}
+	if got := strings.Join(st.StoppedServices, ","); got != "auth,hasura,nginx" || !st.ReadOnlySet {
+		t.Fatalf("the stopped services and the read-only flag must be saved before they are acted on: %q ro=%v", got, st.ReadOnlySet)
+	}
+	f.running["auth"], f.running["hasura"], f.running["nginx"] = false, false, false
+	if _, err := New(s.cfg, s.d).Rollback(context.Background(), false); err != nil {
+		t.Fatal(err)
+	}
+	if !f.called("stack.up: auth,hasura,nginx") || !f.running["auth"] || !f.running["nginx"] {
+		t.Errorf("a rollback after the kill must restart what was stopped: %v", f.calls)
+	}
+}
+
+func TestRemoveNewVolumeRefusesTheOldVolume(t *testing.T) {
+	f, s := newFake(t)
+	s.st = &State{OldVolume: "proj_postgres_data", NewVolume: "proj_postgres_data", NewVolumeCreated: true}
+	if err := s.removeNewVolume(context.Background()); err == nil || !f.volumes["proj_postgres_data"] {
+		t.Fatalf("a state that names the old volume as the new one must never remove it: err %v", err)
+	}
+	s.st = &State{OldVolume: "proj_postgres_data", NewVolume: "", NewVolumeCreated: true}
+	if err := s.removeNewVolume(context.Background()); err == nil {
+		t.Fatal("an empty new volume name must be refused")
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -85,6 +86,9 @@ func TestDBImageSwitchCommand(t *testing.T) {
 			t.Fatalf("err = %v", err)
 		}
 	})
+	if runtime.GOOS == "windows" {
+		t.Skip("the image switch refuses native Windows in its preflight (E509)")
+	}
 	t.Run("a run without --yes is refused when not interactive", func(t *testing.T) {
 		_, err := imageSwitchFixture(t, imgRuntime{image: "postgres:16-alpine", running: true}, map[string]string{"to": "pgvector"})
 		if d := errs.Describe(err); d == nil || d.Code != "E403" || !strings.Contains(d.Remediation, "--yes") {
@@ -102,7 +106,7 @@ func TestDBImageSwitchCommand(t *testing.T) {
 	})
 	t.Run("already pgvector changes nothing and succeeds", func(t *testing.T) {
 		out, err := imageSwitchFixture(t, imgRuntime{image: "pgvector/pgvector:pg16", running: true}, map[string]string{"to": "pgvector", "yes": "true"})
-		if err != nil || !strings.Contains(out, "already runs a pgvector image") {
+		if err != nil || !strings.Contains(out, "already on pgvector") {
 			t.Fatalf("out %q err %v", out, err)
 		}
 	})
@@ -129,22 +133,25 @@ func TestImageSwitchGuard(t *testing.T) {
 	dir := makeNSelfProject(t, "PROJECT_NAME=p\n")
 	oldEntry := jsonEntryFor
 	t.Cleanup(func() { jsonEntryFor = oldEntry })
+	sides := map[string]string{"nself start": canon.SideEffectWrite, "nself deploy": canon.SideEffectRemote, "nself drop": canon.SideEffectDestructive, "nself status": canon.SideEffectRead}
 	jsonEntryFor = func(cmd *cobra.Command) (*cmdregistry.Command, error) {
-		side := canon.SideEffectWrite
-		if strings.HasSuffix(cmd.CommandPath(), "status") {
-			side = canon.SideEffectRead
+		side, ok := sides[cmd.CommandPath()]
+		if !ok {
+			side = canon.SideEffectDestructive // db image switch itself is destructive and must stay allowed
 		}
 		return &cmdregistry.Command{SideEffect: side, Output: canon.OutputDocument}, nil
 	}
 	root := &cobra.Command{Use: "nself"}
 	start := &cobra.Command{Use: "start"}
+	deploy := &cobra.Command{Use: "deploy"}
+	drop := &cobra.Command{Use: "drop"}
 	status := &cobra.Command{Use: "status"}
 	db := &cobra.Command{Use: "db"}
 	image := &cobra.Command{Use: "image"}
 	sw := &cobra.Command{Use: "switch"}
 	image.AddCommand(sw)
 	db.AddCommand(image)
-	root.AddCommand(start, status, db)
+	root.AddCommand(start, deploy, drop, status, db)
 
 	if err := imageSwitchGuard(start); err != nil {
 		t.Fatalf("no switch in progress, got %v", err)
@@ -160,6 +167,11 @@ func TestImageSwitchGuard(t *testing.T) {
 	d := errs.Describe(err)
 	if d == nil || d.Code != "E512" || !strings.Contains(d.Remediation, "--resume") || !strings.Contains(d.Remediation, "--rollback") {
 		t.Fatalf("an incomplete switch must block a write command with E512 naming both ways out: %v", err)
+	}
+	for _, c := range []*cobra.Command{deploy, drop} {
+		if d := errs.Describe(imageSwitchGuard(c)); d == nil || d.Code != "E512" {
+			t.Errorf("a remote or destructive command must be blocked too: %s", c.Name())
+		}
 	}
 	if err := imageSwitchGuard(status); err != nil {
 		t.Errorf("a read command is never blocked: %v", err)

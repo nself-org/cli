@@ -13,6 +13,7 @@ package imageswitch
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -48,9 +49,14 @@ func (s *Switch) Plan(ctx context.Context) (*Report, error) {
 		return rep, nil
 	}
 	rep.NewImage, rep.DataBytes = r.Target, r.DataBytes
+	rep.Stage = s.stage
 	rep.DowntimeSeconds = estimateSeconds(r.DataBytes)
 	if r.Cluster != nil {
 		rep.Databases = len(r.Cluster.Databases)
+		rep.Dumps = append(rep.Dumps, filepath.Join(s.stage, "globals.old.sql"))
+		for i, d := range r.Cluster.Databases {
+			rep.Dumps = append(rep.Dumps, filepath.Join(s.stage, dbFile(i, "dump"))+" ("+d.Name+")")
+		}
 	}
 	if ferr := r.failed(); ferr != nil {
 		return rep, ferr
@@ -132,7 +138,7 @@ func (s *Switch) Run(ctx context.Context, o RunOptions) (*Report, error) {
 		}
 		if r.Already {
 			return &Report{Status: "already-pgvector", OldImage: r.Info.Image, Preflight: r.Checks,
-				Warnings: []string{"postgres already runs a pgvector image; nothing was changed"}}, nil
+				Warnings: []string{"postgres is already on pgvector; nothing was changed"}}, nil
 		}
 		if ferr := r.failed(); ferr != nil {
 			return nil, ferr

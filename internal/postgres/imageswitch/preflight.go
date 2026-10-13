@@ -54,6 +54,10 @@ func (r *preflightResult) add(name string, ok bool, detail string) {
 // failed is not added.
 func (s *Switch) preflight(ctx context.Context) (*preflightResult, error) {
 	r := &preflightResult{}
+	if onWindows {
+		r.add("platform", false, "the image switch runs on Linux and macOS, not on native Windows; use WSL2")
+		return r, nil
+	}
 	info, err := s.d.Runtime.Inspect(ctx, s.cfg.Container)
 	if err != nil || !info.Running {
 		why := "the container is not running"
