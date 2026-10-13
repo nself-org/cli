@@ -28,26 +28,16 @@ func fixtureCatalog() Lookup {
 	return func(slug string) (PluginInfo, bool) { p, ok := m[slug]; return p, ok }
 }
 
-// spy records every Bundle and plugin the check asked about.
+// spy records every Bundle the check asked about.
 type spy struct {
-	asked  []string
-	plugin []string
-	grant  map[string]bool
-	pgrant map[string]bool
-	err    error
+	asked []string
+	grant map[string]bool
+	err   error
 }
 
-func (s *spy) lic() Entitlement {
-	return Entitlement{
-		Bundle: func(_ context.Context, bundle string) (bool, error) {
-			s.asked = append(s.asked, bundle)
-			return s.grant[bundle], s.err
-		},
-		Plugin: func(_ context.Context, slug string) (bool, error) {
-			s.plugin = append(s.plugin, slug)
-			return s.pgrant[slug], s.err
-		},
-	}
+func (s *spy) lic(_ context.Context, bundle string) (bool, error) {
+	s.asked = append(s.asked, bundle)
+	return s.grant[bundle], s.err
 }
 
 func required(t *testing.T, template string) []string {
@@ -61,9 +51,9 @@ func required(t *testing.T, template string) []string {
 
 func TestTemplateEntitlementE110NoWrite(t *testing.T) {
 	s := &spy{err: errors.New("no license key configured")}
-	rep := Check(context.Background(), "discord-clone", required(t, "discord-clone"), fixtureCatalog(), s.lic())
-	if len(rep.MissingLicence) != 4 || len(rep.Unknown) != 0 {
-		t.Fatalf("report = %+v, want 4 uncovered plugins", rep)
+	rep := Check(context.Background(), "discord-clone", required(t, "discord-clone"), fixtureCatalog(), s.lic)
+	if len(rep.MissingLicence) != 3 || len(rep.Unknown) != 0 || len(rep.Unchecked) != 1 {
+		t.Fatalf("report = %+v, want 3 uncovered plugins and auth unchecked", rep)
 	}
 	err := rep.Err()
 	var ce *errs.CLIError
@@ -73,14 +63,14 @@ func TestTemplateEntitlementE110NoWrite(t *testing.T) {
 	if got := errs.ExitCodeFor(err); got != 3 {
 		t.Errorf("exit = %d, want 3", got)
 	}
-	for _, want := range []string{"chat: included in the chat Bundle", "realtime: included in the chat, claw Bundle", "moderation:", "auth: needs a plugin-level licence", "nself.org/pricing", "licence check: no license key configured"} {
+	for _, want := range []string{"chat: included in the chat Bundle", "realtime: included in the chat, claw Bundle", "moderation:", "nself.org/pricing", "licence check: no license key configured"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("message missing %q:\n%s", want, err)
 		}
 	}
 	// Each Bundle is asked once however many plugins list it.
-	if len(s.asked) != 2 {
-		t.Errorf("bundles asked = %v, want chat and claw once each", s.asked)
+	if got := strings.Join(s.asked, ","); got != "chat,claw" {
+		t.Errorf("bundles asked = %s, want chat and claw once each", got)
 	}
 	// Check does no I/O: the scaffold target stays untouched.
 	dir := t.TempDir()
@@ -90,29 +80,29 @@ func TestTemplateEntitlementE110NoWrite(t *testing.T) {
 }
 
 func TestTemplateEntitlementLicensed(t *testing.T) {
-	// One covered Bundle is enough for a plugin in two; auth is in no Bundle, so
-	// only a plugin-level licence (or an all-access tier) covers it.
+	// One covered Bundle is enough for a plugin in two. auth is licensed but in
+	// no Bundle: it is not refused (the install-time check decides) and is
+	// listed as unchecked.
 	s := &spy{grant: map[string]bool{"chat": true}}
-	rep := Check(context.Background(), "discord-clone", required(t, "discord-clone"), fixtureCatalog(), s.lic())
-	if len(rep.MissingLicence) != 1 || rep.MissingLicence[0].Plugin != "auth" {
-		t.Fatalf("report = %+v, want only auth uncovered", rep)
+	rep := Check(context.Background(), "discord-clone", required(t, "discord-clone"), fixtureCatalog(), s.lic)
+	if !rep.OK() || rep.Err() != nil || len(rep.Unchecked) != 1 || rep.Unchecked[0] != "auth" {
+		t.Fatalf("report = %+v, want OK with auth unchecked", rep)
 	}
-	all := &spy{pgrant: map[string]bool{"auth": true}, grant: map[string]bool{"chat": true}}
-	if rep := Check(context.Background(), "discord-clone", required(t, "discord-clone"), fixtureCatalog(), all.lic()); !rep.OK() {
-		t.Errorf("plugin-level licence for auth not honoured: %+v", rep)
-	}
-	if len(all.plugin) != 1 || all.plugin[0] != "auth" {
-		t.Errorf("plugin-level check must run only for plugins no Bundle covered, asked %v", all.plugin)
-	}
-	slack := Check(context.Background(), "x", []string{"chat", "realtime", "moderation"}, fixtureCatalog(), s.lic())
-	if !slack.OK() || slack.Err() != nil {
-		t.Errorf("covered plugins reported: %+v", slack)
+	if got := strings.Join(s.asked, ","); got != "chat" {
+		t.Errorf("bundles asked = %s, want chat only (claw not needed once chat covers)", got)
 	}
 }
 
 func TestTemplateEntitlementE137Recording(t *testing.T) {
 	s := &spy{}
-	rep := Check(context.Background(), "zoom-clone", required(t, "zoom-clone"), fixtureCatalog(), s.lic())
+	base := fixtureCatalog()
+	find := func(slug string) (PluginInfo, bool) { // notify is licensed here, so E110 competes with E137
+		if slug == "notify" {
+			return PluginInfo{Slug: slug, Tier: "licensed", Bundles: []string{"media"}}, true
+		}
+		return base(slug)
+	}
+	rep := Check(context.Background(), "zoom-clone", required(t, "zoom-clone"), find, s.lic)
 	if len(rep.Unknown) != 1 || rep.Unknown[0] != "recording" {
 		t.Fatalf("Unknown = %v, want recording (and auth is licensed, not unknown)", rep.Unknown)
 	}
@@ -124,14 +114,14 @@ func TestTemplateEntitlementE137Recording(t *testing.T) {
 	if errs.ExitCodeFor(err) != 1 {
 		t.Errorf("exit = %d, want 1", errs.ExitCodeFor(err))
 	}
-	if !strings.Contains(err.Error(), "recording") || !strings.Contains(err.Error(), "auth:") {
-		t.Errorf("message must name recording and the uncovered auth:\n%s", err)
+	if !strings.Contains(err.Error(), "recording") || !strings.Contains(err.Error(), "notify:") {
+		t.Errorf("message must name recording and the uncovered notify:\n%s", err)
 	}
 }
 
 func TestTemplateFreeNoLicenceCall(t *testing.T) {
 	s := &spy{}
-	rep := Check(context.Background(), "airbnb-clone", []string{"notify", "photos", "livekit"}, fixtureCatalog(), s.lic())
+	rep := Check(context.Background(), "airbnb-clone", []string{"notify", "photos", "livekit"}, fixtureCatalog(), s.lic)
 	if !rep.OK() || rep.Err() != nil {
 		t.Fatalf("free template refused: %+v", rep)
 	}
@@ -142,10 +132,10 @@ func TestTemplateFreeNoLicenceCall(t *testing.T) {
 
 func TestEnforceModes(t *testing.T) {
 	src := func(s *spy) Source {
-		return func(context.Context) (Lookup, Entitlement, error) { return fixtureCatalog(), s.lic(), nil }
+		return func(context.Context) (Lookup, Entitled, error) { return fixtureCatalog(), s.lic, nil }
 	}
-	down := func(context.Context) (Lookup, Entitlement, error) {
-		return nil, Entitlement{}, errs.New("E115", "plugin catalog unavailable: test")
+	down := func(context.Context) (Lookup, Entitled, error) {
+		return nil, nil, errs.New("E115", "plugin catalog unavailable: test")
 	}
 	compattest.Both(t, func(t *testing.T) {
 		v15 := compat.V15()

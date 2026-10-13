@@ -65,7 +65,7 @@ Before it writes anything, `nself init --template <x>-clone` looks up each requi
 | A plugin that is in no registry (`recording`, required by `zoom-clone`) | Refused with `E137` (exit 1). | Warning, then scaffold. |
 | No catalog and no cached copy | Refused with `E115` (exit 2). | Scaffold, no message. |
 
-A licensed plugin is covered when your licence covers one of its Bundles, names the plugin, or is an all-access tier such as ɳSelf+ (this also covers a licensed plugin that is in no Bundle). A plugin that exists in both tiers counts as free, as it does for `nself plugin install` without a licence. In v1.4 mode the whole check gives up after 8 seconds, so a slow network never holds up the scaffold. Buy a Bundle at https://nself.org/pricing or run `nself license set <key>`, then run the command again.
+A licensed plugin is covered when any of your configured licence keys covers one of its Bundles (an all-access licence such as ɳSelf+ covers them all). A licensed plugin that is in no Bundle cannot be decided here; init prints a note and `nself plugin install` checks it later. A plugin that exists in both tiers counts as free, as it does for `nself plugin install` without a licence. In v1.4 mode the whole check gives up after 8 seconds, so a slow network never holds up the scaffold. Buy a Bundle at https://nself.org/pricing or run `nself license set <key>`, then run the command again.
 
 ### Usage
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -73,7 +74,7 @@ func useTemplateSource(t *testing.T, licensed ...string) *int {
 	t.Helper()
 	calls := new(int)
 	old := templateSource
-	templateSource = func(context.Context) (clonetemplate.Lookup, clonetemplate.Entitlement, error) {
+	templateSource = func(context.Context) (clonetemplate.Lookup, clonetemplate.Entitled, error) {
 		find := func(slug string) (clonetemplate.PluginInfo, bool) {
 			for _, l := range licensed {
 				if l == slug {
@@ -82,10 +83,7 @@ func useTemplateSource(t *testing.T, licensed ...string) *int {
 			}
 			return clonetemplate.PluginInfo{Slug: slug, Tier: "free"}, true
 		}
-		return find, clonetemplate.Entitlement{
-			Bundle: func(context.Context, string) (bool, error) { *calls++; return false, nil },
-			Plugin: func(context.Context, string) (bool, error) { *calls++; return false, nil },
-		}, nil
+		return find, func(context.Context, string) (bool, error) { *calls++; return false, nil }, nil
 	}
 	t.Cleanup(func() { templateSource = old })
 	return calls
@@ -157,37 +155,71 @@ const liveCatalog = `{"schema_version":1,"generated_from":{"plugins_ref":"a","bu
 {"slug":"chat","tier":"licensed","version":"1.2.1","description":"synthetic","category":"misc","maturity":"implemented","installable":true,"service_kind":"compose","commands":null,"bundles":["chat"],"tier_pair":false},
 {"slug":"notify","tier":"free","version":"1.2.1","description":"synthetic","category":"misc","maturity":"implemented","installable":true,"service_kind":"compose","commands":null,"bundles":[],"tier_pair":false}]}`
 
-// TestTemplateSourceNoKey runs the production Source against a local catalog with no
-// licence key: the licensed plugin is reported and the licence server (an
-// address that refuses connections) is never needed.
-func TestTemplateSourceNoKey(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(liveCatalog)) }))
-	defer srv.Close()
+// isolateSource points the production Source at a local catalog and a local
+// licence server (ping), with every licence key cleared and HOME and the
+// catalog cache in temp dirs, so no test reaches a real service or key.
+func isolateSource(t *testing.T, ping http.HandlerFunc) {
+	t.Helper()
+	cat := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(liveCatalog)) }))
+	srv := httptest.NewServer(ping)
+	t.Cleanup(cat.Close)
+	t.Cleanup(srv.Close)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("NSELF_PLUGIN_CACHE", t.TempDir())
-	for _, v := range []string{"NSELF_PLUGIN_LICENSE_KEY", "NSELF_PLUGIN_LICENSE_KEY_OWNER", "NSELF_LICENSE_KEY_1"} {
-		t.Setenv(v, "")
+	t.Setenv("LICENSE_PING_URL", srv.URL)
+	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "")
+	t.Setenv("NSELF_PLUGIN_LICENSE_KEY_OWNER", "")
+	for i := 1; i <= 10; i++ {
+		t.Setenv(fmt.Sprintf("NSELF_LICENSE_KEY_%d", i), "")
 	}
-	var pings int
-	ping := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { pings++ }))
-	defer ping.Close()
-	t.Setenv("LICENSE_PING_URL", ping.URL)
 	oldURL := catalogURL
-	catalogURL = srv.URL
+	catalogURL = cat.URL
 	t.Cleanup(func() { catalogURL = oldURL })
+}
+
+// TestTemplateSourceNoKey runs the production Source with no licence key: the
+// licensed plugin is reported and the licence server is never asked.
+func TestTemplateSourceNoKey(t *testing.T) {
+	var pings int
+	isolateSource(t, func(http.ResponseWriter, *http.Request) { pings++ })
 	find, lic, err := templateSource(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	rep := clonetemplate.Check(context.Background(), "t", []string{"chat", "notify"}, find, lic)
-	if ok, err := lic.Plugin(context.Background(), "chat"); ok || err != nil {
-		t.Errorf("plugin-level check with no key = %v, %v; want false, nil", ok, err)
+	if ok, err := lic(context.Background(), "chat"); ok || err != nil {
+		t.Errorf("bundle check with no key = %v, %v; want false, nil", ok, err)
 	}
 	if pings != 0 {
 		t.Errorf("no key: %d requests reached the licence server", pings)
 	}
 	if len(rep.MissingLicence) != 1 || rep.MissingLicence[0].Plugin != "chat" || rep.Reason != "" {
 		t.Errorf("report = %+v, want chat uncovered with no licence error", rep)
+	}
+}
+
+// TestTemplateSourceMultiKey: coverage under any configured key counts. The
+// first key (synthetic, rejected) is asked, then the second (accepted). Run in
+// v1.4 mode, where the licence server's reply need not be signed.
+func TestTemplateSourceMultiKey(t *testing.T) {
+	compattest.Set(t, false)
+	asked := map[string]int{}
+	isolateSource(t, func(w http.ResponseWriter, r *http.Request) {
+		key := r.Header.Get("X-NSelf-License-Key")
+		asked[key]++
+		_, _ = fmt.Fprintf(w, `{"valid":%v,"tier":"pro","bundle":%q}`, key == "fake-key-bravo", r.URL.Query().Get("bundle"))
+	})
+	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "fake-key-alpha")
+	t.Setenv("NSELF_LICENSE_KEY_1", "fake-key-bravo")
+	find, lic, err := templateSource(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep := clonetemplate.Check(context.Background(), "t", []string{"chat"}, find, lic); !rep.OK() {
+		t.Fatalf("a covering second key must count: %+v", rep)
+	}
+	if asked["fake-key-alpha"] != 1 || asked["fake-key-bravo"] != 1 {
+		t.Errorf("licence server asked %v, want each key once", asked)
 	}
 }
 

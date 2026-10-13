@@ -14,9 +14,9 @@ package clone
 // no registry) and the E110 / E137 errors built from it.
 // Constraints: a free plugin never triggers an entitlement call, so a
 // free-only template makes no licence call. Each bundle is asked at most once
-// per Check; the plugin-level check (a plugin licence or an all-access tier,
-// which also covers a licensed plugin that is in no Bundle) runs only when no
-// Bundle covered the plugin. An entitlement error counts as "not entitled" and
+// per Check. A licensed plugin that is in no Bundle cannot be decided here (the
+// licence server answers per Bundle, and a refusal would also block ɳSelf+
+// holders): it is listed as Unchecked and left to the install-time check. An entitlement error counts as "not entitled" and
 // is kept as the report's Reason: with no licence key that is the common case
 // and must read as E110, not as an unrelated failure.
 
@@ -51,14 +51,9 @@ type PluginInfo struct {
 // Lookup finds a plugin by slug in the catalog (both tiers).
 type Lookup func(slug string) (PluginInfo, bool)
 
-// Entitlement is the operator's licence as Check asks about it.
-type Entitlement struct {
-	// Bundle reports whether the licence covers one Bundle.
-	Bundle func(ctx context.Context, bundle string) (bool, error)
-	// Plugin reports whether the licence covers one plugin by itself (a
-	// plugin-level licence or an all-access tier). May be nil.
-	Plugin func(ctx context.Context, slug string) (bool, error)
-}
+// Entitled reports whether the operator's licence covers one Bundle. It is the
+// hardened license.BundleEntitled in production: signed, bound, fail closed.
+type Entitled func(ctx context.Context, bundle string) (bool, error)
 
 // Missing is one licensed plugin the licence does not cover.
 type Missing struct {
@@ -71,6 +66,8 @@ type Report struct {
 	Template       string
 	MissingLicence []Missing
 	Unknown        []string
+	// Unchecked are licensed plugins in no Bundle: not refused here.
+	Unchecked []string
 	// Reason is the first entitlement error seen, "" when every check answered.
 	Reason string
 }
@@ -80,7 +77,7 @@ func (r Report) OK() bool { return len(r.MissingLicence) == 0 && len(r.Unknown) 
 
 // Check resolves each plugin. It never returns an error for a missing
 // licence: that is data in the Report.
-func Check(ctx context.Context, template string, plugins []string, find Lookup, lic Entitlement) Report {
+func Check(ctx context.Context, template string, plugins []string, find Lookup, entitled Entitled) Report {
 	rep := Report{Template: template}
 	asked := map[string]bool{}
 	note := func(ok bool, err error) bool {
@@ -93,7 +90,7 @@ func Check(ctx context.Context, template string, plugins []string, find Lookup, 
 		if ok, seen := asked[bundle]; seen {
 			return ok
 		}
-		asked[bundle] = note(lic.Bundle(ctx, bundle))
+		asked[bundle] = note(entitled(ctx, bundle))
 		return asked[bundle]
 	}
 	for _, slug := range plugins {
@@ -104,7 +101,9 @@ func Check(ctx context.Context, template string, plugins []string, find Lookup, 
 		case info.Tier != licensedTier:
 			// free: nothing to check
 		default:
-			if !anyCovered(info.Bundles, covered) && !(lic.Plugin != nil && note(lic.Plugin(ctx, slug))) {
+			if len(info.Bundles) == 0 {
+				rep.Unchecked = append(rep.Unchecked, slug)
+			} else if !anyCovered(info.Bundles, covered) {
 				rep.MissingLicence = append(rep.MissingLicence, Missing{Plugin: slug, Bundles: info.Bundles})
 			}
 		}
@@ -158,15 +157,12 @@ func (r Report) Lines() string {
 }
 
 func bundleText(bundles []string) string {
-	if len(bundles) == 0 {
-		return "needs a plugin-level licence"
-	}
 	return "included in the " + strings.Join(bundles, ", ") + " Bundle (or ɳSelf+)"
 }
 
 // Source supplies the catalog lookup and the entitlement check. Its error is
 // the catalog's (E115 with no catalog and no cache, E116 for a broken one).
-type Source func(ctx context.Context) (Lookup, Entitlement, error)
+type Source func(ctx context.Context) (Lookup, Entitled, error)
 
 // Enforce is the init gate. It runs before any file or directory is written;
 // a template with no required plugins makes no catalog or licence call. From
@@ -186,11 +182,13 @@ func Enforce(w io.Writer, template string, plugins []string, src Source) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	find, lic, err := src(ctx)
+	find, entitled, err := src(ctx)
 	report := false
 	if err == nil {
-		err = Check(ctx, template, plugins, find, lic).Err()
-		report = true
+		rep := Check(ctx, template, plugins, find, entitled)
+		if err, report = rep.Err(), true; err == nil && len(rep.Unchecked) > 0 {
+			_, _ = fmt.Fprintf(w, "note: %s are licensed but in no Bundle; their licence is checked when you install them\n", strings.Join(rep.Unchecked, ", "))
+		}
 	}
 	if err == nil {
 		return nil
@@ -198,7 +196,7 @@ func Enforce(w io.Writer, template string, plugins []string, src Source) error {
 	if refuse {
 		return err
 	}
-	if report {
+	if report && ctx.Err() == nil { // a timed-out check proves nothing: no false "not covered" warning
 		_, _ = fmt.Fprintf(w, "warning: %s\n", err)
 	}
 	return nil
