@@ -52,7 +52,7 @@ func unsignedAllowed(local bool) bool {
 func verifyReleaseSignature(manifest *PluginManifest, paid, local bool, artifactKind string, bypass bool) error {
 	tier := releaseTier(paid)
 	pinned := signature.Pinned(tier)
-	if bypass && !(pinned && manifest.ReleaseSignature != nil) {
+	if bypass && (!pinned || manifest.ReleaseSignature == nil) {
 		return nil
 	}
 	if pinned && artifactKind != "" && artifactKind != ArtifactKindSource {
