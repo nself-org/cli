@@ -20,8 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nself-org/cli/internal/license"
-	"github.com/nself-org/cli/internal/plugin/catalog"
+	"github.com/nself-org/cli/internal/httptimeout"
 	clonetemplate "github.com/nself-org/cli/internal/templates/clone"
 	"github.com/nself-org/cli/internal/ui"
 )
@@ -93,26 +92,6 @@ func runInitCloneTemplate(name, destDir string, noSeed, dryRun, force, quiet boo
 		printCloneNextSteps(os.Stdout, absDest, m.RequiredPlugins)
 	}
 	return nil
-}
-
-// templateSource is the catalog and licence source of the template
-// entitlement gate (P7-PLUG-25). Tests replace it; the default needs the network.
-var templateSource clonetemplate.Source = func(ctx context.Context) (clonetemplate.Lookup, clonetemplate.Entitled, error) {
-	res, err := catalog.Fetch(ctx, catalogURL, catalog.DefaultCacheDir())
-	if err != nil {
-		return nil, nil, err
-	}
-	find := func(slug string) (clonetemplate.PluginInfo, bool) {
-		e, ok := res.Catalog.Lookup(slug)
-		return clonetemplate.PluginInfo{Slug: e.Slug, Tier: e.Tier, Bundles: e.Bundles}, ok
-	}
-	entitled := func(ctx context.Context, bundle string) (bool, error) {
-		if key := license.CollectLicenseKey(); key != "" { // no key: nothing is covered, no licence call
-			return license.BundleEntitled(ctx, key, bundle)
-		}
-		return false, nil
-	}
-	return find, entitled, nil
 }
 
 // printCloneNextSteps writes the commands that bring a scaffolded clone
@@ -192,7 +171,7 @@ func runInitMarketplaceTemplate(slug, destDir string, force, quiet bool) error {
 		req.Header.Set("X-Nself-License", licKey)
 	}
 
-	client := &http.Client{Timeout: 120 * time.Second}
+	client := httptimeout.WithTimeout(120 * time.Second)
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("downloading template tarball: %w", err)

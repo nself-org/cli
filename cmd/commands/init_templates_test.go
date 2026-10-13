@@ -73,7 +73,7 @@ func useTemplateSource(t *testing.T, licensed ...string) *int {
 	t.Helper()
 	calls := new(int)
 	old := templateSource
-	templateSource = func(context.Context) (clonetemplate.Lookup, clonetemplate.Entitled, error) {
+	templateSource = func(context.Context) (clonetemplate.Lookup, clonetemplate.Entitlement, error) {
 		find := func(slug string) (clonetemplate.PluginInfo, bool) {
 			for _, l := range licensed {
 				if l == slug {
@@ -82,7 +82,10 @@ func useTemplateSource(t *testing.T, licensed ...string) *int {
 			}
 			return clonetemplate.PluginInfo{Slug: slug, Tier: "free"}, true
 		}
-		return find, func(context.Context, string) (bool, error) { *calls++; return false, nil }, nil
+		return find, clonetemplate.Entitlement{
+			Bundle: func(context.Context, string) (bool, error) { *calls++; return false, nil },
+			Plugin: func(context.Context, string) (bool, error) { *calls++; return false, nil },
+		}, nil
 	}
 	t.Cleanup(func() { templateSource = old })
 	return calls
@@ -107,6 +110,13 @@ func TestInitTemplateV14Unchanged(t *testing.T) {
 			}
 			if _, statErr := os.Stat(dest); !os.IsNotExist(statErr) {
 				t.Errorf("v1.5 refusal created %s", dest)
+			}
+			// --dry-run is refused the same way and also creates nothing.
+			if dryErr := runInitCloneTemplate("discord-clone", dest, false, true, false, true); errs.ExitCodeFor(dryErr) != 3 {
+				t.Errorf("v1.5 dry-run err = %v, want exit 3", dryErr)
+			}
+			if _, statErr := os.Stat(dest); !os.IsNotExist(statErr) {
+				t.Errorf("v1.5 dry-run refusal created %s", dest)
 			}
 			return
 		}
@@ -155,16 +165,27 @@ func TestTemplateSourceNoKey(t *testing.T) {
 	defer srv.Close()
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("NSELF_PLUGIN_CACHE", t.TempDir())
-	t.Setenv("NSELF_LICENSE_KEY", "")
-	t.Setenv("NSELF_PING_URL", "http://127.0.0.1:1")
+	for _, v := range []string{"NSELF_PLUGIN_LICENSE_KEY", "NSELF_PLUGIN_LICENSE_KEY_OWNER", "NSELF_LICENSE_KEY_1"} {
+		t.Setenv(v, "")
+	}
+	var pings int
+	ping := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { pings++ }))
+	defer ping.Close()
+	t.Setenv("LICENSE_PING_URL", ping.URL)
 	oldURL := catalogURL
 	catalogURL = srv.URL
 	t.Cleanup(func() { catalogURL = oldURL })
-	find, entitled, err := templateSource(context.Background())
+	find, lic, err := templateSource(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	rep := clonetemplate.Check(context.Background(), "t", []string{"chat", "notify"}, find, entitled)
+	rep := clonetemplate.Check(context.Background(), "t", []string{"chat", "notify"}, find, lic)
+	if ok, err := lic.Plugin(context.Background(), "chat"); ok || err != nil {
+		t.Errorf("plugin-level check with no key = %v, %v; want false, nil", ok, err)
+	}
+	if pings != 0 {
+		t.Errorf("no key: %d requests reached the licence server", pings)
+	}
 	if len(rep.MissingLicence) != 1 || rep.MissingLicence[0].Plugin != "chat" || rep.Reason != "" {
 		t.Errorf("report = %+v, want chat uncovered with no licence error", rep)
 	}

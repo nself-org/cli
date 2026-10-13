@@ -5,7 +5,7 @@ import "testing"
 // httpBasisTotal is the hard-coded total of testdata/http-client-allowlist.txt
 // (rule D5). The allowlist may only shrink: lowering a line without lowering
 // this constant fails, and raising either needs a reviewed edit of both.
-const httpBasisTotal = 56
+const httpBasisTotal = 55
 
 // TestHTTPFunnel freezes direct http.Client construction outside
 // internal/httptimeout (EPIC G1, G4; debt D-0034).

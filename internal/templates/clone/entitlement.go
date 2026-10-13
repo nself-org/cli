@@ -8,15 +8,17 @@ package clone
 // written, Check resolves each one against the plugin catalog and the current
 // licence, so an unentitled operator is told up front instead of ending with a
 // half-working project (P7-PLUG-25).
-// Inputs: the template's plugin slugs, a catalog lookup and a per-bundle
-// entitlement check. Both are injected; this file does no I/O of its own.
+// Inputs: the template's plugin slugs, a catalog lookup and the licence
+// checks. All are injected; this file does no network or disk I/O of its own.
 // Outputs: a Report (licensed plugins the licence does not cover, plugins in
 // no registry) and the E110 / E137 errors built from it.
 // Constraints: a free plugin never triggers an entitlement call, so a
 // free-only template makes no licence call. Each bundle is asked at most once
-// per Check. An entitlement error counts as "not entitled" and is kept as the
-// report's Reason: with no licence key that is the common case and must read
-// as E110, not as an unrelated failure.
+// per Check; the plugin-level check (a plugin licence or an all-access tier,
+// which also covers a licensed plugin that is in no Bundle) runs only when no
+// Bundle covered the plugin. An entitlement error counts as "not entitled" and
+// is kept as the report's Reason: with no licence key that is the common case
+// and must read as E110, not as an unrelated failure.
 
 import (
 	"context"
@@ -32,6 +34,10 @@ import (
 // PricingURL is where an operator buys the Bundles named in a report.
 const PricingURL = "https://nself.org/pricing"
 
+// v14Timeout bounds the whole check in v1.4 mode, where it is advisory: a slow
+// or unreachable network must not hold up a scaffold that never depended on it.
+const v14Timeout = 8 * time.Second
+
 // licensedTier is the catalog tier value of a plugin that needs a licence.
 const licensedTier = "licensed"
 
@@ -45,8 +51,14 @@ type PluginInfo struct {
 // Lookup finds a plugin by slug in the catalog (both tiers).
 type Lookup func(slug string) (PluginInfo, bool)
 
-// Entitled reports whether the operator's licence covers one Bundle.
-type Entitled func(ctx context.Context, bundle string) (bool, error)
+// Entitlement is the operator's licence as Check asks about it.
+type Entitlement struct {
+	// Bundle reports whether the licence covers one Bundle.
+	Bundle func(ctx context.Context, bundle string) (bool, error)
+	// Plugin reports whether the licence covers one plugin by itself (a
+	// plugin-level licence or an all-access tier). May be nil.
+	Plugin func(ctx context.Context, slug string) (bool, error)
+}
 
 // Missing is one licensed plugin the licence does not cover.
 type Missing struct {
@@ -68,18 +80,20 @@ func (r Report) OK() bool { return len(r.MissingLicence) == 0 && len(r.Unknown) 
 
 // Check resolves each plugin. It never returns an error for a missing
 // licence: that is data in the Report.
-func Check(ctx context.Context, template string, plugins []string, find Lookup, entitled Entitled) Report {
+func Check(ctx context.Context, template string, plugins []string, find Lookup, lic Entitlement) Report {
 	rep := Report{Template: template}
 	asked := map[string]bool{}
+	note := func(ok bool, err error) bool {
+		if err != nil && rep.Reason == "" {
+			rep.Reason = err.Error()
+		}
+		return ok && err == nil
+	}
 	covered := func(bundle string) bool {
 		if ok, seen := asked[bundle]; seen {
 			return ok
 		}
-		ok, err := entitled(ctx, bundle)
-		if err != nil && rep.Reason == "" {
-			rep.Reason = err.Error()
-		}
-		asked[bundle] = ok && err == nil
+		asked[bundle] = note(lic.Bundle(ctx, bundle))
 		return asked[bundle]
 	}
 	for _, slug := range plugins {
@@ -90,7 +104,7 @@ func Check(ctx context.Context, template string, plugins []string, find Lookup, 
 		case info.Tier != licensedTier:
 			// free: nothing to check
 		default:
-			if !anyCovered(info.Bundles, covered) {
+			if !anyCovered(info.Bundles, covered) && !(lic.Plugin != nil && note(lic.Plugin(ctx, slug))) {
 				rep.MissingLicence = append(rep.MissingLicence, Missing{Plugin: slug, Bundles: info.Bundles})
 			}
 		}
@@ -152,7 +166,7 @@ func bundleText(bundles []string) string {
 
 // Source supplies the catalog lookup and the entitlement check. Its error is
 // the catalog's (E115 with no catalog and no cache, E116 for a broken one).
-type Source func(ctx context.Context) (Lookup, Entitled, error)
+type Source func(ctx context.Context) (Lookup, Entitlement, error)
 
 // Enforce is the init gate. It runs before any file or directory is written;
 // a template with no required plugins makes no catalog or licence call. From
@@ -164,19 +178,24 @@ func Enforce(w io.Writer, template string, plugins []string, src Source) error {
 	if len(plugins) == 0 {
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	// compat.V15(P7-PLUG-25): clone template scaffolds without checking its plugins -> refused (E110, E137, or E115 with no catalog) before any file is written
+	refuse := compat.V15()
+	timeout := 60 * time.Second
+	if !refuse {
+		timeout = v14Timeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	find, entitled, err := src(ctx)
+	find, lic, err := src(ctx)
 	report := false
 	if err == nil {
-		err = Check(ctx, template, plugins, find, entitled).Err()
+		err = Check(ctx, template, plugins, find, lic).Err()
 		report = true
 	}
 	if err == nil {
 		return nil
 	}
-	// compat.V15(P7-PLUG-25): clone template scaffolds without checking its plugins -> refused (E110, E137, or E115 with no catalog) before any file is written
-	if compat.V15() {
+	if refuse {
 		return err
 	}
 	if report {
