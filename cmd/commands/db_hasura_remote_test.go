@@ -339,6 +339,28 @@ func TestDBHasuraRemoteRejectsOversizedStream(t *testing.T) {
 // connection in TestDBHasuraRemoteIntegration.
 const sshdReadyWait = 90 * time.Second
 
+// sshdAttemptWait bounds one ssh attempt against the fixture sshd. A published
+// docker port on macOS (Colima) accepts the TCP connection before sshd is up,
+// so an attempt can stall on the banner; the poll then retries.
+const sshdAttemptWait = 15 * time.Second
+
+// isolateSSHKnownHosts points every ssh call of the db remote transport at a
+// throwaway known_hosts file and a short connect timeout. The fixture sshd
+// listens on 127.0.0.1:<docker-assigned port>, and docker hands out ports in
+// sequence, so a host's ~/.ssh/known_hosts collects stale [127.0.0.1]:<port>
+// entries from earlier runs. A reused port with a new host key then fails
+// strict checking ("Host key verification failed") on every attempt. The test
+// also stops writing fixture keys into the operator's known_hosts.
+func isolateSSHKnownHosts(t *testing.T, knownHosts string) {
+	t.Helper()
+	old := runSSHStream
+	t.Cleanup(func() { runSSHStream = old })
+	runSSHStream = func(ctx context.Context, argv []string, stdin io.Reader, stdout io.Writer) (string, error) {
+		pre := []string{"-o", "UserKnownHostsFile=" + knownHosts, "-o", "ConnectTimeout=10"}
+		return old(ctx, append(pre, argv...), stdin, stdout)
+	}
+}
+
 func TestDBHasuraRemoteIntegration(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Linux sshd bind-mount fixture")
@@ -379,6 +401,7 @@ func TestDBHasuraRemoteIntegration(t *testing.T) {
 	if !ok {
 		t.Fatalf("port: %s", endpoint)
 	}
+	isolateSSHKnownHosts(t, filepath.Join(root, "known_hosts"))
 	rt := dbRemoteTarget{SSHTarget: "ssh://test@127.0.0.1:" + port, KeyPath: key, RemotePath: "/fixtures", EnvName: "staging", AllowVersionDrift: true}
 	// The image's init brings sshd up after `docker run -d` returns, slower on
 	// a loaded host (ssh exits 255 until it listens): poll up to sshdReadyWait.
@@ -386,7 +409,13 @@ func TestDBHasuraRemoteIntegration(t *testing.T) {
 	var last error
 	for deadline := time.Now().Add(sshdReadyWait); ; time.Sleep(500 * time.Millisecond) {
 		got.Reset()
-		last = runRemoteNselfStream(context.Background(), rt, nil, &got, "db", "hasura", "metadata", "export", "--archive", "-")
+		attempt, cancel := context.WithTimeout(context.Background(), sshdAttemptWait)
+		last = runRemoteNselfStream(attempt, rt, nil, &got, "db", "hasura", "metadata", "export", "--archive", "-")
+		cancel()
+		// Waiting longer cannot fix a rejected key: fail in seconds, not 90 s.
+		if last != nil && (strings.Contains(last.Error(), "Host key verification failed") || strings.Contains(last.Error(), "Permission denied")) {
+			t.Fatalf("sshd rejected the connection: %v", last)
+		}
 		if last == nil || time.Now().After(deadline) {
 			break
 		}
