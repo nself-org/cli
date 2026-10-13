@@ -210,11 +210,11 @@ The same verbs enable and disable a builtin family: `nself remove <builtin>` cre
 
 ### Environment passed to plugin processes
 
-`contract:cli.plugin-exec-env v1` (P7-CI-59): every plugin process the cli starts gets two extra variables from `plugin.ExecEnv(base, v15)`: the mounted run and the unknown-command proxy (`ProxyBinary`, `ProxyBinaryAt`) and the background runtime of `nself plugin start`. The cli never changes its own environment; the plugin gets a copy of its base environment plus:
+`contract:cli.plugin-exec-env v1` (P7-CI-59): the plugin processes the cli runs for users get two extra variables from `plugin.ExecEnv(base, v15)`: the mounted run and the unknown-command proxy (`ProxyBinary`, `ProxyBinaryAt`) and the background runtime of `nself plugin start`. The developer tools `nself plugin dev` and `nself plugin debug` do not call it yet (debt row filed). The cli never changes its own environment; the plugin gets a copy of its base environment plus:
 
 | Variable | Value | Rule |
 |---|---|---|
-| `NSELF_V15` | `1` or `0`, the compat mode the cli resolved | A `NSELF_V15` already in the base environment (the user's choice, or the plugin's own `.env`) passes through unchanged, whatever its value (`yes` stays `yes`). Otherwise the cli adds `1` when `compat.V15` is true, else `0`. Read on every start, never cached. |
+| `NSELF_V15` | `1` or `0`, the compat mode the cli resolved | A `NSELF_V15` already in the base environment (the user's choice, or the plugin's own `.env`; with duplicates the last entry wins, as in `os/exec`) passes through unchanged, whatever its value (`yes` stays `yes`). Otherwise the cli adds `1` when `compat.V15` is true, else `0`. Read on every start, never cached. |
 | `NSELF_CLI_VERSION` | the cli version, semver without a leading `v` (for example `1.4.14`) | Always set by the cli; a value inherited from a parent cli is replaced. A plugin can compare it with its `requires.nself` range at startup (exit 2, E600, `nself update`). |
 
 Nothing else cli-internal is passed. The variables are additive, so no V15 gate applies. When v1.5.0 flips the cli default (P7-SHIP-09), plugins follow through `NSELF_V15=1` with no flip of their own. A test (`TestExecSitesUseExecEnv`) fails when a function in `router.go` or `runtime_start.go` builds an `exec.Cmd` without calling `ExecEnv`; the v1.5 auto-add exec in `cmd/commands/relocate.go` calls it from P7-CANON-13.
