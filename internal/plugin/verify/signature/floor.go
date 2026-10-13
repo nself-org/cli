@@ -8,6 +8,7 @@ package signature
 // Constraints: a tier with an empty floor applies no floor rule. For a non-empty floor, an entry at or above its slug's floor version, or for a slug the floor does not name (first released after signing began), must carry a signature in both compat modes. Below the floor the ordinary unsigned rule applies. An unparseable version counts as at or above the floor (fail closed).
 
 import (
+	"cmp"
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -88,17 +89,18 @@ func preLess(a, b string) bool {
 		}
 		nx, errX := strconv.Atoi(x[i])
 		ny, errY := strconv.Atoi(y[i])
-		switch {
-		case errX == nil && errY == nil:
-			return nx < ny
-		case errX == nil:
-			return true
-		case errY == nil:
+		if errX == nil && errY == nil {
+			return cmp.Less(nx, ny)
+		}
+		if errX == nil {
+			return true // numeric identifiers sort below alphanumeric ones
+		}
+		if errY == nil {
 			return false
 		}
-		return x[i] < y[i]
+		return cmp.Less(x[i], y[i])
 	}
-	return len(x) < len(y)
+	return cmp.Less(len(x), len(y))
 }
 
 type parsedVersion struct {

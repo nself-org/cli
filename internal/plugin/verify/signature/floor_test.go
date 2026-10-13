@@ -63,7 +63,7 @@ func TestFloorRule(t *testing.T) {
 	for _, c := range []struct {
 		ver     string
 		refused bool
-	}{{"1.0.0-rc.2", true}, {"1.0.0-rc.3", true}, {"1.0.0-rc.10", true}, {"1.0.0-rc.1", false}, {"1.0.0-rc", false}, {"1.0.0-rc.2.1", true}, {"1.0.0-beta.9", false}, {"1.0.0-rc.alpha", true}, {"1.0.0", true}, {"0.9.9", false}} {
+	}{{"1.0.0-rc.2", true}, {"1.0.0-rc.3", true}, {"1.0.0-rc.10", true}, {"1.0.0-rc.1", false}, {"1.0.0-rc", false}, {"1.0.0-rc.2.1", true}, {"1.0.0-beta.9", false}, {"1.0.0-rc.alpha", true}, {"1.0.0-rc.02", true}, {"1.0.0-rc.01", false}, {"1.0.0", true}, {"0.9.9", false}} {
 		if err := at(signature.TierFree, "ci", c.ver, false); (err != nil) != c.refused {
 			t.Errorf("pre-release floor, version %s: err=%v want refused=%v", c.ver, err, c.refused)
 		}
