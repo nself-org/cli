@@ -55,6 +55,7 @@ internal/database/vectorsearch 94  # measured 96.9 2026-10-10
 internal/deploy 53  # measured 55.2 2026-10-05
 internal/deploy/archguard 76  # measured 78.6 2026-10-09
 internal/deploy/bluegreen 44  # measured 46.3 2026-10-05
+internal/deploy/pintest 57  # measured 59.5 2026-10-13 (P7-HYG-49)
 internal/deploy/progress 86  # measured 88.8 2026-10-12
 internal/deprecation 75  # measured 77.3 2026-10-05
 internal/docker 52  # measured 54.7 2026-10-05
@@ -152,6 +153,7 @@ internal/sysexec 70  # measured 75.0 2026-10-13
 internal/telemetry 60  # measured 62.7 2026-10-05
 internal/templates/clone 84  # measured 86.8 2026-10-05
 internal/tenant 45  # measured 47.4 2026-10-05
+internal/testwatch 40  # measured 42.9 2026-10-13 (P7-HYG-49)
 internal/trust 35  # Linux only; measured 36.2% on 23 consecutive main runs (36.4 on the PR runs); floor 35 is structural headroom (darwin-only tests and files are excluded)
 internal/truststate 94  # measured 96.0 2026-10-05
 internal/ui 75
