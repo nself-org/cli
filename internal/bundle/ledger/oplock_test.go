@@ -281,3 +281,41 @@ func TestOpLockSymlinkedDirIsReentrant(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A fresh state directory under a symlinked parent must have the same key
+// before and after the outer Operation creates it. This reproduces macOS
+// /tmp -> /private/tmp on any Unix host, including Linux.
+func TestOpLockFreshSymlinkedDirIsReentrant(t *testing.T) {
+	needsFileLock(t)
+	root := t.TempDir()
+	link := filepath.Join(t.TempDir(), "plugins-link")
+	if err := os.Symlink(root, link); err != nil {
+		t.Fatalf("create test symlink: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, StateDirName)); !os.IsNotExist(err) {
+		t.Fatalf("state directory should not exist: %v", err)
+	}
+	guard := time.AfterFunc(5*time.Second, func() { panic("fresh symlinked Operation deadlocked") })
+	defer guard.Stop()
+	err := storeAt(link).Operation(context.Background(), "outer", func() error {
+		// Update takes Operation with a background context, just like the nested
+		// bootstrap writer in bundle install; the guard bounds that wait too.
+		if err := storeAt(link).Update(addPlugin("inner")); err != nil {
+			return err
+		}
+		return storeAt(root).Operation(context.Background(), "real path", func() error { return nil })
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, _, err := storeAt(root).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := l.Plugins["inner"]; !ok {
+		t.Fatal("nested Update did not persist the plugin")
+	}
+	if code := startChild(t, "probe", root).exitCode(); code != 0 {
+		t.Fatalf("probe exit %d after release; want 0 (acquired)", code)
+	}
+}

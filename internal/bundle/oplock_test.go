@@ -44,9 +44,14 @@ func TestBundleOpLockProbeProcess(t *testing.T) {
 // probeOpLock runs the probe child against pluginDir and returns its exit code.
 func probeOpLock(t *testing.T, pluginDir string) int {
 	t.Helper()
-	cmd := exec.Command(os.Args[0], "-test.run=^TestBundleOpLockProbeProcess$")
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestBundleOpLockProbeProcess$", "-test.timeout=2s")
 	cmd.Env = append(os.Environ(), envProbeDir+"="+pluginDir)
 	err := cmd.Run()
+	if ctx.Err() != nil {
+		t.Fatalf("operation lock probe timed out: %v", ctx.Err())
+	}
 	var ee *exec.ExitError
 	if errors.As(err, &ee) {
 		return ee.ExitCode()
@@ -64,8 +69,15 @@ func needsOSLock(t *testing.T) {
 	}
 }
 
+func guardOperationLockTest(t *testing.T) {
+	t.Helper()
+	guard := time.AfterFunc(5*time.Second, func() { panic("operation lock test timed out: " + t.Name()) })
+	t.Cleanup(func() { guard.Stop() })
+}
+
 func TestInstallHoldsOperationLockDuringMemberLoop(t *testing.T) {
 	needsOSLock(t)
+	guardOperationLockTest(t)
 	setupOfflineRegistry(t, mockNsentryRegistry())
 	pluginDir := t.TempDir()
 	var during []int
@@ -101,6 +113,7 @@ func TestInstallHoldsOperationLockDuringMemberLoop(t *testing.T) {
 
 func TestRemoveHoldsOperationLockDuringRemovals(t *testing.T) {
 	needsOSLock(t)
+	guardOperationLockTest(t)
 	pluginDir := t.TempDir()
 	for _, p := range []string{"nself-uptime-monitor", "nself-status-page", "nself-incident-mgmt"} {
 		if err := os.MkdirAll(filepath.Join(pluginDir, p), 0o700); err != nil {
@@ -139,6 +152,7 @@ func TestRemoveHoldsOperationLockDuringRemovals(t *testing.T) {
 // TestRemoveDryRunTakesNoOperationLock: a dry run is read only and never waits.
 func TestRemoveDryRunTakesNoOperationLock(t *testing.T) {
 	needsOSLock(t)
+	guardOperationLockTest(t)
 	pluginDir := t.TempDir()
 	recordBundle(t, pluginDir, "sentry")
 	held := make(chan struct{})

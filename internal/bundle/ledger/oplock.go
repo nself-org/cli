@@ -63,6 +63,12 @@ var opProcess = struct {
 // "bundle install nchat". A cancelled ctx stops the wait with an error that wraps
 // ctx.Err(); fn then never runs.
 func (s *Store) Operation(ctx context.Context, what string, fn func() error) error {
+	// Resolve the key only after the state directory exists. Otherwise the first
+	// hold uses an unresolved path, while a nested writer resolves its symlinked
+	// parents (e.g. macOS /tmp), misses the hold, and waits on its own flock.
+	if err := os.MkdirAll(s.Dir(), 0o700); err != nil {
+		return fmt.Errorf("ledger: create %s: %w", s.Dir(), err)
+	}
 	key := opKey(s.Dir())
 	h, err := s.opAcquire(ctx, key, what)
 	if err != nil {
@@ -145,9 +151,6 @@ func opRelease(key string, h *opHold) {
 
 // opLockOS polls for the OS lock and writes the holder note once it has it.
 func (s *Store) opLockOS(ctx context.Context, what string) (func(), error) {
-	if err := os.MkdirAll(s.Dir(), 0o700); err != nil {
-		return nil, fmt.Errorf("ledger: create %s: %w", s.Dir(), err)
-	}
 	path := filepath.Join(s.Dir(), opLockName)
 	f, err := openLockFile(path)
 	if err != nil {
