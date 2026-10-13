@@ -35,7 +35,13 @@ func newMCPServer(transport string, v15 bool) (*server.MCPServer, error) {
 		registerMCPResources(s)
 	}
 	if err := registerGeneratedMCP(s, transport, v15); err != nil {
-		return nil, err
+		if v15 {
+			return nil, err
+		}
+		// v1.4 mode: the generated tools are additive and experimental, so a
+		// registry that cannot be built (a broken plugin manifest) never takes
+		// the 26 hand tools down with it.
+		fmt.Fprintf(os.Stderr, "nself mcp: generated tools are unavailable, serving the built-in tools only: %v\n", err)
 	}
 	registerMCPPrompts(s)
 	return s, nil

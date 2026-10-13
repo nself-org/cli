@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -132,6 +133,9 @@ func buildStubChild(t *testing.T) string {
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir); stubBuilt = "" })
 	stubBuilt = filepath.Join(dir, "stubcli")
+	if runtime.GOOS == "windows" {
+		stubBuilt += ".exe"
+	}
 	root, err := filepath.Abs("../..")
 	if err != nil {
 		t.Fatal(err)
@@ -505,9 +509,35 @@ func installSentryFixture(t *testing.T, dir string) {
 	if err := os.MkdirAll(filepath.Join(dir, "bin"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "bin", "nself-sentry"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+	bin := "nself-sentry"
+	if runtime.GOOS == "windows" {
+		bin += ".exe"
+	}
+	if err := os.WriteFile(filepath.Join(dir, "bin", bin), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestMCPGeneratedFailureByMode(t *testing.T) {
+	if !inFreshProcess(t, "TestMCPGeneratedFailureByMode") {
+		return
+	}
+	stdioFixture(t, false)
+	// A registry that cannot be built: v1.4 keeps the hand tools, v1.5 refuses to start.
+	machineCache.mu.Lock()
+	machineCache.done, machineCache.reg, machineCache.err = true, nil, fmt.Errorf("fixture: broken plugin manifest")
+	machineCache.mu.Unlock()
+	s, err := newMCPServer("stdio", false)
+	if err != nil {
+		t.Fatalf("v1.4 mode must keep serving: %v", err)
+	}
+	if n := len(s.ListTools()); n != 26 {
+		t.Errorf("v1.4 fallback serves %d tools, want the 26 hand tools", n)
+	}
+	if _, err := newMCPServer("stdio", true); err == nil {
+		t.Error("v1.5 mode started without a registry")
+	}
+	t.Log("CHECKED-TestMCPGeneratedFailureByMode")
 }
 
 func TestMCPV14KeepsHandTools(t *testing.T) {
