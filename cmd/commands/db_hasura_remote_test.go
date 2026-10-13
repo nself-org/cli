@@ -344,7 +344,7 @@ const sshdReadyWait = 90 * time.Second
 // so an attempt can stall on the banner; the poll then retries.
 const sshdAttemptWait = 15 * time.Second
 
-// isolateSSHKnownHosts points every ssh call of the db remote transport at a
+// isolateSSHKnownHosts points every streamed ssh call of the db remote transport at a
 // throwaway known_hosts file and a short connect timeout. The fixture sshd
 // listens on 127.0.0.1:<docker-assigned port>, and docker hands out ports in
 // sequence, so a host's ~/.ssh/known_hosts collects stale [127.0.0.1]:<port>
