@@ -137,7 +137,7 @@ func (sp *sharedProxy) check() error {
 			}
 		}
 		for _, h := range sp.facts.verbatim {
-			if !ambiguousHost(h) || !(inSorted(other.ServiceNames, h) || inSorted(other.UpstreamHosts, h)) {
+			if !ambiguousHost(h) || (!inSorted(other.ServiceNames, h) && !inSorted(other.UpstreamHosts, h)) {
 				continue
 			}
 			msg := fmt.Sprintf("upstream host %q is left as written by project %q and is also a service or upstream host of project %q (%s)", h, sp.project, other.Project, other.ProjectDir)
