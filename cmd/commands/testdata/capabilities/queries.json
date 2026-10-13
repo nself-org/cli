@@ -1,0 +1,10 @@
+[
+  {"query": "check service health", "kind": "command", "expect": "status"},
+  {"query": "diagnose problems", "kind": "command", "expect": "doctor"},
+  {"query": "rotate a secret", "kind": "command", "expect": "config secrets rotate"},
+  {"query": "run database migrations", "kind": "command", "expect": "db migrate up"},
+  {"query": "restore a backup", "kind": "command", "expect": "backup restore"},
+  {"query": "deploy to production", "kind": "command", "expect": "deploy"},
+  {"query": "kubernetes", "kind": "plugin", "expect": "k8s"},
+  {"query": "explain a config key", "kind": "command", "expect": "config explain"}
+]

@@ -4645,6 +4645,31 @@ export interface ErrorDetail {
   remediation?: string;
 }
 
+export type HelpCapabilitiesArgs = [string, ...Array<string>];
+
+export interface HelpCapabilitiesData {
+  query: string;
+  results: null | Array<{
+    kind: string;
+    path?: string;
+    run: string;
+    score: number;
+    slug?: string;
+    summary: string;
+  }>;
+}
+
+export type HelpCapabilitiesFlags = {
+  /** Maximum number of hits (1 to 50) */
+  limit?: number;
+};
+
+/** Search commands and plugins by what you want to do */
+export interface HelpCapabilitiesRequest {
+  args: HelpCapabilitiesArgs;
+  flags?: HelpCapabilitiesFlags;
+}
+
 export type HelpTopicsArgs = [string?];
 
 export interface HelpTopicsData {

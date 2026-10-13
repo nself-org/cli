@@ -176,6 +176,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-REG-09 | doctor exits 1 (failed) or 2 (warnings only) | 10 (failed) or 12 (warnings only) | `cmd/commands/doctor_health_report.go` |
 | P7-REG-09 | human status exits 2 | 10 (unhealthy) or 11 (starting) | `cmd/commands/status.go` |
 | P7-REG-09 | status exits 2 (unhealthy) or 1 (starting), 0 with --json | 10 (unhealthy) or 11 (starting) in both modes | `cmd/commands/status_print.go` |
+| P7-SURF-03 | 26 hand tools primary | generated tools, merged same-name tools, deprecated aliases | `cmd/commands/mcp.go` |
 | P7-SURF-07 | nself.yaml type errors and unknown keys warn | fail (E435/E436) | `internal/build/manifest_validate.go` |
 | P7-SURF-11 | health history --json with no history prints a text line | the v1 envelope with an empty entries list | `cmd/commands/health_handlers.go` |
 | P7-SURF-12 | an empty list is the JSON array [] (v1.4 and NSELF_JSON_LEGACY=1 print null) | v1 envelope with an array | `cmd/commands/config_envelope.go` |

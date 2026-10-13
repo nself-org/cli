@@ -1,0 +1,130 @@
+# Authored (not generated). The 26 legacy MCP tool names and what each becomes in v1.5 mode
+# (contract:cli.mcp-tools v2, EPIC P7-SURF D5). One row per legacy name.
+#   kind merged  the name equals the generated name of its target: one tool, machine shape plus the legacy
+#                parameters below (dual shape; the legacy shape adds meta.deprecations)
+#   kind alias   a deprecated tool that maps its parameters onto a registry command
+#   kind removed a tool v1.5 no longer serves; a call returns the error code in `removed`
+# params: legacy properties (description is prefixed "Deprecated: " by the loader); `default` and `required`
+# apply only in the legacy shape. args: params that become positional values, in order. flags: params that
+# become flags (as: seconds renders a number of seconds as a duration). unsupported: params the target cannot
+# take on a machine surface; a non-empty value is an E420 (see MCP-Server.md, "Legacy parameters").
+# plugin: the catalogue slug whose command the row maps to; a registry without it returns E404.
+removal_at: v1.6.0
+rows:
+  - {name: nself_status, kind: merged, target: status}
+  - {name: nself_doctor, kind: merged, target: doctor}
+  - name: nself_logs
+    kind: merged
+    target: logs
+    params:
+      - {name: service, type: string, description: "Service name (empty = all services). Use args [service]."}
+      - {name: lines, type: integer, default: 50, description: "Number of lines to return (default 50). Use flags.tail."}
+    args: [service]
+    flags: [{flag: tail, param: lines}]
+  - name: nself_config_get
+    kind: merged
+    target: config get
+    params:
+      - {name: key, type: string, description: "Config key, e.g. BASE_DOMAIN. Use args [key]."}
+      - {name: env, type: string, description: "Env suffix (dev/staging/prod); not available on machine surfaces in v1.5."}
+    required: [key]
+    args: [key]
+    unsupported: [env]
+  - name: nself_config_show
+    kind: merged
+    target: config show
+    params:
+      - {name: env, type: string, description: "Env suffix (dev/staging/prod); not available on machine surfaces in v1.5."}
+    unsupported: [env]
+  - name: nself_config_set
+    kind: merged
+    target: config set
+    params:
+      - {name: key, type: string, description: "Config key, uppercase letters, digits and underscore only. Use args [key, value]."}
+      - {name: value, type: string, description: "Value to set. Use args [key, value]."}
+      - {name: env, type: string, description: "Env suffix (dev/staging/prod); not available on machine surfaces in v1.5."}
+    required: [key, value]
+    args: [key, value]
+    unsupported: [env]
+  - {name: nself_build, kind: merged, target: build}
+  - {name: nself_start, kind: merged, target: start}
+  - {name: nself_stop, kind: merged, target: stop}
+  - {name: nself_restart, kind: merged, target: restart}
+  - {name: nself_db_migrate_status, kind: merged, target: db migrate status}
+  - {name: nself_backup_list, kind: merged, target: backup list}
+  - {name: nself_deploy_status, kind: merged, target: deploy status}
+  - {name: nself_urls, kind: alias, target: status urls}
+  - {name: nself_service_list, kind: alias, target: config services list}
+  - {name: nself_env_list, kind: alias, target: config env list}
+  - name: nself_plugin_list
+    kind: alias
+    target: config plugins list
+    params:
+      - {name: installed, type: boolean, description: "true = installed only; false or omitted = full catalogue. Use flags.installed."}
+    flags: [{flag: installed, param: installed}]
+  - name: nself_plugin_install
+    kind: alias
+    target: add
+    params:
+      - {name: name, type: string, description: "Plugin name, e.g. mlflow. Use args [name]."}
+    required: [name]
+    args: [name]
+  - {name: nself_get_schema, kind: alias, target: db hasura schema}
+  - {name: nself_get_permissions, kind: alias, target: db hasura permissions}
+  - {name: sentry_monitors_list, kind: alias, target: sentry monitors list, plugin: sentry-cli, side_effect: read, summary: "List ɳSentry uptime monitors"}
+  - name: sentry_monitors_add
+    kind: alias
+    target: sentry monitors add
+    plugin: sentry-cli
+    side_effect: write
+    summary: "Add an ɳSentry uptime monitor"
+    params:
+      - {name: url, type: string, description: "Target URL or host to monitor. Use flags.url."}
+      - {name: name, type: string, description: "Display name (defaults to the URL). Use flags.name."}
+      - {name: kind, type: string, description: "Monitor kind: http, tcp, or ping (default http). Use flags.kind."}
+      - {name: interval_seconds, type: number, description: "Check interval in seconds (default 60; tier floors apply). Use flags.interval."}
+    required: [url]
+    flags:
+      - {flag: url, param: url}
+      - {flag: name, param: name}
+      - {flag: kind, param: kind}
+      - {flag: interval, param: interval_seconds, as: seconds}
+  - name: sentry_incidents_list
+    kind: alias
+    target: sentry incidents list
+    plugin: sentry-cli
+    side_effect: read
+    summary: "List ɳSentry incidents"
+    params:
+      - {name: status, type: string, description: "Status filter: open, acknowledged, or resolved (empty = all). Use flags.status."}
+    flags: [{flag: status, param: status}]
+  - name: sentry_incidents_ack
+    kind: alias
+    target: sentry incidents ack
+    plugin: sentry-cli
+    side_effect: write
+    summary: "Acknowledge an ɳSentry incident"
+    params:
+      - {name: id, type: string, description: "Incident id. Use args [id]."}
+    required: [id]
+    args: [id]
+  - name: sentry_status
+    kind: alias
+    target: sentry status
+    plugin: sentry-cli
+    side_effect: read
+    summary: "Read the public ɳSentry status"
+    params:
+      - {name: url, type: string, description: "Status JSON endpoint. Use flags.url."}
+    flags: [{flag: url, param: url}]
+  - name: nself_run_migration
+    kind: removed
+    side_effect: destructive
+    summary: "Apply raw SQL as a migration"
+    params:
+      - {name: sql, type: string, description: "SQL to execute as a migration."}
+      - {name: confirm, type: boolean, description: "Must be true to execute."}
+    removed:
+      code: E433
+      message: "nself_run_migration ran raw SQL outside the migration ledger and is removed in v1.5"
+      use: [db migrate create, db migrate up]

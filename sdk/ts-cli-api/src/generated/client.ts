@@ -370,6 +370,8 @@ export interface Operations {
   doctorSecurityAudit(request?: T.DoctorSecurityAuditRequest, options?: CallOptions): Promise<T.DoctorSecurityAuditData>;
   /** Show current security posture (POST /v1/commands/doctor/security/status) */
   doctorSecurityStatus(request?: T.DoctorSecurityStatusRequest, options?: CallOptions): Promise<T.DoctorSecurityStatusData>;
+  /** Search commands and plugins by what you want to do (POST /v1/commands/help/capabilities) */
+  helpCapabilities(request: T.HelpCapabilitiesRequest, options?: CallOptions): Promise<T.HelpCapabilitiesData>;
   /** Browse help topics (quickstart, plugins, license, envs, doctor, errors) (POST /v1/commands/help/topics) */
   helpTopics(request?: T.HelpTopicsRequest, options?: CallOptions): Promise<T.HelpTopicsData>;
   /** Browse and publish full-stack app templates (POST /v1/commands/init/template) */
@@ -609,6 +611,7 @@ export function createOperations(transport: Transport): Operations {
     doctorReport: (request, options) => transport.call<T.DoctorReportData>("/v1/commands/doctor/report", request, options),
     doctorSecurityAudit: (request, options) => transport.call<T.DoctorSecurityAuditData>("/v1/commands/doctor/security/audit", request, options),
     doctorSecurityStatus: (request, options) => transport.call<T.DoctorSecurityStatusData>("/v1/commands/doctor/security/status", request, options),
+    helpCapabilities: (request, options) => transport.call<T.HelpCapabilitiesData>("/v1/commands/help/capabilities", request, options),
     helpTopics: (request, options) => transport.call<T.HelpTopicsData>("/v1/commands/help/topics", request, options),
     initTemplate: (request, options) => transport.call<T.InitTemplateData>("/v1/commands/init/template", request, options),
     initTemplateInfo: (request, options) => transport.call<T.InitTemplateInfoData>("/v1/commands/init/template/info", request, options),

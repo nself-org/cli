@@ -786,6 +786,10 @@
       "id": "urn:nself:cli:schema:commands:doctor:v1"
     },
     {
+      "path": "commands/help-capabilities.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:help-capabilities:v1"
+    },
+    {
       "path": "commands/help-topics.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:help-topics:v1"
     },

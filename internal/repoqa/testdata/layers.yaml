@@ -106,7 +106,7 @@ edges:
   - {from: internal/httpapi, to: internal/invoke}
   - {from: internal/upgrade, to: internal/lock}          # P7-LIVE-10: the plan diffs the project lock; needs the overview 4.2 line
   - {from: internal/upgrade, to: internal/bundle}        # P7-PLUG-31: update stack tracks plugin tables with appready.TrackedTables; needs the overview 4.2 line
-  - {from: internal/mcpgen, to: internal/invoke, pending: P7-SURF-03}
+  - {from: internal/mcpgen, to: internal/invoke}
 ratchet:
   - {from: internal/health, to: internal/build}
   - {from: internal/migration, to: internal/build}

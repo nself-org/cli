@@ -1,0 +1,16 @@
+{
+  "schema_version": "1",
+  "command": "help capabilities",
+  "data": {
+    "query": "kubernetes",
+    "results": [
+      {
+        "kind": "plugin",
+        "slug": "k8s",
+        "summary": "Deploy and manage the stack on a Kubernetes cluster",
+        "run": "nself add k8s",
+        "score": 4
+      }
+    ]
+  }
+}
