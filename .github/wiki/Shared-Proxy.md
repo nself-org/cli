@@ -18,6 +18,8 @@ stack/                    owner: NGINX_MODE=shared
 
 The fronted project must live directly under a directory named after `NGINX_FRONTED_BY`. Any other layout is refused, as before.
 
+A fronted project named `backend` inside the owner directory makes `nself build` run in the owner directory treat the owner as a monorepo and build `backend` instead ("Detected monorepo layout"). Build the owner with `nself build --no-monorepo`, or give the fronted project another directory name.
+
 ## What the owner's build does
 
 - Creates `nginx/shared/` and writes `_owner.json` (service names, server names, upstream hosts that stay as written).
