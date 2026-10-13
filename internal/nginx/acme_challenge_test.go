@@ -171,6 +171,9 @@ func TestAcmeChallengeNginx(t *testing.T) {
 	defer cancel()
 	out, stderr, err := docker.RunOneShot(ctx, docker.RunSpec{Image: nginxTestImage, Mounts: mounts, Args: []string{"sh", "-c", string(script)}})
 	if err != nil {
+		if dockertest.RuntimeFailure(t, err, stderr) {
+			return
+		}
 		t.Fatalf("container run failed: %v\n%s\n%s", err, out, stderr)
 	}
 	if !strings.Contains(out, "PROBE-PASS") {

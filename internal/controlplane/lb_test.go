@@ -2,6 +2,7 @@ package controlplane
 
 import (
 	"context"
+	"github.com/nself-org/cli/internal/deploy/pintest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -41,7 +42,7 @@ func stubHostKeyPin(t *testing.T, bin string) {
 			t.Fatalf("write fake %s: %v", name, err)
 		}
 	}
-	home := t.TempDir()
+	home := pintest.Home(t)
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
 	pin := DeployKnownHostsPath()

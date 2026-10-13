@@ -40,6 +40,39 @@ func Require(t testing.TB) {
 	t.Skipf("docker unusable on this host: %s", why)
 }
 
+// infraSigns are fragments of container-runtime errors that mean the host's
+// docker setup cannot start a container at all (as opposed to the container
+// running and the test's own check failing).
+var infraSigns = []string{
+	"failed to create shim task",
+	"oci runtime create failed",
+	"cannot connect to the docker daemon",
+	"error response from daemon: failed to create task",
+	"permission denied while trying to connect to the docker daemon",
+}
+
+// RuntimeFailure is for a test whose `docker run` itself failed. When the error
+// text shows the host cannot start containers it skips t (or fails on a GitHub
+// Linux runner, like Require) and returns true; otherwise it returns false and
+// the caller reports the failure as a real one. Matching is case-insensitive.
+func RuntimeFailure(t testing.TB, err error, stderr string) bool {
+	t.Helper()
+	if err == nil {
+		return false
+	}
+	text := strings.ToLower(err.Error() + "\n" + stderr)
+	for _, sign := range infraSigns {
+		if strings.Contains(text, sign) {
+			if Strict(runtime.GOOS, os.Getenv("GITHUB_ACTIONS")) {
+				t.Fatalf("docker cannot start a container on a GitHub Linux runner: %v\n%s", err, stderr)
+			}
+			t.Skipf("docker cannot start a container on this host: %v", err)
+			return true
+		}
+	}
+	return false
+}
+
 // Strict reports whether an unusable docker must fail rather than skip: only on
 // a GitHub Actions Linux runner (GITHUB_ACTIONS=true, the exact value GitHub
 // sets). CI alone is not enough: the cam CI host sets CI=1 for a user without

@@ -2,6 +2,7 @@ package controlplane
 
 import (
 	"context"
+	"github.com/nself-org/cli/internal/deploy/pintest"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -17,7 +18,7 @@ func TestHostKeyPolicy(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("requires POSIX command stubs")
 	}
-	dir := t.TempDir()
+	dir := pintest.Home(t)
 	t.Setenv("HOME", dir)
 	bin := t.TempDir()
 	key := "host.example ssh-ed25519 AQID"
@@ -89,7 +90,7 @@ func TestReadOnlyProdTierRequiresKnownHost(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("requires POSIX stubs")
 	}
-	t.Setenv("HOME", t.TempDir())
+	t.Setenv("HOME", pintest.Home(t))
 	t.Setenv("NSELF_V15", "1")
 	bin := t.TempDir()
 	if err := os.WriteFile(filepath.Join(bin, "ssh-keyscan"), []byte("#!/bin/sh\nprintf 'prod.example ssh-ed25519 AQID\\n'\n"), 0o700); err != nil {
@@ -122,7 +123,7 @@ func TestReadOnlyFirstContactOnce(t *testing.T) {
 		t.Skip("requires shell stubs")
 	}
 	t.Setenv("NSELF_V15", "1")
-	t.Setenv("HOME", t.TempDir())
+	t.Setenv("HOME", pintest.Home(t))
 	// firstContact is package-global and keeps its entries for the process, so
 	// forget the host before and after: a second run (-count>1) must see a first contact.
 	firstContact.Delete("once.example")

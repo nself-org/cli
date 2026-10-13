@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/nself-org/cli/internal/deploy/pintest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -186,7 +187,7 @@ func TestE487HintEnrollThenDeploy(t *testing.T) {
 	}
 	root, cleanup := newTestRoot(t)
 	defer cleanup()
-	t.Setenv("HOME", t.TempDir())
+	t.Setenv("HOME", pintest.Home(t))
 	t.Setenv("NSELF_V15", "1")
 	host := "u@host.example"
 	writeInventory(t, root, &controlplane.Inventory{SchemaVersion: 2, Environments: map[string]controlplane.Environment{
