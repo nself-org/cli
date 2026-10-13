@@ -4,7 +4,7 @@
 
 ---
 
-This page describes how machine surfaces (MCP today, the HTTP API next) run nSelf commands. Both call one package, `internal/invoke`, so they cannot drift apart. The legacy hand-written MCP tools in `nself mcp` keep their behaviour until the generated tools replace them; see [[cmd-mcp]].
+This page describes how machine surfaces (MCP today, the HTTP API next) run nSelf commands. Both call one package, `internal/invoke`, so they cannot drift apart. `nself mcp` builds its tools, resources and search from the machine registry (see [Generated tools](#generated-tools)). The 26 hand-written tools stay primary in v1.4 mode and become deprecated names in v1.5 mode; see [[cmd-mcp]].
 
 ## Execution model
 
@@ -183,3 +183,76 @@ One compact JSON object per line, keys in this order:
 | `duration_ms` | wall time of the invocation |
 
 Before any command that is not a read runs, the server checks that the audit file can be opened for append (a regular file, never a symlink); when it cannot (or the server has no audit log), the run is refused with `E421` and nothing changes. A writer waits at most 5 seconds for another process's lock on the file. A write that fails after the run (a full disk) prints one line with the operating-system error on the server's standard error (never the request) and does not stop the server. An existing log directory that group or others can read (other nself commands create `~/.nself/logs` at `0755`) is narrowed to `0700`.
+
+## Generated tools
+
+`internal/mcpgen` turns the machine registry into MCP tools. There is no hand-registered tool in v1.5 mode: every tool is a generated tool or a row of the legacy table.
+
+| Part | Value |
+|---|---|
+| Name | `nself_` + the path words joined by `_`, `-` becoming `_` (`config secrets rotate` is `nself_config_secrets_rotate`). A name over 64 characters or a collision fails the start. |
+| Which commands | every command the [exposure rules](#exposure-rules) serve over MCP, installed plugin commands included. A plugin subcommand that declares no side effect counts as destructive and has no confirm block, so it is not listed. |
+| Input | the machine request schema (`args`, `flags`, `argv`, `confirm`), `additionalProperties: false`. Flags with the `output: stream` override are not offered; a call that sets one is `E421`. |
+| Output | the command's committed data schema (`schemas/commands/`) as `outputSchema`; a command with none gets `{"type":"object"}`. A command that can ask for confirmation allows the confirmation shape too. Data that is not an object is wrapped as `{"value": ...}` in the schema and in the result. |
+| Annotations | `readOnlyHint` for read, `destructiveHint` for destructive, `openWorldHint` for remote, taken at the worst class a flag can reach. |
+| Result | `structuredContent` is the envelope `data`, the text content is the full envelope, `isError` is true when the envelope has `error`. A confirmation is a success: `isError` is false and `structuredContent.confirmation_required` is true (see [Confirmation round trip](#confirmation-round-trip)). |
+| Errors | a bad request is an `E420` error envelope in the result, never a transport error. A document that is not an envelope is `E422`. |
+
+The committed tool list for the hermetic tree (no plugin installed) is `internal/mcpgen/testdata/tools.golden.json`; `go test ./internal/mcpgen/ -run ToolListGolden -update` rewrites it.
+
+## v1.4 and v1.5 modes
+
+| | v1.4 mode (default) | v1.5 mode (`NSELF_V15=1`) |
+|---|---|---|
+| Legacy tools | the 26 hand tools, behaviour unchanged | none registered by hand |
+| Generated tools | added under names no legacy tool uses | all of them |
+| Same-name tools | the hand tool answers | one generated tool with a dual-shape input |
+| Other legacy names | the hand tool answers | deprecated aliases |
+| Resources | the four hand resources, plus the new ones | all served from the registry |
+| Server info | `experimental: true` in the initialize capabilities | no flag |
+
+No name is ever registered twice.
+
+### Legacy tool names
+
+`internal/mcpgen/legacy_aliases.yaml` has one row per legacy name.
+
+**Merged (13).** `nself_status`, `nself_doctor`, `nself_logs`, `nself_config_get`, `nself_config_show`, `nself_config_set`, `nself_build`, `nself_start`, `nself_stop`, `nself_restart`, `nself_db_migrate_status`, `nself_backup_list`, `nself_deploy_status` are the generated name of their command. Their input schema is the machine request plus the old parameters as `Deprecated:` properties.
+
+- The call is in the legacy shape when at least one old-only property is present. `{}` is the machine shape.
+- Old properties map through the row (`nself_logs {service, lines}` runs `logs` with `args [service]` and `flags {tail: lines}`). A legacy call applies the old defaults (`lines` is 50) and the old required members (`key`, `value`); a missing one is `E420` naming it. The machine shape keeps the command's own defaults.
+- A legacy call adds `meta.deprecations` (removal v1.6.0). Mixing machine members and old properties in one call is `E420`.
+- `confirm` works in both shapes, so a legacy `nself_config_set` can still complete its confirmation.
+- The result changes from the old text to the command's `data`. This output-schema change is a v1.5 break, listed in [[Compat-V15]].
+
+**Aliases (12).** `nself_urls` is `status urls`, `nself_service_list` is `config services list`, `nself_env_list` is `config env list`, `nself_plugin_list` is `config plugins list`, `nself_plugin_install` is `add`, `nself_get_schema` and `nself_get_permissions` are `db hasura schema` and `db hasura permissions`. The five `sentry_*` names map to the `sentry monitors`, `sentry incidents` and `sentry status` commands of the `sentry-cli` plugin; without that plugin a call is `E404` and names `nself add sentry-cli`. Every alias description starts with `Deprecated:`, and every call adds `meta.deprecations`.
+
+**Removed (1).** `nself_run_migration` ran raw SQL outside the migration ledger. A call is `E433` and names `nself db migrate create` and `nself db migrate up`.
+
+### Legacy parameters
+
+Two limits come from the exposure rules, which this change does not touch:
+
+- `env` on `nself_config_get`, `nself_config_show` and `nself_config_set`. The `--env` flag belongs to the `config` parent, and the request schema offers only the flags a command declares itself. A call that sets `env` is `E420`. Select the environment with `nself config env use` before the call.
+- A legacy name whose command is not exposed yet (no envelope: `start`, `stop`, `restart`, `config services list`, `config plugins list`, `add`) stays registered, its description says so, and a call returns the invoker's `E421`. It starts working when the command gets an envelope, with no change here.
+
+## Resources
+
+| URI | Content |
+|---|---|
+| `nself://registry` | the machine registry document, equal to the data of `nself help --json` plus installed plugin commands |
+| `nself://errors` | every registered error code with summary, cause, fix and exit class |
+| `nself://schemas/{name}` | a committed schema by file name; `nself://schemas/commands/{name}` and `nself://schemas/invoke/{name}` reach the subfolders. The bytes are the committed ones. |
+| `nself://plugins/catalog` | the plugin catalogue as the local cache holds it. The server never fetches: with no cache the read fails. |
+| `nself://config`, `nself://services`, `nself://env`, `nself://urls` | in v1.5 mode the data of `config show`, `config services list`, `config env explain`, `status urls`, through the invoker. A URI whose command has no envelope yet keeps its hand handler. |
+
+## Self-description
+
+`nself help capabilities <query> [--limit 5]` searches the commands and the installable plugins by plain words, so an agent can find what to run. It is an ordinary registry command, so it is also the tool `nself_help_capabilities` and an HTTP route.
+
+Each result is `{kind, path or slug, summary, run, score}`; `run` is the exact text (`nself config secrets rotate`, `nself add k8s`). A command scores 3 for each query word found in its path and 1 for each found in its summary. A plugin scores 2 for each query word found in its slug, summary, category or bundles. Words match when equal, when they share a stem (`diagnose`, `diagnostics`) or by a short synonym list (`database` and `db`, `kubernetes` and `k8s`). A parent command scores two below its best matching subcommand when that is higher. Plugin hits come from the cached catalogue only. `cmd/commands/testdata/capabilities/queries.json` records eight queries and the hit each must return in the top three.
+
+## Prompts
+
+The three prompts (`diagnose-failure`, `add-service`, `prepare-deploy`) are written by hand. A test checks that every `nself ...` command, tool name and resource they mention exists in the v1.5 registry and on the v1.5 server.
+

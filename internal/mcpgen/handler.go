@@ -76,6 +76,9 @@ func (g *gen) request(command string, row *Row, raw []byte) (invoke.Request, []o
 		if t[0] != '{' || json.Unmarshal(t, &members) != nil {
 			return invoke.Request{}, nil, badParams("%s: the arguments must be a JSON object", row.Name)
 		}
+		if name, dup := repeatedMember(t); dup {
+			return invoke.Request{}, nil, badParams("%s: the member %q is repeated", row.Name, name)
+		}
 	}
 	if row.Kind == KindRemoved {
 		return invoke.Request{}, g.deprecations(row, nil), nil
@@ -114,4 +117,33 @@ func removedError(row *Row) error {
 		use += " and then nself " + u
 	}
 	return errs.New(row.Removed.Code, row.Removed.Message).WithFix(use + ".")
+}
+
+// repeatedMember reports the first top-level member name that occurs twice;
+// json.Unmarshal into a map would keep the last one silently.
+func repeatedMember(obj []byte) (string, bool) {
+	dec := json.NewDecoder(bytes.NewReader(obj))
+	if _, err := dec.Token(); err != nil {
+		return "", false
+	}
+	seen := map[string]bool{}
+	for dec.More() {
+		tok, err := dec.Token()
+		name, ok := tok.(string)
+		if err != nil || !ok {
+			return "", false
+		}
+		if seen[name] {
+			if len(name) > 48 {
+				name = name[:48]
+			}
+			return name, true
+		}
+		seen[name] = true
+		var skip json.RawMessage
+		if dec.Decode(&skip) != nil {
+			return "", false
+		}
+	}
+	return "", false
 }

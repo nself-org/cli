@@ -102,7 +102,7 @@ func (r *Row) value(p Param, raw json.RawMessage) (v any, present bool, err erro
 func (r *Row) Request(members map[string]json.RawMessage, allowConfirm bool) (invoke.Request, error) {
 	var zero invoke.Request
 	for name := range members {
-		if _, ok := r.param(name); !ok && !(name == "confirm" && allowConfirm) {
+		if _, ok := r.param(name); !ok && (name != "confirm" || !allowConfirm) {
 			return zero, badParams("%s has no parameter %q", r.Name, name)
 		}
 	}

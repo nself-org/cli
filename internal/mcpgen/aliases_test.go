@@ -260,3 +260,24 @@ func TestAliasWithoutPlugin(t *testing.T) {
 		}
 	}
 }
+
+func TestLegacyShapeHardening(t *testing.T) {
+	h := newHarness(t, true, false, false)
+	// A repeated member is refused, not resolved to the last value.
+	if code := errCode(t, h.call("nself_config_get", `{"key":"A","key":"B"}`)); code != "E420" {
+		t.Errorf("repeated member returned %s", code)
+	}
+	for _, in := range []string{`[]`, `"x"`, `7`} {
+		if code := errCode(t, h.call("nself_config_get", in)); code != "E420" {
+			t.Errorf("arguments %s returned %s", in, code)
+		}
+	}
+	// Adding deprecation notes keeps the child's bytes: < > & are not escaped.
+	t.Setenv("STUBCLI_MODE", "raw")
+	t.Setenv("STUBCLI_STDOUT", `{"schema_version":"1","command":"stub","data":{"v":"<b>&</b>"}}`)
+	res := h.call("nself_config_get", `{"key":"A"}`)
+	text := res.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(text, `"<b>&</b>"`) || !strings.Contains(text, "deprecations") {
+		t.Errorf("text content %s", text)
+	}
+}

@@ -2,5 +2,5 @@
 # Keys are canonical (v1.5) command paths without the leading "nself ", sorted. Rules: internal/canon/domains.go.
 schema_version: 1
 commands:
-  # cmd/commands/help_capabilities.go RunE searches the in-process registry and the cached plugin catalogue; it changes nothing
+  # cmd/commands/help_capabilities.go:70 RunE searches the in-process registry and the cached plugin catalogue; it changes nothing
   help capabilities: {side_effect: read}

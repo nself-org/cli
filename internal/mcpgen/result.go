@@ -54,8 +54,12 @@ func Result(stdout []byte, deps []output.Deprecation) *mcp.CallToolResult {
 		}
 		meta.Deprecations = append(append([]output.Deprecation{}, meta.Deprecations...), deps...)
 		doc.Meta = &meta
-		if b, err := json.MarshalIndent(doc, "", "  "); err == nil {
-			stdout = append(b, '\n')
+		var buf bytes.Buffer
+		enc := json.NewEncoder(&buf)
+		enc.SetEscapeHTML(false) // keep the child's bytes; < > & stay as written
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(doc); err == nil {
+			stdout = buf.Bytes()
 		}
 	}
 	text := string(bytes.TrimRight(stdout, "\n"))

@@ -60,6 +60,9 @@ func init() {
 	capabilitiesCmd.Flags().Int("limit", capabilitiesDefaultLimit, "Maximum number of hits (1 to 50)")
 	// help.go registers the help command first (file order); the child joins it.
 	if h, _, err := RootCmd.Find([]string{"help"}); err == nil && h != nil && h.Name() == "help" {
+		// help takes a command path, so with a child it is an arg-taking parent,
+		// not a help-only hub (the canon engine classifies parents by Args).
+		h.Args = cobra.ArbitraryArgs
 		h.AddCommand(capabilitiesCmd)
 	}
 }
