@@ -113,6 +113,7 @@ func TestLegacyAliasTable(t *testing.T) {
 		{"nself_logs", `{"service":"db","lines":0}`, `{"args":["db"],"flags":{"tail":50}}`},
 		{"nself_logs", `{"service":"db","lines":-5}`, `{"args":["db"],"flags":{"tail":50}}`},
 		{"nself_logs", `{"lines":1e3}`, `{"flags":{"tail":1000}}`},
+		{"nself_logs", `{"service":"db","lines":-1e30}`, `{"args":["db"],"flags":{"tail":50}}`},
 		{"sentry_monitors_add", `{"url":"https://a.test","interval_seconds":1e3}`, `{"flags":{"interval":"1000s","url":"https://a.test"}}`},
 		{"sentry_monitors_add", `{"url":"https://a.test","interval_seconds":0.5}`, `{"flags":{"interval":"0.5s","url":"https://a.test"}}`},
 		{"sentry_monitors_add", `{"url":"https://a.test","interval_seconds":-30}`, `{"flags":{"interval":"60s","url":"https://a.test"}}`},

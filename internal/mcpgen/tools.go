@@ -97,6 +97,9 @@ func Tools(o Options) ([]server.ServerTool, error) {
 		case legacy && !o.V15:
 			continue // a hand tool owns the name in v1.4 mode
 		case legacy && row.Kind != KindMerged:
+			if skipPlugin(o, cmd, "its tool name is a legacy alias name") {
+				continue
+			}
 			return nil, fmt.Errorf("mcpgen: generated name %q is also the %s legacy name of %q", name, row.Kind, row.Target)
 		case legacy && barePath(cmd.Path) != row.Target:
 			return nil, fmt.Errorf("mcpgen: merged row %s targets %q but the generated tool is %q", name, row.Target, cmd.Path)

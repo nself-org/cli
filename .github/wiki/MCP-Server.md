@@ -197,7 +197,7 @@ Before any command that is not a read runs, the server checks that the audit fil
 | Annotations | `readOnlyHint` for read, `destructiveHint` for destructive, `openWorldHint` for remote, taken at the worst class a flag can reach. |
 | Result | `structuredContent` is the envelope `data`, the text content is the full envelope, `isError` is true when the envelope has `error`. A confirmation is a success: `isError` is false and `structuredContent.confirmation_required` is true (see [Confirmation round trip](#confirmation-round-trip)). |
 | Errors | a bad request is an `E420` error envelope in the result, never a transport error. A document that is not an envelope is `E422`. |
-| Plugin tools | a plugin command whose tool name is over 64 characters or already taken is skipped with a warning on standard error; the other tools are unaffected. The same fault in a core command stops the start. In v1.4 mode a start that cannot build the generated surface serves the 26 hand tools and prints why. |
+| Plugin tools | a plugin command whose tool name is over 64 characters, is another generated tool's name or is a legacy alias name is skipped with a warning on standard error; the other tools are unaffected. A plugin name that only collides with the shortcut or an alias added after the generated tools still stops the start. The same fault in a core command stops the start. In v1.4 mode a start that cannot build the generated surface serves the 26 hand tools and prints why. |
 
 The committed tool list for the hermetic tree (no plugin installed) is `internal/mcpgen/testdata/tools.golden.json`; `go test ./internal/mcpgen/ -run ToolListGolden -update` rewrites it.
 

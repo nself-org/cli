@@ -93,6 +93,9 @@ func (r *Row) value(p Param, raw json.RawMessage) (v any, present bool, err erro
 				return x, true, nil
 			}
 		case "integer":
+			if f, err := strconv.ParseFloat(x.String(), 64); p.Positive && err == nil && f <= 0 {
+				return json.Number("0"), true, nil // zero or less means the default, whatever its size
+			}
 			if n, err := strconv.ParseInt(x.String(), 10, 64); err == nil {
 				return json.Number(strconv.FormatInt(n, 10)), true, nil
 			}
