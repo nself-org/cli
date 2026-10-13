@@ -2374,6 +2374,50 @@ export interface DbHasuraValidateRequest {
   flags?: DbHasuraValidateFlags;
 }
 
+export type DbImageSwitchArgs = [];
+
+export interface DbImageSwitchData {
+  build?: unknown;
+  data_bytes?: number;
+  databases?: number;
+  downtime_seconds?: number;
+  new_image?: string;
+  new_volume?: string;
+  next_steps?: null | Array<string>;
+  old_image?: string;
+  old_volume?: string;
+  phase?: string;
+  preflight?: null | Array<{
+    detail?: string;
+    name: string;
+    ok: boolean;
+  }>;
+  sequences?: number;
+  status: string;
+  steps?: null | Array<string>;
+  tables?: number;
+  tolerated?: null | Array<string>;
+  warnings?: null | Array<string>;
+}
+
+export type DbImageSwitchFlags = {
+  /** Show the steps, the downtime estimate and the compose and lock change; change nothing */
+  plan?: boolean;
+  /** Continue an incomplete switch */
+  resume?: boolean;
+  /** Go back to the old volume (works from any phase and after success) */
+  rollback?: boolean;
+  /** Target image: pgvector */
+  to?: string;
+};
+
+/** Move the database to the pgvector Postgres image (the old volume is kept) */
+export interface DbImageSwitchRequest {
+  args?: DbImageSwitchArgs;
+  flags?: DbImageSwitchFlags;
+  confirm?: string;
+}
+
 export type DbImportAppwriteArgs = [];
 
 export interface DbImportAppwriteData {

@@ -211,4 +211,8 @@ type NetworkConfig struct {
 // VolumeConfig represents a docker-compose volume definition.
 type VolumeConfig struct {
 	Driver string `yaml:"driver,omitempty"`
+	// Name is the docker volume name (volumes.<key>.name). Empty leaves the
+	// name to compose (<project>_<key>). Set for postgres_data by
+	// POSTGRES_DATA_VOLUME after `nself db image switch`.
+	Name string `yaml:"name,omitempty"`
 }

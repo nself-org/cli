@@ -23,6 +23,7 @@ type dockerInspectRaw struct {
 		} `json:"Health,omitempty"`
 	} `json:"State"`
 	Config struct {
+		Image  string            `json:"Image"`
 		Env    []string          `json:"Env"`
 		Labels map[string]string `json:"Labels"`
 	} `json:"Config"`
@@ -64,6 +65,7 @@ func InspectContainer(ctx context.Context, name string) (*ContainerInfo, error) 
 		ID:        raw.ID,
 		Name:      strings.TrimPrefix(raw.Name, "/"),
 		Image:     raw.Image,
+		ImageRef:  raw.Config.Image,
 		State:     raw.State.Status,
 		Health:    "none",
 		Env:       parseEnvSlice(raw.Config.Env),

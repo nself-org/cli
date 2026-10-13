@@ -295,6 +295,7 @@ Restores the database to a point in time and overwrites what is there now. In v1
 | `fk-index` | Audit and create indexes for foreign key columns |
 | `generate` | Generate type-safe client SDK types from the live Hasura schema |
 | `hasura` | Hasura metadata operations |
+| `image` | Manage the Postgres image of a project |
 | `import` | Import data from another platform |
 | `lint` | Check RLS policies on tenant-scoped tables |
 | `list` | List databases in the project Postgres instance |

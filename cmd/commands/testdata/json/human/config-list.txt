@@ -14,6 +14,7 @@ DEMO_SEED                                     (unset)                        uns
 IMAGE_PINNING                                 (unset)                        unset
 POSTGRES_VERSION                              (default: 16-alpine)           default
 POSTGRES_IMAGE                                (unset)                        unset
+POSTGRES_DATA_VOLUME                          (unset)                        unset
 POSTGRES_HOST                                 (default: postgres)            default
 POSTGRES_PORT                                 (default: 5432)                default
 POSTGRES_DB                                   (default: nself)               default

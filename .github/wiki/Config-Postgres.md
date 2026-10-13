@@ -12,6 +12,7 @@ All Postgres variables are optional except `POSTGRES_PASSWORD`, which must be se
 |----------|---------|----------|-------------|
 | `POSTGRES_VERSION` | `16-alpine` | No | Docker image tag for the Postgres container. Change this to pin a specific version, e.g. `15-alpine` or `16.2-alpine`. |
 | `POSTGRES_IMAGE` | *(unset)* | No | Explicit image override for the Postgres container (e.g. `pgvector/pgvector:pg16`). When set, wins over both `POSTGRES_VERSION` and the `POSTGRES_EXTENSIONS` pgvector inference below — use it to pin a running image across `nself build` regens. |
+| `POSTGRES_DATA_VOLUME` | *(unset)* | No | Name of the docker volume Postgres keeps its data in (compose `volumes.postgres_data.name`). Written by `nself db image switch --to pgvector`; leave it unset to keep the project's own `<project>_postgres_data` volume. See [[pgvector]]. |
 | `POSTGRES_HOST` | `postgres` | No | Internal hostname used by other containers (Hasura, Auth, Functions) to reach Postgres. This is a Docker network name and should almost never be changed. |
 | `POSTGRES_INTERNAL_PORT` | `5432` | No | Port Postgres listens on inside the container. Always `5432`. Do not change this , it is the standard Postgres port expected by all dependent services. |
 | `POSTGRES_PORT` | `5432` | No | Port exposed to the host machine. Change this if you have a port conflict with another local Postgres instance (e.g., set to `5433`). |

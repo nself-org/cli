@@ -563,6 +563,12 @@
         "hidden": false
       },
       {
+        "name": "image",
+        "path": "nself db image",
+        "short": "Manage the Postgres image of a project",
+        "hidden": false
+      },
+      {
         "name": "import",
         "path": "nself db import",
         "short": "Import data from another platform",
