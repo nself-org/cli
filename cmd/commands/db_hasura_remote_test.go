@@ -339,15 +339,88 @@ func TestDBHasuraRemoteRejectsOversizedStream(t *testing.T) {
 // connection in TestDBHasuraRemoteIntegration.
 const sshdReadyWait = 90 * time.Second
 
+// sshdAttemptWait bounds one ssh attempt against the fixture sshd. A published
+// docker port on macOS (Colima) accepts the TCP connection before sshd is up,
+// so an attempt can stall on the banner; the poll then retries.
+const sshdAttemptWait = 15 * time.Second
+
+// sshdImage is the fixture sshd image of TestDBHasuraRemoteIntegration.
+const sshdImage = "linuxserver/openssh-server:latest"
+
+// dockerVisibleFixtureRoot returns a world-writable directory the docker
+// daemon can bind-mount. A daemon in a VM (Colima, Docker Desktop) shares only
+// some host paths, usually $HOME; a CI host whose TMPDIR is on another volume
+// then mounts an empty directory and the fixture fails with "nself: command
+// not found" after the full 90 s poll. The test temp dir is tried first, then
+// a directory under $HOME; when neither is visible the test skips with the
+// reason instead of failing.
+func dockerVisibleFixtureRoot(t *testing.T, image string) string {
+	t.Helper()
+	candidates := []func() (string, error){
+		func() (string, error) { return t.TempDir(), nil },
+		func() (string, error) {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return "", err
+			}
+			d, err := os.MkdirTemp(home, ".nself-sshd-fixture-")
+			if err == nil {
+				t.Cleanup(func() { os.RemoveAll(d) })
+			}
+			return d, err
+		},
+	}
+	for _, next := range candidates {
+		d, err := next()
+		if err != nil {
+			continue
+		}
+		if err := os.Chmod(d, 0777); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(d, "visible"), nil, 0644); err != nil {
+			t.Fatal(err)
+		}
+		out, err := exec.Command("docker", "run", "--rm", "--entrypoint", "test", "-v", d+":/probe:ro", image, "-f", "/probe/visible").CombinedOutput()
+		if err == nil {
+			return d
+		}
+		// Only "the container ran and the file was absent" (exit 1, no output)
+		// means the path is not shared; a pull, daemon or rate-limit failure
+		// must still fail the test (D-0286), not skip it.
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ExitCode() != 1 || len(bytes.TrimSpace(out)) != 0 {
+			t.Fatalf("docker probe of %s: %v %s", d, err, strings.TrimSpace(string(out)))
+		}
+		t.Logf("docker cannot see %s", d)
+	}
+	t.Skip("the docker daemon cannot bind-mount the test temp dir or $HOME (VM without shared paths): the sshd fixture cannot run here")
+	return ""
+}
+
+// isolateSSHKnownHosts points every streamed ssh call of the db remote transport at a
+// throwaway known_hosts file and a short connect timeout. The fixture sshd
+// listens on 127.0.0.1:<docker-assigned port>, and docker hands out ports in
+// sequence, so a host's ~/.ssh/known_hosts collects stale [127.0.0.1]:<port>
+// entries from earlier runs. A reused port with a new host key then fails
+// strict checking ("Host key verification failed") on every attempt. The test
+// also stops writing fixture keys into the operator's known_hosts.
+func isolateSSHKnownHosts(t *testing.T, knownHosts string) {
+	t.Helper()
+	old := runSSHStream
+	t.Cleanup(func() { runSSHStream = old })
+	runSSHStream = func(ctx context.Context, argv []string, stdin io.Reader, stdout io.Writer) (string, error) {
+		pre := []string{"-o", "UserKnownHostsFile=" + knownHosts, "-o", "ConnectTimeout=10"}
+		return old(ctx, append(pre, argv...), stdin, stdout)
+	}
+}
+
 func TestDBHasuraRemoteIntegration(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Linux sshd bind-mount fixture")
 	}
 	dockertest.Require(t) // skips without docker, fails on a GitHub Linux runner (D-0286)
-	root := t.TempDir()
-	if err := os.Chmod(root, 0777); err != nil {
-		t.Fatal(err)
-	}
+	root := dockerVisibleFixtureRoot(t, sshdImage)
 	key := filepath.Join(root, "id_ed25519")
 	if out, err := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", key).CombinedOutput(); err != nil {
 		t.Fatal(string(out), err)
@@ -365,7 +438,7 @@ func TestDBHasuraRemoteIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	name := fmt.Sprintf("nself-l12-%d", time.Now().UnixNano())
-	run := exec.Command("docker", "run", "--rm", "-d", "--name", name, "-p", "127.0.0.1::2222", "-e", "USER_NAME=test", "-e", "PUBLIC_KEY="+strings.TrimSpace(string(pub)), "-v", root+":/fixtures", "-v", filepath.Join(root, "nself")+":/usr/local/bin/nself:ro", "linuxserver/openssh-server:latest")
+	run := exec.Command("docker", "run", "--rm", "-d", "--name", name, "-p", "127.0.0.1::2222", "-e", "USER_NAME=test", "-e", "PUBLIC_KEY="+strings.TrimSpace(string(pub)), "-v", root+":/fixtures", "-v", filepath.Join(root, "nself")+":/usr/local/bin/nself:ro", sshdImage)
 	if out, err := run.CombinedOutput(); err != nil {
 		t.Fatalf("start sshd: %s %v", out, err)
 	}
@@ -379,6 +452,7 @@ func TestDBHasuraRemoteIntegration(t *testing.T) {
 	if !ok {
 		t.Fatalf("port: %s", endpoint)
 	}
+	isolateSSHKnownHosts(t, filepath.Join(root, "known_hosts"))
 	rt := dbRemoteTarget{SSHTarget: "ssh://test@127.0.0.1:" + port, KeyPath: key, RemotePath: "/fixtures", EnvName: "staging", AllowVersionDrift: true}
 	// The image's init brings sshd up after `docker run -d` returns, slower on
 	// a loaded host (ssh exits 255 until it listens): poll up to sshdReadyWait.
@@ -386,7 +460,13 @@ func TestDBHasuraRemoteIntegration(t *testing.T) {
 	var last error
 	for deadline := time.Now().Add(sshdReadyWait); ; time.Sleep(500 * time.Millisecond) {
 		got.Reset()
-		last = runRemoteNselfStream(context.Background(), rt, nil, &got, "db", "hasura", "metadata", "export", "--archive", "-")
+		attempt, cancel := context.WithTimeout(context.Background(), sshdAttemptWait)
+		last = runRemoteNselfStream(attempt, rt, nil, &got, "db", "hasura", "metadata", "export", "--archive", "-")
+		cancel()
+		// Waiting longer cannot fix a rejected key: fail in seconds, not 90 s.
+		if last != nil && (strings.Contains(last.Error(), "Host key verification failed") || strings.Contains(last.Error(), "Permission denied")) {
+			t.Fatalf("sshd rejected the connection: %v", last)
+		}
 		if last == nil || time.Now().After(deadline) {
 			break
 		}
