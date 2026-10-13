@@ -33,6 +33,12 @@ func TestOwnership_Mutations(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			snapshotRegistry(t)
+			// The code under test may already be registered by its real
+			// owner (P7-PLUG-09 registered E115-E117); start from a clean slot.
+			regMu.Lock()
+			delete(Registry, tc.code)
+			delete(regOrigin, tc.code)
+			regMu.Unlock()
 			register(tc.frag, entryFor(tc.code))
 			got := RegistryErrors()
 			if tc.wantProblem {

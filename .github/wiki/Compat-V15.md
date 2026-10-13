@@ -111,6 +111,8 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-LIVE-22 | certbot is the default certificate path | the ACME engine is the default | `cmd/commands/ssl_renewal.go` |
 | P7-LIVE-23 | hasura runs graphql-engine v2.44.0 (hasura-v14) | v2.51.0 (hasura) | `internal/compose/core_services.go` |
 | P7-PLUG-01 | v1 plugin.json read silently | one deprecation line per process on stderr | `internal/plugin/manifestv2/warn.go` |
+| P7-PLUG-09 | generic "nself install <command>" hint | the catalog plugin that provides the command, with nself add | `internal/plugin/router.go` |
+| P7-PLUG-09 | search over the registry (free tier, NDJSON) | search over the catalog (both tiers, v1 envelope) | `cmd/commands/plugin_search.go` |
 | P7-PLUG-11 | tier pro | license licensed | `cmd/commands/plugin_marketplace_cmds.go` |
 | P7-PLUG-11 | tier pro | license licensed | `cmd/commands/plugin_query.go` |
 | P7-PLUG-11 | tier pro | license licensed | `cmd/commands/plugin_search.go` |

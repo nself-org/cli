@@ -127,6 +127,18 @@ Permissions:
 The gap between the two lines is the point. A declaration that looks narrow is
 enforced broadly, because under-stating a permission is the one direction a
 fail-closed check must never take.
+
+## Search and the plugin catalog (v1.5)
+
+In v1.5 mode (`NSELF_V15=1`) `nself plugin search <query>` reads the plugin catalog, `https://plugins.nself.org/catalog.json`, instead of the registry. It matches the query against each plugin's slug, description, category and bundle names, and lists both tiers of a slug that is served as a pair. `--free` and `--licensed` narrow by tier.
+
+`--json` prints one v1 envelope. `data` holds `query`, `count` and `plugins`, a list of `{slug, tier, bundles, description, category}`; `tier` is `free` or `licensed`. In v1.4 mode the output is unchanged.
+
+The CLI revalidates the catalog with its stored ETag, so an unchanged catalog costs a `304` and no body. The last good copy and its ETag live in `~/.nself/cache/plugins` (`catalog.json`, `catalog.etag`; `NSELF_PLUGIN_CACHE` moves the directory). With no network the cached copy answers and stderr says `using cached catalog from <date>`. With no network and no cache the command fails with E115. A response that is not a valid catalog fails with E116 and is never cached.
+
+## Add hints for unknown commands (v1.5)
+
+When you run a command that is not built in and no installed plugin provides it, v1.5 checks the cached catalog (never the network). If a catalog plugin lists that command, the command fails with E117 and tells you what to run: `provided by plugin traefik: run nself add traefik`. With no cache, or no match, the usual hint is shown. Run `nself plugin search` once while online to fill the cache.
 <!-- END PROSE:description -->
 
 ### Examples
