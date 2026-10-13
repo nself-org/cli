@@ -134,12 +134,12 @@ internal/scaffold 0  # measured 0.0 2026-10-05
 internal/search 91  # measured 93.9 2026-10-05
 internal/secrets 38  # measured 40.2 2026-10-05
 internal/security 87  # measured 89.3 2026-10-05
-internal/sharedproxy 85  # measured 88.0 2026-10-13
 internal/seed 23  # measured 25.1 2026-10-05
 internal/sentryapi 75  # measured 77.6 2026-10-05
 internal/server 57  # measured 59.1 2026-10-05
 internal/service 0  # measured 0.0 2026-10-05
 internal/setup 58  # measured 60.2 2026-10-05
+internal/sharedproxy 85  # measured 88.0 2026-10-13
 internal/sqlallowlist 90  # measured 92.3 2026-10-05
 internal/ssl 59  # measured 61.2 2026-10-05
 internal/ssl/acme 72  # measured 74.6 2026-10-05
