@@ -385,7 +385,14 @@ func dockerVisibleFixtureRoot(t *testing.T, image string) string {
 		if err == nil {
 			return d
 		}
-		t.Logf("docker cannot see %s: %v %s", d, err, strings.TrimSpace(string(out)))
+		// Only "the container ran and the file was absent" (exit 1, no output)
+		// means the path is not shared; a pull, daemon or rate-limit failure
+		// must still fail the test (D-0286), not skip it.
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ExitCode() != 1 || len(bytes.TrimSpace(out)) != 0 {
+			t.Fatalf("docker probe of %s: %v %s", d, err, strings.TrimSpace(string(out)))
+		}
+		t.Logf("docker cannot see %s", d)
 	}
 	t.Skip("the docker daemon cannot bind-mount the test temp dir or $HOME (VM without shared paths): the sshd fixture cannot run here")
 	return ""
