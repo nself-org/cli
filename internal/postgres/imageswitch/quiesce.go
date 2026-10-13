@@ -20,6 +20,10 @@ import (
 
 // quiesce stops the writers and sets the databases read-only.
 func (s *Switch) quiesce(ctx context.Context) error {
+	// A resume must not dump a cluster other than the one the switch started from.
+	if err := s.onVolume(ctx, s.st.OldVolume); err != nil {
+		return fmt.Errorf("the project is not running on the old volume, so the switch cannot continue: %w (put the old stack back with `nself db image switch --rollback`)", err)
+	}
 	running, err := s.d.Stack.Running(ctx)
 	if err != nil {
 		return fmt.Errorf("listing running services: %w", err)

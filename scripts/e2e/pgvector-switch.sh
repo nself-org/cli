@@ -130,7 +130,7 @@ snap() {
     out+="$(DB=$db pg "SELECT extname, extversion FROM pg_extension ORDER BY 1")"$'\n'
   done
   out+="$(pgs "SELECT rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin, rolreplication, rolbypassrls, rolconnlimit FROM pg_roles ORDER BY 1")"$'\n'
-  out+="$(pgs "SELECT datname, pg_get_userbyid(datdba), datcollate, datacl FROM pg_database ORDER BY 1")"$'\n'
+  out+="$(pgs "SELECT d.datname, pg_get_userbyid(d.datdba), d.datcollate, (SELECT coalesce(string_agg(CASE WHEN x.grantee = 0 THEN 'PUBLIC' ELSE pg_get_userbyid(x.grantee) END || ':' || x.privilege_type || ':' || x.is_grantable, ',' ORDER BY CASE WHEN x.grantee = 0 THEN '' ELSE pg_get_userbyid(x.grantee) END, x.privilege_type), '') FROM aclexplode(d.datacl) x) FROM pg_database d ORDER BY 1")"$'\n'
   printf '%s' "$out"
 }
 writable() { pg "CREATE TABLE IF NOT EXISTS public.rw_probe(x int); INSERT INTO public.rw_probe VALUES (1); DROP TABLE public.rw_probe" >/dev/null 2>&1; }

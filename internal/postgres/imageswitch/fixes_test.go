@@ -315,8 +315,14 @@ func TestSwitchoverRefusesAMissingOrForeignNewVolume(t *testing.T) {
 			if _, err := New(s.cfg, s.d).Run(context.Background(), RunOptions{Resume: true}); err == nil {
 				t.Fatal("the switch must not go ahead")
 			}
-			if len(f.envApplied) != 0 {
-				t.Errorf("env was written: %v", f.envApplied)
+			// A resumed switch may be past an earlier attempt's rewrite, so the failure puts the
+			// previous env back; it never writes the new image or volume.
+			for _, env := range f.envApplied {
+				for k, v := range env {
+					if v != "" {
+						t.Errorf("env %s=%q written; only the previous values may be", k, v)
+					}
+				}
 			}
 		})
 	}
