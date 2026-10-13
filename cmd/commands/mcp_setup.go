@@ -150,10 +150,14 @@ func agentsMDVerbs() ([]agentsetup.Verb, error) {
 
 // scaffoldAgentsMD is init's hook: write AGENTS.md without a prompt when the
 // file is absent or still the unedited generated one. It reports on stderr
-// only (init's stdout is a contract) and never fails init.
-func scaffoldAgentsMD(dir string, quiet bool) {
-	// Best effort after init's real work is done: a failure here, even a panic
-	// from a command tree that is not the live one, must not fail init.
+// only (init's stdout is a contract) and never fails init. It reads the live
+// command tree, so a command that is not under RootCmd (a test clone) skips it.
+func scaffoldAgentsMD(cmd *cobra.Command, dir string, quiet bool) {
+	if cmd.Root() != RootCmd {
+		return
+	}
+	// Best effort after init's real work is done: a failure here, even a panic,
+	// must not fail init.
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Fprintf(os.Stderr, "Warning: could not write AGENTS.md: %v\n", r)
