@@ -157,6 +157,10 @@ func (st *buildState) sharedDetect() (*sharedProxy, error) {
 	}
 	sp.prev = sp.set.Find(sp.project)
 	if sp.role == sharedFronted {
+		if !sharedproxy.ValidProject(sp.project) {
+			return nil, errs.New("E503", fmt.Sprintf("project name %q cannot be registered on a shared proxy", sp.project)).
+				WithFix("Use a PROJECT_NAME of letters, digits, '-', '_' and '.', not starting with '_', '.' or '-'.")
+		}
 		if sp.set.Owner != nil && sp.set.Owner.Project == sp.project {
 			return nil, errs.New("E503", fmt.Sprintf("project name %q is also the name of the proxy owner in %s", sp.project, sp.ownerRoot)).
 				WithFix("Give this project its own PROJECT_NAME.")

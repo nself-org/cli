@@ -46,8 +46,8 @@ func TestParseRefusals(t *testing.T) {
 	for name, c := range map[string]struct{ file, from, to, want string }{
 		"file name":     {"c.json", "", "", "file name must equal b.json"},
 		"outside dir":   {"b.json", `"/own/b"`, `"/elsewhere/b"`, "not under the owner dir"},
-		"traversal":     {"b.json", "nginx/sites/b.a.conf", "nginx/sites/../../etc/x", "is not a path under"},
-		"absolute":      {"b.json", "nginx/sites/b.a.conf", "/etc/passwd", "is not a path under"},
+		"traversal":     {"b.json", "nginx/sites/b.a.conf", "nginx/sites/../../etc/x", "is not nginx/sites"},
+		"absolute":      {"b.json", "nginx/sites/b.a.conf", "/etc/passwd", "is not nginx/sites"},
 		"wrong version": {"b.json", `"schema_version": "1"`, `"schema_version": "2"`, "schema_version"},
 		"unknown key":   {"b.json", `"project": "b"`, `"project": "b", "extra": 1`, "unknown field"},
 	} {
@@ -111,9 +111,9 @@ func TestUnregister(t *testing.T) {
 		}
 	}
 	b := sample("b", filepath.Join(root, "b"))
-	b.Files = []string{"nginx/sites/b.a.conf", "nginx/sites/b.shared.conf", "ssl/certificates/b-test/fullchain.pem", "ssl/certificates/acme/fullchain.pem"}
+	b.Files = []string{"nginx/sites/b.a.conf", "ssl/certificates/b-test/fullchain.pem", "ssl/certificates/acme/fullchain.pem"}
 	c := sample("c", filepath.Join(root, "c"))
-	c.Files = []string{"nginx/sites/b.shared.conf"} // another project lists the same path
+	c.Files = []string{"nginx/sites/c.x.conf"}
 	if err := Write(dir, FileName("b"), b); err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestUnregister(t *testing.T) {
 		t.Fatal(err)
 	}
 	put("nginx/sites/b.a.conf", "x")
-	put("nginx/sites/b.shared.conf", "x")
+	put("nginx/sites/c.x.conf", "x")
 	put("ssl/certificates/b-test/fullchain.pem", "x")
 	gen := filepath.Join(root, "ssl", "certificates", ".acme.gen-1")
 	put("ssl/certificates/.acme.gen-1/fullchain.pem", "keep")
@@ -133,9 +133,9 @@ func TestUnregister(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(removed) != 2 {
-		t.Fatalf("removed %v, want the conf and the cert (not the shared path, not the symlinked pair)", removed)
+		t.Fatalf("removed %v, want the conf and the cert (not the symlinked pair)", removed)
 	}
-	for rel, want := range map[string]bool{"nginx/sites/b.a.conf": false, "nginx/sites/b.shared.conf": true, "ssl/certificates/b-test": false, "ssl/certificates/.acme.gen-1/fullchain.pem": true, "nginx/shared/b.json": false, "nginx/shared/c.json": true} {
+	for rel, want := range map[string]bool{"nginx/sites/b.a.conf": false, "nginx/sites/c.x.conf": true, "ssl/certificates/b-test": false, "ssl/certificates/.acme.gen-1/fullchain.pem": true, "nginx/shared/b.json": false, "nginx/shared/c.json": true} {
 		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel))); (err == nil) != want {
 			t.Errorf("%s exists=%v, want %v", rel, err == nil, want)
 		}
@@ -160,5 +160,51 @@ func TestParseUnderSymlinkedOwner(t *testing.T) {
 	}
 	if _, err := Parse("b.json", data, filepath.Join(t.TempDir(), "elsewhere")); err == nil {
 		t.Fatal("a project_dir outside the owner must still be refused")
+	}
+}
+
+func TestValidShapes(t *testing.T) {
+	for rel, want := range map[string]bool{
+		"nginx/sites/b.a.conf":                  true,
+		"ssl/certificates/b-test/fullchain.pem": true,
+		"ssl/certificates/b-test/privkey.pem":   true,
+		"ssl/certificates/fullchain.pem":        false, // would remove the whole certificates dir
+		"ssl/certificates/b-test/other.pem":     false,
+		"nginx/sites/sub/x.conf":                false,
+		"nginx/sites":                           false,
+		"nginx/shared/_owner.json":              false,
+		"ssl/.acme/lineages.json":               false,
+	} {
+		if ValidFile(rel) != want {
+			t.Errorf("ValidFile(%q) = %v, want %v", rel, !want, want)
+		}
+	}
+	for name, want := range map[string]bool{"bproj": true, "b.c-d_e": true, "_owner": false, "": false, "../x": false, "a/b": false, ".hid": false, "a..b": false} {
+		if ValidProject(name) != want {
+			t.Errorf("ValidProject(%q) = %v, want %v", name, !want, want)
+		}
+	}
+	// A project registration may only list its own site files (an owner conf is refused at read time).
+	r := sample("b", "/own/b")
+	r.Files = []string{"nginx/sites/auth.conf"}
+	data, _ := Marshal(r)
+	if _, err := Parse("b.json", data, "/own"); err == nil || !strings.Contains(err.Error(), "not one of this project's") {
+		t.Errorf("a registration listing the owner's conf must be refused: %v", err)
+	}
+	r = sample("_owner", "/own/b")
+	data, _ = Marshal(r)
+	if _, err := Parse("_owner.json", data, "/own"); err != nil {
+		t.Logf("owner file parse: %v", err)
+	}
+}
+
+func TestRemovableRefusesOtherProjectsFile(t *testing.T) {
+	root := t.TempDir()
+	set := Set{Projects: []Registration{{Project: "b", Files: []string{"nginx/sites/b.x.conf"}}, {Project: "c", Files: []string{"nginx/sites/b.x.conf"}}}}
+	if set.Removable(root, "b", "nginx/sites/b.x.conf") {
+		t.Fatal("a path another registration lists must not be removable")
+	}
+	if !set.Removable(root, "c", "nginx/sites/c.y.conf") {
+		t.Fatal("a valid path no other project lists is removable")
 	}
 }

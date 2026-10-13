@@ -93,19 +93,41 @@ func Marshal(r Registration) ([]byte, error) {
 	return append(data, '\n'), nil
 }
 
-// ValidFile reports whether rel is a path a registration may list: a plain
-// relative path under nginx/sites/ or ssl/certificates/, never absolute, never
-// containing `..` or an empty element.
+// ValidFile reports whether rel is a path a registration may list: exactly
+// nginx/sites/<name> or ssl/certificates/<dir>/fullchain.pem|privkey.pem, every
+// element plain (no `..`, `.`, empty, backslash), never absolute.
 func ValidFile(rel string) bool {
-	if rel == "" || filepath.IsAbs(rel) || strings.Contains(rel, "\\") || strings.HasSuffix(rel, "/") {
+	if rel == "" || filepath.IsAbs(rel) || strings.Contains(rel, "\\") {
 		return false
 	}
-	for _, part := range strings.Split(rel, "/") {
+	parts := strings.Split(rel, "/")
+	for _, part := range parts {
 		if part == "" || part == "." || part == ".." {
 			return false
 		}
 	}
-	return strings.HasPrefix(rel, "nginx/sites/") || strings.HasPrefix(rel, "ssl/certificates/")
+	switch {
+	case len(parts) == 3 && parts[0] == "nginx" && parts[1] == "sites":
+		return true
+	case len(parts) == 4 && parts[0] == "ssl" && parts[1] == "certificates":
+		return parts[3] == "fullchain.pem" || parts[3] == "privkey.pem"
+	}
+	return false
+}
+
+// ValidProject reports whether name may be a project in a registration: a plain
+// token that cannot reach the reserved owner file (`_owner.json`) or leave the
+// directory when used as `<project>.json` or as the `<project>.` file prefix.
+func ValidProject(name string) bool {
+	if name == "" || name[0] == '_' || name[0] == '.' || name[0] == '-' {
+		return false
+	}
+	for _, r := range name {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-' || r == '.') {
+			return false
+		}
+	}
+	return !strings.Contains(name, "..")
 }
 
 // Parse decodes and validates data read from file name `name` (the base name)
@@ -121,6 +143,9 @@ func Parse(name string, data []byte, ownerDir string) (Registration, error) {
 	if r.SchemaVersion != SchemaVersion {
 		return r, fmt.Errorf("%s: schema_version %q is not %q", name, r.SchemaVersion, SchemaVersion)
 	}
+	if name != OwnerFile && !ValidProject(r.Project) {
+		return r, fmt.Errorf("%s: project %q is not a valid project name", name, r.Project)
+	}
 	if r.Project == "" {
 		return r, fmt.Errorf("%s: project is empty", name)
 	}
@@ -132,7 +157,10 @@ func Parse(name string, data []byte, ownerDir string) (Registration, error) {
 	}
 	for _, f := range r.Files {
 		if !ValidFile(f) {
-			return r, fmt.Errorf("%s: files entry %q is not a path under nginx/sites/ or ssl/certificates/", name, f)
+			return r, fmt.Errorf("%s: files entry %q is not nginx/sites/<file> or ssl/certificates/<dir>/(fullchain|privkey).pem", name, f)
+		}
+		if strings.HasPrefix(f, "nginx/sites/") && !strings.HasPrefix(f, "nginx/sites/"+r.Project+".") && name != OwnerFile {
+			return r, fmt.Errorf("%s: files entry %q is not one of this project's site files (nginx/sites/%s.*)", name, f, r.Project)
 		}
 	}
 	r.Sort()

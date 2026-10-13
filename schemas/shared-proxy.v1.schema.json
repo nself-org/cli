@@ -10,7 +10,7 @@
     },
     "files": {
       "items": {
-        "pattern": "^(nginx/sites|ssl/certificates)/[^/]+(/[^/]+)*$",
+        "pattern": "^(nginx/sites/[^/]+|ssl/certificates/[^/]+/(fullchain|privkey)\\\\.pem)$",
         "type": "string"
       },
       "type": "array"

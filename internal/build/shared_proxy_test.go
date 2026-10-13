@@ -361,3 +361,16 @@ func TestSharedProxyModes(t *testing.T) {
 		}
 	})
 }
+
+// PROJECT_NAME=_owner is sanitised by the loader to "owner"; either way the
+// owner's _owner.json is never overwritten (sharedproxy.ValidProject also
+// refuses a leading underscore for any other path to the same name).
+func TestSharedProxyReservedProjectName(t *testing.T) {
+	x := newSharedFx(t)
+	x.mustBuild(t, x.owner, x.ownerEnv())
+	before := readText(t, filepath.Join(x.shared(), sharedproxy.OwnerFile))
+	_ = x.build(t, x.backend(), x.frontedEnv("_owner", "b.test"))
+	if readText(t, filepath.Join(x.shared(), sharedproxy.OwnerFile)) != before {
+		t.Fatal("_owner.json changed")
+	}
+}
