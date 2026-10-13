@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/invoke"
 	"github.com/nself-org/cli/internal/mcpgen"
 	"github.com/nself-org/cli/internal/plugin/catalog"
@@ -70,7 +71,8 @@ func registerGeneratedMCP(s *server.MCPServer, transport string, v15 bool) error
 			Transport: invoke.TransportMCP, Surface: mcpAuditSurface(transport), Dir: dir, Guard: guard,
 		})
 	}
-	tools, err := mcpgen.Tools(mcpgen.Options{Registry: reg, Invoke: inv, Schema: schemas.Lookup, V15: v15})
+	warn := func(msg string) { fmt.Fprintln(os.Stderr, "nself mcp: "+msg) }
+	tools, err := mcpgen.Tools(mcpgen.Options{Registry: reg, Invoke: inv, Schema: schemas.Lookup, V15: v15, Warn: warn})
 	if err != nil {
 		return err
 	}
@@ -90,13 +92,21 @@ func registerGeneratedMCP(s *server.MCPServer, transport string, v15 bool) error
 
 // cachedCatalogJSON is the plugin catalogue exactly as the local cache holds
 // it; it never fetches (a server start must not depend on the network). The
-// cache is decoded first, so a corrupt file is "no cache", not a resource.
+// bytes are read once and decoded before they are served, so a corrupt or
+// replaced file is "no cache", not a resource.
 func cachedCatalogJSON() ([]byte, error) {
 	dir := catalog.DefaultCacheDir()
-	if _, err := catalog.LoadCached(dir); err != nil {
+	if dir == "" {
+		return nil, errs.New("E115", "no plugin catalogue cache directory")
+	}
+	b, err := os.ReadFile(filepath.Join(dir, catalogCacheFile))
+	if err != nil {
+		return nil, errs.New("E115", "no cached plugin catalogue yet").WithFix("Run nself plugin search once while online.")
+	}
+	if _, err := catalog.Decode(b); err != nil {
 		return nil, err
 	}
-	return os.ReadFile(filepath.Join(dir, catalogCacheFile))
+	return b, nil
 }
 
 // catalogCacheFile is the body file name internal/plugin/catalog documents.

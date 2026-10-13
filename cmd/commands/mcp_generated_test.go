@@ -422,7 +422,7 @@ func TestMCPAliasesV15(t *testing.T) {
 		t.Fatal(err)
 	}
 	var rows []string
-	for _, r := range table.Rows {
+	for _, r := range table.Legacy() {
 		rows = append(rows, r.Name)
 	}
 	sort.Strings(rows)
@@ -471,6 +471,19 @@ func TestMCPAliasesV15(t *testing.T) {
 	if _, ok := listed["nself_sentry_status"]; !ok {
 		t.Fatalf("the fixture plugin's commands are not tools: %v", len(listed))
 	}
+	// An undeclared side effect is destructive and has no confirm block: not listed.
+	if _, ok := listed["nself_sentry_wipe"]; ok {
+		t.Error("a mounted plugin subcommand with an undeclared side effect is listed")
+	}
+	var status struct {
+		Annotations struct {
+			ReadOnlyHint *bool `json:"readOnlyHint"`
+		} `json:"annotations"`
+	}
+	_ = json.Unmarshal([]byte(listed["nself_sentry_status"]), &status)
+	if status.Annotations.ReadOnlyHint == nil || !*status.Annotations.ReadOnlyHint {
+		t.Errorf("the declared read subcommand has no readOnlyHint: %s", listed["nself_sentry_status"])
+	}
 	res = callTool(t, sess, "sentry_incidents_ack", `{"id":"inc-1"}`)
 	var argv []string
 	_ = json.Unmarshal(res.StructuredContent["argv"], &argv)
@@ -493,7 +506,8 @@ func installSentryFixture(t *testing.T, dir string) {
        "flags": [{"name": "url", "type": "string"}, {"name": "name", "type": "string"}, {"name": "kind", "type": "string"}, {"name": "interval", "type": "duration"}]},
       {"name": "incidents list", "summary": "List incidents", "side_effect": "read", "json": "envelope", "flags": [{"name": "status", "type": "string"}]},
       {"name": "incidents ack", "summary": "Acknowledge an incident", "side_effect": "write", "json": "envelope", "args": [{"name": "id", "required": true}]},
-      {"name": "status", "summary": "Read the status", "side_effect": "read", "json": "envelope", "flags": [{"name": "url", "type": "string"}]}
+      {"name": "status", "summary": "Read the status", "side_effect": "read", "json": "envelope", "flags": [{"name": "url", "type": "string"}]},
+      {"name": "wipe", "summary": "Declares no side effect", "json": "envelope"}
     ]},
   "description": "fixture", "license": "free", "licenseType": "free", "manifest_version": 2, "maturity": "implemented",
   "minNselfVersion": "1.5.0", "name": "sentry-cli", "pluginType": "cli", "requires": {"nself": ">=1.5.0"},
@@ -673,4 +687,22 @@ func TestMCPPromptSpellings(t *testing.T) {
 		t.Fatalf("only %d spellings were checked", checked)
 	}
 	t.Log("CHECKED-TestMCPPromptSpellings")
+}
+
+// TestNoHandToolsOutsideLegacy: mcp.NewTool( is called only by the legacy
+// registration files; every other tool is generated.
+func TestNoHandToolsOutsideLegacy(t *testing.T) {
+	allowed := map[string]bool{"mcp.go": true, "mcp_sentry.go": true}
+	for _, dir := range []string{".", "../../internal"} {
+		_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
+			b, rerr := os.ReadFile(path)
+			if rerr == nil && bytes.Contains(b, []byte("mcp.NewTool(")) && !allowed[d.Name()] {
+				t.Errorf("%s registers a hand tool", path)
+			}
+			return nil
+		})
+	}
 }

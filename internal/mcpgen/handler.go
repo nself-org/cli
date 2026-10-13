@@ -59,7 +59,7 @@ func (g *gen) call(ctx context.Context, command string, row *Row, call mcp.CallT
 	}
 	res, err := g.Invoke(ctx, command, req)
 	if err != nil {
-		return ErrorResult(command, errs.New("E422", "the command could not be run").WithWhy("the invoker failed before the command produced a result"), deps)
+		return ErrorResult(command, errs.New("E422", "the command could not be run").WithWhy("the call was cancelled or the invoker failed before the command produced a result"), deps)
 	}
 	return Result(res.Stdout, deps)
 }
@@ -99,6 +99,9 @@ func (g *gen) request(command string, row *Row, raw []byte) (invoke.Request, []o
 }
 
 func (g *gen) deprecations(row *Row, members map[string]json.RawMessage) []output.Deprecation {
+	if row.Shortcut {
+		return nil
+	}
 	if row.Kind == KindMerged {
 		used := joinNames(row.legacyPresent(members))
 		return []output.Deprecation{{Old: row.Name + " {" + used + "}", New: row.Name + " {args, flags}", RemovalAt: g.table.RemovalAt}}

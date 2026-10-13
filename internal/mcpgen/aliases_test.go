@@ -27,8 +27,11 @@ func TestLegacyAliasTable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(table.Rows) != 26 {
-		t.Fatalf("%d rows, want 26", len(table.Rows))
+	if len(table.Legacy()) != 26 || len(table.Rows) != 27 {
+		t.Fatalf("%d legacy rows of %d, want 26 of 27 (26 legacy names and the nself_capabilities shortcut)", len(table.Legacy()), len(table.Rows))
+	}
+	if r, ok := table.Lookup("nself_capabilities"); !ok || !r.Shortcut || r.Target != "help capabilities" {
+		t.Errorf("nself_capabilities row: %+v", r)
 	}
 	kinds := map[string]int{}
 	for _, n := range legacyNames {
@@ -103,6 +106,17 @@ func TestLegacyAliasTable(t *testing.T) {
 		{"sentry_incidents_list", `{"status":"open"}`, `{"flags":{"status":"open"}}`},
 		{"sentry_incidents_ack", `{"id":"i1"}`, `{"args":["i1"]}`},
 		{"sentry_status", `{"url":"https://s.test/status.json"}`, `{"flags":{"url":"https://s.test/status.json"}}`},
+		{"nself_capabilities", `{"query":"rotate a secret","limit":3}`, `{"args":["rotate a secret"],"flags":{"limit":3}}`},
+		// Legacy tolerance: an empty value clears a key, null and zero or less mean the default.
+		{"nself_config_set", `{"key":"A","value":""}`, `{"args":["A",""]}`},
+		{"nself_logs", `{"service":"db","lines":null}`, `{"args":["db"],"flags":{"tail":50}}`},
+		{"nself_logs", `{"service":"db","lines":0}`, `{"args":["db"],"flags":{"tail":50}}`},
+		{"nself_logs", `{"service":"db","lines":-5}`, `{"args":["db"],"flags":{"tail":50}}`},
+		{"nself_logs", `{"lines":1e3}`, `{"flags":{"tail":1000}}`},
+		{"sentry_monitors_add", `{"url":"https://a.test","interval_seconds":1e3}`, `{"flags":{"interval":"1000s","url":"https://a.test"}}`},
+		{"sentry_monitors_add", `{"url":"https://a.test","interval_seconds":0.5}`, `{"flags":{"interval":"0.5s","url":"https://a.test"}}`},
+		{"sentry_monitors_add", `{"url":"https://a.test","interval_seconds":-30}`, `{"flags":{"interval":"60s","url":"https://a.test"}}`},
+		{"sentry_monitors_add", `{"url":"https://a.test"}`, `{"flags":{"interval":"60s","url":"https://a.test"}}`},
 	} {
 		r, _ := table.Lookup(c.name)
 		members := map[string]json.RawMessage{}
@@ -126,6 +140,8 @@ func TestLegacyAliasTable(t *testing.T) {
 		{"nself_config_get", `{"key":"A","env":"prod"}`, "env"},
 		{"nself_logs", `{"lines":"many"}`, "lines"},
 		{"nself_logs", `{"lines":1.5}`, "lines"},
+		{"nself_logs", `{"lines":9223372036854775808}`, "lines"},
+		{"nself_capabilities", `{}`, "query"},
 		{"nself_plugin_install", `{}`, "name"},
 		{"nself_urls", `{"x":1}`, "x"},
 		{"sentry_incidents_ack", `{"id":""}`, "id"},
@@ -211,9 +227,20 @@ func TestAliasCalls(t *testing.T) {
 	if meta, _ := envelope(t, res)["meta"].(map[string]any); meta == nil {
 		t.Error("an alias call carries no deprecation")
 	}
-	for _, n := range []string{"nself_urls", "nself_env_list", "nself_get_schema", "nself_get_permissions", "nself_run_migration", "sentry_status"} {
-		if d := h.tools[n].Tool.Description; !strings.HasPrefix(d, mcpgen.DeprecatedPrefix) {
-			t.Errorf("%s description %q does not start with Deprecated:", n, d)
+	table, err := mcpgen.LoadTable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range table.Legacy() {
+		tool := h.tools[r.Name].Tool
+		if r.Kind != mcpgen.KindMerged && !strings.HasPrefix(tool.Description, mcpgen.DeprecatedPrefix) {
+			t.Errorf("%s description %q does not start with Deprecated:", r.Name, tool.Description)
+		}
+		for _, p := range r.Params {
+			prop, _ := props(t, tool)[p.Name].(map[string]any)
+			if d, _ := prop["description"].(string); !strings.HasPrefix(d, mcpgen.DeprecatedPrefix) {
+				t.Errorf("%s property %s description %q does not start with Deprecated:", r.Name, p.Name, d)
+			}
 		}
 	}
 	// A target that is not exposed yet refuses at the invoker, fail closed.
@@ -279,5 +306,29 @@ func TestLegacyShapeHardening(t *testing.T) {
 	text := res.Content[0].(mcp.TextContent).Text
 	if !strings.Contains(text, `"<b>&</b>"`) || !strings.Contains(text, "deprecations") {
 		t.Errorf("text content %s", text)
+	}
+}
+
+func TestCapabilitiesShortcut(t *testing.T) {
+	for _, v15 := range []bool{false, true} {
+		h := newHarness(t, v15, false, false)
+		tool, ok := h.tools["nself_capabilities"]
+		if !ok {
+			t.Fatalf("v15=%v: nself_capabilities is not registered", v15)
+		}
+		if strings.HasPrefix(tool.Tool.Description, mcpgen.DeprecatedPrefix) {
+			t.Errorf("the shortcut is not deprecated: %q", tool.Tool.Description)
+		}
+		if _, ok := h.tools["nself_help_capabilities"]; !ok {
+			t.Errorf("v15=%v: the generated nself_help_capabilities is missing", v15)
+		}
+		res := h.call("nself_capabilities", `{"query":"rotate a secret","limit":3}`)
+		argv := argvOf(t, res)
+		if res.IsError || len(argv) < 5 || strings.Join(argv[:2], " ") != "help capabilities" || !contains(argv, "--limit=3") || argv[len(argv)-1] != "rotate a secret" {
+			t.Fatalf("v15=%v: %v %+v", v15, argv, res)
+		}
+		if meta, _ := envelope(t, res)["meta"].(map[string]any); meta != nil {
+			t.Errorf("the shortcut adds a deprecation: %v", meta)
+		}
 	}
 }

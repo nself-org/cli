@@ -33,7 +33,11 @@ func addLegacyProps(schema map[string]any, row *Row, withConfirm bool) error {
 		if _, clash := props[p.Name]; clash {
 			return fmt.Errorf("mcpgen: legacy property %q of %s collides with a machine request member", p.Name, row.Name)
 		}
-		props[p.Name] = map[string]any{"type": p.Type, "description": DeprecatedPrefix + p.Description}
+		desc := p.Description
+		if !row.Shortcut {
+			desc = DeprecatedPrefix + desc
+		}
+		props[p.Name] = map[string]any{"type": p.Type, "description": desc}
 	}
 	if row.Kind != KindMerged && withConfirm {
 		if _, has := props["confirm"]; !has {

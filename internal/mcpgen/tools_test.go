@@ -13,6 +13,7 @@ import (
 	"github.com/nself-org/cli/internal/cmdregistry"
 	"github.com/nself-org/cli/internal/invoke"
 	"github.com/nself-org/cli/internal/mcpgen"
+	"github.com/nself-org/cli/schemas"
 )
 
 func names(h *harness) []string {
@@ -50,8 +51,8 @@ func TestToolInputSchema(t *testing.T) {
 	want := map[string]bool{}
 	for i := range h.reg.Commands {
 		c := &h.reg.Commands[i]
-		if ok, _ := invoke.Exposure(c, invoke.TransportMCP, nil); ok {
-			want[cmdregistry.ToolName(c.Path)] = true
+		if ok, _ := invoke.Exposure(c, invoke.TransportMCP, nil); ok && len(cmdregistry.ToolName(c.Path)) <= 64 {
+			want[cmdregistry.ToolName(c.Path)] = true // a plugin command with a longer name is skipped with a warning
 		}
 	}
 	for n := range h.tools {
@@ -236,7 +237,7 @@ func TestV14AddsOnlyUnusedNames(t *testing.T) {
 	}
 	h := newHarness(t, false, true, true)
 	for n := range h.tools {
-		if _, legacy := table.Lookup(n); legacy {
+		if r, legacy := table.Lookup(n); legacy && !r.Shortcut {
 			t.Errorf("v1.4 mode registered the legacy name %s", n)
 		}
 	}
@@ -245,5 +246,28 @@ func TestV14AddsOnlyUnusedNames(t *testing.T) {
 	}
 	if len(h.tools) == 0 {
 		t.Fatal("no tools")
+	}
+}
+
+func TestPluginToolWithBadNameIsSkipped(t *testing.T) {
+	var warned []string
+	reg := fixtureRegistry(t, false, true)
+	list, err := mcpgen.Tools(mcpgen.Options{Registry: reg, Invoke: noInvoke, Schema: schemas.Lookup, V15: true,
+		Warn: func(m string) { warned = append(warned, m) }})
+	if err != nil {
+		t.Fatalf("one plugin command with a long name stopped the whole list: %v", err)
+	}
+	if len(warned) != 1 || !strings.Contains(warned[0], "longer than 64") {
+		t.Errorf("warnings %v", warned)
+	}
+	found := false
+	for _, st := range list {
+		found = found || st.Tool.Name == "nself_fixp_reader"
+		if len(st.Tool.Name) > 64 {
+			t.Errorf("tool %s is longer than 64 characters", st.Tool.Name)
+		}
+	}
+	if !found {
+		t.Error("the plugin's other commands were dropped with it")
 	}
 }

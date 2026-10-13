@@ -34,6 +34,12 @@ type Param struct {
 	Type        string `yaml:"type"` // string | integer | number | boolean
 	Description string `yaml:"description"`
 	Default     any    `yaml:"default"`
+	// AllowEmpty keeps an empty string as a value (config set may clear a key);
+	// otherwise an empty string counts as not given, as the hand tools did.
+	AllowEmpty bool `yaml:"allow_empty"`
+	// Positive makes a value of zero or less fall back to Default, as the hand
+	// tools did (lines <= 0 meant 50).
+	Positive bool `yaml:"positive"`
 }
 
 // FlagMap maps a legacy param onto a flag of the target command.
@@ -64,6 +70,10 @@ type Row struct {
 	Flags       []FlagMap `yaml:"flags"`
 	Unsupported []string  `yaml:"unsupported"`
 	Removed     *Removed  `yaml:"removed"`
+	// Shortcut marks a row that is not a legacy name: a short, current alias
+	// of a generated tool (nself_capabilities). It is registered in both modes,
+	// is not deprecated and adds no deprecation note.
+	Shortcut bool `yaml:"shortcut"`
 }
 
 type aliasFile struct {
@@ -78,7 +88,18 @@ type Table struct {
 	byName    map[string]*Row
 }
 
-// Lookup returns the row for a legacy tool name.
+// Legacy lists the rows that are legacy tool names (every row but the shortcuts).
+func (t *Table) Legacy() []Row {
+	var out []Row
+	for _, r := range t.Rows {
+		if !r.Shortcut {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// Lookup returns the row for a tool name (legacy or shortcut).
 func (t *Table) Lookup(name string) (*Row, bool) {
 	r, ok := t.byName[name]
 	return r, ok
@@ -118,6 +139,9 @@ var machineMembers = map[string]bool{"args": true, "flags": true, "argv": true, 
 func (r *Row) validate() []string {
 	var p []string
 	bad := func(format string, a ...any) { p = append(p, r.Name+": "+fmt.Sprintf(format, a...)) }
+	if r.Shortcut && r.Kind != KindAlias {
+		bad("a shortcut must be an alias row")
+	}
 	switch r.Kind {
 	case KindMerged, KindAlias:
 		if r.Target == "" {
@@ -158,6 +182,11 @@ func (r *Row) validate() []string {
 	}
 	if r.Kind != KindMerged && r.Plugin == "" && r.SideEffect != "" && r.Kind != KindRemoved {
 		bad("side_effect is only for plugin and removed rows")
+	}
+	for _, par := range r.Params {
+		if par.Positive && par.Default == nil {
+			bad("param %q is positive but has no default to fall back to", par.Name)
+		}
 	}
 	return p
 }

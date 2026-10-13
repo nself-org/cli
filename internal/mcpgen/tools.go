@@ -48,6 +48,9 @@ type Options struct {
 	Schema func(name string) ([]byte, bool)
 	// V15 selects v1.5 mode: generated tools and aliases only.
 	V15 bool
+	// Warn receives one line for each plugin command skipped because its tool
+	// name is invalid or taken; core conflicts fail Tools instead.
+	Warn func(string)
 }
 
 type gen struct {
@@ -83,9 +86,13 @@ func Tools(o Options) ([]server.ServerTool, error) {
 		}
 		name := cmdregistry.ToolName(cmd.Path)
 		if len(name) > 64 {
+			if skipPlugin(o, cmd, "tool name is longer than 64 characters") {
+				continue
+			}
 			return nil, fmt.Errorf("mcpgen: tool name %q for %q is longer than 64 characters", name, cmd.Path)
 		}
 		row, legacy := table.Lookup(name)
+		legacy = legacy && !row.Shortcut
 		switch {
 		case legacy && !o.V15:
 			continue // a hand tool owns the name in v1.4 mode
@@ -93,6 +100,9 @@ func Tools(o Options) ([]server.ServerTool, error) {
 			return nil, fmt.Errorf("mcpgen: generated name %q is also the %s legacy name of %q", name, row.Kind, row.Target)
 		case legacy && barePath(cmd.Path) != row.Target:
 			return nil, fmt.Errorf("mcpgen: merged row %s targets %q but the generated tool is %q", name, row.Target, cmd.Path)
+		}
+		if !legacy {
+			row = nil
 		}
 		if legacy {
 			merged[name] = true
@@ -102,22 +112,26 @@ func Tools(o Options) ([]server.ServerTool, error) {
 			return nil, err
 		}
 		if err := add(name, cmd.Path, t); err != nil {
+			if skipPlugin(o, cmd, err.Error()) {
+				continue
+			}
 			return nil, err
 		}
 	}
-	if o.V15 {
-		for i := range table.Rows {
-			row := &table.Rows[i]
-			if row.Kind == KindMerged && merged[row.Name] {
-				continue
-			}
-			t, err := g.legacyTool(row)
-			if err != nil {
-				return nil, err
-			}
-			if err := add(row.Name, row.Target, t); err != nil {
-				return nil, err
-			}
+	for i := range table.Rows {
+		row := &table.Rows[i]
+		switch {
+		case !o.V15 && !row.Shortcut:
+			continue // v1.4: the hand tools answer the legacy names
+		case row.Kind == KindMerged && merged[row.Name]:
+			continue // already the generated tool of its command
+		}
+		t, err := g.legacyTool(row)
+		if err != nil {
+			return nil, err
+		}
+		if err := add(row.Name, row.Target, t); err != nil {
+			return nil, err
 		}
 	}
 	names := make([]string, 0, len(byName))
@@ -130,6 +144,18 @@ func Tools(o Options) ([]server.ServerTool, error) {
 		out = append(out, byName[n])
 	}
 	return out, nil
+}
+
+// skipPlugin drops a plugin command's tool with a warning: one installed
+// plugin must not stop the server. It reports false for core commands.
+func skipPlugin(o Options, cmd *cmdregistry.Command, why string) bool {
+	if cmd.Canon != canon.CanonPlugin {
+		return false
+	}
+	if o.Warn != nil {
+		o.Warn(fmt.Sprintf("skipping the tool of plugin command %q: %s", cmd.Path, why))
+	}
+	return true
 }
 
 func barePath(p string) string { return strings.TrimPrefix(strings.TrimSpace(p), "nself ") }
@@ -188,6 +214,9 @@ func (g *gen) legacyTool(row *Row) (server.ServerTool, error) {
 }
 
 func (g *gen) aliasDescription(row *Row, cmd *cmdregistry.Command) string {
+	if row.Shortcut {
+		return sentence(cmd.Summary) + " Same as " + cmdregistry.ToolName(row.Target) + " with a single query string."
+	}
 	if row.Kind == KindRemoved {
 		return DeprecatedPrefix + "removed in v1.5. " + row.Removed.Message + "; use nself " + strings.Join(row.Removed.Use, " then nself ") + "."
 	}
@@ -238,6 +267,11 @@ func worstSideEffect(cmd *cmdregistry.Command) string {
 }
 
 func annotations(title, side string) mcp.ToolAnnotation {
+	switch side {
+	case canon.SideEffectRead, canon.SideEffectWrite, canon.SideEffectRemote, canon.SideEffectDestructive:
+	default:
+		side = canon.SideEffectDestructive // an undeclared side effect is advertised at the worst class
+	}
 	return mcp.ToolAnnotation{
 		Title:           title,
 		ReadOnlyHint:    mcp.ToBoolPtr(side == canon.SideEffectRead),

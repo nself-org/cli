@@ -11,6 +11,7 @@ package mcpgen_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -28,6 +29,7 @@ schema_version: 1
 verbs: [status, logs, config, doctor, build, db, backup, deploy, stop, start, restart, add]
 commands:
   help: {canon: builtin, side_effect: read}
+  help capabilities: {side_effect: read}
   status: {canon: core, side_effect: read}
   status urls: {side_effect: read}
   logs: {canon: core, side_effect: read, flags: {follow: {output: stream}}}
@@ -141,11 +143,15 @@ func fixtureRegistry(t testing.TB, withSentry, withFixturePlugin bool) *cmdregis
 	}
 	if withFixturePlugin {
 		undeclared := pluginNode("undeclared", "", `[{"name":"x"}]`, "")
-		root.AddCommand(pluginNode("fixp", "read", "", "", pluginNode("reader", "read", `[{"name":"x"}]`, ""), undeclared))
+		long := pluginNode(strings.Repeat("verylongcommand", 5), "read", "", "") // nself_fixp_ + 75 characters
+		root.AddCommand(pluginNode("fixp", "read", "", "", pluginNode("reader", "read", `[{"name":"x"}]`, ""), undeclared, long))
 	}
 	root.InitDefaultHelpCmd()
+	if h, _, err := root.Find([]string{"help"}); err == nil && h != nil && h.Name() == "help" {
+		h.AddCommand(leaf("capabilities <query>...", func(c *cobra.Command) { c.Flags().Int("limit", 5, "maximum hits") }))
+	}
 	types := map[string]any{}
-	for _, p := range []string{"status", "status urls", "logs", "config get", "config show", "config set", "config env list",
+	for _, p := range []string{"help capabilities", "status", "status urls", "logs", "config get", "config show", "config set", "config env list",
 		"doctor", "build", "db migrate status", "db hasura schema", "db hasura permissions", "backup list", "deploy status"} {
 		types[p] = struct{}{}
 	}

@@ -93,11 +93,22 @@ func runCapabilities(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	for _, m := range data.Results {
-		if _, err = fmt.Fprintf(out, "%-34s %s\n", m.Run, m.Summary); err != nil {
+		if _, err = fmt.Fprintf(out, "%-34s %s\n", printable(m.Run), printable(m.Summary)); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// printable replaces control characters (a plugin summary may carry escape
+// sequences) so a hit can never rewrite the terminal.
+func printable(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, s)
 }
 
 // stopWords carry no task meaning.

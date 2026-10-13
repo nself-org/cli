@@ -197,6 +197,7 @@ Before any command that is not a read runs, the server checks that the audit fil
 | Annotations | `readOnlyHint` for read, `destructiveHint` for destructive, `openWorldHint` for remote, taken at the worst class a flag can reach. |
 | Result | `structuredContent` is the envelope `data`, the text content is the full envelope, `isError` is true when the envelope has `error`. A confirmation is a success: `isError` is false and `structuredContent.confirmation_required` is true (see [Confirmation round trip](#confirmation-round-trip)). |
 | Errors | a bad request is an `E420` error envelope in the result, never a transport error. A document that is not an envelope is `E422`. |
+| Plugin tools | a plugin command whose tool name is over 64 characters or already taken is skipped with a warning on standard error; the other tools are unaffected. The same fault in a core command stops the start. In v1.4 mode a start that cannot build the generated surface serves the 26 hand tools and prints why. |
 
 The committed tool list for the hermetic tree (no plugin installed) is `internal/mcpgen/testdata/tools.golden.json`; `go test ./internal/mcpgen/ -run ToolListGolden -update` rewrites it.
 
@@ -223,9 +224,12 @@ No name is ever registered twice.
 - Old properties map through the row (`nself_logs {service, lines}` runs `logs` with `args [service]` and `flags {tail: lines}`). A legacy call applies the old defaults (`lines` is 50) and the old required members (`key`, `value`); a missing one is `E420` naming it. The machine shape keeps the command's own defaults.
 - A legacy call adds `meta.deprecations` (removal v1.6.0). Mixing machine members and old properties in one call is `E420`.
 - `confirm` works in both shapes, so a legacy `nself_config_set` can still complete its confirmation.
+- The hand tools' tolerance is kept in the legacy shape: an empty `value` clears a key, a JSON `null` counts as not given (so the default applies), and `lines` or `interval_seconds` of zero or less means the default (50 and 60). A non-integer `lines`, or one too large for 64 bits, is `E420`.
 - The result changes from the old text to the command's `data`. This output-schema change is a v1.5 break, listed in [[Compat-V15]].
 
 **Aliases (12).** `nself_urls` is `status urls`, `nself_service_list` is `config services list`, `nself_env_list` is `config env list`, `nself_plugin_list` is `config plugins list`, `nself_plugin_install` is `add`, `nself_get_schema` and `nself_get_permissions` are `db hasura schema` and `db hasura permissions`. The five `sentry_*` names map to the `sentry monitors`, `sentry incidents` and `sentry status` commands of the `sentry-cli` plugin; without that plugin a call is `E404` and names `nself add sentry-cli`. Every alias description starts with `Deprecated:`, and every call adds `meta.deprecations`.
+
+**Shortcut (not a legacy name).** `nself_capabilities {query, limit}` is the short form of `nself_help_capabilities`. It is registered in both modes, is not deprecated and adds no deprecation note.
 
 **Removed (1).** `nself_run_migration` ran raw SQL outside the migration ledger. A call is `E433` and names `nself db migrate create` and `nself db migrate up`.
 
