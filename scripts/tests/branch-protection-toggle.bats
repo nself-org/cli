@@ -128,7 +128,7 @@ no_writes() {
 }
 
 @test "match: url values differing between live and policy are ignored" {
-  mutate '.url = "https://elsewhere" | .required_pull_request_reviews.url = "https://elsewhere/r" | .required_status_checks.contexts_url = "https://elsewhere/c"'
+  mutate '.url = "https://elsewhere/repos/nself-org/cli/branches/main/protection" | .required_pull_request_reviews.url = "https://elsewhere/r" | .required_status_checks.contexts_url = "https://elsewhere/c"'
   run_dry
   assert_match
 }
@@ -155,7 +155,7 @@ YAML
 }
 
 @test "drift: required_status_checks.contexts" {
-  mutate '.required_status_checks.contexts += ["extra-check"]'
+  mutate '.required_status_checks.contexts += ["extra-check"] | .required_status_checks.checks += [{"context": "extra-check", "app_id": 15368}]'
   run_dry
   assert_drift
 }
@@ -266,4 +266,68 @@ YAML
 @test "dry-run never calls a write verb on gh" {
   run_dry
   ! grep -qE -- '-X (PUT|PATCH|DELETE|POST)' "${GH_LOG}"
+}
+
+# ── PUT body shape (status checks are {strict, checks} only) ─────────────────
+# GitHub answers HTTP 422 to a PUT that carries both `contexts` and `checks`
+# (seen on repos with app-pinned checks). Each row drifts `strict` so a PUT body
+# is built, then asserts the exact status-check object that would be sent.
+
+# put_body: the JSON document printed by the dry-run (everything from the first
+# line that starts with "{").
+put_body() {
+  printf '%s\n' "${output}" | sed -n '/^{/,$p'
+}
+
+# Row: name | jq mutation of the live snapshot | expected `checks` array.
+PUT_ROWS=(
+  'pinned live checks keep their app_id||[{"context":"Vet, Build & Test (ubuntu-latest)","app_id":15368},{"context":"golangci-lint","app_id":15368}]'
+  'unpinned live (contexts only) sends app_id -1|.required_status_checks.checks = []|[{"context":"Vet, Build & Test (ubuntu-latest)","app_id":-1},{"context":"golangci-lint","app_id":-1}]'
+  'one check on another app keeps that pin|.required_status_checks.checks[0].app_id = 424242|[{"context":"Vet, Build & Test (ubuntu-latest)","app_id":15368},{"context":"golangci-lint","app_id":424242}]'
+  'no live protection fields sends app_id -1|.required_status_checks = {strict: false, contexts: [], checks: []}|[{"context":"Vet, Build & Test (ubuntu-latest)","app_id":-1},{"context":"golangci-lint","app_id":-1}]'
+)
+
+@test "PUT body: status checks are exactly {strict, checks}, never contexts (table)" {
+  local row name mut want got
+  for row in "${PUT_ROWS[@]}"; do
+    name="${row%%|*}"; row="${row#*|}"
+    mut="${row%%|*}"; want="${row#*|}"
+    cp "${LIVE}" "${LIVE}.orig"
+    mutate ".required_status_checks.strict = true | ${mut:-.}"
+    run_dry
+    cp "${LIVE}.orig" "${LIVE}"
+    [ "${status}" -eq 0 ] || { echo "row '${name}': status ${status}: ${output}"; false; }
+    [[ "${output}" == *"DRY-RUN: would PUT"* ]] || { echo "row '${name}': no PUT built"; false; }
+    got="$(put_body | jq -c '.required_status_checks | keys')"
+    [ "${got}" = '["checks","strict"]' ] || { echo "row '${name}': keys ${got}"; false; }
+    got="$(put_body | jq -c '.required_status_checks.checks | sort_by(.context)')"
+    [ "${got}" = "${want}" ] || { echo "row '${name}': checks ${got}"; false; }
+    [ "$(put_body | jq '.required_status_checks.strict')" = "false" ] || { echo "row '${name}': strict"; false; }
+  done
+}
+
+@test "real --on sends the {strict, checks} body to a stub gh (nothing touches GitHub)" {
+  # The stub records each PUT body to a file and answers GET with the snapshot.
+  cat > "${BATS_TEST_TMPDIR}/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${GH_LOG}"
+case "$*" in
+  "api user"*) echo tester; exit 0 ;;
+  "api -X PUT repos/nself-org/cli/branches/main/protection --input -")
+    cat > "${GH_PUT_BODY}"; exit 0 ;;
+  "api repos/"*"/protection") cat "${GH_STUB_BODY}"; exit 0 ;;
+esac
+exit 98
+STUB
+  chmod +x "${BATS_TEST_TMPDIR}/bin/gh"
+  export GH_PUT_BODY="${BATS_TEST_TMPDIR}/put-body.json"
+  export GH_STUB_BODY="${LIVE}"
+  mutate '.required_status_checks.strict = true'
+  run "${SCRIPT}" --on --repo nself-org/cli --policy "${POLICY}"
+  [ "${status}" -eq 0 ]
+  [ -s "${GH_PUT_BODY}" ]
+  [ "$(jq -c '.required_status_checks | keys' "${GH_PUT_BODY}")" = '["checks","strict"]' ]
+  [ "$(jq '.required_status_checks.checks | length' "${GH_PUT_BODY}")" = "2" ]
+  [ "$(grep -c -- '-X PUT' "${GH_LOG}")" = "1" ]
+  ! grep -qE -- '-X (PATCH|DELETE|POST)' "${GH_LOG}"
 }

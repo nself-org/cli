@@ -64,7 +64,7 @@ DENY-001 (cosign bundles) and DENY-002 (SBOMs) need the build output, so they ar
 
 S2, S3 and S6 merge PRs on protected repos. For each one the script polls the PR's required checks for up to 45 minutes (red stops the run, nothing merges; pending after 45 minutes stops it with `--from S<n>`), then runs `scripts/admin-merge.sh --repo nself-org/<repo> --pr <n>` with your terminal attached. If a PR shows no checks yet, the script asks branch protection what is required: none means it goes on to your prompt, otherwise it retries six times and then stops without merging. When checks come back green it also confirms each required check name is among the passing ones. That script snapshots branch protection, relaxes it for under a minute, merges, and restores it. You answer its `[y/N]` prompt. `--yes` does not cover it, and the script never pipes an answer in.
 
-If `admin-merge.sh` exits non-zero, protection may not be restored. Read its message and its audit log (`~/.nself/admin-merge-audit.log`) before you do anything else.
+`admin-merge.sh` exit codes: `0` merged, and protection restored and verified. `1` usage or pre-flight error, or the PR did not reach MERGED; protection was restored and verified first, so nothing stays relaxed. Fix the cause and rerun. `3` the restore failed or could not be verified, so protection may be weaker than before. Run `scripts/admin-merge.sh --force-restore --repo nself-org/<repo> --snapshot <file>` (the snapshot path is in the `RESTORE_FAILED` or `restore_mismatch` audit line) and check the result against the baseline before anything else. On any non-zero exit, read its message and its audit log (`~/.nself/admin-merge-audit.log`).
 
 ## Recovery
 
