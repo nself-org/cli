@@ -150,7 +150,7 @@ func treeDigest(t *testing.T, dirs ...string) string {
 // golden compares got with testdata/shared_proxy/<name>, the temp root as <ROOT>.
 func (x *sharedFx) golden(t *testing.T, name, got string) {
 	t.Helper()
-	got = strings.ReplaceAll(got, x.root, "<ROOT>")
+	got = normalizeFixtureBytes("", got, x.root)
 	path := filepath.Join("testdata", "shared_proxy", name)
 	if os.Getenv("UPDATE_GOLDEN") == "1" {
 		writeFixtureFile(t, path, got, 0o644)

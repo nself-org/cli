@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -66,7 +67,7 @@ func TestSharedProxyCerts(t *testing.T) {
 	own := filepath.Join(x.backend(), "ssl", "certificates", "b-test")
 	writeCert(t, own, soon)
 	x.mustBuild(t, x.backend(), x.tlsEnv("bproj", "b.test"))
-	if mode(t, x.served("b-test")) != 0o700 || mode(t, filepath.Join(x.served("b-test"), "privkey.pem")) != 0o600 {
+	if runtime.GOOS != "windows" && (mode(t, x.served("b-test")) != 0o700 || mode(t, filepath.Join(x.served("b-test"), "privkey.pem")) != 0o600) {
 		t.Errorf("modes: dir %v key %v", mode(t, x.served("b-test")), mode(t, filepath.Join(x.served("b-test"), "privkey.pem")))
 	}
 	if !strings.Contains(readText(t, filepath.Join(x.sites(), "bproj.hasura.conf")), "/certificates/b-test/fullchain.pem") {
@@ -236,8 +237,8 @@ func TestSharedProxyLegacyFrontedUnchanged(t *testing.T) {
 
 // An owner ssl/certificates that cannot be written fails the build before any conf is written.
 func TestSharedProxyCertsUnwritableOwner(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("root can write anywhere")
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("directory modes do not stop writes here (Windows, or root)")
 	}
 	x := newSharedFx(t)
 	x.mustBuild(t, x.owner, x.ownerEnv())
