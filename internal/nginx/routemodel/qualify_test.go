@@ -87,15 +87,16 @@ server {
     location /api/ {
         limit_req zone=geo_ip burst=5;
         proxy_cache geo_cache;
-        proxy_pass http://geo_backend;
+        proxy_pass http://geo_backend$request_uri;
         set $x http://geo_backend/path;
+        set $y "${geo_tier}-$geo_tier$geo_tier";
         add_header X-Tier $geo_tier;
     }
 }
 `
 	out := PrefixDeclared(in, "bproj_")
 	for _, want := range []string{"zone=bproj_geo_ip:10m", "keys_zone=bproj_geo_cache:1m", "upstream bproj_geo_backend {", "limit_req zone=bproj_geo_ip burst=5", "proxy_cache bproj_geo_cache;",
-		"proxy_pass http://bproj_geo_backend;", "http://bproj_geo_backend/path", "map $http_x_tier $bproj_geo_tier {", "X-Tier $bproj_geo_tier", "location /api/", "server_name geo.b.test", "server notify:3709"} {
+		"proxy_pass http://bproj_geo_backend$request_uri;", `"${bproj_geo_tier}-$bproj_geo_tier$bproj_geo_tier"`, "http://bproj_geo_backend/path", "map $http_x_tier $bproj_geo_tier {", "X-Tier $bproj_geo_tier", "location /api/", "server_name geo.b.test", "server notify:3709"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}

@@ -129,7 +129,7 @@ func PrefixDeclared(text, prefix string) string {
 	for _, n := range names(upstreamDeclRE) {
 		q := regexp.QuoteMeta(n)
 		rewrite(`(?m)(^\s*upstream\s+)`+q+`(\s*\{)`, n)
-		rewrite(`((?:://|proxy_pass\s+|grpc_pass\s+|fastcgi_pass\s+))`+q+`([:/;\s"']|$)`, n)
+		rewrite(`((?:://|proxy_pass\s+|grpc_pass\s+|fastcgi_pass\s+))`+q+`([:/;?$\s"']|$)`, n)
 	}
 	for _, n := range append(names(zoneDeclRE), names(keysZoneRE)...) {
 		q := regexp.QuoteMeta(n)
@@ -141,7 +141,9 @@ func PrefixDeclared(text, prefix string) string {
 	}
 	for _, n := range names(mapDeclRE) {
 		q := regexp.QuoteMeta(n)
-		rewrite(`(\$)`+q+`([^A-Za-z0-9_]|$)`, n)
+		for i := 0; i < 3; i++ { // adjacent references ($a$a) share their boundary character
+			rewrite(`(\$\{?)`+q+`([^A-Za-z0-9_]|$)`, n)
+		}
 	}
 	return text
 }
