@@ -47,7 +47,7 @@ CURL_PROTO="--proto =https --proto-redir =https"
 
 die() { echo "probe-served-ci: $*" >&2; exit 2; }
 cleanup() {
-  if [ -n "${SERVER_PID}" ]; then kill "${SERVER_PID}" 2>/dev/null || true; fi
+  if [ -n "${SERVER_PID}" ]; then kill "${SERVER_PID}" 2>/dev/null || true; wait "${SERVER_PID}" 2>/dev/null || true; fi
   if [ -n "${WORK}" ]; then rm -rf "${WORK}"; fi
 }
 trap cleanup EXIT
