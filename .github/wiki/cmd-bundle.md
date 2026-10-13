@@ -142,7 +142,7 @@ nself bundle install <name> [--dry-run] [--force] [--strict] [--channel <channel
 | Flag | Description |
 |------|-------------|
 | `--dry-run` | Print planned actions without installing |
-| `--force` | Bypass license validation (logged as license-bypass) |
+| `--force` | Re-install even if the same version is installed (repair/upgrade path). Licence validation still runs; --force never bypasses it. |
 | `--strict` | Fail if any plugin in the bundle is missing from the registry |
 | `--channel` | Release channel: stable (default), beta, or canary |
 

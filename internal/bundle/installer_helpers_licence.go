@@ -17,7 +17,11 @@ package bundle
 // just granted as a unit by Phase 1, and a stale cache must not refuse it) and
 // only with exactly one key configured (the cache holds one key's answer). A
 // cached all-access tier (license.IsAllAccessTier) allows every plugin: its
-// cached list is empty by design.
+// cached list is empty by design. A cached MISS is not final: like plugin.Install
+// the pre-flight confirms with the licence server first (licencePreflight.confirm),
+// so a key upgraded within the 24 h cache TTL is not refused. The key is only
+// handed to plugin.ValidateLicenseRemoteWithDetails; it is never printed,
+// logged or put in an error.
 
 import (
 	"context"
@@ -86,6 +90,10 @@ type licencePreflight struct {
 	keys     int                    // licence keys configured
 	cache    *cachedEntitlements    // nil: no usable cached answer, or not consulted
 	cacheDir string                 // named in the refusal
+	// confirm re-checks a cached miss with the licence server (nil: the cached
+	// miss refuses as before). allowed false with a nil error means the server
+	// confirmed the key's tier does not include the plugin.
+	confirm func(ctx context.Context, name string) (allowed bool, err error)
 }
 
 // check resolves every planned member and refuses the first licensed one the
@@ -106,29 +114,53 @@ func (pf licencePreflight) check(ctx context.Context, reg *plugin.Registry, plug
 			return errNoLicenceKey
 		}
 		if pf.cache != nil && !pf.cache.allows(m.Name) {
-			return fmt.Errorf("plugin %q is licensed and the cached entitlements of your key (tier %q) do not include it. Visit nself.org/pricing, or remove %s to re-check with the licence server",
-				m.Name, pf.cache.Tier, filepath.Join(pf.cacheDir, entitlementCacheFile))
+			if err := pf.refuseCachedMiss(ctx, m.Name); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
 
-// licenceKeyCount counts the configured licence keys: the canonical collector
-// plus the owner all-access key, a vault convenience it does not know about.
-func licenceKeyCount() int {
+// refuseCachedMiss decides a licensed member the cached entitlements omit: nil
+// when the licence server says the key does include it, else the refusal.
+func (pf licencePreflight) refuseCachedMiss(ctx context.Context, name string) error {
+	cacheFile := filepath.Join(pf.cacheDir, entitlementCacheFile)
+	cached := fmt.Errorf("plugin %q is licensed and the cached entitlements of your key (tier %q) do not include it. Visit nself.org/pricing, or remove %s to re-check with the licence server",
+		name, pf.cache.Tier, cacheFile)
+	if pf.confirm == nil {
+		return cached
+	}
+	allowed, err := pf.confirm(ctx, name)
+	switch {
+	case err != nil:
+		return fmt.Errorf("%w; the licence server could not be reached to re-check (%v)", cached, err)
+	case !allowed:
+		return fmt.Errorf("plugin %q is licensed and the licence server confirmed that your key's tier does not include it (last cached tier %q). Visit nself.org/pricing to upgrade",
+			name, pf.cache.Tier)
+	}
+	return nil
+}
+
+// licenceKeys lists the configured licence keys, deduplicated: the canonical
+// collector plus the owner all-access key, a vault convenience it does not
+// know about. Callers must never print the values.
+func licenceKeys() []string {
 	keys := license.CollectLicenseKeys()
-	n := len(keys)
 	if owner := os.Getenv("NSELF_PLUGIN_LICENSE_KEY_OWNER"); owner != "" {
 		dup := false
 		for _, k := range keys {
 			dup = dup || k == owner
 		}
 		if !dup {
-			n++
+			keys = append(keys, owner)
 		}
 	}
-	return n
+	return keys
 }
+
+// licenceKeyCount counts the configured licence keys.
+func licenceKeyCount() int { return len(licenceKeys()) }
 
 // hasAnyLicenseKey returns true if the operator has any license key set (env,
 // the stored key at ~/.nself/license/key, or the owner key). Never re-derive the
@@ -147,10 +179,12 @@ func licenceChecker(freeBundle bool) func(ctx context.Context, plugins []string)
 		if err != nil {
 			return nil // network failure: plugin.Install's offline logic decides
 		}
-		pf := licencePreflight{tier: os.Getenv("NSELF_PLUGIN_INSTALL_TIER"), keys: licenceKeyCount(), cacheDir: plugin.LicenseCacheDir()}
+		keys := licenceKeys()
+		pf := licencePreflight{tier: os.Getenv("NSELF_PLUGIN_INSTALL_TIER"), keys: len(keys), cacheDir: plugin.LicenseCacheDir()}
 		if freeBundle && pf.keys == 1 {
 			if c, ok := readCachedEntitlements(pf.cacheDir, time.Now()); ok {
 				pf.cache = &c
+				pf.confirm = remoteConfirmer(keys[0])
 			}
 		}
 		return pf.check(ctx, reg, plugins)
@@ -161,4 +195,39 @@ func licenceChecker(freeBundle bool) func(ctx context.Context, plugins []string)
 // test (the paid-bundle form).
 func defaultLicenseChecker(ctx context.Context, plugins []string) error {
 	return licenceChecker(false)(ctx, plugins)
+}
+
+// validateRemote is the licence-server call, a variable so tests need no network.
+var validateRemote = plugin.ValidateLicenseRemoteWithDetails
+
+// remoteConfirmer returns the production licencePreflight.confirm for the single
+// configured key. The server URL follows internal/plugin/paths.go pingAPIURL:
+// NSELF_PING_API_URL without a trailing slash, else https://ping.nself.org.
+// allowed is a valid key whose tier is all-access or whose plugin list names
+// the plugin (case-insensitive). The key is never printed or put in an error.
+func remoteConfirmer(key string) func(ctx context.Context, name string) (bool, error) {
+	return func(ctx context.Context, name string) (bool, error) {
+		pingURL := "https://ping.nself.org"
+		if u := os.Getenv("NSELF_PING_API_URL"); u != "" {
+			pingURL = strings.TrimRight(u, "/")
+		}
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		valid, resp, err := validateRemote(ctx, key, pingURL)
+		if err != nil {
+			return false, err
+		}
+		if !valid || resp == nil {
+			return false, nil
+		}
+		if license.IsAllAccessTier(resp.Tier) {
+			return true, nil
+		}
+		for _, p := range resp.Plugins {
+			if strings.EqualFold(strings.TrimSpace(p), name) {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
 }

@@ -49,6 +49,11 @@ type Sources struct {
 	// not be read, one description each. Plugins then lacks them, so Store
 	// never persists such a bootstrap (Load shows it with a warning).
 	Unreadable []string
+	// Invalid lists plugin directories whose plugin.json parses but fails
+	// manifest validation (for example a missing description). These plugins
+	// ARE in Plugins, recorded from their raw fields; the notes are shown by
+	// Store.Warn and never block a persist.
+	Invalid []string
 	// Now stamps installed_at; nil means time.Now.
 	Now func() time.Time
 }
@@ -85,6 +90,10 @@ func BootstrapReport(s Sources) (Ledger, []string) {
 		default:
 			byName[name] = p
 		}
+	}
+
+	for _, note := range s.Invalid {
+		skipped = append(skipped, "plugin manifest fails validation and is recorded from its raw fields: "+note)
 	}
 
 	installedBy := map[string][]string{}

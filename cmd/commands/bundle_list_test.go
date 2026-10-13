@@ -208,3 +208,31 @@ func TestBundleListJSONOutsideProject(t *testing.T) {
 		t.Fatalf("chat ledger outside a project = %+v", chat.Ledger)
 	}
 }
+
+// TestBundleListJSONWithUnparsableManifest: one unparsable plugin.json does not
+// break `bundle list --json`; the ledger view warns instead (D-0475).
+func TestBundleListJSONWithUnparsableManifest(t *testing.T) {
+	ledgerProject(t, "bots")
+	bad := filepath.Join(os.Getenv("NSELF_PLUGIN_DIR"), "broken")
+	if err := os.MkdirAll(bad, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bad, "plugin.json"), []byte("{not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	root := newBundleTestCmd()
+	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
+	root.SetOut(out)
+	root.SetErr(errOut)
+	root.SetArgs([]string{"bundle", "list", "--json=true", "--installed=false"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("bundle list --json = %v, want success", err)
+	}
+	var rows []ledgerRow
+	if err := json.Unmarshal(out.Bytes(), &rows); err != nil {
+		t.Fatalf("stdout is not a JSON array: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(errOut.String(), "broken") {
+		t.Errorf("stderr = %q, want a warning naming broken", errOut.String())
+	}
+}

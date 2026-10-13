@@ -7,7 +7,9 @@
 // that plugin directory and needs no project root.
 // Outputs: Load (read only), Update (read, change, validate, write), Locked (a
 // held writer lock for several steps with durable writes in between, tx.go).
-// Constraints: writers take an OS lock on bundles.json.lock (next to the
+// Constraints: writers first take the install/remove operation lock
+// (operation.lock, oplock.go) so they wait behind a running bundle install or
+// remove, then an OS lock on bundles.json.lock (next to the
 // ledger), write a temp file in the same directory, fsync it, then rename over
 // the ledger, so a reader sees the old or the new file, never a partial one,
 // and a crash between the temp write and the rename leaves the old ledger
@@ -33,10 +35,13 @@ import (
 const (
 	fileName = "bundles.json"
 	lockName = "bundles.json.lock"
-	lockWait = 15 * time.Second
 
 	ledgerTempPattern = ".bundles.json.*.tmp"
 )
+
+// lockWait is how long a writer waits for the ledger lock itself (a var so tests
+// can shorten it). The long install/remove operation lock (oplock.go) has no deadline.
+var lockWait = 15 * time.Second
 
 // Store is the ledger of one plugin directory.
 type Store struct {
@@ -49,6 +54,9 @@ type Store struct {
 	Sources func() (Sources, error)
 	// Warn, when set, receives what Bootstrap had to skip (invalid slugs).
 	Warn func(msg string)
+	// Progress receives the "waiting for another nself operation" lines while
+	// Operation waits for the operation lock (oplock.go). nil writes them to stderr.
+	Progress func(msg string)
 
 	// beforeRename is a test seam: an error here aborts the write after the
 	// temp file is complete and before it replaces the ledger.

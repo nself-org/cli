@@ -9,7 +9,10 @@
 // the ledger at <pluginDir>/.nself-state/bundles.json updated to match.
 // Constraints: the plan, the removals and the ledger writes all happen inside
 // one ledger lock (Store.Locked), so a concurrent install cannot add a
-// reference between the plan and the delete. Before the first removal the
+// reference between the plan and the delete. The install/remove operation lock
+// (ledger/oplock.go, D-0322) is held across the plan, the removals and the ledger
+// writes; a second install, remove or ledger writer waits behind it with
+// progress instead of failing at the 15 s ledger lock wait. A dry run takes no lock. Before the first removal the
 // ledger is written (a bootstrap ledger included) and a remove intent is
 // recorded in .nself-state/remove-intent.json (remover_intent.go); the intent
 // shrinks after each member and is cleared on full success, so a kill or a
@@ -137,7 +140,9 @@ func Remove(ctx context.Context, bundleSlug string, opts RemoveOpts) (*RemoveRes
 	}
 
 	run := &removeRun{b: b, opts: opts, out: out, pluginDir: pluginDir, deleteData: deleteData, result: result}
-	err := store.Locked(func(tx *ledger.Tx, l ledger.Ledger) error { return run.locked(ctx, tx, l) })
+	err := store.Operation(ctx, "bundle remove "+b.Slug, func() error {
+		return store.Locked(func(tx *ledger.Tx, l ledger.Ledger) error { return run.locked(ctx, tx, l) })
+	})
 	removeErr := run.removeErr
 	if errors.Is(err, errBundleNotRecorded) {
 		return result, unrecordedBundle(out, b, store.Path(), err)
