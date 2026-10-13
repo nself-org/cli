@@ -246,7 +246,7 @@ func (f *fakeEnv) Stop(_ context.Context, services ...string) error {
 // Up implements Stack.
 func (f *fakeEnv) Up(_ context.Context, services ...string) error {
 	f.log("stack.up: %s", strings.Join(services, ","))
-	if f.killAt == "start" && len(services) == 0 {
+	if f.killAt == "start" && f.pgvector {
 		f.killAt = ""
 		panic(killed{"start"})
 	}

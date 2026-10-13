@@ -109,7 +109,7 @@ func (s *Switch) rollbackAfter(ctx context.Context) (*Report, error) {
 			step("waiting for postgres", s.d.Stack.WaitHealthy(ctx, s.cfg.Service)) {
 			step("resetting the read-only setting", s.resetReadOnly(ctx))
 		}
-		step("starting the stack", s.d.Stack.Up(ctx))
+		step("starting the stack", s.d.Stack.Up(ctx, s.stackServices()...))
 	}
 	if len(failed) > 0 {
 		_ = s.persist("")

@@ -38,13 +38,19 @@ func (s *Switch) switchover(ctx context.Context) error {
 	return s.persist(PhaseSwitched)
 }
 
+// stackServices are the services the stack ran when the switch began: postgres
+// and the ones the switch stopped. A service the user had stopped stays stopped.
+func (s *Switch) stackServices() []string {
+	return append([]string{s.cfg.Service}, s.st.StoppedServices...)
+}
+
 // healthWait bounds the wait for postgres after the switch.
 const healthWait = 3 * time.Minute
 
 // start brings the whole stack up on the new volume and finishes.
 func (s *Switch) start(ctx context.Context) error {
 	s.say("starting the stack on %s", s.st.NewVolume)
-	if err := s.d.Stack.Up(ctx); err != nil {
+	if err := s.d.Stack.Up(ctx, s.stackServices()...); err != nil {
 		return fmt.Errorf("starting the stack: %w", err)
 	}
 	wctx, cancel := context.WithTimeout(ctx, healthWait)

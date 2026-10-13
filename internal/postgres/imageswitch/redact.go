@@ -16,6 +16,8 @@ var (
 	passwordClause = regexp.MustCompile(`(?i)(PASSWORD\s+)'[^']*'`)
 	scramHash      = regexp.MustCompile(`SCRAM-SHA-256\$\S+`)
 	md5Hash        = regexp.MustCompile(`\bmd5[0-9a-f]{32}\b`)
+	uriPassword    = regexp.MustCompile(`(://[^/\s:@]+:)[^@\s]+@`)
+	connPassword   = regexp.MustCompile(`(?i)(password=)\S+`)
 )
 
 // redactTail returns the last n non-empty lines of s with password material replaced.
@@ -23,6 +25,8 @@ func redactTail(s string, n int) string {
 	s = passwordClause.ReplaceAllString(s, "${1}'<redacted>'")
 	s = scramHash.ReplaceAllString(s, "<redacted>")
 	s = md5Hash.ReplaceAllString(s, "<redacted>")
+	s = uriPassword.ReplaceAllString(s, "${1}<redacted>@")
+	s = connPassword.ReplaceAllString(s, "${1}<redacted>")
 	var lines []string
 	for _, l := range strings.Split(strings.TrimSpace(s), "\n") {
 		if l = strings.TrimSpace(l); l != "" {

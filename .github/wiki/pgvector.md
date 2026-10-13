@@ -92,6 +92,7 @@ docker volume rm <project>_postgres_data
 
 - The data is read about four times (dump, restore, verify, recheck), so the downtime grows with the size of the database. `--plan` prints the estimate.
 - Row hashes use each row's text form. A column that stores an `oid`, `xid` or a similar server-local number differs between clusters and fails the verify.
+- The read-only setting stops every normal client. A superuser who turns it off for their own session and writes in the second between the recheck and the postgres stop is not detected; keep people off the database while the switch runs.
 - Settings made with `ALTER SYSTEM` (`postgresql.auto.conf`) and changes to `template1` are not moved. Custom tablespaces and the ICU locale provider are refused in the preflight.
 - The pgvector image is Debian-based and the alpine image is not: text sorts by the C library of the new image. Check ordering-sensitive queries after the switch.
 - `POSTGRES_DATA_VOLUME` is written to `.env`. If another env file in the cascade sets `POSTGRES_IMAGE` or `POSTGRES_DATA_VOLUME`, the switch stops and names the problem; the env file is put back.

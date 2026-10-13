@@ -56,7 +56,7 @@ func TestRunHappyPath(t *testing.T) {
 		t.Errorf("counts: tables %d sequences %d tolerated %v", rep.Tables, rep.Sequences, rep.Tolerated)
 	}
 	// Order: quiesce before the dump, the dump before the restore, the switch last.
-	order := []string{"stack.stop: auth,hasura,nginx", "dump.sh", "volume.create", "restore.sh", "recheck.sh", "stack.stop: postgres", "apply:", "stack.up: \n"}
+	order := []string{"stack.stop: auth,hasura,nginx", "dump.sh", "volume.create", "restore.sh", "recheck.sh", "stack.stop: postgres", "apply:", "stack.up: postgres,auth,hasura,nginx\n"}
 	at := -1
 	for _, want := range order {
 		found := -1
@@ -246,7 +246,7 @@ func TestRollback(t *testing.T) {
 			iPg = i
 		case strings.Contains(c, "RESET default_transaction_read_only") && iReset < 0:
 			iReset = i
-		case c == "stack.up: ":
+		case c == "stack.up: postgres,auth,hasura,nginx":
 			iAll = i
 		}
 	}

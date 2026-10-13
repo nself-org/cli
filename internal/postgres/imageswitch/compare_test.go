@@ -88,9 +88,9 @@ func TestNonEmptyAndDblist(t *testing.T) {
 
 func TestRedactTail(t *testing.T) {
 	md := "md5" + strings.Repeat("a", 32)
-	in := "line1\nALTER ROLE x WITH PASSWORD 'secret-hash'\nbad SCRAM-SHA-256$4096:abc$def:ghi\n " + md + " leaked\n"
-	out := redactTail(in, 3)
-	for _, bad := range []string{"secret-hash", "SCRAM-SHA-256$", md} {
+	in := "line1\nALTER ROLE x WITH PASSWORD 'secret-hash'\nbad SCRAM-SHA-256$4096:abc$def:ghi\n " + md + " leaked\nfailed postgresql://u:uri-secret@h/db host=h password=conn-secret\n"
+	out := redactTail(in, 4)
+	for _, bad := range []string{"secret-hash", "SCRAM-SHA-256$", md, "uri-secret", "conn-secret"} {
 		if strings.Contains(out, bad) {
 			t.Errorf("%q still in %q", bad, out)
 		}
