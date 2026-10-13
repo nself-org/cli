@@ -16,6 +16,7 @@ package commands
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/nself-org/cli/internal/agentsetup"
@@ -72,6 +73,7 @@ func runMCPSetup(cmd *cobra.Command, _ []string) error {
 	}
 	res := mcpSetupResult{Client: client, Path: agentsetup.Path(client)}
 	var dir string
+	var fullPath string
 	if write {
 		d, err := resolveProjectDir()
 		if err != nil {
@@ -81,42 +83,43 @@ func runMCPSetup(cmd *cobra.Command, _ []string) error {
 	}
 	var err error
 	if agentsMD {
-		err = setupAgentsMD(&res, dir, write)
+		fullPath, err = setupAgentsMD(&res, dir, write)
 	} else {
 		res.Content = agentsetup.Config(client)
 		if write {
-			_, res.Written, err = agentsetup.WriteClient(dir, client)
+			fullPath, res.Written, err = agentsetup.WriteClient(dir, client)
 		}
 	}
 	if err != nil {
 		return err
 	}
-	return emitMCPSetup(cmd, res, asJSON, write)
+	return emitMCPSetup(cmd, res, fullPath, asJSON, write)
 }
 
-func setupAgentsMD(res *mcpSetupResult, dir string, write bool) error {
+func setupAgentsMD(res *mcpSetupResult, dir string, write bool) (string, error) {
 	verbs, err := agentsMDVerbs()
 	if err != nil {
-		return err
+		return "", err
 	}
 	res.Path, res.Content = agentsetup.FileName, agentsetup.Render(verbs)
+	var full string
 	if write {
-		_, res.Written, err = agentsetup.WriteAgentsMD(dir, verbs)
+		full, res.Written, err = agentsetup.WriteAgentsMD(dir, verbs)
 	}
-	return err
+	return full, err
 }
 
-func emitMCPSetup(cmd *cobra.Command, res mcpSetupResult, asJSON, write bool) error {
+func emitMCPSetup(cmd *cobra.Command, res mcpSetupResult, fullPath string, asJSON, write bool) error {
 	if asJSON {
 		return output.EmitData(output.Default(), "mcp setup", res)
 	}
 	out, errOut := cmd.OutOrStdout(), cmd.ErrOrStderr()
 	switch {
 	case write && res.Written:
-		_, err := fmt.Fprintf(out, "Wrote %s\n", res.Path)
+		_, err := fmt.Fprintf(out, "Wrote %s\n", shownPath(fullPath, res.Path))
 		return err
 	case write:
-		_, err := fmt.Fprintf(out, "%s left unchanged (already set up, or edited by hand)\n", res.Path)
+		_, err := fmt.Fprintf(out, "%s left unchanged (already set up, or edited by hand)\n", shownPath(fullPath, res.Path))
 		return err
 	}
 	if res.Path != agentsetup.FileName {
@@ -129,6 +132,17 @@ func emitMCPSetup(cmd *cobra.Command, res mcpSetupResult, asJSON, write bool) er
 	}
 	_, err := fmt.Fprint(out, content)
 	return err
+}
+
+// shownPath is the file as the user can find it from the current directory:
+// --write targets the project root, which may be a parent of the cwd.
+func shownPath(full, rel string) string {
+	if cwd, err := os.Getwd(); err == nil && full != "" {
+		if r, err := filepath.Rel(cwd, full); err == nil {
+			return r
+		}
+	}
+	return rel
 }
 
 // agentsMDVerbs lists the canon verbs with their registry summaries, in canon

@@ -214,3 +214,28 @@ func TestWriteAgentsMD(t *testing.T) {
 		t.Error("foreign file was overwritten")
 	}
 }
+
+func TestWriteRefusesSymlinkedParentAndKeepsMode(t *testing.T) {
+	dir, outside := t.TempDir(), t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(dir, ".cursor")); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	if _, _, err := WriteClient(dir, Cursor); err == nil {
+		t.Error("a symlinked .cursor must be refused")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "mcp.json")); err == nil {
+		t.Error("file written outside the project")
+	}
+	// An existing file keeps its permission bits through a merge.
+	d2 := t.TempDir()
+	p := filepath.Join(d2, ".mcp.json")
+	if err := os.WriteFile(p, []byte(`{"other":1}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, written, err := WriteClient(d2, ClaudeCode); err != nil || !written {
+		t.Fatalf("merge: %v %v", written, err)
+	}
+	if fi, _ := os.Stat(p); fi.Mode().Perm() != 0o600 {
+		t.Errorf("mode = %v, want 0600", fi.Mode().Perm())
+	}
+}

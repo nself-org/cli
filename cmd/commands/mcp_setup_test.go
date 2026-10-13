@@ -135,3 +135,20 @@ func TestMCPSetupWriteNeedsProject(t *testing.T) {
 		t.Fatalf("write outside a project: %v", err)
 	}
 }
+
+// From a subdirectory --write still targets the project root and says where.
+func TestMCPSetupWriteFromSubdir(t *testing.T) {
+	project := makeNSelfProject(t, "PROJECT_NAME=surf\nENV=dev\n")
+	sub := filepath.Join(project, "web")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(sub)
+	out, _, err := runMCPSetupFlags(t, map[string]string{"write": "true"})
+	if err != nil || !strings.Contains(out, filepath.Join("..", ".mcp.json")) {
+		t.Fatalf("output %q err %v", out, err)
+	}
+	if _, statErr := os.Stat(filepath.Join(project, ".mcp.json")); statErr != nil {
+		t.Fatal("not written to the project root")
+	}
+}

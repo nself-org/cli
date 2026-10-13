@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Purpose: the two disk writes shared by `nself mcp setup --write` and
@@ -37,6 +38,9 @@ func WriteClient(dir, client string) (string, bool, error) {
 		return "", false, fmt.Errorf("%s is print-only: copy the printed config into the client yourself", client)
 	}
 	p := filepath.Join(dir, filepath.FromSlash(rel))
+	if err := checkParents(dir, rel); err != nil {
+		return p, false, err
+	}
 	old, _, err := readRegular(p)
 	if err != nil {
 		return p, false, err
@@ -69,9 +73,39 @@ func readRegular(p string) ([]byte, bool, error) {
 	return b, true, err
 }
 
+// checkParents refuses a project-relative path whose parent directories under
+// dir are symlinks: the write would land outside the project.
+func checkParents(dir, rel string) error {
+	cur := dir
+	parts := strings.Split(filepath.ToSlash(filepath.Dir(rel)), "/")
+	for _, part := range parts {
+		if part == "." || part == "" {
+			continue
+		}
+		cur = filepath.Join(cur, part)
+		fi, err := os.Lstat(cur)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if !fi.IsDir() {
+			return fmt.Errorf("%s is not a plain directory (symlinks are not followed)", cur)
+		}
+	}
+	return nil
+}
+
+// writeIfChanged replaces p with next unless the bytes already match. An
+// existing file keeps its permission bits (a 0600 config stays 0600).
 func writeIfChanged(p string, old, next []byte) (bool, error) {
 	if bytes.Equal(old, next) {
 		return false, nil
+	}
+	mode := os.FileMode(0o644)
+	if fi, err := os.Lstat(p); err == nil {
+		mode = fi.Mode().Perm()
 	}
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return false, err
@@ -88,7 +122,7 @@ func writeIfChanged(p string, old, next []byte) (bool, error) {
 	if err := tmp.Close(); err != nil {
 		return false, err
 	}
-	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
+	if err := os.Chmod(tmp.Name(), mode); err != nil {
 		return false, err
 	}
 	return true, os.Rename(tmp.Name(), p)
