@@ -179,13 +179,13 @@ func execPluginBinary(path, slug string, args []string) error {
 	// not in a container compose has populated — and would have to re-implement
 	// the cascade that CLI-R18 made canonical.
 	cmd := exec.Command(path, args...)
-	return runPluginCommand(cmd, slug)
+	// ExecEnv adds the resolved compat mode and the cli version
+	// (contract:cli.plugin-exec-env v1); every plugin exec site calls it.
+	cmd.Env = ExecEnv(append(os.Environ(), pluginEnvForCommand(slug)...), compat.V15)
+	return runPluginCommand(cmd)
 }
 
-func runPluginCommand(cmd *exec.Cmd, slug string) error {
-	if extra := pluginEnvForCommand(slug); len(extra) > 0 {
-		cmd.Env = append(os.Environ(), extra...)
-	}
+func runPluginCommand(cmd *exec.Cmd) error {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
