@@ -12,7 +12,10 @@
 #      separate PID) that will RESTORE that snapshot even if the parent shell
 #      is killed.
 #   3. Relaxes branch protection on the target repo/branch via GitHub API.
-#   4. Merges the PR (by number) or the current branch directly.
+#   4. Merges the PR (by number), then reads its state back: it must be MERGED
+#      within 60 s. `gh pr merge --auto` can exit 0 having only enabled
+#      auto-merge; that, a CLOSED PR or a failed merge disables auto-merge
+#      again, skips the CI wait, restores protection and exits 1.
 #   5. Waits for CI to pass (up to WAIT_MINUTES, default 20).
 #   6. Restores branch protection from the snapshot: every field the PUT API
 #      accepts (scripts/lib/protection_snapshot.sh), then GETs it again and
@@ -44,7 +47,8 @@
 #                          line). Without it the LIVE protection is re-applied,
 #                          which is only meaningful when it is not relaxed now.
 #
-# Exit codes: 0 ok; 1 usage or pre-flight error; 3 restore failed or not
+# Exit codes: 0 merged and restored; 1 usage or pre-flight error, or the PR did
+#   not reach MERGED (protection is restored and verified first); 3 restore failed or not
 #   verified (protection may be weaker than before: run --force-restore).
 #
 # Requirements:
@@ -75,6 +79,17 @@ case "${WATCHDOG_DEADLINE:-}" in
 esac
 DEFAULT_WAIT_MINUTES=20
 CI_POLL_SECONDS="${CI_POLL_SECONDS:-30}"
+# After `gh pr merge` the PR must read state MERGED within MERGE_VERIFY_SECONDS
+# (polled every MERGE_POLL_SECONDS); both may be lowered through the environment.
+# Bash 3.2 exits 0 when arithmetic on a non-number fails with an EXIT trap armed,
+# so both are checked here (digits only, poll >= 1, verify capped at the relax window).
+case "${MERGE_VERIFY_SECONDS:-}" in
+  ''|*[!0-9]*) MERGE_VERIFY_SECONDS="${RELAX_WINDOW_SECONDS}" ;;
+  *) [ "${MERGE_VERIFY_SECONDS}" -le "${RELAX_WINDOW_SECONDS}" ] || MERGE_VERIFY_SECONDS="${RELAX_WINDOW_SECONDS}" ;;
+esac
+case "${MERGE_POLL_SECONDS:-}" in
+  ''|*[!0-9]*|0|00*) MERGE_POLL_SECONDS=5 ;;
+esac
 AUDIT_LOG="${HOME}/.nself/admin-merge-audit.log"
 export AUDIT_LOG
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -111,6 +126,10 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
+
+case "${WAIT_MINUTES}" in
+  ''|*[!0-9]*) printf 'ERROR: --wait-minutes needs a whole number, got: %s\n' "${WAIT_MINUTES}" >&2; exit 1 ;;
+esac
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
 TS() { date '+%Y-%m-%dT%H:%M:%S%z'; }
@@ -339,6 +358,7 @@ fi
 # absent so the watchdog still runs its own restore, and exits 3 for the owner.
 _exit_trap_fired=0
 _cleanup_on_exit() {
+  local rc=$?   # bash 3.2 reports 0 here after a fatal set -u/arithmetic error; keep what we got
   if [ "${_exit_trap_fired}" -eq 1 ]; then return; fi
   _exit_trap_fired=1
   if [ -f "${RELAX_MARKER}" ] && [ ! -f "${DONE_MARKER}" ]; then
@@ -352,6 +372,7 @@ _cleanup_on_exit() {
   elif [ ! -f "${RELAX_MARKER}" ]; then
     touch "${DONE_MARKER}" 2>/dev/null || true
   fi
+  exit "${rc}"
 }
 trap '_cleanup_on_exit' EXIT
 trap 'exit 130' INT
@@ -390,6 +411,9 @@ fi
 
 # ── Merge PR ──────────────────────────────────────────────────────────────────
 MERGE_SUCCESS=0
+MERGE_RESULT=merged   # merged | failed | closed | auto_merge_only (decides the exit code)
+# pr_state <n>: prints the PR state (OPEN, MERGED, CLOSED), or nothing when unreadable.
+pr_state() { gh pr view "$1" --repo "${TARGET_REPO}" --json state --jq .state 2>/dev/null || true; }
 if [ "${DRY_RUN}" -eq 0 ]; then
   info "Merging PR #${PR_NUMBER}..."
   if gh pr merge "${PR_NUMBER}" \
@@ -397,16 +421,51 @@ if [ "${DRY_RUN}" -eq 0 ]; then
       --squash \
       --delete-branch \
       --auto 2>&1; then
-    MERGE_SUCCESS=1
-    ok "PR #${PR_NUMBER} merged."
-    audit "MERGE  pr=${PR_NUMBER}  result=success"
+    # `--auto` exits 0 when it only ENABLES auto-merge (non-required checks still
+    # pending), so the exit code proves nothing: read the PR state back.
+    MERGE_DEADLINE=$(( $(date '+%s') + MERGE_VERIFY_SECONDS ))
+    while :; do
+      PR_STATE=$(pr_state "${PR_NUMBER}")
+      if [ "${PR_STATE}" = "MERGED" ]; then MERGE_SUCCESS=1; break; fi
+      if [ "${PR_STATE}" = "CLOSED" ]; then break; fi
+      if [ "$(date '+%s')" -ge "${MERGE_DEADLINE}" ]; then break; fi
+      sleep "${MERGE_POLL_SECONDS}"
+    done
+    if [ "${MERGE_SUCCESS}" -eq 0 ]; then
+      # Do not leave auto-merge armed behind a restored protection, then look once
+      # more: it may have fired between the last read and now.
+      gh pr merge "${PR_NUMBER}" --repo "${TARGET_REPO}" --disable-auto >/dev/null 2>&1 || true
+      PR_STATE=$(pr_state "${PR_NUMBER}")
+      if [ "${PR_STATE}" = "MERGED" ]; then MERGE_SUCCESS=1; fi
+    fi
+    if [ "${MERGE_SUCCESS}" -eq 1 ]; then
+      ok "PR #${PR_NUMBER} merged."
+      audit "MERGE  pr=${PR_NUMBER}  result=success"
+    elif [ "${PR_STATE}" = "CLOSED" ]; then
+      MERGE_RESULT=closed
+      error "PR #${PR_NUMBER} is CLOSED, not MERGED."
+      audit "MERGE  pr=${PR_NUMBER}  result=closed"
+    else
+      MERGE_RESULT=auto_merge_only
+      error "PR #${PR_NUMBER} is ${PR_STATE:-unreadable}, not MERGED, ${MERGE_VERIFY_SECONDS}s after the merge call: GitHub only set auto-merge (non-required checks still pending?). Auto-merge was disabled again."
+      error "Not waiting for CI. Protection is restored below."
+      audit "MERGE  pr=${PR_NUMBER}  result=auto_merge_only  state=${PR_STATE:-unreadable}"
+    fi
   else
-    error "PR merge failed."
-    audit "MERGE  pr=${PR_NUMBER}  result=failed"
-    # Still restore even on failure
+    # The call can fail after the merge landed (network drop): read the state once.
+    if [ "$(pr_state "${PR_NUMBER}")" = "MERGED" ]; then
+      MERGE_SUCCESS=1
+      ok "PR #${PR_NUMBER} merged (the merge call reported an error, the PR reads MERGED)."
+      audit "MERGE  pr=${PR_NUMBER}  result=success_after_error"
+    else
+      MERGE_RESULT=failed
+      error "PR merge failed."
+      audit "MERGE  pr=${PR_NUMBER}  result=failed"
+      # Still restore even on failure
+    fi
   fi
 else
-  info "[DRY-RUN] Would merge PR #${PR_NUMBER} (squash + delete branch)."
+  info "[DRY-RUN] Would merge PR #${PR_NUMBER} (squash + delete branch), then verify state MERGED."
   MERGE_SUCCESS=1
 fi
 
@@ -458,7 +517,13 @@ restore_protection "${TARGET_REPO}" "${SNAPSHOT_FILE}" "${DRY_RUN}" "post_merge"
 # ── Signal watchdog that we're done ──────────────────────────────────────────
 touch "${DONE_MARKER}"
 rm -f "${SNAPSHOT_FILE}"
-audit "DONE  repo=${TARGET_REPO}  pr=${PR_NUMBER}"
+audit "DONE  repo=${TARGET_REPO}  pr=${PR_NUMBER}  merge=${MERGE_RESULT}"
+
+# Protection is back and verified; the PR itself did not land.
+if [ "${MERGE_RESULT}" != "merged" ]; then
+  error "PR #${PR_NUMBER} was NOT merged (${MERGE_RESULT}). Branch protection is restored and verified."
+  exit 1
+fi
 
 ok "Admin merge complete. Branch protection restored and verified. Watchdog will self-exit."
 
