@@ -1,0 +1,17 @@
+{
+  "plugins": [
+    {
+      "name": "ci",
+      "version": "1.0.0",
+      "tier": "free",
+      "category": "development",
+      "description": "fixture entry for probe-served-ci.sh --self-test (synthetic, not a real release)",
+      "license": "MIT",
+      "status": "stable",
+      "pluginType": "cli",
+      "binaryName": "nself-ci",
+      "repository": "@BASE@",
+      "checksum": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ]
+}
