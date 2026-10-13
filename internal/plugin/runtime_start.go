@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/nself-org/cli/internal/compat"
 )
 
 // Start launches a plugin process in the background. It locates the plugin's
@@ -91,6 +93,9 @@ func Start(ctx context.Context, pluginDir string, name string) error {
 			cmd.Env = append(cmd.Env, line)
 		}
 	}
+	// Last, so a NSELF_V15 the plugin's .env sets still passes through
+	// (contract:cli.plugin-exec-env v1).
+	cmd.Env = ExecEnv(cmd.Env, compat.V15)
 
 	// Redirect stdout and stderr to the log file.
 	logDir := filepath.Dir(logPath(name))
