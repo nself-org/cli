@@ -94,6 +94,7 @@ internal/lifecycle 14  # measured 16.7 2026-10-05
 internal/lock 90  # measured 92.8 2026-10-10
 internal/machineauth 71  # measured 75.7 2026-10-10
 internal/maintenance 35  # measured 37.8 2026-10-05
+internal/mcpgen 80  # measured 84.1 2026-10-13 (P7-SURF-03)
 internal/metrics 88  # measured 90.5 2026-10-05
 internal/migrate 83  # measured 85.2 2026-10-05
 internal/migrate/firebase 76  # measured 78.8 2026-10-05

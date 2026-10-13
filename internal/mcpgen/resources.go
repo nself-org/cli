@@ -60,7 +60,7 @@ var legacyResources = []struct{ uri, name, desc, command string }{
 func Resources(o ResourceOptions) ([]server.ServerResource, []server.ServerResourceTemplate) {
 	json := mcp.WithMIMEType("application/json")
 	res := []server.ServerResource{
-		{Resource: mcp.NewResource(URIRegistry, "Command registry", mcp.WithResourceDescription("The machine command registry: the data of 'nself help --json', with installed plugin commands"), json), Handler: o.registryHandler},
+		{Resource: mcp.NewResource(URIRegistry, "Command registry", mcp.WithResourceDescription("The machine command registry with installed plugin commands, always in the v1.5 command spelling; in v1.5 mode it equals the data of 'nself help --json'"), json), Handler: o.registryHandler},
 		{Resource: mcp.NewResource(URIErrors, "Error codes", mcp.WithResourceDescription("Every registered error code with its summary, cause, fix and exit class"), json), Handler: o.errorsHandler},
 		{Resource: mcp.NewResource(URICatalog, "Plugin catalogue", mcp.WithResourceDescription("The cached plugin catalogue (read from the local cache, never fetched)"), json), Handler: o.catalogHandler},
 	}

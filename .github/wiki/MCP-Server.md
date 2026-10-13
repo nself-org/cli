@@ -240,7 +240,7 @@ Two limits come from the exposure rules, which this change does not touch:
 
 | URI | Content |
 |---|---|
-| `nself://registry` | the machine registry document, equal to the data of `nself help --json` plus installed plugin commands |
+| `nself://registry` | the machine registry document with installed plugin commands, always in the v1.5 command spelling. In v1.5 mode it equals the data of `nself help --json`. |
 | `nself://errors` | every registered error code with summary, cause, fix and exit class |
 | `nself://schemas/{name}` | a committed schema by file name; `nself://schemas/commands/{name}` and `nself://schemas/invoke/{name}` reach the subfolders. The bytes are the committed ones. |
 | `nself://plugins/catalog` | the plugin catalogue as the local cache holds it. The server never fetches: with no cache the read fails. |
