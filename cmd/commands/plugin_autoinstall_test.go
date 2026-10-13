@@ -242,3 +242,50 @@ func TestAutoInstallTarSlip(t *testing.T) {
 		t.Fatal("a binary was published from a refused tarball")
 	}
 }
+
+func TestAutoInstallRestoresEnv(t *testing.T) {
+	tb := aiTarball(t, nil)
+	sum := aiSum(tb)
+	aiServe(t, tb, sum, aiSigned(t, sum))
+	t.Setenv("NSELF_LICENSE_SKIP_VERIFY", "1")
+	t.Setenv("NSELF_PLUGIN_REQUIRE_CHECKSUM", "")
+	if _, ok := os.LookupEnv(autoInstallTierEnv); ok {
+		t.Fatal("tier env set before the call")
+	}
+	if _, err := autoInstallPlugin(aiSlug, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := os.LookupEnv(autoInstallTierEnv); ok {
+		t.Fatal("tier env leaked after the call")
+	}
+	if os.Getenv("NSELF_LICENSE_SKIP_VERIFY") != "1" || os.Getenv("NSELF_PLUGIN_REQUIRE_CHECKSUM") != "" {
+		t.Fatal("caller env not restored")
+	}
+}
+
+func TestAutoInstallRefusesDependenciesAndLicensed(t *testing.T) {
+	for name, extra := range map[string]map[string]any{
+		"dependencies":     {"dependencies": []string{"other"}},
+		"requires_license": {"requires_license": true},
+		"pro tier":         {"tier": "pro"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			compattest.Both(t, func(t *testing.T) {
+				tb := aiTarball(t, nil)
+				sum := aiSum(tb)
+				signed := aiSigned(t, sum)
+				for k, v := range extra {
+					signed[k] = v
+				}
+				downloads := aiServe(t, tb, sum, signed)
+				_, err := autoInstallPlugin(aiSlug, "")
+				if err == nil || !strings.Contains(err.Error(), "nself add ci") {
+					t.Fatalf("want a refusal naming nself add ci, got %v", err)
+				}
+				if n := atomic.LoadInt32(downloads); n != 0 {
+					t.Fatalf("%d downloads before the refusal", n)
+				}
+			})
+		})
+	}
+}

@@ -16,12 +16,13 @@
 #          non-empty release_signature (key_id, alg, sig), 64-hex checksum, a repository,
 #          pluginType cli, binaryName nself-ci;
 #          (2) the four platform tarballs (linux/darwin x amd64/arm64) download, hold
-#          an `nself-ci` file and no absolute or `..` entry;
+#          an `nself-ci` file and no absolute or `..` entry, and each matches its
+#          platform_checksums entry (nothing unauthenticated is ever extracted or run);
 #          (3) unless --skip-run: nself-ci from the host tarball (throwaway HOME) and from
-#          the linux tarball (in a container) give the same exit code and output on the
+#          the linux tarball (in a container; the host run gets an empty environment) give the same exit code and output on the
 #          base and the head commit of scripts/ci/testdata/ci-bootstrap/repo.
 #          --self-test runs (1) and (2) against scripts/ci/testdata/ci-bootstrap/catalogues/
-#          {good,no-signature,no-binary,low-version} served by python3 -m http.server and
+#          {good,no-signature,no-binary,low-version,tampered} served by python3 -m http.server and
 #          exits 0 only if `good` passes and each bad one fails for its own reason.
 #          It touches no network beyond 127.0.0.1 and never runs (3).
 # Constraints: bash 3.2 compatible; needs jq, curl, tar (docker and git for check 3,
@@ -40,6 +41,9 @@ SKIP_RUN=0
 CI_ARGS="--check --no-status --no-gitleaks"
 WORK=""
 SERVER_PID=""
+
+# Downloads are https-only (and redirects too) except from the loopback fixture server of --self-test.
+CURL_PROTO="--proto =https --proto-redir =https"
 
 die() { echo "probe-served-ci: $*" >&2; exit 2; }
 cleanup() {
@@ -70,11 +74,16 @@ ver_ge() {
 
 fail() { echo "FAIL: $*" >&2; }
 
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi
+}
+
 # check_catalogue BASE MIN: sets CI_VERSION and CI_REPO; returns 1 on any failed assertion.
 check_catalogue() {
   local base="$1" min="$2" file entry n bad=0 v
   file="${WORK}/registry.json"
-  if ! curl -fsS --max-time 60 -o "${file}" "${base}/registry.json"; then
+  # shellcheck disable=SC2086 # CURL_PROTO is two options on purpose
+  if ! curl -fsS ${CURL_PROTO} --max-time 60 -o "${file}" "${base}/registry.json"; then
     fail "cannot fetch ${base}/registry.json"; return 1
   fi
   if ! jq -e '(.plugins // .) | type == "array"' "${file}" >/dev/null 2>&1; then
@@ -86,6 +95,7 @@ check_catalogue() {
   CI_VERSION="$(printf '%s' "${entry}" | jq -r '.version // ""')"
   CI_REPO="$(printf '%s' "${entry}" | jq -r '.repository // ""')"
   CI_REPO="${CI_REPO%.git}"
+  CI_ENTRY="${entry}"
   v="${CI_VERSION}"
   if [ -z "${v}" ] || ! ver_ge "${v}" "${min}"; then
     fail "ci version '${v}' is below --min-version ${min}"; bad=1
@@ -106,12 +116,20 @@ check_catalogue() {
 
 # check_tarballs: downloads the four platform tarballs of CI_VERSION into WORK/tar-<platform>.tar.gz.
 check_tarballs() {
-  local p url f entries bad=0
+  local p url f entries want bad=0
   for p in ${PLATFORMS}; do
     url="${CI_REPO}/releases/download/v${CI_VERSION}/ci-${CI_VERSION}-${p}.tar.gz"
     f="${WORK}/tar-${p}.tar.gz"
-    if ! curl -fsSL --max-time 300 -o "${f}" "${url}"; then
+    # shellcheck disable=SC2086
+    if ! curl -fsSL ${CURL_PROTO} --max-time 300 -o "${f}" "${url}"; then
       fail "cannot download the ${p} tarball (${url})"; bad=1; continue
+    fi
+    want="$(printf '%s' "${CI_ENTRY}" | jq -r --arg p "${p}" '.platform_checksums[$p] // ""')"
+    if ! printf '%s' "${want}" | grep -Eq '^[0-9a-f]{64}$'; then
+      fail "the ci entry has no platform_checksums for ${p}: the tarball cannot be authenticated"; bad=1; continue
+    fi
+    if [ "$(sha256_of "${f}")" != "${want}" ]; then
+      fail "the ${p} tarball does not match its platform_checksums entry"; bad=1; rm -f "${f}"; continue
     fi
     if ! entries="$(tar -tzf "${f}" 2>/dev/null)"; then
       fail "the ${p} tarball is not a readable tar.gz"; bad=1; continue
@@ -176,7 +194,7 @@ check_run() {
     mkdir -p "${WORK}/home"
     rc=0
     # shellcheck disable=SC2086
-    out_h="$(cd "${d}" && HOME="${WORK}/home" "${hostbin}" ${CI_ARGS} 2>&1)" || rc=$?
+    out_h="$(cd "${d}" && env -i PATH=/usr/bin:/bin HOME="${WORK}/home" "${hostbin}" ${CI_ARGS} 2>&1)" || rc=$?
     local rc_h="${rc}"
     rc=0
     # shellcheck disable=SC2086
@@ -201,7 +219,7 @@ probe() { # BASE MIN
 
 # serve_case ROOT NAME: builds ROOT/NAME from a fixture catalogue and the right tarball set.
 serve_case() {
-  local root="$1" name="$2" ver tb p stage
+  local root="$1" name="$2" ver tb p f sum sums stage
   ver="$(jq -r '.plugins[0].version' "${FIX}/catalogues/${name}/registry.json")"
   tb="with-binary"; if [ "${name}" = "no-binary" ]; then tb="without-binary"; fi
   mkdir -p "${root}/${name}/releases/download/v${ver}"
@@ -209,9 +227,17 @@ serve_case() {
   stage="${root}/.stage-${name}"
   mkdir -p "${stage}"
   cp -R "${FIX}/tarballs/${tb}/." "${stage}/"
+  sums='{}'
   for p in ${PLATFORMS}; do
-    tar -czf "${root}/${name}/releases/download/v${ver}/ci-${ver}-${p}.tar.gz" -C "${stage}" .
+    f="${root}/${name}/releases/download/v${ver}/ci-${ver}-${p}.tar.gz"
+    tar -czf "${f}" -C "${stage}" .
+    sum="$(sha256_of "${f}")"
+    # the tampered case lists a checksum for other bytes
+    if [ "${name}" = "tampered" ]; then sum="0000000000000000000000000000000000000000000000000000000000000000"; fi
+    sums="$(printf '%s' "${sums}" | jq -c --arg p "${p}" --arg s "${sum}" '. + {($p): $s}')"
   done
+  jq --argjson s "${sums}" '.plugins[0].platform_checksums = $s' "${root}/${name}/registry.json" > "${root}/${name}/registry.tmp"
+  mv "${root}/${name}/registry.tmp" "${root}/${name}/registry.json"
 }
 
 self_test() {
@@ -219,7 +245,7 @@ self_test() {
   local root="${WORK}/serve" name want out i status=0
   mkdir -p "${root}"
   PORT="$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
-  for name in good no-signature no-binary low-version; do serve_case "${root}" "${name}"; done
+  for name in good no-signature no-binary low-version tampered; do serve_case "${root}" "${name}"; done
   python3 -m http.server "${PORT}" --bind 127.0.0.1 --directory "${root}" >"${WORK}/server.log" 2>&1 &
   SERVER_PID=$!
   for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
@@ -228,12 +254,14 @@ self_test() {
   done
   curl -fsS --max-time 2 -o /dev/null "http://127.0.0.1:${PORT}/good/registry.json" || die "the fixture server did not start"
   SKIP_RUN=1
-  for name in good no-signature no-binary low-version; do
+  CURL_PROTO="--proto =http,https --proto-redir =http,https"
+  for name in good no-signature no-binary low-version tampered; do
     case "${name}" in
       good) want="" ;;
       no-signature) want="release_signature" ;;
       no-binary) want="holds no ${BIN} file" ;;
       low-version) want="below --min-version" ;;
+      tampered) want="does not match its platform_checksums" ;;
     esac
     status=0
     out="$(probe "http://127.0.0.1:${PORT}/${name}" "1.0.0" 2>&1)" || status=$?
@@ -252,6 +280,11 @@ self_test() {
     echo "SELF-TEST FAIL: the probe ran without --min-version" >&2; return 1
   fi
   echo "self-test ok: --min-version is required"
+  # A plain-http catalogue is refused outside the self-test.
+  if "$0" --registry-url "http://127.0.0.1:${PORT}/good" --min-version 1.0.0 --skip-run >/dev/null 2>&1; then
+    echo "SELF-TEST FAIL: the live probe accepted an http catalogue" >&2; return 1
+  fi
+  echo "self-test ok: http catalogue refused"
 }
 
 while [ "$#" -gt 0 ]; do
