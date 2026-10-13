@@ -19,4 +19,6 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 
-CGO_ENABLED=0 go run -mod=vendor ./tools/flagaudit
+# Build once and run the binary: `go run` leaves a linked executable in GOCACHE.
+CGO_ENABLED=0 go build -mod=vendor -o bin/flagaudit ./tools/flagaudit
+bin/flagaudit

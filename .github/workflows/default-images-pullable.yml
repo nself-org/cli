@@ -69,7 +69,9 @@ jobs:
           # itself, so a new pin is covered the moment it lands and there is no
           # second list. Each ref is repository:version@digest; the gate probes
           # repository@digest, which proves the pinned digest still exists.
-          go run ./tools/imagelist -platforms > /tmp/default-images.tsv
+          # Build, then run: `go run` leaves a linked executable in the Go build cache.
+          go build -o bin/imagelist ./tools/imagelist
+          bin/imagelist -platforms > /tmp/default-images.tsv
           if [ ! -s /tmp/default-images.tsv ]; then
             echo "::error::imagelist produced no images — the generator or the map is broken"
             exit 1

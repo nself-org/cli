@@ -98,7 +98,9 @@ check "help-json: command is help" envelope help
 REG=".github/command-registry.json"
 check "help-json: data equals $REG minus _generated" \
   test "$(jq -S '.data' "$OUT")" = "$(jq -S 'del(._generated)' "$ROOT/$REG")"
-TOP="$(CGO_ENABLED=0 go run -mod=vendor ./tools/cmdinventory -format names | wc -l | tr -d ' ')"
+# Build the tool into the scratch dir: `go run` leaves a linked executable in GOCACHE.
+CGO_ENABLED=0 go build -mod=vendor -o "$TMP/cmdinventory" ./tools/cmdinventory
+TOP="$("$TMP/cmdinventory" -format names | wc -l | tr -d ' ')"
 check "help-json: counts.top_level equals cmdinventory ($TOP)" \
   test "$(jq '.data.counts.top_level' "$OUT")" = "$TOP"
 check "help-json: counts.commands equals the commands listed" \

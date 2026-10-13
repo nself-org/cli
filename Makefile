@@ -12,10 +12,20 @@ LDFLAGS := -s -w \
 	-X $(MODULE)/internal/license.licensePubKeyHex=$(NSELF_LICENSE_PUBKEY_HEX)
 BUILDFLAGS := -trimpath
 
-.PHONY: build clean test vet install cross dist verify-prod sport-f21 sport-f02 cmd-inventory registry canon core-services wiki-commands wiki-check flag-drift-audit parity schemas schemas-check contract-check sbom man fmt fmt-check
+.PHONY: FORCE build clean test vet install cross dist verify-prod sport-f21 sport-f02 cmd-inventory registry canon core-services wiki-commands wiki-check flag-drift-audit parity schemas schemas-check contract-check sbom man fmt fmt-check
 
 verify-prod:
 	@bash scripts/prod-verify/p87-verification.sh
+
+## Generator tools (tools/<name>) are built once into $(TOOLS_BIN)/ and then run.
+## `go run` would store a fresh 35-50 MB linked executable in GOCACHE for every
+## changed tool (Go 1.24+, no size cap); `go build -o` keeps it in the ignored bin/.
+## FORCE rebuilds on every make invocation so an edited tool is never stale; the
+## compile itself stays cached.
+TOOLS_BIN := bin
+$(TOOLS_BIN)/%: FORCE
+	@CGO_ENABLED=0 go build -mod=vendor -o $@ ./tools/$*
+FORCE:
 
 sport-f21:
 	@bash scripts/sport/generate-f21.sh
@@ -39,8 +49,8 @@ registry: cmd-inventory
 ## canon — P7-CANON-21. Regenerate cmd/commands/canon_moves_gen.go (the canon engine's
 ## move table) from internal/canon/canon.yaml and domains/*.yaml. Run after editing
 ## a canon fragment's rows; TestCanonTableCurrent fails when the file is stale.
-canon:
-	@CGO_ENABLED=0 go run -mod=vendor ./tools/canongen
+canon: $(TOOLS_BIN)/canongen
+	@$(TOOLS_BIN)/canongen
 
 ## core-services — CLI-R07. Regenerate .github/wiki/Core-Services.md from the
 ## compose service catalog. Set NSELF_SPORT_DIR to also refresh SPORT F08.
@@ -51,12 +61,12 @@ core-services:
 ## the sidebar index and llms.txt. Human prose inside PROSE blocks is preserved;
 ## only the cobra-derived parts are rewritten. Use -report to list pages that
 ## still carry placeholder prose.
-wiki-commands:
-	@CGO_ENABLED=0 go run -mod=vendor ./tools/wikigen -report
+wiki-commands: $(TOOLS_BIN)/wikigen
+	@$(TOOLS_BIN)/wikigen -report
 
 ## wiki-check — verify the wiki is current and every [[link]] resolves.
-wiki-check:
-	@CGO_ENABLED=0 go run -mod=vendor ./tools/wikigen -check
+wiki-check: $(TOOLS_BIN)/wikigen
+	@$(TOOLS_BIN)/wikigen -check
 	@bash scripts/ci/wiki-link-audit.sh
 
 ## flag-drift-audit — checks every `nself <path> --flag` invocation in
@@ -69,28 +79,28 @@ flag-drift-audit:
 ## mcp-docs — CLI-R15. Print the current MCP tool/resource/prompt list,
 ## generated from cmd/commands/mcp*.go — paste into cmd-mcp.md's PROSE blocks
 ## by hand after adding/removing a tool, resource, or prompt.
-mcp-docs:
-	@CGO_ENABLED=0 go run -mod=vendor ./tools/mcpdoc
+mcp-docs: $(TOOLS_BIN)/mcpdoc
+	@$(TOOLS_BIN)/mcpdoc
 
 ## parity — CLI-R17. Regenerate the four-surface parity matrix (wiki page, MCP
 ## tool, env var docs, OpenAPI route) for every top-level command. Writes
 ## .github/surface-parity.md and .github/surface-parity.json. internal/repoqa
 ## asserts the committed copies match; run this after adding, renaming, or
 ## removing a command, an MCP tool, or an env var.
-parity:
-	@CGO_ENABLED=0 go run -mod=vendor ./tools/parity
+parity: $(TOOLS_BIN)/parity
+	@$(TOOLS_BIN)/parity
 
 ## schemas — P7-REG-08. Regenerate schemas/ (JSON Schemas for the envelope, error
 ## object, command registry and every envelope command's data) from the Go types
 ## with tools/schemagen. Commit the result; internal/repoqa and `schemas-check`
 ## fail when the committed files drift.
-schemas:
-	@CGO_ENABLED=0 go run -mod=vendor ./tools/schemagen
+schemas: $(TOOLS_BIN)/schemagen
+	@$(TOOLS_BIN)/schemagen
 
 ## schemas-check — fail (exit 1) when any schemas/*.json differs from what
 ## tools/schemagen generates. Non-JSON files under schemas/ are ignored.
-schemas-check:
-	@CGO_ENABLED=0 go run -mod=vendor ./tools/schemagen -check
+schemas-check: $(TOOLS_BIN)/schemagen
+	@$(TOOLS_BIN)/schemagen -check
 
 ## contract-check — P7-REG-10. The one gate for every machine contract the CLI
 ## publishes: the committed schemas/, the registry and inventory, the compat
@@ -111,14 +121,14 @@ CONTRACT_PKGS := ./internal/errs/... ./internal/output/... ./internal/canon/... 
 	./internal/compat/... ./internal/portable/... ./internal/plugin/manifestv2/... ./tools/schemagen/...
 CONTRACT_REGEN := .github/command-registry.json .github/command-inventory.json .github/wiki/Commands.md \
 	.github/wiki/Command-Canon.md
-contract-check:
+contract-check: $(TOOLS_BIN)/schemagen $(TOOLS_BIN)/wikigen
 	@set -e; \
 	fail() { echo "contract-check: FAILED: $$1" >&2; echo "contract-check: fix: $$2" >&2; exit 1; }; \
 	for f in $(CONTRACT_REGEN) schemas/index.json scripts/ci/compat-markers.sh; do \
 	  [ -f "$$f" ] || fail "missing input $$f" "restore it; a gate input that is absent must fail, never pass"; \
 	done; \
 	echo "contract-check: schemas"; \
-	CGO_ENABLED=0 go run -mod=vendor ./tools/schemagen -check \
+	$(TOOLS_BIN)/schemagen -check \
 	  || fail "schemas/ differs from tools/schemagen output" "run make schemas and commit; never hand-edit schemas/"; \
 	echo "contract-check: registry and inventory"; \
 	snap=$$(mktemp -d "$${TMPDIR:-/tmp}/contract-check.XXXXXX"); \
@@ -134,7 +144,7 @@ contract-check:
 	done; \
 	restore; trap - EXIT; \
 	echo "contract-check: wiki contract pages"; \
-	CGO_ENABLED=0 go run -mod=vendor ./tools/wikigen -check \
+	$(TOOLS_BIN)/wikigen -check \
 	  || fail "tools/wikigen -check found stale generated wiki pages" "run make wiki-commands and commit; never hand-edit a GENERATED block"; \
 	bash scripts/contract-check-wiki.sh \
 	  || fail "a hand table in JSON-Output.md or Exit-Codes.md disagrees with its source" "edit the row the message names (scripts/contract-check-wiki.sh lists each check)"; \
