@@ -179,7 +179,10 @@ print(json.dumps(out))
 # A context pinned to two different apps live is refused (the body could carry
 # only one). The repo's `pending_nself_ci` entries are never applied here, but one
 # that is ALREADY live with the same app_id is carried over, so the next --on does
-# not silently strip a gate nself-ci-protect.sh --apply added.
+# not silently strip a gate nself-ci-protect.sh --apply added. The status-check
+# object is exactly {strict, checks}: GitHub answers HTTP 422 to a PUT that
+# carries both `contexts` and `checks` (same body shape as PS_JQ_PUT in
+# scripts/lib/protection_snapshot.sh, which admin-merge.sh restores with).
 build_protection_body() {
   local policy_json="$1" live_json="${2:-}"
   [ -n "${live_json}" ] || live_json='{}'
@@ -194,7 +197,6 @@ build_protection_body() {
   | {
     required_status_checks: (if .required_status_checks == null then null else {
       strict: .required_status_checks.strict,
-      contexts: [],
       checks: ([$names[] | {context: ., app_id: ($pins[.] // -1)}] + $kept)
     } end),
     enforce_admins: .enforce_admins,
