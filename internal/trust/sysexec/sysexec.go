@@ -19,6 +19,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -132,9 +133,16 @@ func Run(ctx context.Context, name string, args ...string) error {
 	return err
 }
 
-// waitDelay bounds how long a cancelled command may keep its I/O pipes open
-// before Go gives up on draining them (osascript can leave helpers behind).
-const waitDelay = 5 * time.Second
+// osascriptWaitDelay bounds how long a cancelled osascript may keep its I/O
+// pipes open before Go gives up on draining them (the admin dialog can leave
+// helpers behind). Other commands keep exec's default behaviour.
+const osascriptWaitDelay = 5 * time.Second
+
+func applyWaitDelay(cmd *exec.Cmd, name string) {
+	if filepath.Base(name) == "osascript" {
+		cmd.WaitDelay = osascriptWaitDelay
+	}
+}
 
 // execRunner is the production runner. When the binary is a Go test binary it
 // first applies the privileged-command guard (see guard.go).
@@ -143,14 +151,14 @@ type execRunner struct{}
 func (execRunner) Output(ctx context.Context, name string, args ...string) ([]byte, error) {
 	guard(name, args)
 	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.WaitDelay = waitDelay
+	applyWaitDelay(cmd, name)
 	return cmd.CombinedOutput()
 }
 
 func (execRunner) Stdout(ctx context.Context, name string, args ...string) ([]byte, error) {
 	guard(name, args)
 	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.WaitDelay = waitDelay
+	applyWaitDelay(cmd, name)
 	return cmd.Output()
 }
 
@@ -159,7 +167,7 @@ func (execRunner) Stream(ctx context.Context, name string, args ...string) error
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.WaitDelay = waitDelay
+	applyWaitDelay(cmd, name)
 	return cmd.Run()
 }
 

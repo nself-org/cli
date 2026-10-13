@@ -25,12 +25,25 @@ import (
 // exec.CommandContext call in src (an unresolved selector on an identifier
 // named exec, which is how os/exec is imported everywhere in this repo).
 func directExecCalls(filename string, src any) ([]string, error) {
+	calls, err := directExecCallsBin(filename, src)
+	var hits []string
+	for _, c := range calls {
+		hits = append(hits, c.pos+" exec."+c.fn+"("+c.bin+")")
+	}
+	return hits, err
+}
+
+type execCall struct{ pos, fn, bin string }
+
+// directExecCallsBin is directExecCalls with the literal binary name of each
+// call ("?" when it is not a string literal).
+func directExecCallsBin(filename string, src any) ([]execCall, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, filename, src, 0)
 	if err != nil {
 		return nil, err
 	}
-	var hits []string
+	var hits []execCall
 	ast.Inspect(f, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
 		if !ok {
@@ -42,7 +55,17 @@ func directExecCalls(filename string, src any) ([]string, error) {
 		}
 		id, ok := sel.X.(*ast.Ident)
 		if ok && id.Name == "exec" && (sel.Sel.Name == "Command" || sel.Sel.Name == "CommandContext") {
-			hits = append(hits, fset.Position(call.Pos()).String()+" exec."+sel.Sel.Name)
+			idx := 0
+			if sel.Sel.Name == "CommandContext" {
+				idx = 1
+			}
+			bin := "?"
+			if len(call.Args) > idx {
+				if lit, ok := call.Args[idx].(*ast.BasicLit); ok {
+					bin = strings.Trim(lit.Value, `"`)
+				}
+			}
+			hits = append(hits, execCall{fset.Position(call.Pos()).String(), sel.Sel.Name, bin})
 		}
 		return true
 	})
@@ -56,6 +79,10 @@ func f(ctx context.Context) { _ = exec.CommandContext(ctx, "osascript", "-e", "x
 	hits, err := directExecCalls("bad.go", bad)
 	if err != nil || len(hits) != 2 {
 		t.Fatalf("scanner missed seeded exec calls: hits=%v err=%v", hits, err)
+	}
+	cmdBins, _ := directExecCallsBin("bad.go", bad)
+	if len(cmdBins) != 2 || cmdBins[0].bin != "osascript" || cmdBins[1].bin != "sudo" {
+		t.Fatalf("scanner did not read the binary names: %+v", cmdBins)
 	}
 	good := `package x
 import ("os/exec")
@@ -79,22 +106,26 @@ func TestNoDirectExecInPrivilegedSetupCode(t *testing.T) {
 	m, _ := filepath.Glob("../../cmd/commands/trust*.go")
 	files = append(files, m...)
 
-	allowed := map[string]bool{filepath.FromSlash("../ssl/mkcert.go"): true}
+	// The one allowed direct exec: openssl (an unprivileged cert generator) in
+	// ssl/mkcert.go. Any other binary there, mkcert included, must use sysexec.
 	scanned := 0
 	for _, f := range files {
-		if strings.HasSuffix(f, "_test.go") || allowed[f] {
+		if strings.HasSuffix(f, "_test.go") {
 			continue
 		}
 		if _, err := os.Stat(f); err != nil {
 			t.Fatalf("scan target missing: %s", f)
 		}
-		hits, err := directExecCalls(f, nil)
+		calls, err := directExecCallsBin(f, nil)
 		if err != nil {
 			t.Fatalf("parse %s: %v", f, err)
 		}
 		scanned++
-		for _, h := range hits {
-			t.Errorf("direct os/exec call; route it through internal/trust/sysexec: %s", h)
+		for _, c := range calls {
+			if f == filepath.FromSlash("../ssl/mkcert.go") && c.bin == "openssl" {
+				continue
+			}
+			t.Errorf("direct os/exec call; route it through internal/trust/sysexec: %s exec.%s(%s)", c.pos, c.fn, c.bin)
 		}
 	}
 	if scanned < 15 {

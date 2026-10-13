@@ -22,15 +22,27 @@ func guard(name string, args []string) {
 }
 
 // Privileged reports why a command is not allowed from a unit test, or "" when
-// it is a read-only probe. It matches on the base name of the command so
-// "/usr/bin/osascript" is caught too.
+// it is a known read-only probe. It is an allowlist: anything not listed
+// (including shells, env, tee, cp and any command added later) is refused, so a
+// new privileged call fails loudly instead of passing by default. It matches
+// on the base name of the command so "/usr/bin/osascript" is caught too.
 func Privileged(name string, args []string) string {
 	base := filepath.Base(name)
 	switch base {
 	case "osascript", "sudo", "doas", "pkexec":
 		return "admin prompt"
-	case "killall", "dscacheutil", "update-ca-certificates", "service", "visudo":
-		return "system change"
+	}
+	if readOnlyProbe(base, args) {
+		return ""
+	}
+	return "not on the read-only probe allowlist"
+}
+
+// readOnlyProbe reports whether base+args only reads system state.
+func readOnlyProbe(base string, args []string) bool {
+	first := ""
+	if len(args) > 0 {
+		first = args[0]
 	}
 	has := func(words ...string) bool {
 		for _, a := range args {
@@ -43,38 +55,33 @@ func Privileged(name string, args []string) string {
 		return false
 	}
 	switch base {
+	case "true", "false", "echo":
+		return true
 	case "brew":
-		if has("install", "uninstall", "reinstall", "upgrade", "services") {
-			return "package or service change"
-		}
+		return first == "list" || first == "--prefix" || first == "info"
 	case "security":
-		if has("add-trusted-cert", "remove-trusted-cert", "add-certificates", "delete-certificate") {
-			return "trust store change"
-		}
-	case "launchctl":
-		if has("load", "unload", "bootstrap", "bootout", "enable", "disable", "kickstart") {
-			return "launchd change"
-		}
+		return first == "verify-cert" || first == "find-certificate"
 	case "pfctl":
-		if has("-e", "-ef", "-f", "-d", "-F") {
-			return "pf change"
+		for _, a := range args {
+			if strings.HasPrefix(a, "-s") {
+				return !has("-e", "-E", "-ef", "-f", "-d", "-F", "-N", "-t")
+			}
 		}
+		return false
+	case "launchctl":
+		return first == "print" || first == "list" || first == "blame"
 	case "mkcert":
-		if has("-install", "-uninstall") {
-			return "trust store change"
-		}
-	case "certutil":
-		if has("-addstore", "-delstore") {
-			return "trust store change"
-		}
-	case "systemctl":
-		if has("restart", "start", "stop", "enable", "disable", "reload", "daemon-reload") {
-			return "systemd change"
-		}
+		return len(args) == 1 && first == "-CAROOT"
 	case "iptables", "ip6tables":
-		if has("-A", "-I", "-D", "-R", "-F", "-X", "-P") {
-			return "firewall change"
-		}
+		return has("-C", "--check", "-S", "--list-rules", "-L", "--list") &&
+			!has("-A", "--append", "-I", "--insert", "-D", "--delete", "-R", "--replace",
+				"-F", "--flush", "-X", "--delete-chain", "-P", "--policy", "-N", "--new-chain", "-E", "--rename-chain", "-Z", "--zero")
+	case "iptables-save", "ip6tables-save":
+		return !has("-f", "--file")
+	case "systemctl":
+		return first == "is-active" || first == "is-enabled" || first == "status" || first == "show"
+	case "certutil":
+		return first == "-store" || first == "-L"
 	}
-	return ""
+	return false
 }

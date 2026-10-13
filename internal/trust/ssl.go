@@ -135,7 +135,7 @@ func installMkcertCA(caPath string) error {
 	case "darwin":
 		script := fmt.Sprintf(
 			`do shell script "security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain %s" with administrator privileges`,
-			caPath,
+			appleScriptQuotedArg(caPath),
 		)
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -158,6 +158,16 @@ func installMkcertCA(caPath string) error {
 	default:
 		return fmt.Errorf("mkcert CA not trusted — run: mkcert -install")
 	}
+}
+
+// appleScriptQuotedArg single-quotes s for the shell and escapes the result
+// for embedding inside an AppleScript double-quoted string, so a CA path with
+// spaces (the default macOS CAROOT is ~/Library/Application Support/mkcert) or
+// shell metacharacters stays one literal argument in the admin shell.
+func appleScriptQuotedArg(s string) string {
+	q := "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+	q = strings.ReplaceAll(q, `\`, `\\`)
+	return strings.ReplaceAll(q, `"`, `\"`)
 }
 
 // buildDomainList constructs the list of domains for certificate generation.

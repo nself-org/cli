@@ -199,7 +199,7 @@ func TestInstallMkcertCA_Darwin(t *testing.T) {
 	if err := installMkcertCA("/fake/rootCA.pem"); err != nil {
 		t.Fatalf("installMkcertCA under the fake runner: %v", err)
 	}
-	if !fake.Saw("osascript -e do shell script \"security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain /fake/rootCA.pem\" with administrator privileges") {
+	if !fake.Saw("osascript -e do shell script \"security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain '/fake/rootCA.pem'\" with administrator privileges") {
 		t.Errorf("unexpected admin command: %v", fake.Calls())
 	}
 }
@@ -375,5 +375,20 @@ func TestCheckStatus_WithSSLDir(t *testing.T) {
 	// CertsValid will be false since the stub files aren't real certs.
 	if s.CertsValid {
 		t.Error("CertsValid should be false for stub (non-real) cert files")
+	}
+}
+
+func TestAppleScriptQuotedArg(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"/a/rootCA.pem", `'/a/rootCA.pem'`},
+		{"/Users/x/Library/Application Support/mkcert/rootCA.pem", `'/Users/x/Library/Application Support/mkcert/rootCA.pem'`},
+		{"/a/b'c", `'/a/b'\\''c'`},
+		{`/a/"b`, `'/a/\"b'`},
+		{"/a/$(id)", `'/a/$(id)'`},
+	}
+	for _, tc := range cases {
+		if got := appleScriptQuotedArg(tc.in); got != tc.want {
+			t.Errorf("appleScriptQuotedArg(%q) = %s, want %s", tc.in, got, tc.want)
+		}
 	}
 }

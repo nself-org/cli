@@ -97,6 +97,16 @@ func TestGuard_PanicsOnPrivilegedCommands(t *testing.T) {
 		{"brew", "install", "dnsmasq"},
 		{"mkcert", "-install"},
 		{"killall", "-HUP", "mDNSResponder"},
+		// Not on the read-only allowlist: shells, wrappers, long options and
+		// verbs a deny-list would have missed.
+		{"sh", "-c", "echo hi"},
+		{"env", "sudo", "true"},
+		{"tee", "/etc/hosts"},
+		{"pfctl", "-E"},
+		{"iptables", "--append", "OUTPUT"},
+		{"systemctl", "try-restart", "dnsmasq"},
+		{"brew", "--verbose", "install", "dnsmasq"},
+		{"security", "import", "x.p12"},
 	} {
 		if !panicsOn(c[0], c[1:]...) {
 			t.Errorf("guard let a privileged command through: %v", c)
@@ -108,7 +118,17 @@ func TestGuard_PanicsOnPrivilegedCommands(t *testing.T) {
 	if panicsOn("true") {
 		t.Error("guard panicked on a harmless command")
 	}
-	if got := Privileged("brew", []string{"list", "dnsmasq"}); got != "" {
-		t.Errorf("read-only brew list flagged as %q", got)
+	for _, c := range [][]string{
+		{"brew", "list", "dnsmasq"},
+		{"pfctl", "-a", "nself.local", "-sr"},
+		{"launchctl", "print", "system/com.nself.portforward"},
+		{"security", "verify-cert", "-c", "x.pem"},
+		{"mkcert", "-CAROOT"},
+		{"iptables", "-t", "nat", "-C", "OUTPUT", "-p", "tcp"},
+		{"iptables-save"},
+	} {
+		if got := Privileged(c[0], c[1:]); got != "" {
+			t.Errorf("read-only probe %v flagged as %q", c, got)
+		}
 	}
 }

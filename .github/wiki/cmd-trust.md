@@ -20,7 +20,7 @@ The command auto-detects the OS (macOS or Linux) and chooses the right toolchain
 
 Use `--status` to see which components are already set up without making changes. Use `--undo` to print the exact commands to remove every change `nself trust` made. Use `--skip-dns`, `--skip-ssl`, or `--skip-ports` to opt out of any layer.
 
-**Headless hosts (CI, automation, containers).** With `NSELF_HEADLESS=1` or `CI=1` (`NSELF_HEADLESS=0` overrides `CI`), `nself trust`, `nself dns-setup` and the CA/hosts steps of `nself build` never raise an admin prompt and make no system change. Each step still checks its state first: a step that is already configured reports "already present"; a step that is missing is reported as `skipped (headless)` and the command exits 0. Run `nself trust` once on a machine where someone can answer the admin dialog. Accepted truthy values: `1`, `true`, `yes`, `on`.
+**Headless hosts (CI, automation, containers).** With `NSELF_HEADLESS=1` or `CI=1` (`NSELF_HEADLESS=0` overrides `CI`), `nself trust`, `nself dns-setup` and the CA/hosts steps of `nself build` never raise an admin prompt and make no system change. Each step still checks its state first: a step that is already configured reports "already present"; a step that is missing is reported as `skipped (headless)` and the command exits 0. Run `nself trust` once on a machine where someone can answer the admin dialog. Accepted truthy values: `1`, `true`, `yes`, `on`. In `--json` mode a run that skipped steps reports `ok: false`. On Linux, `CI=1` also skips root-run changes (a root container); set `NSELF_HEADLESS=0` to run them.
 <!-- END PROSE:description -->
 
 ### Examples

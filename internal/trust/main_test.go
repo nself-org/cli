@@ -29,8 +29,9 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// bareHost is a recording fake on which every command fails and nothing is
-// installed or trusted, like a fresh CI box. Tests that need a command to
+// bareHost is a recording fake on which every command fails, like a fresh CI
+// box. LookPath still reports binaries as installed (set Missing to change
+// that). Tests that need a command to
 // succeed script it through Reply.
 func bareHost() *sysexec.Fake {
 	return &sysexec.Fake{Reply: func(c sysexec.Call) ([]byte, error) {

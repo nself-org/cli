@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/nself-org/cli/internal/trust/sysexec"
 )
 
 // TestRerunWithOsascript_BacktickBlocked verifies that workdir values
@@ -48,6 +50,11 @@ func TestRerunWithOsascript_BacktickBlocked(t *testing.T) {
 // function still returns an error (no admin dialog), but it must be a
 // permission-denied error — not a metacharacter-guard error.
 func TestRerunWithOsascript_SafePathAccepted(t *testing.T) {
+	// Hermetic: a fake runner, so a TTY run of this test can never reach the
+	// real osascript admin dialog.
+	t.Setenv("NSELF_HEADLESS", "")
+	t.Setenv("CI", "")
+	defer sysexec.Set(&sysexec.Fake{})()
 	ctx := context.Background()
 	err := rerunWithOsascript(ctx, "/Users/admin/my-project_v1.0")
 	if err == nil {
