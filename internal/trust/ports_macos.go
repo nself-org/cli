@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/nself-org/cli/internal/sysexec"
 )
 
 // pfTimeout is the timeout for pfctl operations.
@@ -42,7 +43,7 @@ func pfAnchorContent(cfg TrustConfig) string {
 // Returns (false, err) only on unexpected errors so callers can decide whether
 // to fall back to the prompt path.
 func alreadyConfiguredPfctl(ctx context.Context, cfg TrustConfig) (bool, error) {
-	out, err := exec.CommandContext(ctx, "pfctl", "-a", "nself.local", "-sr").CombinedOutput()
+	out, err := sysexec.Output(ctx, "pfctl", "-a", "nself.local", "-sr")
 	if err != nil {
 		// pfctl exits non-zero when the anchor doesn't exist OR when it lacks
 		// read permission. Distinguish the two: if the output contains a
@@ -76,13 +77,13 @@ func alreadyConfiguredPfctl(ctx context.Context, cfg TrustConfig) (bool, error) 
 // every time pfctl happens to be restricted.
 func launchDaemonLoaded() bool {
 	// Quick file presence check — no admin needed.
-	if _, err := os.Stat(launchDaemonPlistPath); err != nil {
+	if _, err := os.Stat(sysPath(launchDaemonPlistPath)); err != nil {
 		return false
 	}
 	// Best-effort: ask launchctl whether the service is known to the system.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	err := exec.CommandContext(ctx, "launchctl", "print", "system/com.nself.portforward").Run()
+	err := sysexec.Run(ctx, "launchctl", "print", "system/com.nself.portforward")
 	if err != nil {
 		// launchctl failed (not loaded or permission issue). The plist is present
 		// though — treat as loaded to avoid unnecessary re-prompting.
@@ -129,6 +130,12 @@ func SetupPortsDarwin(cfg TrustConfig) (alreadyDone bool, err error) {
 		return true, nil
 	}
 
+	// Headless: state was checked above (read-only). The anchor, pfctl load
+	// and LaunchDaemon install all need an admin prompt, so make no change.
+	if isHeadless() {
+		return false, fmt.Errorf("port forwarding setup: %w", ErrSkippedHeadless)
+	}
+
 	anchor := pfAnchorContent(cfg)
 
 	// Build the osascript shell commands to write anchor file, load it, and install LaunchDaemon.
@@ -153,7 +160,7 @@ func SetupPortsDarwin(cfg TrustConfig) (alreadyDone bool, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	out, execErr := exec.CommandContext(ctx, "osascript", "-e", script).CombinedOutput()
+	out, execErr := sysexec.Output(ctx, "osascript", "-e", script)
 	if execErr != nil {
 		return false, fmt.Errorf("configuring pfctl port forwarding: %w — %s", execErr, strings.TrimSpace(string(out)))
 	}
@@ -176,11 +183,11 @@ func escapeForOsascript(s string) string {
 // writePfAnchorDirect writes the pf anchor file directly (for use when
 // already running as root). Exposed for testing/Linux paths.
 func writePfAnchorDirect(cfg TrustConfig) error {
-	if err := os.MkdirAll("/etc/pf.anchors", 0755); err != nil {
+	if err := os.MkdirAll(sysPath("/etc/pf.anchors"), 0755); err != nil {
 		return fmt.Errorf("creating /etc/pf.anchors: %w", err)
 	}
 	content := pfAnchorContent(cfg)
-	if err := os.WriteFile(pfAnchorPath, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(sysPath(pfAnchorPath), []byte(content), 0644); err != nil {
 		return fmt.Errorf("writing pf anchor file: %w", err)
 	}
 	return nil

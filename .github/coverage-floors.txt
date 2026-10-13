@@ -143,6 +143,7 @@ internal/sharedproxy 85  # measured 88.0 2026-10-13
 internal/sqlallowlist 90  # measured 92.3 2026-10-05
 internal/ssl 59  # measured 61.2 2026-10-05
 internal/ssl/acme 72  # measured 74.6 2026-10-05
+internal/sysexec 70  # measured 75.0 2026-10-13
 internal/telemetry 60  # measured 62.7 2026-10-05
 internal/templates/clone 84  # measured 86.8 2026-10-05
 internal/tenant 45  # measured 47.4 2026-10-05

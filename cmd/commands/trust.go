@@ -132,8 +132,8 @@ func runTrust(cmd *cobra.Command, args []string) error {
 	// Print summary.
 	printTrustSummary(result)
 
-	if jsonEnvelopeOn(cmd) && len(result.Errors) > 0 {
-		setData(cmd, dataResult{OK: false}) // some steps reported errors
+	if jsonEnvelopeOn(cmd) && (len(result.Errors) > 0 || len(result.Skipped) > 0) {
+		setData(cmd, dataResult{OK: false}) // some steps reported errors or were skipped (headless)
 	}
 
 	// Surface any non-fatal errors.

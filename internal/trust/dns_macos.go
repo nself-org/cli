@@ -3,13 +3,13 @@
 package trust
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/nself-org/cli/internal/sysexec"
 )
 
 // dnsmasqConfLine, resolverContent, and resolverPath are defined in
@@ -19,8 +19,8 @@ const dnsmasqTimeout = 60 * time.Second
 // dnsmasqConfPaths returns candidate paths for dnsmasq.conf in preference order.
 func dnsmasqConfPaths() []string {
 	return []string{
-		"/opt/homebrew/etc/dnsmasq.conf", // Apple Silicon
-		"/usr/local/etc/dnsmasq.conf",    // Intel Mac
+		sysPath("/opt/homebrew/etc/dnsmasq.conf"), // Apple Silicon
+		sysPath("/usr/local/etc/dnsmasq.conf"),    // Intel Mac
 	}
 }
 
@@ -42,7 +42,7 @@ func findDnsmasqConfReal() string {
 			return p
 		}
 	}
-	return "/opt/homebrew/etc/dnsmasq.conf"
+	return sysPath("/opt/homebrew/etc/dnsmasq.conf")
 }
 
 // CheckDNSDarwin checks whether dnsmasq is configured for .local resolution
@@ -56,7 +56,7 @@ func CheckDNSDarwin() (dnsConfigured bool, resolverConfigured bool) {
 	}
 
 	// Check /etc/resolver/local
-	rData, err := os.ReadFile(resolverPath)
+	rData, err := os.ReadFile(sysPath(resolverPath))
 	if err == nil {
 		resolverConfigured = strings.Contains(string(rData), "nameserver 127.0.0.1")
 	}
@@ -69,6 +69,13 @@ func CheckDNSDarwin() (dnsConfigured bool, resolverConfigured bool) {
 // when each respective component was already configured.
 func SetupDNSDarwin(cfg TrustConfig) (dnsAlreadyDone bool, resolverAlreadyDone bool, err error) {
 	dnsAlreadyDone, resolverAlreadyDone = CheckDNSDarwin()
+
+	// Headless: state was checked above (read-only). Anything missing needs
+	// brew, a service restart and an admin-privileged write, so make no
+	// change and report the skip.
+	if isHeadless() && !(dnsAlreadyDone && resolverAlreadyDone) {
+		return dnsAlreadyDone, resolverAlreadyDone, fmt.Errorf("dns setup: %w", ErrSkippedHeadless)
+	}
 
 	// --- dnsmasq setup ---
 	if !dnsAlreadyDone {
@@ -105,8 +112,7 @@ func ensureDnsmasqInstalled() error {
 	ctx, cancel := context.WithTimeout(context.Background(), dnsmasqTimeout)
 	defer cancel()
 
-	checkCmd := exec.CommandContext(ctx, "brew", "list", "dnsmasq")
-	if err := checkCmd.Run(); err == nil {
+	if err := sysexec.Run(ctx, "brew", "list", "dnsmasq"); err == nil {
 		// Already installed.
 		return nil
 	}
@@ -115,10 +121,7 @@ func ensureDnsmasqInstalled() error {
 	installCtx, installCancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer installCancel()
 
-	installCmd := exec.CommandContext(installCtx, "brew", "install", "dnsmasq")
-	installCmd.Stdout = os.Stdout
-	installCmd.Stderr = os.Stderr
-	if err := installCmd.Run(); err != nil {
+	if err := sysexec.Stream(installCtx, "brew", "install", "dnsmasq"); err != nil {
 		return fmt.Errorf("brew install dnsmasq: %w", err)
 	}
 	return nil
@@ -165,11 +168,8 @@ func restartDnsmasq() error {
 	ctx, cancel := context.WithTimeout(context.Background(), dnsmasqTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "brew", "services", "restart", "dnsmasq")
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("brew services restart dnsmasq: %w — %s", err, stderr.String())
+	if out, err := sysexec.Output(ctx, "brew", "services", "restart", "dnsmasq"); err != nil {
+		return fmt.Errorf("brew services restart dnsmasq: %w — %s", err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }
@@ -180,7 +180,7 @@ func setupResolver() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	out, err := exec.CommandContext(ctx, "osascript", "-e", script).CombinedOutput()
+	out, err := sysexec.Output(ctx, "osascript", "-e", script)
 	if err != nil {
 		return fmt.Errorf("creating /etc/resolver/local: %w — %s", err, strings.TrimSpace(string(out)))
 	}
@@ -192,14 +192,14 @@ func flushDNSCache() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	if err := exec.CommandContext(ctx, "dscacheutil", "-flushcache").Run(); err != nil {
+	if err := sysexec.Run(ctx, "dscacheutil", "-flushcache"); err != nil {
 		return fmt.Errorf("dscacheutil -flushcache: %w", err)
 	}
 
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel2()
 
-	if err := exec.CommandContext(ctx2, "killall", "-HUP", "mDNSResponder").Run(); err != nil {
+	if err := sysexec.Run(ctx2, "killall", "-HUP", "mDNSResponder"); err != nil {
 		return fmt.Errorf("killall -HUP mDNSResponder: %w", err)
 	}
 	return nil

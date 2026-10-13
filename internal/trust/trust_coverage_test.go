@@ -504,7 +504,16 @@ func TestLaunchDaemonPlistContent_ContainsLabel(t *testing.T) {
 // check and exit, making it unsuitable for unit test execution.
 func TestInstallMkcert_NoPanic(t *testing.T) {
 	if runtime.GOOS == "darwin" {
-		t.Skip("darwin installMkcert branch calls brew install with 5-minute timeout — not safe for unit tests")
+		// The brew install goes to the fake runner; nothing is installed.
+		fake := hermetic(t)
+		fake.Reply = nil // every command succeeds
+		if err := installMkcert(); err != nil {
+			t.Fatalf("installMkcert under the fake runner: %v", err)
+		}
+		if !fake.Saw("brew install mkcert") {
+			t.Errorf("expected brew install mkcert, saw %v", fake.Calls())
+		}
+		return
 	}
 	// Linux branch: returns an instruction error.
 	err := installMkcert()

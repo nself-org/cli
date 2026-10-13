@@ -28,7 +28,19 @@ type TrustResult struct {
 	CertsAlreadyDone    bool
 	PortsConfigured     bool
 	PortsAlreadyDone    bool
-	Errors              []error
+	// Skipped lists the steps ("dns", "ssl", "ports") that found their state
+	// missing but made no system change because the process is headless
+	// (NSELF_HEADLESS=1 or CI=1). They are not errors; the operator runs them
+	// by hand on a machine with admin rights.
+	Skipped []string
+	// Headless is true when the run happened in headless mode.
+	Headless bool
+	Errors   []error
+}
+
+// skip records a step as skipped (headless).
+func (r *TrustResult) skip(step string) {
+	r.Skipped = append(r.Skipped, step)
 }
 
 // currentOS returns the OS name to dispatch on. Production always returns
@@ -42,7 +54,7 @@ var currentOS = func() string { return runtime.GOOS }
 // already-configured state is recorded in TrustResult but not treated as
 // an error.
 func Setup(cfg TrustConfig) (*TrustResult, error) {
-	result := &TrustResult{}
+	result := &TrustResult{Headless: isHeadless()}
 
 	switch currentOS() {
 	case "darwin":
@@ -70,7 +82,11 @@ func setupDarwin(cfg TrustConfig, result *TrustResult) (*TrustResult, error) {
 	// Step 1: DNS
 	if !cfg.SkipDNS {
 		dnsAlready, resolverAlready, err := setupDNSDarwinFunc(cfg)
-		if err != nil {
+		if isSkipped(err) {
+			result.skip("dns")
+			result.DNSAlreadyDone = dnsAlready
+			result.ResolverAlreadyDone = resolverAlready
+		} else if err != nil {
 			result.Errors = append(result.Errors, fmt.Errorf("dns setup: %w", err))
 			// Continue — DNS failure is non-fatal for SSL + port steps.
 		} else {
@@ -84,7 +100,9 @@ func setupDarwin(cfg TrustConfig, result *TrustResult) (*TrustResult, error) {
 	// Step 2: SSL / mkcert
 	if !cfg.SkipSSL {
 		certsAlready, err := setupMkcertFunc(cfg)
-		if err != nil {
+		if isSkipped(err) {
+			result.skip("ssl")
+		} else if err != nil {
 			result.Errors = append(result.Errors, fmt.Errorf("ssl setup: %w", err))
 		} else {
 			result.CertsGenerated = true
@@ -95,7 +113,9 @@ func setupDarwin(cfg TrustConfig, result *TrustResult) (*TrustResult, error) {
 	// Step 3: Port forwarding
 	if !cfg.SkipPorts {
 		portsAlready, err := setupPortsDarwinFunc(cfg)
-		if err != nil {
+		if isSkipped(err) {
+			result.skip("ports")
+		} else if err != nil {
 			result.Errors = append(result.Errors, fmt.Errorf("port forwarding setup: %w", err))
 		} else {
 			result.PortsConfigured = true
@@ -111,7 +131,9 @@ func setupLinux(cfg TrustConfig, result *TrustResult) (*TrustResult, error) {
 	// Step 1: DNS
 	if !cfg.SkipDNS {
 		dnsAlready, err := setupDNSLinuxFunc(cfg)
-		if err != nil {
+		if isSkipped(err) {
+			result.skip("dns")
+		} else if err != nil {
 			result.Errors = append(result.Errors, fmt.Errorf("dns setup: %w", err))
 		} else {
 			result.DNSConfigured = true
@@ -123,7 +145,9 @@ func setupLinux(cfg TrustConfig, result *TrustResult) (*TrustResult, error) {
 	// Step 2: SSL / mkcert
 	if !cfg.SkipSSL {
 		certsAlready, err := setupMkcertFunc(cfg)
-		if err != nil {
+		if isSkipped(err) {
+			result.skip("ssl")
+		} else if err != nil {
 			result.Errors = append(result.Errors, fmt.Errorf("ssl setup: %w", err))
 		} else {
 			result.CertsGenerated = true
@@ -134,7 +158,9 @@ func setupLinux(cfg TrustConfig, result *TrustResult) (*TrustResult, error) {
 	// Step 3: Port forwarding
 	if !cfg.SkipPorts {
 		portsAlready, err := setupPortsLinuxFunc(cfg)
-		if err != nil {
+		if isSkipped(err) {
+			result.skip("ports")
+		} else if err != nil {
 			result.Errors = append(result.Errors, fmt.Errorf("port forwarding setup: %w", err))
 		} else {
 			result.PortsConfigured = true

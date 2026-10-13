@@ -5,18 +5,21 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/nself-org/cli/internal/sysexec"
 )
 
 const (
-	// hostsFile is the system hosts file path.
-	hostsFile = "/etc/hosts"
-
 	// hostsMarker is appended to every line that nself manages.
 	hostsMarker = "# nself-managed"
 
 	// hostsLoopback is the loopback address used for all nself entries.
 	hostsLoopback = "127.0.0.1"
 )
+
+// hostsFile is the system hosts file path. A var, not a const, so tests can
+// point the code at a temp file and never touch the real /etc/hosts.
+var hostsFile = "/etc/hosts"
 
 // AddHosts adds the given hostnames to /etc/hosts pointing to 127.0.0.1.
 // Existing entries (with or without the nself-managed marker) are not
@@ -68,6 +71,13 @@ func canWriteHostsFile(path string) bool {
 }
 
 func addHosts(hostnames []string) error {
+	// Headless (NSELF_HEADLESS=1 or CI=1): /etc/hosts is a system change that
+	// may need an admin prompt, so make none. Callers report the skip or fall
+	// back to the manual note.
+	if sysexec.Headless() {
+		return sysexec.ErrSkippedHeadless
+	}
+
 	// Filter out entries that cannot go into /etc/hosts.
 	filtered := filterHostsEntries(hostnames)
 	if len(filtered) == 0 {

@@ -27,5 +27,4 @@ internal/observability/audit.go 1
 internal/observability/logging.go 1
 internal/plugin/router.go 1
 internal/runbook/executor.go 1
-internal/trust/dns_macos.go 1
-internal/trust/ssl.go 2
+internal/sysexec/sysexec.go 1

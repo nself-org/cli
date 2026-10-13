@@ -1,13 +1,13 @@
 package trust
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/nself-org/cli/internal/sysexec"
 )
 
 const linuxDNSTimeout = 30 * time.Second
@@ -25,17 +25,17 @@ const (
 // detectLinuxResolver determines which DNS resolver system is in use.
 func detectLinuxResolver() linuxDNSResolver {
 	// Check for systemd-resolved.
-	if _, err := os.Stat("/run/systemd/resolve/stub-resolv.conf"); err == nil {
+	if _, err := os.Stat(sysPath("/run/systemd/resolve/stub-resolv.conf")); err == nil {
 		return resolverSystemd
 	}
 
 	// Check for NetworkManager.
-	if _, err := exec.LookPath("NetworkManager"); err == nil {
+	if _, err := sysexec.LookPath("NetworkManager"); err == nil {
 		return resolverNetworkManager
 	}
 
 	// Check for raw dnsmasq.
-	if _, err := exec.LookPath("dnsmasq"); err == nil {
+	if _, err := sysexec.LookPath("dnsmasq"); err == nil {
 		return resolverDnsmasqRaw
 	}
 
@@ -47,12 +47,12 @@ func detectLinuxResolver() linuxDNSResolver {
 func CheckDNSLinux() bool {
 	switch detectLinuxResolver() {
 	case resolverSystemd:
-		_, err := os.Stat("/etc/systemd/resolved.conf.d/nself.conf")
+		_, err := os.Stat(sysPath("/etc/systemd/resolved.conf.d/nself.conf"))
 		return err == nil
 
 	case resolverNetworkManager, resolverDnsmasqRaw:
 		// Check for the line in /etc/dnsmasq.conf or /etc/dnsmasq.d/nself.conf.
-		for _, confPath := range []string{"/etc/dnsmasq.conf", "/etc/dnsmasq.d/nself.conf"} {
+		for _, confPath := range []string{sysPath("/etc/dnsmasq.conf"), sysPath("/etc/dnsmasq.d/nself.conf")} {
 			data, err := os.ReadFile(confPath)
 			if err == nil && strings.Contains(string(data), dnsmasqConfLine) {
 				return true
@@ -72,6 +72,12 @@ func SetupDNSLinux(cfg TrustConfig) (alreadyDone bool, err error) {
 		return true, nil
 	}
 
+	// Headless: state was checked above (read-only). Writing resolver config
+	// and restarting services needs root, so make no change.
+	if isHeadless() {
+		return false, fmt.Errorf("dns setup: %w", ErrSkippedHeadless)
+	}
+
 	// All DNS configuration on Linux requires root.
 	if os.Geteuid() != 0 {
 		return false, fmt.Errorf(
@@ -88,7 +94,7 @@ func SetupDNSLinux(cfg TrustConfig) (alreadyDone bool, err error) {
 
 	case resolverNetworkManager:
 		// NetworkManager: configure via dnsmasq if available, else systemd-resolved fallback.
-		if _, lookErr := exec.LookPath("dnsmasq"); lookErr == nil {
+		if _, lookErr := sysexec.LookPath("dnsmasq"); lookErr == nil {
 			return false, setupRawDnsmasqLinux()
 		}
 		return false, setupSystemdResolved()
@@ -107,7 +113,7 @@ func SetupDNSLinux(cfg TrustConfig) (alreadyDone bool, err error) {
 // setupSystemdResolved creates a drop-in config for systemd-resolved to resolve
 // all .local queries via 127.0.0.1 (dnsmasq).
 func setupSystemdResolved() error {
-	confDir := "/etc/systemd/resolved.conf.d"
+	confDir := sysPath("/etc/systemd/resolved.conf.d")
 	confPath := confDir + "/nself.conf"
 
 	if err := os.MkdirAll(confDir, 0755); err != nil {
@@ -123,11 +129,8 @@ func setupSystemdResolved() error {
 	ctx, cancel := context.WithTimeout(context.Background(), linuxDNSTimeout)
 	defer cancel()
 
-	var stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, "systemctl", "restart", "systemd-resolved")
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("restarting systemd-resolved: %w — %s", err, stderr.String())
+	if out, err := sysexec.Output(ctx, "systemctl", "restart", "systemd-resolved"); err != nil {
+		return fmt.Errorf("restarting systemd-resolved: %w — %s", err, strings.TrimSpace(string(out)))
 	}
 
 	return nil
@@ -138,7 +141,7 @@ func setupSystemdResolved() error {
 func setupRawDnsmasqLinux() error {
 	// Determine which conf file to use.
 	confPath := ""
-	for _, candidate := range []string{"/etc/dnsmasq.conf", "/etc/dnsmasq.d/nself.conf"} {
+	for _, candidate := range []string{sysPath("/etc/dnsmasq.conf"), sysPath("/etc/dnsmasq.d/nself.conf")} {
 		if _, err := os.Stat(candidate); err == nil {
 			confPath = candidate
 			break
@@ -146,7 +149,7 @@ func setupRawDnsmasqLinux() error {
 	}
 	if confPath == "" {
 		// Default to /etc/dnsmasq.conf.
-		confPath = "/etc/dnsmasq.conf"
+		confPath = sysPath("/etc/dnsmasq.conf")
 	}
 
 	// Check if already configured.
@@ -183,11 +186,8 @@ func restartServiceLinux(name string) error {
 	defer cancel()
 
 	// Try systemctl first.
-	if _, err := exec.LookPath("systemctl"); err == nil {
-		var stderr bytes.Buffer
-		cmd := exec.CommandContext(ctx, "systemctl", "restart", name)
-		cmd.Stderr = &stderr
-		if err := cmd.Run(); err == nil {
+	if _, err := sysexec.LookPath("systemctl"); err == nil {
+		if _, err := sysexec.Output(ctx, "systemctl", "restart", name); err == nil {
 			return nil
 		}
 	}
@@ -196,11 +196,8 @@ func restartServiceLinux(name string) error {
 	ctx2, cancel2 := context.WithTimeout(context.Background(), linuxDNSTimeout)
 	defer cancel2()
 
-	var stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx2, "service", name, "restart")
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("service %s restart: %w — %s", name, err, stderr.String())
+	if out, err := sysexec.Output(ctx2, "service", name, "restart"); err != nil {
+		return fmt.Errorf("service %s restart: %w — %s", name, err, strings.TrimSpace(string(out)))
 	}
 
 	return nil

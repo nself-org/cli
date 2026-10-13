@@ -1,13 +1,13 @@
 package trust
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/nself-org/cli/internal/sysexec"
 )
 
 const iptablesTimeout = 30 * time.Second
@@ -19,30 +19,28 @@ func CheckPortsLinux(cfg TrustConfig) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), iptablesTimeout)
 	defer cancel()
 
-	sslCheck := exec.CommandContext(ctx, "iptables",
+	if err := sysexec.Run(ctx, "iptables",
 		"-t", "nat",
 		"-C", "OUTPUT",
 		"-p", "tcp",
 		"--dport", "443",
 		"-j", "REDIRECT",
 		"--to-port", fmt.Sprintf("%d", cfg.NginxSSLPort),
-	)
-	if err := sslCheck.Run(); err != nil {
+	); err != nil {
 		return false
 	}
 
 	ctx2, cancel2 := context.WithTimeout(context.Background(), iptablesTimeout)
 	defer cancel2()
 
-	httpCheck := exec.CommandContext(ctx2, "iptables",
+	return sysexec.Run(ctx2, "iptables",
 		"-t", "nat",
 		"-C", "OUTPUT",
 		"-p", "tcp",
 		"--dport", "80",
 		"-j", "REDIRECT",
 		"--to-port", fmt.Sprintf("%d", cfg.NginxHTTPPort),
-	)
-	return httpCheck.Run() == nil
+	) == nil
 }
 
 // SetupPortsLinux adds iptables NAT OUTPUT rules to redirect ports 80 and 443
@@ -50,6 +48,12 @@ func CheckPortsLinux(cfg TrustConfig) bool {
 func SetupPortsLinux(cfg TrustConfig) (alreadyDone bool, err error) {
 	if CheckPortsLinux(cfg) {
 		return true, nil
+	}
+
+	// Headless: state was checked above (read-only). iptables rules and the
+	// persistence unit need root, so make no change.
+	if isHeadless() {
+		return false, fmt.Errorf("port forwarding setup: %w", ErrSkippedHeadless)
 	}
 
 	if os.Geteuid() != 0 {
@@ -88,18 +92,15 @@ func addIPTablesRule(toPort, fromPort int) error {
 	ctx, cancel := context.WithTimeout(context.Background(), iptablesTimeout)
 	defer cancel()
 
-	var stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, "iptables",
+	if out, err := sysexec.Output(ctx, "iptables",
 		"-t", "nat",
 		"-A", "OUTPUT",
 		"-p", "tcp",
 		"--dport", fmt.Sprintf("%d", fromPort),
 		"-j", "REDIRECT",
 		"--to-port", fmt.Sprintf("%d", toPort),
-	)
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("iptables -A OUTPUT --dport %d: %w — %s", fromPort, err, stderr.String())
+	); err != nil {
+		return fmt.Errorf("iptables -A OUTPUT --dport %d: %w — %s", fromPort, err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }
@@ -109,14 +110,14 @@ func addIPTablesRule(toPort, fromPort int) error {
 // only if both approaches fail — the caller treats this as non-fatal.
 func persistIPTablesRules() error {
 	// Try iptables-save to /etc/iptables/rules.v4.
-	if _, err := exec.LookPath("iptables-save"); err == nil {
-		if mkErr := os.MkdirAll("/etc/iptables", 0755); mkErr == nil {
+	if _, err := sysexec.LookPath("iptables-save"); err == nil {
+		if mkErr := os.MkdirAll(sysPath("/etc/iptables"), 0755); mkErr == nil {
 			ctx, cancel := context.WithTimeout(context.Background(), iptablesTimeout)
 			defer cancel()
 
-			out, saveErr := exec.CommandContext(ctx, "iptables-save").Output()
+			out, saveErr := sysexec.Stdout(ctx, "iptables-save")
 			if saveErr == nil {
-				writeErr := os.WriteFile("/etc/iptables/rules.v4", out, 0644)
+				writeErr := os.WriteFile(sysPath("/etc/iptables/rules.v4"), out, 0644)
 				if writeErr == nil {
 					return nil
 				}
@@ -141,16 +142,16 @@ WantedBy=multi-user.target
 	ctx, cancel := context.WithTimeout(context.Background(), iptablesTimeout)
 	defer cancel()
 
-	out, err := exec.CommandContext(ctx, "iptables-save").Output()
+	out, err := sysexec.Stdout(ctx, "iptables-save")
 	if err != nil {
 		return fmt.Errorf("iptables-save: %w", err)
 	}
 
-	if writeErr := os.WriteFile("/etc/iptables/nself.rules", out, 0644); writeErr != nil {
+	if writeErr := os.WriteFile(sysPath("/etc/iptables/nself.rules"), out, 0644); writeErr != nil {
 		return fmt.Errorf("writing /etc/iptables/nself.rules: %w", writeErr)
 	}
 
-	unitPath := "/etc/systemd/system/nself-portforward.service"
+	unitPath := sysPath("/etc/systemd/system/nself-portforward.service")
 	if writeErr := os.WriteFile(unitPath, []byte(unitContent), 0644); writeErr != nil {
 		return fmt.Errorf("writing systemd unit: %w", writeErr)
 	}
@@ -159,11 +160,8 @@ WantedBy=multi-user.target
 	enableCtx, enableCancel := context.WithTimeout(context.Background(), iptablesTimeout)
 	defer enableCancel()
 
-	var stderr bytes.Buffer
-	enableCmd := exec.CommandContext(enableCtx, "systemctl", "enable", "nself-portforward.service")
-	enableCmd.Stderr = &stderr
-	if err := enableCmd.Run(); err != nil {
-		return fmt.Errorf("enabling nself-portforward service: %w — %s", err, strings.TrimSpace(stderr.String()))
+	if out, err := sysexec.Output(enableCtx, "systemctl", "enable", "nself-portforward.service"); err != nil {
+		return fmt.Errorf("enabling nself-portforward service: %w — %s", err, strings.TrimSpace(string(out)))
 	}
 
 	return nil

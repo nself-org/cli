@@ -19,41 +19,35 @@ import (
 // --- S191-T01: Port idempotency — mock plist presence ---
 
 // TestCheckPortsDarwin_PlistPresent verifies that when the LaunchDaemon plist
-// exists on disk, launchDaemonLoaded returns true without calling pfctl.
-// This exercises the file-presence fallback path documented in ports_macos.go.
+// exists, launchDaemonLoaded returns true without needing pfctl. The plist
+// lives under the temp system root, never in the real /Library/LaunchDaemons.
 func TestCheckPortsDarwin_PlistPresent(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("darwin-only")
 	}
+	hermetic(t)
 
-	// We can't write to /Library/LaunchDaemons in tests.
-	// Instead, verify the file-presence logic directly via launchDaemonLoaded.
-	// If the plist already exists on this machine, launchDaemonLoaded must return true.
-	if _, err := os.Stat(launchDaemonPlistPath); err == nil {
-		if !launchDaemonLoaded() {
-			t.Error("plist exists on disk — launchDaemonLoaded should return true")
-		}
+	plist := sysPath(launchDaemonPlistPath)
+	if err := os.MkdirAll(filepath.Dir(plist), 0o755); err != nil {
+		t.Fatal(err)
 	}
-	// If plist doesn't exist, launchDaemonLoaded must return false.
-	if _, err := os.Stat(launchDaemonPlistPath); os.IsNotExist(err) {
-		if launchDaemonLoaded() {
-			t.Error("plist absent — launchDaemonLoaded should return false")
-		}
+	if err := os.WriteFile(plist, []byte(launchDaemonPlistContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !launchDaemonLoaded() {
+		t.Error("plist exists — launchDaemonLoaded should return true")
 	}
 }
 
-// TestLaunchDaemonLoaded_PlistAbsent verifies false is returned when the plist file is absent.
-// We redirect the check by using a non-existent path in a temp dir.
+// TestLaunchDaemonLoaded_PlistAbsent verifies false is returned when the plist
+// file is absent from the (temp) system root.
 func TestLaunchDaemonLoaded_PlistAbsent(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("darwin-only — plist path check is macOS-specific")
 	}
-	// The constant launchDaemonPlistPath points to /Library/LaunchDaemons/com.nself.portforward.plist.
-	// In CI and dev the plist is usually absent — confirm the function short-circuits.
-	if _, err := os.Stat(launchDaemonPlistPath); os.IsNotExist(err) {
-		if launchDaemonLoaded() {
-			t.Error("plist absent — launchDaemonLoaded must return false")
-		}
+	hermetic(t)
+	if launchDaemonLoaded() {
+		t.Error("plist absent — launchDaemonLoaded must return false")
 	}
 }
 
