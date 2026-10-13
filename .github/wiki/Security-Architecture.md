@@ -83,20 +83,15 @@ Plugin manifests are decoded with `DisallowUnknownFields` to prevent field injec
 - Version strings must match anchored semver
 - Plugin download URLs must use HTTPS from allowed domains
 - Checksums are verified (SHA-256) before installation
-- Ed25519 signatures are verified against the publisher key pinned in the registry when present
+- Release signatures (Ed25519) are verified against keys compiled into the CLI, before extraction (see [Plugin-Security](Plugin-Security))
 
-### Plugin Signature Verification (S47-T09)
+### Plugin Release Signature Verification
 
-When the registry entry for a plugin includes `author_public_key` and `signature` fields, the CLI performs Ed25519 signature verification after the SHA-256 checksum passes:
+After the SHA-256 checksum passes (a mismatch is E124), the CLI verifies the registry entry's `release_signature` with Ed25519 against public keys compiled into the CLI, one set per plugin tier, and only then extracts anything. The old check against a key the plugin manifest named itself (`author_public_key`) certified nothing and is retired; no registry or manifest field can add a trusted key.
 
-1. Decode the hex-encoded 32-byte public key from the registry.
-2. Compute SHA-256 of the downloaded tarball.
-3. Verify the Ed25519 signature over that digest using `crypto/ed25519`.
-4. If verification fails, install is aborted with: `plugin signature verification failed: tarball does not match registry signature (possible tampering)`.
+Failures: E121 (invalid), E122 (unknown key or wrong tier), E123 (revoked key). An unsigned plugin installs with a warning in v1.4 mode and is refused with E107 in v1.5 mode. Details, the signed-since floor and key rotation: [Plugin-Security](Plugin-Security).
 
-This protects against supply-chain attacks where an attacker replaces a tarball on the distribution server but cannot forge a valid signature without the plugin author's private key.
-
-The verification step is skippable only in offline/development mode via `NSELF_LICENSE_SKIP_VERIFY=1` (requires `--force` flag). It is never skipped in production installs. Per the Security-Always-Free Doctrine, this verification is free, automatic, and applies to all plugin tiers.
+The one skip is the offline/development bypass (`NSELF_LICENSE_SKIP_VERIFY=1` plus `NSELF_LICENSE_SKIP_VERIFY_FORCE=1`), refused in production and staging and written to the audit log. Per the Security-Always-Free Doctrine this verification is free, automatic, and applies to all plugin tiers.
 
 ## File Permissions
 

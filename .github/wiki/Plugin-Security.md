@@ -31,7 +31,7 @@ Two limits to know: the tier of an entry comes from the registry, so while a tie
 | v1.5 (`NSELF_V15=1`) | refused with E107 |
 | either mode, at or above the signed-since floor | refused with E107 |
 
-`--allow-unsigned` is for a local path or link install only. A registry install cannot use it. A signature that is present, from a pinned tier, and invalid is always refused, in every mode.
+`--allow-unsigned` is the opt-out for a local path or link install only; a registry install cannot use it. The policy is in place (`NSELF_PLUGIN_ALLOW_UNSIGNED`, honoured only when the caller marks the install local), but no local-path install command exists yet, so no command-line flag is registered; whichever command adds one wires it. A signature that is present, from a pinned tier, and invalid is always refused, in every mode.
 
 ### The signed-since floor
 
