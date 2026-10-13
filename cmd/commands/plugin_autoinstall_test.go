@@ -322,3 +322,29 @@ func TestAutoInstallIgnoresStaleDirectory(t *testing.T) {
 		t.Fatal("the leftover directory was not put back after the refused install")
 	}
 }
+
+// An archive whose plugin.json carries no readable version cannot be matched to
+// the checked catalogue entry: refuse it and publish nothing.
+func TestAutoInstallRefusesUnreadableInstalledVersion(t *testing.T) {
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	for name, body := range map[string]string{
+		"plugin.json": `{"name":"ci","pluginType":"cli","binaryName":"nself-ci"}`,
+		"nself-ci":    "#!/bin/sh\necho x\n",
+	} {
+		_ = tw.WriteHeader(&tar.Header{Name: name, Mode: 0o755, Size: int64(len(body))})
+		_, _ = tw.Write([]byte(body))
+	}
+	_ = tw.Close()
+	_ = gz.Close()
+	tb := buf.Bytes()
+	sum := aiSum(tb)
+	aiServe(t, tb, sum, aiSigned(t, sum))
+	if _, err := autoInstallPlugin(aiSlug, ""); err == nil || !strings.Contains(err.Error(), "catalogue changed") {
+		t.Fatalf("want a refusal for an unreadable installed version, got %v", err)
+	}
+	if _, err := os.Stat(aiPublished()); err == nil {
+		t.Fatal("a binary stayed published after the refusal")
+	}
+}

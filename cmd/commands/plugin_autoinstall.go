@@ -87,12 +87,15 @@ func autoInstallPlugin(slug, version string) (string, error) {
 		return "", fmt.Errorf("auto-install of %q %s failed: %w (install it by hand: nself add %s)", slug, manifest.Version, err, slug)
 	}
 
-	if got := readInstalledVersion(pluginDir, slug); got != "" && got != manifest.Version {
-		_ = plugin.UndoInstall(ctx, cfg, slug, pluginDir)
-		undo()
-		return "", fmt.Errorf("auto-install of %q: installed %s but the checked catalogue entry said %s; the catalogue changed during the install (install it by hand: nself add %s)", slug, got, manifest.Version, slug)
-	}
 	bin := plugin.PublishedBinaryPath(autoInstallBinaryName(slug, manifest))
+	if got := readInstalledVersion(pluginDir, slug); got != manifest.Version {
+		// Unreadable or different: the catalogue changed under us. Remove what this
+		// call published (by the checked name; UndoInstall uses the archive's).
+		_ = plugin.UndoInstall(ctx, cfg, slug, pluginDir)
+		_ = os.Remove(bin)
+		undo()
+		return "", fmt.Errorf("auto-install of %q: installed version %q but the checked catalogue entry said %s; the catalogue changed during the install (install it by hand: nself add %s)", slug, got, manifest.Version, slug)
+	}
 	if st, err := os.Stat(bin); err != nil || st.IsDir() {
 		return "", fmt.Errorf("auto-install of %q: the installer reported success but %s was not published (install it by hand: nself add %s)", slug, bin, slug)
 	}
@@ -121,7 +124,7 @@ func autoInstallResolve(ctx context.Context, slug, version string) (*plugin.Plug
 	if m.RequiresLicense || m.IsCommercial || (m.Tier != "" && m.Tier != plugin.WireTierFree) {
 		return nil, nil, fmt.Errorf("auto-install of %q: the catalogue entry is licensed, and only free plugins are auto-installed (install it by hand: %s)", slug, manual)
 	}
-	if len(m.Dependencies) > 0 {
+	if len(m.Dependencies) > 0 || len(m.OptionalDependencies) > 0 {
 		return nil, nil, fmt.Errorf("auto-install of %q: the entry has dependencies, which the installer would add before verifying it (install it by hand: %s)", slug, manual)
 	}
 	if want := strings.TrimPrefix(version, "v"); want != "" && want != strings.TrimPrefix(m.Version, "v") {
@@ -190,12 +193,17 @@ func readInstalledVersion(pluginDir, slug string) string {
 }
 
 // autoInstallMoveAside renames <pluginDir>/<slug> to ../plugins.aside/<slug>.pre-autoinstall-<ts>
-// when it exists, and returns a func that puts it back (removing whatever the
-// failed install left in its place). With nothing there the func does nothing.
+// when it exists (and no install holds the lock), and returns a func that puts
+// it back if nothing took its place. With nothing there the func does nothing.
 func autoInstallMoveAside(pluginDir, slug string) (func(), error) {
+	pluginDir = filepath.Clean(pluginDir)
 	dir := filepath.Join(pluginDir, slug)
 	if _, err := os.Stat(dir); err != nil {
 		return func() {}, nil
+	}
+	// Another installer holds the lock: do not rename a tree it may be writing.
+	if _, err := os.Stat(filepath.Join(pluginDir, ".install.lock")); err == nil {
+		return nil, fmt.Errorf("another plugin install is running in %s", pluginDir)
 	}
 	// Outside pluginDir, so plugin discovery never lists the leftover as a plugin.
 	asideRoot := filepath.Join(filepath.Dir(pluginDir), "plugins.aside")
@@ -206,8 +214,10 @@ func autoInstallMoveAside(pluginDir, slug string) (func(), error) {
 	if err := os.Rename(dir, aside); err != nil {
 		return nil, fmt.Errorf("moving the existing %s aside: %w", dir, err)
 	}
+	// Put it back only when nothing took its place, and never delete what is there.
 	return func() {
-		_ = os.RemoveAll(dir)
-		_ = os.Rename(aside, dir)
+		if _, err := os.Stat(dir); err != nil {
+			_ = os.Rename(aside, dir)
+		}
 	}, nil
 }

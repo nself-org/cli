@@ -111,7 +111,7 @@ check_catalogue() {
   fi
   if [ -z "${CI_REPO}" ]; then fail "the ci entry has no repository"; bad=1; fi
   # The same refusals autoInstallPlugin applies before it downloads anything.
-  if ! printf '%s' "${entry}" | jq -e '((.dependencies // []) | length) == 0' >/dev/null 2>&1; then
+  if ! printf '%s' "${entry}" | jq -e '(.dependencies // []) as $d | (if ($d | type) == "array" then ($d | length) == 0 else ((($d.required // []) | length) == 0 and (($d.optional // []) | length) == 0) end)' >/dev/null 2>&1; then
     fail "the ci entry lists dependencies, which the seam refuses"; bad=1
   fi
   if ! printf '%s' "${entry}" | jq -e '(.requires_license // false) == false and (.isCommercial // false) == false and ((.tier // "free") == "free")' >/dev/null 2>&1; then
