@@ -30,6 +30,9 @@ type Outcome struct {
 
 // Decide applies the rules above.
 func Decide(in Input) (Outcome, error) {
+	if err := CheckKeys(); err != nil {
+		return Outcome{}, fail("E121", "trusted key table is unusable", err)
+	}
 	if in.Release != nil && Pinned(in.Tier) {
 		if err := Verify(in.Tier, in.Slug, in.Version, in.SHA256, in.Release); err != nil {
 			return Outcome{}, err

@@ -87,3 +87,20 @@ func TestDecideMissing(t *testing.T) {
 		t.Fatalf("allow-unsigned (local): out=%+v err=%v", out, err)
 	}
 }
+
+// TestDecideBrokenKeyTableFailsClosed: a key table that does not validate (a
+// mistyped tier would read as "unpinned") must refuse, never warn.
+func TestDecideBrokenKeyTableFailsClosed(t *testing.T) {
+	key, signer := signaturetest.NewKey(t, signature.TierFree)
+	typo := key
+	typo.Tier = "fre"
+	signaturetest.UseKeys(t, []signature.Key{typo}, nil)
+	signaturetest.UseFloor(t, map[string]map[string]string{})
+	sha := digest("x")
+	for _, v15 := range []bool{false, true} {
+		_, err := signature.Decide(signature.Input{Tier: signature.TierFree, Slug: slug, Version: version, SHA256: sha, Release: signaturetest.Sign(t, signer, slug, version, sha), V15: v15})
+		if code(err) != "E121" {
+			t.Fatalf("v15=%v: want E121, got %v", v15, err)
+		}
+	}
+}
