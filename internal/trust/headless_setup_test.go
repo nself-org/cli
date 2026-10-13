@@ -85,13 +85,15 @@ func TestSetup_RecordsHeadlessMode(t *testing.T) {
 			hermetic(t)
 			t.Setenv("NSELF_HEADLESS", tc.headless)
 			t.Setenv("CI", tc.ci)
-			res, err := Setup(TrustConfig{WorkDir: t.TempDir(), SkipDNS: true, SkipSSL: true, SkipPorts: true})
-			if err != nil {
-				t.Fatalf("Setup: %v", err)
-			}
-			if res.Headless != tc.want {
-				t.Errorf("Headless = %v, want %v", res.Headless, tc.want)
-			}
+			withFakeOS(t, "linux", func() { // Setup rejects windows; the flag is OS-independent
+				res, err := Setup(TrustConfig{WorkDir: t.TempDir(), SkipDNS: true, SkipSSL: true, SkipPorts: true})
+				if err != nil {
+					t.Fatalf("Setup: %v", err)
+				}
+				if res.Headless != tc.want {
+					t.Errorf("Headless = %v, want %v", res.Headless, tc.want)
+				}
+			})
 		})
 	}
 }
