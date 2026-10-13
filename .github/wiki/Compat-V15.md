@@ -140,6 +140,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-PLUG-20 | bundle remove drops plugin data by default (paid bundle) | keeps it unless --delete-data | `internal/bundle/remover_plan.go` |
 | P7-PLUG-20 | bundle remove of an unrecorded bundle removes its members | fails with E134 | `internal/bundle/remover_plan.go` |
 | P7-PLUG-20 | remove <plugin> of a bundle member proceeds | refuses with E133 unless --force | `internal/bundle/remove_guard.go` |
+| P7-PLUG-23 | a plugin with no verifiable release signature installs with a warning | refused with E107 | `internal/plugin/installer_signature.go` |
 | P7-PLUG-25 | clone template scaffolds without checking its plugins | refused (E110, E137, or E115 with no catalog) before any file is written | `internal/templates/clone/entitlement.go` |
 | P7-PLUG-60 | MinIO endpoint | active core or plugin object store endpoint | `internal/compose/custom_services.go` |
 | P7-PLUG-60 | S3 keys infer MinIO intent | core object storage keys do not enable MinIO | `internal/config/loader_parse_env_storage.go` |

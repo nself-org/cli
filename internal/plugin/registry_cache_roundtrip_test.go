@@ -3,6 +3,8 @@ package plugin
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/nself-org/cli/internal/plugin/verify/signature"
 )
 
 // TestRegistryCacheRoundTripKeepsImplementationFields pins the fix for the bug
@@ -145,11 +147,12 @@ func TestRegistryCacheRoundTripIsDrivenByTheManifest(t *testing.T) {
 // survives the round-trip, and that hard mode refuses when opted in.
 func TestCacheKeepsSignatureMaterial(t *testing.T) {
 	original := &Registry{Plugins: []PluginManifest{{
-		Name:            "signed-plugin",
-		Version:         "1.0.0",
-		PublishStatus:   "stable",
-		AuthorPublicKey: "aa" + "bb" + "cc",
-		Signature:       "dd" + "ee" + "ff",
+		Name:             "signed-plugin",
+		Version:          "1.0.0",
+		PublishStatus:    "stable",
+		AuthorPublicKey:  "aa" + "bb" + "cc",
+		Signature:        "dd" + "ee" + "ff",
+		ReleaseSignature: &signature.Release{KeyID: "plugins-0123456789abcdef", Alg: signature.Alg, Sig: "c2ln"},
 	}}}
 
 	data, err := json.Marshal(original)
@@ -178,8 +181,13 @@ func TestCacheKeepsSignatureMaterial(t *testing.T) {
 	// (NSELF_PLUGIN_REQUIRE_CHECKSUM=1), a stable plugin arriving with no
 	// signature must be refused — this is the path the cache used to send
 	// every stable plugin down, silently, regardless of the switch.
+	if got.ReleaseSignature == nil || *got.ReleaseSignature != *original.Plugins[0].ReleaseSignature {
+		t.Errorf("release_signature lost or changed in the cache round trip: %+v", got.ReleaseSignature)
+	}
 	t.Setenv(pluginRequireChecksumEnv, "1")
-	if err := verifyPluginSignature("/nonexistent", "", "", got.PublishStatus); err == nil {
+	stripped := *got
+	stripped.ReleaseSignature = nil
+	if err := verifyReleaseSignature(&stripped, false, false); err == nil {
 		t.Error("a stable plugin with no signature was accepted even in hard mode")
 	}
 }

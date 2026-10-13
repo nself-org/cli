@@ -1,0 +1,5 @@
+{"releases": {
+  "ai": {"version": "1.1.2", "release_signature": {"key_id": "plugins-fedcba9876543210", "alg": "ed25519", "sig": "AAAA"}},
+  "claw": {"version": "2.0.0+build7", "release_signature": {"key_id": "plugins-fedcba9876543210", "alg": "ed25519", "sig": "AAAA"}},
+  "mux": {"version": "1.0.0", "release_signature": null}
+}}

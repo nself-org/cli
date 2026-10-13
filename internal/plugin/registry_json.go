@@ -181,6 +181,7 @@ func entryToManifest(e pluginEntry) PluginManifest {
 		PublishStatus:        e.PublishStatus,
 		AuthorPublicKey:      e.AuthorPublicKey,
 		Signature:            e.Signature,
+		ReleaseSignature:     releaseSignatureFromEntry(e.ReleaseSignature),
 		UpdatedAt:            e.UpdatedAt,
 		PostgresExtensions:   e.Catalog.postgresExtensions(),
 	}

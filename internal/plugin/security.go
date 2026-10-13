@@ -1,15 +1,17 @@
 package plugin
 
-// Purpose: Plugin security checks — checksum/signature verification, Ed25519
-//          CRL author revocation, license validation, EOL blocking, and the
-//          anonymous install-event telemetry POST.
-// Inputs:  archive file paths, hex-encoded keys/sigs, context with timeout.
+// Purpose: Plugin security checks — checksum verification (E124), the
+//          author CRL helpers, EOL blocking, and the anonymous install-event
+//          telemetry POST. Release-signature verification moved to
+//          installer_signature.go (P7-PLUG-23); the manifest author_public_key
+//          is decoded for compatibility but never used for trust.
+// Inputs:  archive file paths, hex-encoded checksums, context with timeout.
 // Outputs: error on any policy violation; nil on pass or when non-fatal
 //          (network offline, non-stable status, or author not found in CRL).
-// Constraints: A present-but-wrong checksum/signature always refuses the
-//              install, for every publishStatus. A MISSING checksum/signature
-//              on an effectively-stable plugin (EffectiveStatus == "stable",
-//              which includes an absent status) only refuses when
+// Constraints: A present-but-wrong checksum always refuses the install (E124),
+//              for every publishStatus. A MISSING checksum on an
+//              effectively-stable plugin (EffectiveStatus == "stable", which
+//              includes an absent status) only refuses when
 //              NSELF_PLUGIN_REQUIRE_CHECKSUM=1 is set — default is warn and
 //              proceed (see pluginRequireChecksumEnv doc comment; FIX-CLI-6).
 //              License check tries all keys; first valid entitlement match wins.
@@ -19,7 +21,6 @@ package plugin
 
 import (
 	"context"
-	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -111,7 +112,7 @@ func verifyChecksum(filePath string, expectedHash string, publishStatus string) 
 
 	actual := hex.EncodeToString(h.Sum(nil))
 	if !strings.EqualFold(actual, expectedHash) {
-		return fmt.Errorf("checksum mismatch: expected %s, got %s", expectedHash, actual)
+		return errs.Newf("E124", "checksum mismatch: expected %s, got %s", expectedHash, actual)
 	}
 	return nil
 }
@@ -152,64 +153,4 @@ func resolveArtifactChecksum(manifest PluginManifest, artifactKind string) (stri
 			manifest.Name, artifactKind, manifest.Version)
 	}
 	return checksum, nil
-}
-
-// verifyPluginSignature verifies that the Ed25519 signature stored in the
-// plugin's registry manifest matches the SHA-256 hash of the downloaded
-// tarball. The public key is pinned in the registry (never fetched at verify
-// time, preventing TOCTOU attacks).
-//
-// publishStatus is the plugin's raw lifecycle status from the registry
-// ("stable", "beta", "alpha", "experimental", "" for absent, etc.) —
-// compared via EffectiveStatus so an absent status is treated exactly like
-// an explicit "stable" one. When authorPublicKeyHex or signatureHex is empty
-// (no signature in the registry) the default behavior is to skip
-// verification with a warning for every status, including
-// effectively-stable ones — see pluginRequireChecksumEnv, which also governs
-// this gate. Only when that env var opts in does a missing signature on an
-// effectively-stable plugin return errs.ErrPluginUnsigned and refuse the
-// install. A signature that IS present and does not verify always refuses,
-// regardless of status — see the ed25519.Verify check below.
-func verifyPluginSignature(archivePath, authorPublicKeyHex, signatureHex, publishStatus string) error {
-	if authorPublicKeyHex == "" || signatureHex == "" {
-		if pluginChecksumRequired() && EffectiveStatus(publishStatus) == "stable" {
-			return fmt.Errorf("plugin is missing required signature for stable publishStatus — install refused: %w",
-				errs.ErrPluginUnsigned)
-		}
-		return nil
-	}
-
-	pkBytes, err := hex.DecodeString(authorPublicKeyHex)
-	if err != nil {
-		return fmt.Errorf("decoding author public key: %w", err)
-	}
-	if len(pkBytes) != ed25519.PublicKeySize {
-		return fmt.Errorf("author public key has wrong length: expected %d bytes, got %d", ed25519.PublicKeySize, len(pkBytes))
-	}
-	pubKey := ed25519.PublicKey(pkBytes)
-
-	sigBytes, err := hex.DecodeString(signatureHex)
-	if err != nil {
-		return fmt.Errorf("decoding plugin signature: %w", err)
-	}
-	if len(sigBytes) != ed25519.SignatureSize {
-		return fmt.Errorf("plugin signature has wrong length: expected %d bytes, got %d", ed25519.SignatureSize, len(sigBytes))
-	}
-
-	f, err := os.Open(archivePath)
-	if err != nil {
-		return fmt.Errorf("opening archive for signature verification: %w", err)
-	}
-	defer func() { _ = f.Close() }()
-
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return fmt.Errorf("hashing archive for signature verification: %w", err)
-	}
-	digest := h.Sum(nil)
-
-	if !ed25519.Verify(pubKey, digest, sigBytes) {
-		return fmt.Errorf("plugin signature verification failed: tarball does not match registry signature (possible tampering)")
-	}
-	return nil
 }
