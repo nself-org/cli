@@ -17,12 +17,12 @@
 #          pluginType cli, binaryName nself-ci;
 #          (2) the four platform tarballs (linux/darwin x amd64/arm64) download, hold
 #          an `nself-ci` file and no absolute or `..` entry, and each matches its
-#          platform_checksums entry (nothing unauthenticated is ever extracted or run);
+#          checksums.platforms entry (nothing unauthenticated is ever extracted or run);
 #          (3) unless --skip-run: nself-ci from the host tarball (throwaway HOME) and from
 #          the linux tarball (in a container; the host run gets an empty environment) give the same exit code and output on the
 #          base and the head commit of scripts/ci/testdata/ci-bootstrap/repo.
 #          --self-test runs (1) and (2) against scripts/ci/testdata/ci-bootstrap/catalogues/
-#          {good,no-signature,no-binary,low-version,tampered} served by python3 -m http.server and
+#          {good,no-signature,no-binary,low-version,tampered,licensed} served by python3 -m http.server and
 #          exits 0 only if `good` passes and each bad one fails for its own reason.
 #          It touches no network beyond 127.0.0.1 and never runs (3).
 # Constraints: bash 3.2 compatible; needs jq, curl, tar (docker and git for check 3,
@@ -110,6 +110,13 @@ check_catalogue() {
     fail "the ci entry is not pluginType cli with binaryName nself-ci"; bad=1
   fi
   if [ -z "${CI_REPO}" ]; then fail "the ci entry has no repository"; bad=1; fi
+  # The same refusals autoInstallPlugin applies before it downloads anything.
+  if ! printf '%s' "${entry}" | jq -e '((.dependencies // []) | length) == 0' >/dev/null 2>&1; then
+    fail "the ci entry lists dependencies, which the seam refuses"; bad=1
+  fi
+  if ! printf '%s' "${entry}" | jq -e '(.requires_license // false) == false and (.isCommercial // false) == false and ((.tier // "free") == "free")' >/dev/null 2>&1; then
+    fail "the ci entry carries a licence marker, which the seam refuses"; bad=1
+  fi
   if [ "${bad}" -ne 0 ]; then return 1; fi
   echo "ok   catalogue: ci ${CI_VERSION} is free, signed, checksummed (>= ${min})"
 }
@@ -124,12 +131,12 @@ check_tarballs() {
     if ! curl -fsSL ${CURL_PROTO} --max-time 300 -o "${f}" "${url}"; then
       fail "cannot download the ${p} tarball (${url})"; bad=1; continue
     fi
-    want="$(printf '%s' "${CI_ENTRY}" | jq -r --arg p "${p}" '.platform_checksums[$p] // ""')"
+    want="$(printf '%s' "${CI_ENTRY}" | jq -r --arg p "${p}" '.checksums.platforms[$p] // ""')"
     if ! printf '%s' "${want}" | grep -Eq '^[0-9a-f]{64}$'; then
-      fail "the ci entry has no platform_checksums for ${p}: the tarball cannot be authenticated"; bad=1; continue
+      fail "the ci entry has no checksums.platforms entry for ${p}: the tarball cannot be authenticated"; bad=1; continue
     fi
     if [ "$(sha256_of "${f}")" != "${want}" ]; then
-      fail "the ${p} tarball does not match its platform_checksums entry"; bad=1; rm -f "${f}"; continue
+      fail "the ${p} tarball does not match its checksums.platforms entry"; bad=1; rm -f "${f}"; continue
     fi
     if ! entries="$(tar -tzf "${f}" 2>/dev/null)"; then
       fail "the ${p} tarball is not a readable tar.gz"; bad=1; continue
@@ -236,7 +243,7 @@ serve_case() {
     if [ "${name}" = "tampered" ]; then sum="0000000000000000000000000000000000000000000000000000000000000000"; fi
     sums="$(printf '%s' "${sums}" | jq -c --arg p "${p}" --arg s "${sum}" '. + {($p): $s}')"
   done
-  jq --argjson s "${sums}" '.plugins[0].platform_checksums = $s' "${root}/${name}/registry.json" > "${root}/${name}/registry.tmp"
+  jq --argjson s "${sums}" '.plugins[0].checksums = {sha256: .plugins[0].checksum, platforms: $s}' "${root}/${name}/registry.json" > "${root}/${name}/registry.tmp"
   mv "${root}/${name}/registry.tmp" "${root}/${name}/registry.json"
 }
 
@@ -245,7 +252,7 @@ self_test() {
   local root="${WORK}/serve" name want out i status=0
   mkdir -p "${root}"
   PORT="$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
-  for name in good no-signature no-binary low-version tampered; do serve_case "${root}" "${name}"; done
+  for name in good no-signature no-binary low-version tampered licensed; do serve_case "${root}" "${name}"; done
   python3 -m http.server "${PORT}" --bind 127.0.0.1 --directory "${root}" >"${WORK}/server.log" 2>&1 &
   SERVER_PID=$!
   for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
@@ -255,13 +262,14 @@ self_test() {
   curl -fsS --max-time 2 -o /dev/null "http://127.0.0.1:${PORT}/good/registry.json" || die "the fixture server did not start"
   SKIP_RUN=1
   CURL_PROTO="--proto =http,https --proto-redir =http,https"
-  for name in good no-signature no-binary low-version tampered; do
+  for name in good no-signature no-binary low-version tampered licensed; do
     case "${name}" in
       good) want="" ;;
       no-signature) want="release_signature" ;;
       no-binary) want="holds no ${BIN} file" ;;
       low-version) want="below --min-version" ;;
-      tampered) want="does not match its platform_checksums" ;;
+      tampered) want="does not match its checksums.platforms" ;;
+      licensed) want="licence marker" ;;
     esac
     status=0
     out="$(probe "http://127.0.0.1:${PORT}/${name}" "1.0.0" 2>&1)" || status=$?

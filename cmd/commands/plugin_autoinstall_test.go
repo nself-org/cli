@@ -289,3 +289,36 @@ func TestAutoInstallRefusesDependenciesAndLicensed(t *testing.T) {
 		})
 	}
 }
+
+// A leftover plugin directory must not leak an unverified nself-ci into the
+// published binary: the signed archive has no nself-ci, the directory does.
+func TestAutoInstallIgnoresStaleDirectory(t *testing.T) {
+	tb := aiTarball(t, nil)
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	body := `{"name":"ci","version":"` + aiVersion + `","pluginType":"cli","binaryName":"nself-ci"}`
+	_ = tw.WriteHeader(&tar.Header{Name: "plugin.json", Mode: 0o644, Size: int64(len(body))})
+	_, _ = tw.Write([]byte(body))
+	_ = tw.Close()
+	_ = gz.Close()
+	tb = buf.Bytes()
+	sum := aiSum(tb)
+	aiServe(t, tb, sum, aiSigned(t, sum))
+	dir := os.Getenv("NSELF_PLUGIN_DIR") + "/ci"
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir+"/nself-ci", []byte("#!/bin/sh\necho stale\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := autoInstallPlugin(aiSlug, ""); err == nil {
+		t.Fatal("a signed archive without nself-ci installed through a stale binary")
+	}
+	if _, err := os.Stat(aiPublished()); err == nil {
+		t.Fatal("the stale binary was published")
+	}
+	if b, err := os.ReadFile(dir + "/nself-ci"); err != nil || !strings.Contains(string(b), "stale") {
+		t.Fatal("the leftover directory was not put back after the refused install")
+	}
+}

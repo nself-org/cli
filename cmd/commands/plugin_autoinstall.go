@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
@@ -72,11 +73,23 @@ func autoInstallPlugin(slug, version string) (string, error) {
 	if err := plugin.WriteRegistryCache(plugin.DefaultCacheDir(), reg); err != nil {
 		return "", fmt.Errorf("auto-install of %q: pinning the checked catalogue: %w (install it by hand: nself add %s)", slug, err, slug)
 	}
-	if err := plugin.Install(ctx, cfg, slug, resolvePluginDir()); err != nil {
+	// Extraction writes into an existing plugin directory, so a stale file there
+	// (an nself-ci the signed archive does not contain) could be published as if
+	// verified. Move a leftover directory aside, never delete it, and put it back
+	// if the install fails.
+	pluginDir := resolvePluginDir()
+	undo, err := autoInstallMoveAside(pluginDir, slug)
+	if err != nil {
+		return "", fmt.Errorf("auto-install of %q: %w (install it by hand: nself add %s)", slug, err, slug)
+	}
+	if err := plugin.Install(ctx, cfg, slug, pluginDir); err != nil {
+		undo()
 		return "", fmt.Errorf("auto-install of %q %s failed: %w (install it by hand: nself add %s)", slug, manifest.Version, err, slug)
 	}
 
-	if got := readInstalledVersion(resolvePluginDir(), slug); got != "" && got != manifest.Version {
+	if got := readInstalledVersion(pluginDir, slug); got != "" && got != manifest.Version {
+		_ = plugin.UndoInstall(ctx, cfg, slug, pluginDir)
+		undo()
 		return "", fmt.Errorf("auto-install of %q: installed %s but the checked catalogue entry said %s; the catalogue changed during the install (install it by hand: nself add %s)", slug, got, manifest.Version, slug)
 	}
 	bin := plugin.PublishedBinaryPath(autoInstallBinaryName(slug, manifest))
@@ -174,4 +187,27 @@ func readInstalledVersion(pluginDir, slug string) string {
 		return ""
 	}
 	return m.Version
+}
+
+// autoInstallMoveAside renames <pluginDir>/<slug> to ../plugins.aside/<slug>.pre-autoinstall-<ts>
+// when it exists, and returns a func that puts it back (removing whatever the
+// failed install left in its place). With nothing there the func does nothing.
+func autoInstallMoveAside(pluginDir, slug string) (func(), error) {
+	dir := filepath.Join(pluginDir, slug)
+	if _, err := os.Stat(dir); err != nil {
+		return func() {}, nil
+	}
+	// Outside pluginDir, so plugin discovery never lists the leftover as a plugin.
+	asideRoot := filepath.Join(filepath.Dir(pluginDir), "plugins.aside")
+	if err := os.MkdirAll(asideRoot, 0o700); err != nil {
+		return nil, fmt.Errorf("creating %s: %w", asideRoot, err)
+	}
+	aside := filepath.Join(asideRoot, fmt.Sprintf("%s.pre-autoinstall-%d", slug, time.Now().UnixNano()))
+	if err := os.Rename(dir, aside); err != nil {
+		return nil, fmt.Errorf("moving the existing %s aside: %w", dir, err)
+	}
+	return func() {
+		_ = os.RemoveAll(dir)
+		_ = os.Rename(aside, dir)
+	}, nil
 }
