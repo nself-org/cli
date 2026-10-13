@@ -386,6 +386,8 @@ export interface Operations {
   initTemplateUpdate(request?: T.InitTemplateUpdateRequest, options?: CallOptions): Promise<T.InitTemplateUpdateData>;
   /** View and filter service logs (POST /v1/commands/logs) */
   logs(request?: T.LogsRequest, options?: CallOptions): Promise<T.LogsData>;
+  /** Print or write the MCP client config and AGENTS.md for this project (POST /v1/commands/mcp/setup) */
+  mcpSetup(request?: T.McpSetupRequest, options?: CallOptions): Promise<T.McpSetupData>;
   /** Stop containers, remove all data volumes, and clean generated files (POST /v1/commands/reset) */
   reset(request?: T.ResetRequest, options?: CallOptions): Promise<T.ResetData>;
   /** Show health status of all services (POST /v1/commands/status) */
@@ -619,6 +621,7 @@ export function createOperations(transport: Transport): Operations {
     initTemplatePublish: (request, options) => transport.call<T.InitTemplatePublishData>("/v1/commands/init/template/publish", request, options),
     initTemplateUpdate: (request, options) => transport.call<T.InitTemplateUpdateData>("/v1/commands/init/template/update", request, options),
     logs: (request, options) => transport.call<T.LogsData>("/v1/commands/logs", request, options),
+    mcpSetup: (request, options) => transport.call<T.McpSetupData>("/v1/commands/mcp/setup", request, options),
     reset: (request, options) => transport.call<T.ResetData>("/v1/commands/reset", request, options),
     status: (request, options) => transport.call<T.StatusData>("/v1/commands/status", request, options),
     statusHealth: (request, options) => transport.call<T.StatusHealthData>("/v1/commands/status/health", request, options),

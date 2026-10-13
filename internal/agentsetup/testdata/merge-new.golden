@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "nself": {
+      "command": "nself",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}

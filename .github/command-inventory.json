@@ -1261,6 +1261,20 @@
       "--host",
       "--port",
       "--transport"
+    ],
+    "subcommands": [
+      {
+        "name": "setup",
+        "path": "nself mcp setup",
+        "short": "Print or write the MCP client config and AGENTS.md for this project",
+        "hidden": false,
+        "flags": [
+          "--agents-md",
+          "--client",
+          "--json",
+          "--write"
+        ]
+      }
     ]
   },
   {

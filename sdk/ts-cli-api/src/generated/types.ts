@@ -4875,6 +4875,30 @@ export interface LogsRequest {
   flags?: LogsFlags;
 }
 
+export type McpSetupArgs = [];
+
+export interface McpSetupData {
+  client: string;
+  content: string;
+  path: string;
+  written: boolean;
+}
+
+export type McpSetupFlags = {
+  /** Print (or with --write, write) the project AGENTS.md */
+  "agents-md"?: boolean;
+  /** Client: claude-code, cursor, codex, generic */
+  client?: string;
+  /** Write the file into the project instead of printing it */
+  write?: boolean;
+};
+
+/** Print or write the MCP client config and AGENTS.md for this project */
+export interface McpSetupRequest {
+  args?: McpSetupArgs;
+  flags?: McpSetupFlags;
+}
+
 export type ResetArgs = [];
 
 export interface ResetData {
