@@ -164,11 +164,6 @@ func runDNSSetup(cmd *cobra.Command, args []string) error {
 // non-TTY contexts (tests, CI, piped output) the dialog would block
 // indefinitely — return the sudo hint message instead.
 func rerunWithOsascript(ctx context.Context, workdir string) error {
-	// Never raise a native admin dialog on a headless host.
-	if sysexec.Headless() {
-		return sysexec.ErrSkippedHeadless
-	}
-
 	// Refuse to launch a blocking OS dialog if the context is already done.
 	select {
 	case <-ctx.Done():
@@ -196,6 +191,12 @@ func rerunWithOsascript(ctx context.Context, workdir string) error {
 	if strings.ContainsAny(filepath.Clean(workdir), shellMetachars) {
 		ui.Error("Permission denied — project path contains invalid characters. Run: sudo nself dns-setup --project <path>")
 		return fmt.Errorf("workdir contains shell metacharacters (injection guard)")
+	}
+
+	// Never raise a native admin dialog on a headless host. dns-setup already
+	// returns before this point when headless; this is the last line of defence.
+	if sysexec.Headless() {
+		return sysexec.ErrSkippedHeadless
 	}
 
 	ui.Info("Requesting administrator access to update /etc/hosts...")

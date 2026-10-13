@@ -72,6 +72,7 @@ func TestSetupPortsDarwin_HeadlessAlreadyConfigured(t *testing.T) {
 // Positive control: the same state, not headless, does issue the admin prompt.
 func TestSetupPortsDarwin_InteractiveUsesOsascript(t *testing.T) {
 	fake := hermetic(t)
+	fake.Reply = nil // every command succeeds
 	already, err := SetupPortsDarwin(TrustConfig{NginxHTTPPort: 8080, NginxSSLPort: 8443})
 	if err != nil || already {
 		t.Fatalf("got (%v, %v), want (false, nil)", already, err)
@@ -83,6 +84,7 @@ func TestSetupPortsDarwin_InteractiveUsesOsascript(t *testing.T) {
 
 func TestSetupPortsDarwin_NSELFHeadlessZeroBeatsCI(t *testing.T) {
 	fake := hermetic(t)
+	fake.Reply = nil // every command succeeds
 	t.Setenv("CI", "1")
 	t.Setenv("NSELF_HEADLESS", "0")
 	if _, err := SetupPortsDarwin(TrustConfig{NginxHTTPPort: 8080, NginxSSLPort: 8443}); err != nil {
@@ -215,6 +217,7 @@ func TestSetupMkcert_InteractiveTrustsCAViaOsascript(t *testing.T) {
 
 func TestSetupResolver_WritesViaOsascriptFake(t *testing.T) {
 	fake := hermetic(t)
+	fake.Reply = nil // every command succeeds
 	if err := setupResolver(); err != nil {
 		t.Fatalf("setupResolver: %v", err)
 	}

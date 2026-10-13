@@ -195,6 +195,7 @@ func TestInstallMkcertCA_Darwin(t *testing.T) {
 		t.Skip("darwin-only")
 	}
 	fake := hermetic(t)
+	fake.Reply = nil // every command succeeds
 	if err := installMkcertCA("/fake/rootCA.pem"); err != nil {
 		t.Fatalf("installMkcertCA under the fake runner: %v", err)
 	}

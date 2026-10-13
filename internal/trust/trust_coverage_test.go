@@ -506,6 +506,7 @@ func TestInstallMkcert_NoPanic(t *testing.T) {
 	if runtime.GOOS == "darwin" {
 		// The brew install goes to the fake runner; nothing is installed.
 		fake := hermetic(t)
+		fake.Reply = nil // every command succeeds
 		if err := installMkcert(); err != nil {
 			t.Fatalf("installMkcert under the fake runner: %v", err)
 		}
