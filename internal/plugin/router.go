@@ -8,7 +8,9 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/plugin/catalog"
 )
 
 // ExitCodeError is returned when a plugin process exits with a non-zero code.
@@ -87,6 +89,14 @@ func ProxyCommandWithHint(cmdName string, args []string, installHint string) err
 		// which is both duplicated and the wrong register for a terminal. An
 		// earlier comment claimed a normal terminal never shows it; running the
 		// binary showed otherwise.
+		// compat.V15(P7-PLUG-09): generic "nself install <command>" hint -> the catalog plugin that provides the command, with nself add
+		if compat.V15() && installHint == "nself install "+cmdName {
+			// Cache only: an unknown command never waits on the network. Any
+			// other hint (relocated command, suppressed) is more specific and stays.
+			if slug, ok := catalog.CommandHint(cmdName); ok {
+				return errs.Newf("E117", "provided by plugin %s: run nself add %s", slug, slug)
+			}
+		}
 		if installHint == "" {
 			return fmt.Errorf("unknown command %q, and no plugin named %q is installed", cmdName, cmdName)
 		}

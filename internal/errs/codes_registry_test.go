@@ -123,7 +123,7 @@ func TestRegistryExitTable(t *testing.T) {
 			if (n >= 101 && n <= 104) || n == 110 {
 				return 3
 			}
-			if n == 118 || n == 119 || n == 135 || n == 139 || n == 140 { // P7-PLUG-31: stack failures, readiness and tracking failures are infra.
+			if n == 115 || n == 116 || n == 118 || n == 119 || n == 135 || n == 139 || n == 140 { // P7-PLUG-31: stack failures, readiness and tracking failures are infra; P7-PLUG-09: catalog unavailable/invalid (E115, E116) are infra.
 				return 2
 			}
 			return 1

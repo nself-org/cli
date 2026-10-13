@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/output"
 	"github.com/nself-org/cli/internal/plugin"
+	"github.com/nself-org/cli/internal/plugin/catalog"
 	"github.com/nself-org/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -52,6 +54,11 @@ func runPluginSearch(cmd *cobra.Command, args []string) error {
 	}
 	proOnly = proOnly || licensedOnly
 	jsonOut, _ := cmd.Flags().GetBool("json")
+
+	// compat.V15(P7-PLUG-09): search over the registry (free tier, NDJSON) -> search over the catalog (both tiers, v1 envelope)
+	if compat.V15() {
+		return runPluginSearchCatalog(cmd, query, freeOnly, proOnly, jsonOut)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -174,5 +181,91 @@ func printPluginSearchJSON(results []plugin.PluginManifest) error {
 		fmt.Printf(`{"name":%q,"tier":%q,"category":%q,"description":%q}`+"\n",
 			p.Name, p.Tier, p.Category, p.Description)
 	}
+	return nil
+}
+
+// catalogURL is the catalog endpoint; tests point it at a local server.
+var catalogURL = catalog.DefaultURL
+
+// searchRow is one plugin in the v1.5 search envelope.
+type searchRow struct {
+	Slug        string   `json:"slug"`
+	Tier        string   `json:"tier"`
+	Bundles     []string `json:"bundles"`
+	Description string   `json:"description"`
+	Category    string   `json:"category"`
+}
+
+// searchData is the data member of the v1.5 `plugin search --json` envelope.
+type searchData struct {
+	Query   string      `json:"query"`
+	Count   int         `json:"count"`
+	Plugins []searchRow `json:"plugins"`
+}
+
+// runPluginSearchCatalog answers `plugin search` from the plugin catalog
+// (contract:plugins.catalog v1): slug, description, category and bundle are
+// searched, across both tiers. It works offline from the cached catalog and
+// says so on stderr; with no cache it fails with E115.
+func runPluginSearchCatalog(cmd *cobra.Command, query string, freeOnly, licensedOnly, jsonOut bool) error {
+	parent := cmd.Context()
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
+	defer cancel()
+	res, err := catalog.Fetch(ctx, catalogURL, catalog.DefaultCacheDir())
+	if err != nil {
+		return err
+	}
+	if note := res.Note(); note != "" {
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), note)
+	}
+
+	tier := ""
+	switch {
+	case freeOnly && licensedOnly:
+		// Both filters exclude every row, as in v1.4.
+		return renderCatalogSearch(query, nil, jsonOut)
+	case freeOnly:
+		tier = catalog.TierFree
+	case licensedOnly:
+		tier = catalog.TierLicensed
+	}
+	return renderCatalogSearch(query, res.Catalog.Search(query, tier), jsonOut)
+}
+
+func renderCatalogSearch(query string, found []catalog.Entry, jsonOut bool) error {
+	if jsonOut {
+		data := searchData{Query: query, Count: len(found), Plugins: make([]searchRow, 0, len(found))}
+		for _, e := range found {
+			bundles := e.Bundles
+			if bundles == nil {
+				bundles = []string{}
+			}
+			data.Plugins = append(data.Plugins, searchRow{e.Slug, e.Tier, bundles, e.Description, e.Category})
+		}
+		return output.EmitData(pilotWriter(), "plugin search", data)
+	}
+	if len(found) == 0 {
+		fmt.Printf("  %s No plugins matched %q.\n", ui.C(ui.Yellow, ui.IconWarning), query)
+		fmt.Printf("  Try: %s to see all plugins.\n", ui.C(ui.Cyan, "nself plugin list"))
+		return nil
+	}
+	tbl := ui.NewTable("Name", "License", "Category", "Description")
+	for _, e := range found {
+		license := ui.C(ui.Yellow, plugin.Label(e.Tier))
+		if e.Tier == catalog.TierFree {
+			license = ui.C(ui.Green, plugin.Label(e.Tier))
+		}
+		desc := []rune(e.Description)
+		if len(desc) > 55 {
+			desc = append(desc[:52], '.', '.', '.')
+		}
+		tbl.AddRow(e.Slug, license, e.Category, string(desc))
+	}
+	tbl.Render()
+	fmt.Printf("\n  %d result(s) for %q\n", len(found), query)
+	fmt.Printf("  Install:  %s\n\n", ui.C(ui.Cyan, "nself add <name>"))
 	return nil
 }

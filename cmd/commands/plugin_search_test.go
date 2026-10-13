@@ -17,6 +17,7 @@ import (
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/compat/compattest"
+	"github.com/nself-org/cli/internal/output"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/plugin/count"
 	"github.com/spf13/cobra"
@@ -115,6 +116,7 @@ func TestPluginSearchLicensedEqualsPro(t *testing.T) {
 		defer srv.Close()
 		t.Setenv("NSELF_PLUGIN_REGISTRY", srv.URL)
 		t.Setenv("NSELF_PLUGIN_CACHE", t.TempDir())
+		catalogFixture(t)
 		run := func(flag string) string {
 			cmd := &cobra.Command{}
 			cmd.Flags().Bool("free", false, "")
@@ -127,14 +129,136 @@ func TestPluginSearchLicensedEqualsPro(t *testing.T) {
 				}
 			})
 		}
+		// v1.5 reads the catalog (P7-PLUG-09): its "example" rows are the
+		// licensed twin and the free-only plugin is not matched by --licensed.
 		if a, b := run("licensed"), run("pro"); a != b || !strings.Contains(a, `"example"`) || strings.Contains(a, `"free-only"`) {
 			t.Fatalf("licensed and pro result differ: %q / %q", a, b)
-		} else if compat.V15() && (!strings.Contains(a, `"license":"licensed"`) || strings.Contains(a, `"tier"`)) {
+		} else if compat.V15() && (!strings.Contains(a, `"tier": "licensed"`) || strings.Contains(a, `"tier": "free"`)) {
 			t.Fatalf("v1.5 search JSON: %s", a)
 		} else if !compat.V15() && (!strings.Contains(a, `"tier":"pro"`) || strings.Contains(a, `"license"`)) {
 			t.Fatalf("v1.4 search JSON: %s", a)
 		}
 	})
+}
+
+// catalogFixtureBody is a catalog with a tier pair (example), a free plugin in
+// a bundle (chat) and a licensed-only plugin.
+const catalogFixtureBody = `{"schema_version":1,"generated_from":{"plugins_ref":"a","bundles_ref":"b","generated_at":"2026-10-13T00:00:00Z"},
+"plugins":[
+{"slug":"chat","tier":"free","version":"1.2.1","description":"Team chat service","category":"messaging","maturity":"implemented","installable":true,"service_kind":"compose","commands":null,"bundles":["chat"],"tier_pair":false},
+{"slug":"example","tier":"free","version":"1.2.1","description":"example","category":"misc","maturity":"implemented","installable":true,"service_kind":"compose","commands":null,"bundles":[],"tier_pair":true},
+{"slug":"example","tier":"licensed","version":"1.2.1","description":"example","category":"misc","maturity":"implemented","installable":true,"service_kind":"compose","commands":null,"bundles":[],"tier_pair":true},
+{"slug":"free-only","tier":"free","version":"1.2.1","description":"no match for e-x-a-m-p-l-e","category":"misc","maturity":"implemented","installable":true,"service_kind":"compose","commands":null,"bundles":[],"tier_pair":false}]}`
+
+// catalogFixture serves catalogFixtureBody, points the search command at it,
+// isolates the cache dir and returns the server (so a test can close it).
+func catalogFixture(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("ETag", `"fixture"`)
+		_, _ = w.Write([]byte(catalogFixtureBody))
+	}))
+	t.Cleanup(srv.Close)
+	old := catalogURL
+	catalogURL = srv.URL
+	t.Cleanup(func() { catalogURL = old })
+	t.Setenv("NSELF_PLUGIN_CACHE", t.TempDir())
+	return srv
+}
+
+func searchCmd(json bool, stderr *bytes.Buffer) *cobra.Command {
+	cmd := &cobra.Command{}
+	cmd.Flags().Bool("free", false, "")
+	cmd.Flags().Bool("pro", false, "")
+	cmd.Flags().Bool("licensed", false, "")
+	cmd.Flags().Bool("json", json, "")
+	if stderr != nil {
+		cmd.SetErr(stderr)
+	}
+	return cmd
+}
+
+func TestPluginSearchEnvelopeV15(t *testing.T) {
+	compattest.Set(t, true)
+	srv := catalogFixture(t)
+	var doc bytes.Buffer
+	old := pilotWriter
+	pilotWriter = func() output.Writer { return output.Writer{Out: &doc, Err: &bytes.Buffer{}} }
+	t.Cleanup(func() { pilotWriter = old; output.ResetState() })
+
+	if err := runPluginSearch(searchCmd(true, nil), []string{"chat"}); err != nil {
+		t.Fatal(err)
+	}
+	var env struct {
+		SchemaVersion string `json:"schema_version"`
+		Command       string `json:"command"`
+		Data          struct {
+			Count   int `json:"count"`
+			Plugins []struct {
+				Slug, Tier, Description string
+				Bundles                 []string
+			} `json:"plugins"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(doc.Bytes(), &env); err != nil {
+		t.Fatalf("one envelope expected: %v\n%s", err, doc.String())
+	}
+	if env.SchemaVersion != "1" || env.Command != "plugin search" || env.Data.Count != 1 || len(env.Data.Plugins) != 1 {
+		t.Fatalf("envelope: %s", doc.String())
+	}
+	if p := env.Data.Plugins[0]; p.Slug != "chat" || p.Tier != "free" || p.Description != "Team chat service" || len(p.Bundles) != 1 || p.Bundles[0] != "chat" {
+		t.Fatalf("row: %+v", p)
+	}
+	if strings.Contains(doc.String(), `"bundles": null`) {
+		t.Fatalf("bundles must be a list, never null: %s", doc.String())
+	}
+
+	// A tier pair lists both tiers, --licensed narrows, no match is an empty list.
+	doc.Reset()
+	if err := runPluginSearch(searchCmd(true, nil), []string{"example"}); err != nil || strings.Count(doc.String(), `"slug": "example"`) != 2 {
+		t.Fatalf("tier pair: %v\n%s", err, doc.String())
+	}
+	doc.Reset()
+	if err := runPluginSearch(searchCmd(true, nil), []string{"zzz-nothing"}); err != nil || !strings.Contains(doc.String(), `"plugins": []`) {
+		t.Fatalf("empty result: %v\n%s", err, doc.String())
+	}
+
+	// Offline: the cache answers, with the stderr note; the exit stays clean.
+	srv.Close()
+	doc.Reset()
+	var stderr bytes.Buffer
+	if err := runPluginSearch(searchCmd(true, &stderr), []string{"chat"}); err != nil {
+		t.Fatalf("offline search with a cache: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "using cached catalog from ") || !strings.Contains(doc.String(), `"slug": "chat"`) {
+		t.Fatalf("offline: stderr %q doc %s", stderr.String(), doc.String())
+	}
+}
+
+func TestPluginSearchV14Unchanged(t *testing.T) {
+	compattest.Set(t, false)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "catalog") {
+			t.Errorf("v1.4 search requested the catalog: %s", r.URL)
+		}
+		_, _ = w.Write([]byte(`{"plugins":[{"name":"example","tier":"pro","category":"misc","description":"an example"}]}`))
+	}))
+	defer srv.Close()
+	t.Setenv("NSELF_PLUGIN_REGISTRY", srv.URL)
+	t.Setenv("NSELF_PLUGIN_CACHE", t.TempDir())
+	old := catalogURL
+	catalogURL = "http://127.0.0.1:1/catalog.json" // unreachable: any use fails the test
+	t.Cleanup(func() { catalogURL = old })
+
+	got := captureVocabularyOutput(t, func() {
+		if err := runPluginSearch(searchCmd(true, nil), []string{"example"}); err != nil {
+			t.Error(err)
+		}
+	})
+	want := `{"name":"example","tier":"pro","category":"misc","description":"an example"}` + "\n"
+	if got != want {
+		t.Fatalf("v1.4 JSON changed:\n got %q\nwant %q", got, want)
+	}
 }
 
 func TestPluginSearchProDeprecated(t *testing.T) {
