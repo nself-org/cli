@@ -34,9 +34,13 @@ import (
 // PricingURL is where an operator buys the Bundles named in a report.
 const PricingURL = "https://nself.org/pricing"
 
-// v14Timeout bounds the whole check in v1.4 mode, where it is advisory: a slow
-// or unreachable network must not hold up a scaffold that never depended on it.
-const v14Timeout = 8 * time.Second
+// The whole check is bounded. v1.4 mode keeps it short: it is advisory there,
+// and a slow or unreachable network must not hold up a scaffold that never
+// depended on it. Vars so tests can shrink them.
+var (
+	v14Timeout = 8 * time.Second
+	v15Timeout = 60 * time.Second
+)
 
 // freeTier is the catalog tier value of a plugin that needs no licence. Any
 // other value is treated as licensed, so an unknown tier can never read as free.
@@ -132,9 +136,19 @@ func (r Report) Err() error {
 	case len(r.MissingLicence) > 0:
 		return errs.Newf("E110", "template %q needs licensed plugins your licence does not cover.\n%s",
 			r.Template, r.Lines()).
-			WithFix("Buy a Bundle that includes them at " + PricingURL + ", or run: nself license set <key>")
+			WithFix(r.fixText())
 	}
 	return nil
+}
+
+// fixText is the E110 fix: buy or set a key, and when the licence check itself
+// failed, also check the connection.
+func (r Report) fixText() string {
+	fix := "Buy a Bundle that includes them at " + PricingURL + ", or run: nself license set <key>"
+	if r.Reason != "" {
+		fix += ". If you hold a licence, check the connection to the licence server and run this again"
+	}
+	return fix
 }
 
 // licenceTail appends the licence problem to the E137 message when both exist.
@@ -177,7 +191,7 @@ func Enforce(w io.Writer, template string, plugins []string, src Source) error {
 	}
 	// compat.V15(P7-PLUG-25): clone template scaffolds without checking its plugins -> refused (E110, E137, or E115 with no catalog) before any file is written
 	refuse := compat.V15()
-	timeout := 60 * time.Second
+	timeout := v15Timeout
 	if !refuse {
 		timeout = v14Timeout
 	}

@@ -10,6 +10,7 @@ package commands
 import (
 	"context"
 	"slices"
+	"strings"
 
 	"github.com/nself-org/cli/internal/license"
 	"github.com/nself-org/cli/internal/plugin/catalog"
@@ -46,7 +47,7 @@ var templateSource clonetemplate.Source = func(ctx context.Context) (clonetempla
 // coverage under any of them counts (multi-key support, as plugin install).
 func templateLicenseKeys() []string {
 	keys := license.CollectLicenseKeys()
-	if k := license.CollectLicenseKey(); k != "" {
+	if k := strings.TrimSpace(license.CollectLicenseKey()); k != "" {
 		keys = append([]string{k}, slices.DeleteFunc(keys, func(x string) bool { return x == k })...)
 	}
 	return keys

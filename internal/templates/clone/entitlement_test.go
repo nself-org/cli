@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/compat/compattest"
@@ -146,6 +147,37 @@ func TestTemplateFreeNoLicenceCall(t *testing.T) {
 	if len(s.asked) != 0 {
 		t.Errorf("free-only template made licence calls: %v", s.asked)
 	}
+}
+
+// TestEnforceDeadline: the whole check is bounded, in both modes, and a
+// timed-out check never prints a false "not covered" warning in v1.4.
+func TestEnforceDeadline(t *testing.T) {
+	oldV14, oldV15 := v14Timeout, v15Timeout
+	v14Timeout, v15Timeout = 30*time.Millisecond, 30*time.Millisecond
+	t.Cleanup(func() { v14Timeout, v15Timeout = oldV14, oldV15 })
+	slow := func(ctx context.Context) (Lookup, Entitled, error) {
+		return fixtureCatalog(), func(ctx context.Context, _ string) (bool, error) {
+			<-ctx.Done()
+			return false, ctx.Err()
+		}, nil
+	}
+	compattest.Both(t, func(t *testing.T) {
+		var w bytes.Buffer
+		start := time.Now()
+		err := Enforce(&w, "discord-clone", required(t, "discord-clone"), slow)
+		if time.Since(start) > 5*time.Second {
+			t.Fatalf("check was not bounded: %v", time.Since(start))
+		}
+		if compat.V15() {
+			if errs.ExitCodeFor(err) != 3 || !strings.Contains(err.Error(), "check the connection") {
+				t.Errorf("v1.5 timeout = %v, want E110 with the connection hint", err)
+			}
+			return
+		}
+		if err != nil || w.Len() != 0 {
+			t.Errorf("v1.4 timeout must scaffold silently: err=%v out=%q", err, w.String())
+		}
+	})
 }
 
 func TestEnforceModes(t *testing.T) {

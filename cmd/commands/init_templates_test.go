@@ -253,3 +253,14 @@ func TestTemplateLicenseKeysOwnerFirst(t *testing.T) {
 		t.Errorf("keys = %s, want the owner key first, each once", got)
 	}
 }
+
+// TestTemplateLicenseKeysOwnerKeyTrimmed: a trailing newline on the owner key
+// must not make the licence server read as unreachable.
+func TestTemplateLicenseKeysOwnerKeyTrimmed(t *testing.T) {
+	compattest.Set(t, true)
+	isolateSource(t, func(http.ResponseWriter, *http.Request) {})
+	t.Setenv("NSELF_PLUGIN_LICENSE_KEY_OWNER", "fake-key-bravo\n")
+	if got := strings.Join(templateLicenseKeys(), ","); got != "fake-key-bravo" {
+		t.Errorf("keys = %q, want the trimmed owner key", got)
+	}
+}
