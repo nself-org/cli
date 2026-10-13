@@ -169,6 +169,8 @@ func isolateSource(t *testing.T, ping http.HandlerFunc) {
 	t.Setenv("LICENSE_PING_URL", srv.URL)
 	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "")
 	t.Setenv("NSELF_PLUGIN_LICENSE_KEY_OWNER", "")
+	t.Setenv("NSELF_LICENSE_FAIL_OPEN", "")
+	t.Setenv("NSELF_PING_API_URL", "")
 	for i := 1; i <= 10; i++ {
 		t.Setenv(fmt.Sprintf("NSELF_LICENSE_KEY_%d", i), "")
 	}
@@ -180,6 +182,7 @@ func isolateSource(t *testing.T, ping http.HandlerFunc) {
 // TestTemplateSourceNoKey runs the production Source with no licence key: the
 // licensed plugin is reported and the licence server is never asked.
 func TestTemplateSourceNoKey(t *testing.T) {
+	compattest.Set(t, true)
 	var pings int
 	isolateSource(t, func(http.ResponseWriter, *http.Request) { pings++ })
 	find, lic, err := templateSource(context.Background())
@@ -224,6 +227,7 @@ func TestTemplateSourceMultiKey(t *testing.T) {
 }
 
 func TestTemplateSourceNoCatalogIsE115(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	t.Setenv("NSELF_PLUGIN_CACHE", filepath.Join(t.TempDir(), "none"))
 	oldURL := catalogURL
 	catalogURL = "http://127.0.0.1:1/catalog.json"
@@ -239,6 +243,7 @@ func TestTemplateSourceNoCatalogIsE115(t *testing.T) {
 // collected list already holds it behind another key (the shared deadline must
 // not run out before the key most likely to cover is asked).
 func TestTemplateLicenseKeysOwnerFirst(t *testing.T) {
+	compattest.Set(t, true)
 	isolateSource(t, func(http.ResponseWriter, *http.Request) {})
 	t.Setenv("NSELF_PLUGIN_LICENSE_KEY_OWNER", "fake-key-bravo")
 	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "fake-key-alpha")

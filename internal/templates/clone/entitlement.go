@@ -38,8 +38,9 @@ const PricingURL = "https://nself.org/pricing"
 // or unreachable network must not hold up a scaffold that never depended on it.
 const v14Timeout = 8 * time.Second
 
-// licensedTier is the catalog tier value of a plugin that needs a licence.
-const licensedTier = "licensed"
+// freeTier is the catalog tier value of a plugin that needs no licence. Any
+// other value is treated as licensed, so an unknown tier can never read as free.
+const freeTier = "free"
 
 // PluginInfo is the part of a catalog entry Check reads.
 type PluginInfo struct {
@@ -98,7 +99,7 @@ func Check(ctx context.Context, template string, plugins []string, find Lookup, 
 		switch {
 		case !found:
 			rep.Unknown = append(rep.Unknown, slug)
-		case info.Tier != licensedTier:
+		case info.Tier == freeTier:
 			// free: nothing to check
 		default:
 			if len(info.Bundles) == 0 {

@@ -26,7 +26,8 @@ import (
 )
 
 // runInitCloneTemplate scaffolds one of the six embedded app-clone templates
-// into destDir. No network access is required.
+// into destDir. The files are embedded; the plugin entitlement check before them
+// reads the plugin catalog (the cached copy works offline).
 func runInitCloneTemplate(name, destDir string, noSeed, dryRun, force, quiet bool) error {
 	if !quiet {
 		verb := "Scaffolding"
