@@ -5,11 +5,12 @@
 // Inputs: a func run under the lock, with the loaded ledger.
 // Outputs: Locked runs it; Tx.Write persists a ledger; the intent methods in
 // intent.go read and write the remove-intent file through the same Tx.
-// Constraints: nothing is written unless fn calls Write (or an intent method).
+// Constraints: Locked takes the operation lock first (oplock.go). Nothing is written unless fn calls Write (or an intent method).
 // Tx is valid only inside fn; it must not be kept or shared across goroutines.
 package ledger
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,6 +23,12 @@ type Tx struct{ s *Store }
 // (bootstrapping a missing file with the same rules as Update) and runs fn. A
 // missing ledger is NOT written by Locked itself: call tx.Write to persist it.
 func (s *Store) Locked(fn func(tx *Tx, l Ledger) error) error {
+	return s.Operation(context.Background(), "bundle ledger write", func() error { return s.locked(fn) })
+}
+
+// locked is Locked under the operation lock (oplock.go), which makes a ledger
+// writer wait behind a long bundle install or remove instead of failing.
+func (s *Store) locked(fn func(tx *Tx, l Ledger) error) error {
 	if err := os.MkdirAll(s.Dir(), 0o700); err != nil {
 		return fmt.Errorf("ledger: create %s: %w", s.Dir(), err)
 	}

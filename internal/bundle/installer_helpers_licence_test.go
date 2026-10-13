@@ -143,6 +143,13 @@ func TestLicenceCheckerFreeBundleOnly(t *testing.T) {
 	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "nself_pro_FAKE_TEST_KEY_NOT_REAL")
 	writeEntitlements(t, plugin.LicenseCacheDir(), "chat", []string{"chat"}, time.Now())
 
+	// The licence server is stubbed: this test must never reach the network.
+	saved := validateRemote
+	t.Cleanup(func() { validateRemote = saved })
+	validateRemote = func(context.Context, string, string) (bool, *plugin.LicenseValidateResponse, error) {
+		return false, nil, errors.New("offline in test")
+	}
+
 	ctx := context.Background()
 	if err := licenceChecker(true)(ctx, []string{"ai"}); err == nil || !strings.Contains(err.Error(), "entitlements") {
 		t.Errorf("free bundle, cached miss: %v, want a refusal", err)
@@ -153,5 +160,122 @@ func TestLicenceCheckerFreeBundleOnly(t *testing.T) {
 	t.Setenv("NSELF_LICENSE_KEY_1", "nself_pro_FAKE_SECOND_KEY_NOT_REAL")
 	if err := licenceChecker(true)(ctx, []string{"ai"}); err != nil {
 		t.Errorf("two keys: the cache holds one key's answer, so it must not refuse: %v", err)
+	}
+}
+
+// TestPreflightConfirmCachedMiss: a cached miss is confirmed with the licence
+// server before it refuses (D-0475); a cached HIT never asks.
+func TestPreflightConfirmCachedMiss(t *testing.T) {
+	miss := &cachedEntitlements{Tier: "chat", Plugins: []string{"chat"}}
+	hit := &cachedEntitlements{Tier: "claw", Plugins: []string{"ai"}}
+	cases := []struct {
+		name      string
+		cache     *cachedEntitlements
+		confirm   func(context.Context, string) (bool, error) // nil: no confirm func
+		wantCalls int
+		wantErr   []string // substrings; nil: no error
+	}{
+		{"server allows", miss, func(context.Context, string) (bool, error) { return true, nil }, 1, nil},
+		{"server denies", miss, func(context.Context, string) (bool, error) { return false, nil }, 1,
+			[]string{`"ai"`, "licence server confirmed", "nself.org/pricing"}},
+		{"server unreachable", miss, func(context.Context, string) (bool, error) { return false, errors.New("dial timeout") }, 1,
+			[]string{`"ai"`, entitlementCacheFile, "could not be reached", "dial timeout"}},
+		{"no confirm func keeps the cached refusal", miss, nil, 0,
+			[]string{`"ai"`, "cached entitlements", entitlementCacheFile}},
+		{"cached hit never asks", hit, func(context.Context, string) (bool, error) { return false, nil }, 0, nil},
+	}
+	for _, c := range cases {
+		calls := 0
+		pf := licencePreflight{entitled: never, keys: 1, cache: c.cache, cacheDir: "/x"}
+		if c.confirm != nil {
+			pf.confirm = func(ctx context.Context, name string) (bool, error) {
+				calls++
+				return c.confirm(ctx, name)
+			}
+		}
+		err := pf.check(context.Background(), pairRegistry(true), []string{"ai"})
+		if calls != c.wantCalls {
+			t.Errorf("%s: confirm called %d times, want %d", c.name, calls, c.wantCalls)
+		}
+		if c.wantErr == nil {
+			if err != nil {
+				t.Errorf("%s: err = %v, want nil", c.name, err)
+			}
+			continue
+		}
+		if err == nil {
+			t.Errorf("%s: want a refusal", c.name)
+			continue
+		}
+		for _, sub := range c.wantErr {
+			if !strings.Contains(err.Error(), sub) {
+				t.Errorf("%s: %q missing %q", c.name, err, sub)
+			}
+		}
+	}
+}
+
+// TestRemoteConfirmer: the production confirm func judges the server answer
+// (valid + all-access tier or a listed plugin) and never leaks the key.
+func TestRemoteConfirmer(t *testing.T) {
+	const key = "nself_pro_TESTONLYFAKE"
+	saved := validateRemote
+	t.Cleanup(func() { validateRemote = saved })
+	t.Setenv("NSELF_PING_API_URL", "http://ping.test/")
+	cases := []struct {
+		name  string
+		valid bool
+		resp  *plugin.LicenseValidateResponse
+		err   error
+		want  bool
+	}{
+		{"listed, any case", true, &plugin.LicenseValidateResponse{Tier: "claw", Plugins: []string{" AI "}}, nil, true},
+		{"all-access tier", true, &plugin.LicenseValidateResponse{Tier: "plus"}, nil, true},
+		{"not listed", true, &plugin.LicenseValidateResponse{Tier: "chat", Plugins: []string{"chat"}}, nil, false},
+		{"invalid key", false, &plugin.LicenseValidateResponse{Tier: "plus"}, nil, false},
+		{"nil response", true, nil, nil, false},
+		{"transport error", false, nil, errors.New("boom"), false},
+	}
+	for _, c := range cases {
+		var gotURL string
+		validateRemote = func(_ context.Context, k, url string) (bool, *plugin.LicenseValidateResponse, error) {
+			gotURL = url
+			if k != key {
+				t.Errorf("%s: wrong key passed", c.name)
+			}
+			return c.valid, c.resp, c.err
+		}
+		got, err := remoteConfirmer(key)(context.Background(), "ai")
+		if got != c.want || (err != nil) != (c.err != nil) {
+			t.Errorf("%s: got %v, %v; want %v, err=%v", c.name, got, err, c.want, c.err)
+		}
+		if gotURL != "http://ping.test" {
+			t.Errorf("%s: ping URL = %q, want the env value without a trailing slash", c.name, gotURL)
+		}
+		if err != nil && strings.Contains(err.Error(), key) {
+			t.Errorf("%s: error leaks the key", c.name)
+		}
+	}
+}
+
+// TestRemoteConfirmerAsksTheServerOnce: several members missed by the cache cost
+// one licence-server call, not one each.
+func TestRemoteConfirmerAsksTheServerOnce(t *testing.T) {
+	saved := validateRemote
+	t.Cleanup(func() { validateRemote = saved })
+	calls := 0
+	validateRemote = func(context.Context, string, string) (bool, *plugin.LicenseValidateResponse, error) {
+		calls++
+		return true, &plugin.LicenseValidateResponse{Tier: "chat", Plugins: []string{"ai"}}, nil
+	}
+	confirm := remoteConfirmer("fake-key-for-test")
+	for name, want := range map[string]bool{"ai": true, "mux": false, "claw": false} {
+		got, err := confirm(context.Background(), name)
+		if err != nil || got != want {
+			t.Errorf("confirm(%q) = %v, %v; want %v, nil", name, got, err, want)
+		}
+	}
+	if calls != 1 {
+		t.Errorf("licence server called %d times, want 1", calls)
 	}
 }

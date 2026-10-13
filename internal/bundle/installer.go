@@ -21,6 +21,9 @@
 // the ledger and, when InstallOpts.Hooks is set, runs reconcile, start, readiness,
 // tracking and health (package appready; installer_appready.go). The member loop
 // is in installer_members.go and the licence pre-flight in installer_licence.go.
+// Operation lock (D-0322): everything after the licence pre-flight runs under the
+// ledger store's operation lock (ledger/oplock.go), so a second install, a remove
+// or any ledger writer waits with progress instead of failing at the ledger lock.
 // A free bundle (Bundle.IsFree) skips the ping_api bundle entitlement call.
 package bundle
 
@@ -33,6 +36,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/bundle/appready"
+	"github.com/nself-org/cli/internal/bundle/ledger"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/plugin"
 )
@@ -160,11 +164,22 @@ func Install(ctx context.Context, bundleSlug string, opts InstallOpts) (*Install
 	if pluginDir == "" {
 		pluginDir = defaultPluginDir()
 	}
-	// Bootstrap the ledger from the pre-install state before anything changes.
 	store := newLedgerStore(pluginDir)
+	// D-0322: hold the operation lock from the before-snapshot to the ledger step,
+	// so a concurrent install, remove or ledger writer waits (with progress).
+	err = store.Operation(ctx, "bundle install "+b.Slug, func() error {
+		return installLocked(ctx, b, store, pluginDir, rn, planned, pins, opts, out, result)
+	})
+	return result, err
+}
+
+// installLocked is the part of Install that runs under the operation lock.
+func installLocked(ctx context.Context, b Bundle, store *ledger.Store, pluginDir string, rn *appready.Runner,
+	planned []string, pins VersionPins, opts InstallOpts, out io.Writer, result *InstallResult) error {
+	// Bootstrap the ledger from the pre-install state before anything changes.
 	if _, err := store.EnsureBootstrapped(); err != nil {
 		rn.Record(appready.StepLedger, appready.ResultFailed, 0, err.Error())
-		return result, fmt.Errorf("bundle %q: reading the install ledger before install: %w", b.Slug, err)
+		return fmt.Errorf("bundle %q: reading the install ledger before install: %w", b.Slug, err)
 	}
 
 	// What was on disk before this install: those members have no bundle origin.
@@ -174,7 +189,7 @@ func Install(ctx context.Context, bundleSlug string, opts InstallOpts) (*Install
 	if cfg == nil {
 		loaded, lerr := loadConfigOrDefault()
 		if lerr != nil {
-			return result, fmt.Errorf("loading project config: %w", lerr)
+			return fmt.Errorf("loading project config: %w", lerr)
 		}
 		cfg = loaded
 	}
@@ -194,7 +209,7 @@ func Install(ctx context.Context, bundleSlug string, opts InstallOpts) (*Install
 		err := mr.run(ctx)
 		return fmt.Sprintf("%d installed, %d unchanged", len(result.Installed), len(planned)-len(result.Installed)), err
 	}); err != nil {
-		return result, err
+		return err
 	}
 
 	_, _ = fmt.Fprintf(out, "\nBundle %q (%s) installed: %d plugins.\n", b.Name, b.Slug, len(result.Installed))
@@ -203,7 +218,7 @@ func Install(ctx context.Context, bundleSlug string, opts InstallOpts) (*Install
 		// A bundle with a member missing is not the app the bundle describes (D-0372).
 		rn.Unverified("bundle members skipped (not in the registry): " + strings.Join(result.Skipped, ", "))
 	}
-	return result, finishInstall(ctx, rn, store, pluginDir, planned, before, opts, result)
+	return finishInstall(ctx, rn, store, pluginDir, planned, before, opts, result)
 }
 
 // resolvePlan resolves the version pins and sets result.Planned / Skipped. In

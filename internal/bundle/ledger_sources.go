@@ -7,39 +7,28 @@ package bundle
 // plugins on disk after an install into ledger members (installedMembers).
 // Inputs: the plugin directory ($NSELF_PLUGIN_DIR or ~/.nself/plugins).
 // Outputs: ledger.Sources / []ledger.InstalledPlugin.
-// Constraints: read only; a plugin without a valid plugin.json is not "on disk"
-// (plugin.LoadManifestsFromDir skips it, as it skips the .nself-state directory).
+// Constraints: read only; installedMembers reads only manifests that pass
+// plugin.LoadManifest (plugin.LoadManifestsFromDir skips the rest, as it skips
+// the .nself-state directory). The bootstrap scan is in installer_helpers_ledger.go.
 
 import (
-	"context"
-	"fmt"
 	"strings"
 
 	"github.com/nself-org/cli/internal/bundle/ledger"
 	"github.com/nself-org/cli/internal/plugin"
 )
 
-// LedgerSources returns the bootstrap source for the ledger stored in pluginDir:
-// every bundle's membership plus the plugins installed there. A plugin
-// directory that cannot be read is an error, never an empty Sources. So is a
-// bundle catalog that cannot be loaded (P7-PLUG-20): with no catalog every
-// plugin would bootstrap as explicit, which hides every bundle reference.
+// LedgerSources returns the bootstrap source for the ledger stored in pluginDir.
+// It is bootstrapSources (installer_helpers_ledger.go): membership from the
+// full loaded catalogue (Names, so a bundle outside DisplayOrder counts) and
+// one strict scan of the plugin directory. A plugin directory that cannot be
+// read is an error, never an empty Sources. So is a bundle catalog that cannot
+// be loaded (P7-PLUG-20): with no catalog every plugin would bootstrap as
+// explicit, which hides every bundle reference. A plugin.json that cannot be
+// read lands in Sources.Unreadable; the read-only Load turns that into a
+// warning, so `bundle list` keeps working with one bad manifest.
 func LedgerSources(pluginDir string) func() (ledger.Sources, error) {
-	return func() (ledger.Sources, error) {
-		if err := EnsureLoaded(context.Background()); err != nil {
-			return ledger.Sources{}, fmt.Errorf("loading the bundle catalog: %w", err)
-		}
-		var src ledger.Sources
-		for _, b := range All() {
-			src.Bundles = append(src.Bundles, ledger.BundleDef{Slug: b.Slug, Installable: b.IsInstallable(), Plugins: b.Plugins})
-		}
-		plugins, err := installedPlugins(pluginDir)
-		if err != nil {
-			return ledger.Sources{}, err
-		}
-		src.Plugins = plugins
-		return src, nil
-	}
+	return bootstrapSources(pluginDir)
 }
 
 // installedPlugins lists the plugins in pluginDir as ledger facts.
@@ -50,13 +39,19 @@ func installedPlugins(pluginDir string) ([]ledger.InstalledPlugin, error) {
 	}
 	out := make([]ledger.InstalledPlugin, 0, len(manifests))
 	for _, m := range manifests {
-		tier := ledger.TierFree
-		if m.Tier == "pro" || m.Tier == "paid" || m.Tier == ledger.TierLicensed || m.RequiresLicense || m.LicenseType == "pro" {
-			tier = ledger.TierLicensed
-		}
-		out = append(out, ledger.InstalledPlugin{Name: m.Name, Version: m.Version, Tier: tier, Checksum: m.Checksum})
+		out = append(out, ledgerFact(m))
 	}
 	return out, nil
+}
+
+// ledgerFact maps a manifest to the ledger fact for its plugin: the tier is
+// licensed for a pro/paid/licensed tier, a licence requirement or a pro licence type.
+func ledgerFact(m *plugin.PluginManifest) ledger.InstalledPlugin {
+	tier := ledger.TierFree
+	if m.Tier == "pro" || m.Tier == "paid" || m.Tier == ledger.TierLicensed || m.RequiresLicense || m.LicenseType == "pro" {
+		tier = ledger.TierLicensed
+	}
+	return ledger.InstalledPlugin{Name: m.Name, Version: m.Version, Tier: tier, Checksum: m.Checksum}
 }
 
 // installedMembers returns, in planned order, the planned plugins that are on

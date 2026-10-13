@@ -20,7 +20,8 @@ func openLockFile(path string) (*os.File, error) {
 	return os.OpenFile(path, os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
 }
 
-// lockFile takes an exclusive flock on f, polling until wait elapses.
+// lockFile takes an exclusive flock on f, polling until wait elapses. On
+// timeout the error wraps errLockBusy.
 func lockFile(f *os.File, wait time.Duration) (func(), error) {
 	deadline := time.Now().Add(wait)
 	for {
@@ -32,7 +33,7 @@ func lockFile(f *os.File, wait time.Duration) (func(), error) {
 			return nil, err
 		}
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("another nself process holds the bundle ledger lock (waited %s)", wait)
+			return nil, fmt.Errorf("another nself process holds the bundle ledger lock (waited %s): %w", wait, errLockBusy)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
