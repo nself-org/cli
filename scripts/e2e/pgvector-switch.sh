@@ -39,6 +39,9 @@ fail() {
   exit 1
 }
 pass() { echo "PASS: $1"; }
+# A command that fails under set -e would end the run silently; name it.
+set -E
+trap 'echo "FAIL: command failed (exit $?) at line $LINENO: $BASH_COMMAND" >&2' ERR
 # Only obviously fake credentials, padded to meet the config validators.
 F_PG=FAKE-SWITCH-POSTGRES-PASSWORD-00000000000
 F_HASURA=FAKE-SWITCH-HASURA-ADMIN-SECRET-0000000000000
@@ -89,9 +92,21 @@ CREATE TRIGGER notes_stamp BEFORE INSERT ON app.notes FOR EACH ROW EXECUTE FUNCT
 GRANT USAGE ON SCHEMA app TO appuser; GRANT SELECT ON app.notes TO appuser;
 ALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT SELECT ON TABLES TO appuser;
 ALTER TABLE app.notes ENABLE ROW LEVEL SECURITY; CREATE POLICY p1 ON app.notes FOR SELECT TO appuser USING (id > 0);" >>"$LOG" 2>&1 || fail 'seed'
+pg "CREATE ROLE zed LOGIN; CREATE ROLE amy LOGIN; GRANT CONNECT ON DATABASE \"$PGDB\" TO zed, amy; CREATE MATERIALIZED VIEW app.notes_count AS SELECT count(*) AS n FROM app.notes" >>"$LOG" 2>&1 || fail 'seed roles and view'
 pgs "CREATE DATABASE second OWNER appuser" >>"$LOG" 2>&1 || fail 'second database'
 DB=second pg "CREATE TABLE things(id int PRIMARY KEY, v text); INSERT INTO things SELECT i, 'v' || i FROM generate_series(1,50) i; GRANT SELECT ON things TO appuser" >>"$LOG" 2>&1 || fail 'seed second'
 
+# schema_hash DB: hash of the normalised schema-only dump. An empty database (the maintenance database)
+# normalises to nothing, so a grep that selects no line is not a failure; a failed dump is retried once
+# the server has settled and its error goes to the log.
+schema_hash() {
+  local i h
+  for i in 1 2 3 4 5; do
+    if h="$(docker exec "$PGC" pg_dump -U postgres -s -d "$1" 2>>"$LOG" | { grep -v '^--\|^SET \|^\\restrict\|^\\unrestrict\|^$\|set_config' || true; } | sha)"; then echo "$h"; return 0; fi
+    sleep 3
+  done
+  return 1
+}
 # snap: every fact the switch must keep, from the database itself (not from the report), as one hash.
 snap() {
   local c db t out=""
@@ -106,7 +121,7 @@ snap() {
         *) out+="$t $(DB=$db pg "SELECT count(*), coalesce(sum(hashtextextended(t::text, 0)::numeric), 0) FROM $t AS t")"$'\n' ;;
       esac
     done
-    out+="$(docker exec "$PGC" pg_dump -U postgres -s -d "$db" | grep -v '^--\|^SET \|^\\restrict\|^\\unrestrict\|^$\|set_config' | sha)"$'\n'
+    out+="$(schema_hash "$db")"$'\n'
     out+="$(DB=$db pg "SELECT schemaname || '.' || sequencename || '=' || last_value FROM pg_sequences ORDER BY 1")"$'\n'
     out+="$(DB=$db pg "SELECT grantee, table_schema, table_name, privilege_type FROM information_schema.role_table_grants WHERE table_schema NOT IN ('pg_catalog','information_schema') ORDER BY 1,2,3,4")"$'\n'
     out+="$(DB=$db pg "SELECT pg_get_userbyid(defaclrole), defaclnamespace::regnamespace::text, defaclobjtype, defaclacl FROM pg_default_acl ORDER BY 1,2,3")"$'\n'
@@ -173,7 +188,7 @@ pg "DELETE FROM app.notes WHERE body LIKE 'committed during%'; SELECT setval('ap
 pgs "ALTER SYSTEM SET autovacuum_naptime = '1s'" >>"$LOG" 2>&1 && pgs "SELECT pg_reload_conf()" >>"$LOG" 2>&1 || fail 'autovacuum settings'
 pg "ALTER TABLE app.notes SET (autovacuum_vacuum_threshold = 5, autovacuum_vacuum_scale_factor = 0); UPDATE app.notes SET body = body WHERE id <= 200" >>"$LOG" 2>&1 || fail 'dead tuples'
 # ---- the switch, killed after env is written ---------------------------------------------------
-BEFORE="$(snap)"; echo "$BEFORE" >"$W/snap.before"
+snap >"$W/snap.before"
 OLDVOL="$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' "$PGC")"
 cp docker-compose.yml "$W/compose.alpine"
 nself db image switch --to pgvector --yes >"$W/switch1.out" 2>&1 &

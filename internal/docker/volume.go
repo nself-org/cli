@@ -96,3 +96,18 @@ func ContainerVolume(ctx context.Context, container, dest string) (string, error
 	}
 	return strings.TrimSpace(string(out)), nil
 }
+
+// VolumeLabels returns the labels of the named volume; exists is false when the volume is absent.
+func VolumeLabels(ctx context.Context, name string) (labels map[string]string, exists bool, err error) {
+	out, err := runCapture(ctx, "volume", "inspect", "--format", "{{json .Labels}}", name)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "no such volume") {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(string(out))), &labels); err != nil {
+		return nil, true, fmt.Errorf("volume labels: unreadable inspect output: %w", err)
+	}
+	return labels, true, nil
+}

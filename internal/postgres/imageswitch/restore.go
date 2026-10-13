@@ -27,8 +27,25 @@ func (s *Switch) volumeLabels() map[string]string {
 	return map[string]string{
 		"com.docker.compose.project": s.st.ComposeProject,
 		"com.docker.compose.volume":  "postgres_data",
-		"org.nself.image-switch":     s.st.RunID,
+		labelRun:                     s.st.RunID,
 	}
+}
+
+// labelRun is the volume and container label that ties them to one switch run.
+const labelRun = "org.nself.image-switch"
+
+// checkNewVolume fails unless the new volume exists and this run created it.
+func (s *Switch) checkNewVolume(ctx context.Context) error {
+	labels, exists, err := s.d.Runtime.VolumeLabels(ctx, s.st.NewVolume)
+	switch {
+	case err != nil:
+		return fmt.Errorf("checking the new volume: %w", err)
+	case !exists:
+		return fmt.Errorf("the new volume %s is gone", s.st.NewVolume)
+	case labels[labelRun] != s.st.RunID:
+		return fmt.Errorf("the new volume %s is not the one this switch restored into", s.st.NewVolume)
+	}
+	return nil
 }
 
 // restore creates the new volume and fills it.
@@ -90,9 +107,13 @@ func (s *Switch) restore(ctx context.Context) error {
 
 // freshNewVolume makes sure the new volume exists and is empty and is ours.
 func (s *Switch) freshNewVolume(ctx context.Context) error {
-	exists, err := s.d.Runtime.VolumeExists(ctx, s.st.NewVolume)
+	labels, exists, err := s.d.Runtime.VolumeLabels(ctx, s.st.NewVolume)
 	if err != nil {
 		return fmt.Errorf("checking the new volume: %w", err)
+	}
+	if exists && s.st.NewVolumeCreated && labels[labelRun] != s.st.RunID {
+		return coded("E509", "the new volume belongs to another switch",
+			s.st.NewVolume+" does not carry this switch's label, so it will not be reused or removed (was the project directory copied?)", "")
 	}
 	if exists && !s.st.NewVolumeCreated {
 		return coded("E509", "the new volume name is already taken",
@@ -122,8 +143,17 @@ func (s *Switch) removeNewVolume(ctx context.Context) error {
 	if s.st.NewVolume == "" || s.st.NewVolume == s.st.OldVolume {
 		return fmt.Errorf("refusing to remove volume %q: it is empty or the old data volume (is %s edited?)", s.st.NewVolume, StatePath(s.cfg.ProjectDir))
 	}
-	if err := s.d.Runtime.VolumeRemove(ctx, s.st.NewVolume); err != nil {
-		return fmt.Errorf("removing the new volume %s: %w", s.st.NewVolume, err)
+	labels, exists, err := s.d.Runtime.VolumeLabels(ctx, s.st.NewVolume)
+	if err != nil {
+		return fmt.Errorf("checking the new volume %s: %w", s.st.NewVolume, err)
+	}
+	if exists && labels[labelRun] != s.st.RunID {
+		return fmt.Errorf("refusing to remove volume %s: it does not carry this switch's label", s.st.NewVolume)
+	}
+	if exists {
+		if err := s.d.Runtime.VolumeRemove(ctx, s.st.NewVolume); err != nil {
+			return fmt.Errorf("removing the new volume %s: %w", s.st.NewVolume, err)
+		}
 	}
 	s.st.NewVolumeCreated = false
 	return nil

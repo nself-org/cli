@@ -7,6 +7,7 @@ package imageswitch
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 )
@@ -245,7 +246,154 @@ type autoconfRuntime struct{ *fakeEnv }
 
 func (r autoconfRuntime) ExecSQL(ctx context.Context, c, u, db, sql string) (string, error) {
 	if strings.Contains(sql, "pg_database_size") {
-		return "0|1048576|max_wal_size\n", nil
+		return "0|1048576|max_wal_size|0\n", nil
 	}
 	return r.fakeEnv.ExecSQL(ctx, c, u, db, sql)
+}
+
+// upFailsOnce makes the first start of the stopped writers fail, as a compose error would.
+type upFailsOnce struct {
+	*fakeEnv
+	failed bool
+}
+
+func (u *upFailsOnce) Up(ctx context.Context, services ...string) error {
+	if !u.failed && len(services) > 0 && services[0] == "auth" {
+		u.failed = true
+		return errors.New("compose up failed")
+	}
+	return u.fakeEnv.Up(ctx, services...)
+}
+
+// TestResumeNeverSwitchesToAVolumeTheUndoRemoved is the Opus M1 repro: a failed undo that already
+// removed the new volume must not leave a phase that lets --resume switch onto it.
+func TestResumeNeverSwitchesToAVolumeTheUndoRemoved(t *testing.T) {
+	f, s := newFake(t)
+	up := &upFailsOnce{fakeEnv: f}
+	s.d.Stack = up
+	f.mutate = "recheck"
+	if _, err := s.Run(context.Background(), RunOptions{}); err == nil || !strings.Contains(err.Error(), "--rollback") {
+		t.Fatalf("expected the failed undo to say so: %v", err)
+	}
+	st, inc := Incomplete(f.dir)
+	if !inc || st.Phase != PhaseStarted || st.NewVolumeCreated {
+		t.Fatalf("a failed undo must restart from scratch: %+v", st)
+	}
+	f.mutate = ""
+	restores := strings.Count(strings.Join(f.calls, "\n"), "restore.sh")
+	rep, err := New(s.cfg, s.d).Run(context.Background(), RunOptions{Resume: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !f.volumes[rep.NewVolume] || f.labels[rep.NewVolume][labelRun] == "" {
+		t.Errorf("the switch must end on a volume that exists and is labelled: %v", f.volumes)
+	}
+	if got := strings.Count(strings.Join(f.calls, "\n"), "restore.sh"); got != restores+1 {
+		t.Errorf("the restore must run again on resume (%d -> %d)", restores, got)
+	}
+}
+
+func TestSwitchoverRefusesAMissingOrForeignNewVolume(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		mod  func(f *fakeEnv, st *State)
+	}{
+		{"gone", func(f *fakeEnv, st *State) { delete(f.volumes, st.NewVolume) }},
+		{"foreign label", func(f *fakeEnv, st *State) { f.labels[st.NewVolume] = map[string]string{labelRun: "sw-other"} }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, s := newFake(t)
+			f.killAt = "apply"
+			runKilled(func() { _, _ = s.Run(context.Background(), RunOptions{}) })
+			st, _ := LoadState(f.dir)
+			tc.mod(f, st)
+			st.Phase = PhaseRechecked
+			if err := st.save(f.dir, s.d.Now()); err != nil {
+				t.Fatal(err)
+			}
+			f.envApplied = nil
+			if _, err := New(s.cfg, s.d).Run(context.Background(), RunOptions{Resume: true}); err == nil {
+				t.Fatal("the switch must not go ahead")
+			}
+			if len(f.envApplied) != 0 {
+				t.Errorf("env was written: %v", f.envApplied)
+			}
+		})
+	}
+}
+
+func TestForeignVolumeIsNeverRemoved(t *testing.T) {
+	f, s := newFake(t)
+	f.killAt = "restore"
+	runKilled(func() { _, _ = s.Run(context.Background(), RunOptions{}) })
+	st, _ := LoadState(f.dir)
+	f.labels[st.NewVolume] = map[string]string{labelRun: "sw-copied-project"}
+	if _, err := New(s.cfg, s.d).Rollback(context.Background(), false); err == nil || !f.volumes[st.NewVolume] {
+		t.Fatalf("a volume without this run's label must survive: err %v volumes %v", err, f.volumes)
+	}
+}
+
+func TestRollbackChecksTheDataVolumeItStarts(t *testing.T) {
+	f, s := newFake(t)
+	if _, err := s.Run(context.Background(), RunOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	f.ignoreVolume = true // compose keeps mounting the new volume
+	f.calls = nil
+	_, err := s.Rollback(context.Background(), true)
+	if code(t, err) != "E512" || !strings.Contains(err.Error(), "expected") {
+		t.Fatalf("err = %v", err)
+	}
+	if f.called("stack.up: postgres,auth") {
+		t.Errorf("the other services must not start on the wrong volume: %v", f.calls)
+	}
+}
+
+func TestSessionsAreEndedAgainBeforeTheRecheck(t *testing.T) {
+	f, s := newFake(t)
+	if _, err := s.Run(context.Background(), RunOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, c := range f.calls {
+		if strings.Contains(c, "pg_terminate_backend") {
+			n++
+		}
+	}
+	if n < 2 {
+		t.Errorf("sessions are ended at the quiesce and again before the recheck, saw %d", n)
+	}
+}
+
+// replRuntime answers the size query as if a subscription existed.
+type replRuntime struct{ *fakeEnv }
+
+func (r replRuntime) ExecSQL(ctx context.Context, c, u, db, sql string) (string, error) {
+	if strings.Contains(sql, "pg_database_size") {
+		return "0|1048576||1\n", nil
+	}
+	return r.fakeEnv.ExecSQL(ctx, c, u, db, sql)
+}
+
+func TestPreflightRefusesSubscriptionsAndSlots(t *testing.T) {
+	f, s := newFake(t)
+	s.d.Runtime = replRuntime{f}
+	_, err := s.Run(context.Background(), RunOptions{})
+	if code(t, err) != "E509" || !strings.Contains(err.Error(), "replication slots") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestAlreadyPgvectorRemovesAStageLeftByACrash(t *testing.T) {
+	f, s := newFake(t)
+	f.pgvector = true
+	if err := s.prepareStage(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Run(context.Background(), RunOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(s.stage); !os.IsNotExist(err) {
+		t.Error("a leftover stage holds a full dump and must be removed")
+	}
 }

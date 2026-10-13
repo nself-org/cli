@@ -125,12 +125,12 @@ func (s *Switch) checkCluster(r *preflightResult) {
 // checkReadOnlyAndSize adds the read-only and data-size checks.
 func (s *Switch) checkReadOnlyAndSize(ctx context.Context, r *preflightResult) error {
 	out, err := s.d.Runtime.ExecSQL(ctx, s.cfg.Container, s.cfg.User, "template1",
-		`SELECT (SELECT count(*) FROM pg_db_role_setting s, unnest(s.setconfig) c WHERE c ~ '^default_transaction_read_only='), (SELECT coalesce(sum(pg_database_size(datname)), 0) FROM pg_database), (SELECT coalesce(string_agg(name, ',' ORDER BY name), '') FROM pg_settings WHERE sourcefile LIKE '%auto.conf')`)
+		`SELECT (SELECT count(*) FROM pg_db_role_setting s, unnest(s.setconfig) c WHERE c ~ '^default_transaction_read_only='), (SELECT coalesce(sum(pg_database_size(datname)), 0) FROM pg_database), (SELECT coalesce(string_agg(name, ',' ORDER BY name), '') FROM pg_settings WHERE sourcefile LIKE '%auto.conf'), (SELECT count(*) FROM pg_subscription) + (SELECT count(*) FROM pg_replication_slots)`)
 	if err != nil {
 		return fmt.Errorf("measuring the cluster: %s", s.redact(err.Error(), 3))
 	}
 	parts := strings.Split(strings.TrimSpace(out), "|")
-	if len(parts) != 3 {
+	if len(parts) != 4 {
 		return fmt.Errorf("measuring the cluster: unexpected answer %q", strings.TrimSpace(out))
 	}
 	ro, _ := strconv.Atoi(parts[0])
@@ -139,6 +139,9 @@ func (s *Switch) checkReadOnlyAndSize(ctx context.Context, r *preflightResult) e
 		r.add("not read-only", true, "no database sets default_transaction_read_only")
 	} else {
 		r.add("not read-only", false, "a database or role already sets default_transaction_read_only, so the switch cannot tell its own quiesce from yours")
+	}
+	if n, _ := strconv.Atoi(parts[3]); n > 0 {
+		r.add("replication", false, "the cluster has subscriptions or replication slots; they are not moved and a subscription would come back disabled")
 	}
 	if parts[2] != "" { // informational: the new cluster starts from the image's defaults
 		r.add("settings", true, "set with ALTER SYSTEM and not moved: "+parts[2])

@@ -88,11 +88,14 @@ The old volume is never mounted read-write by the switch, never renamed and neve
 docker volume rm <project>_postgres_data
 ```
 
+`nself reset`, `nself uninstall` and `nself stop --volumes` remove only the volumes of the current compose file, which names the new volume. The kept old volume (a full copy of the data, with password hashes) survives them, as does the new volume after a rollback. Remove them by hand.
+
 ### Limits
 
 - The data is read about four times (dump, restore, verify, recheck), so the downtime grows with the size of the database. `--plan` prints the estimate.
 - Row hashes use each row's text form. A column that stores an `oid`, `xid` or a similar server-local number differs between clusters and fails the verify.
-- The read-only setting stops every normal client. A superuser who turns it off for their own session and writes in the second between the recheck and the postgres stop is not detected; keep people off the database while the switch runs.
+- The read-only setting is a session default, not a lock: any session can turn it off for itself. Sessions are ended at the quiesce and again right before the recheck, and a write made before the recheck is caught (E510), but a write in the second between the recheck and the postgres stop is not. Keep people off the database while the switch runs.
+- Materialized views are rebuilt by the restore (`REFRESH`) and compared: a stale view in the old cluster gives E510, so refresh it first. Subscriptions and replication slots are refused in the preflight.
 - Settings made with `ALTER SYSTEM` (`postgresql.auto.conf`), a custom `pg_hba.conf` and changes to `template1` are not moved; the plan lists the `ALTER SYSTEM` settings it finds. Custom tablespaces, user-made template databases and the ICU locale provider are refused in the preflight.
 - The pgvector image is Debian-based and the alpine image is not: text sorts by the C library of the new image. Check ordering-sensitive queries after the switch.
 - `POSTGRES_DATA_VOLUME` is written to `.env`. If another env file in the cascade sets `POSTGRES_IMAGE` or `POSTGRES_DATA_VOLUME`, the switch stops and names the problem; the env file is put back.

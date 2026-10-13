@@ -104,6 +104,8 @@ type Runtime interface {
 	RunOneShot(ctx context.Context, spec docker.RunSpec) (stdout, stderr string, err error)
 	// RemoveContainer force-removes a container; absent is success.
 	RemoveContainer(ctx context.Context, name string) error
+	// VolumeLabels returns a volume's labels; exists is false when it is absent.
+	VolumeLabels(ctx context.Context, name string) (labels map[string]string, exists bool, err error)
 	// VolumeCreate, VolumeExists and VolumeRemove manage named volumes.
 	VolumeCreate(ctx context.Context, name string, labels map[string]string) error
 	VolumeExists(ctx context.Context, name string) (bool, error)

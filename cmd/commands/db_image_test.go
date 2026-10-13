@@ -32,7 +32,10 @@ func (imgRuntime) ExecSQL(context.Context, string, string, string, string) (stri
 func (imgRuntime) RunOneShot(context.Context, docker.RunSpec) (string, string, error) {
 	return "", "", nil
 }
-func (imgRuntime) RemoveContainer(context.Context, string) error                 { return nil }
+func (imgRuntime) RemoveContainer(context.Context, string) error { return nil }
+func (imgRuntime) VolumeLabels(context.Context, string) (map[string]string, bool, error) {
+	return nil, false, nil
+}
 func (imgRuntime) VolumeCreate(context.Context, string, map[string]string) error { return nil }
 func (imgRuntime) VolumeExists(context.Context, string) (bool, error)            { return false, nil }
 func (imgRuntime) VolumeRemove(context.Context, string) error                    { return nil }

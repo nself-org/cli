@@ -59,8 +59,11 @@ type fakeEnv struct {
 	mutate    string // "restore": the restored capture differs; "recheck": the original changed
 	killAt    string // "restore", "apply", "start"
 	applyErr  error
-	stopPGErr error // returned when postgres alone is stopped
-	healthErr error // returned by WaitHealthy
+	curVolume string // POSTGRES_DATA_VOLUME as last applied
+	// ignoreVolume makes compose keep the volume it had, whatever POSTGRES_DATA_VOLUME says.
+	ignoreVolume bool
+	stopPGErr    error // returned when postgres alone is stopped
+	healthErr    error // returned by WaitHealthy
 	// a database appears when the writers stop / while the dump runs
 	newDBOnStop, newDBAtDump bool
 	onDump                   func() // called when the dump one-shot runs
@@ -119,13 +122,21 @@ func (f *fakeEnv) called(substr string) bool {
 	return false
 }
 
+// dataVolume is the volume compose would mount: the one POSTGRES_DATA_VOLUME names, else the default.
+func (f *fakeEnv) dataVolume() string {
+	if f.curVolume != "" {
+		return f.curVolume
+	}
+	return "proj_postgres_data"
+}
+
 // Inspect implements Runtime.
 func (f *fakeEnv) Inspect(_ context.Context, name string) (ContainerInfo, error) {
 	img := oldImage
 	if f.pgvector {
 		img = newImage
 	}
-	return ContainerInfo{Image: img, Running: f.pgRunning, DataVolume: "proj_postgres_data", Networks: []string{"bridge", "proj_network"}, ComposeProject: "proj"}, nil
+	return ContainerInfo{Image: img, Running: f.pgRunning, DataVolume: f.dataVolume(), Networks: []string{"bridge", "proj_network"}, ComposeProject: "proj"}, nil
 }
 
 // ExecSQL implements Runtime. It answers the queries preflight and quiesce ask.
@@ -135,7 +146,7 @@ func (f *fakeEnv) ExecSQL(_ context.Context, _, _, db, sql string) (string, erro
 	case strings.Contains(sql, "'major'"):
 		return f.cluster + "\n", nil
 	case strings.Contains(sql, "pg_database_size"):
-		return "0|1048576|\n", nil
+		return "0|1048576||0\n", nil
 	case strings.Contains(sql, "FROM pg_extension"):
 		return f.instExt + "\n", nil
 	case strings.Contains(sql, "SET default_transaction_read_only = on"):
@@ -232,6 +243,14 @@ func (f *fakeEnv) VolumeCreate(_ context.Context, name string, labels map[string
 	return nil
 }
 
+// VolumeLabels implements Runtime.
+func (f *fakeEnv) VolumeLabels(_ context.Context, name string) (map[string]string, bool, error) {
+	if !f.volumes[name] {
+		return nil, false, nil
+	}
+	return f.labels[name], true, nil
+}
+
 // VolumeExists implements Runtime.
 func (f *fakeEnv) VolumeExists(_ context.Context, name string) (bool, error) {
 	return f.volumes[name], nil
@@ -318,6 +337,9 @@ func (f *fakeEnv) Apply(_ context.Context, env map[string]string) error {
 	}
 	f.envApplied = append(f.envApplied, env)
 	f.pgvector = env[EnvImage] == newImage
+	if !f.ignoreVolume {
+		f.curVolume = env[EnvDataVolume]
+	}
 	return nil
 }
 

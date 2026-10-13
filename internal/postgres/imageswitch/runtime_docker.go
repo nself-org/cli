@@ -57,6 +57,11 @@ func (DockerRuntime) RemoveContainer(ctx context.Context, name string) error {
 	return docker.RemoveContainer(ctx, name)
 }
 
+// VolumeLabels reads a volume's labels.
+func (DockerRuntime) VolumeLabels(ctx context.Context, name string) (map[string]string, bool, error) {
+	return docker.VolumeLabels(ctx, name)
+}
+
 // VolumeCreate creates a labelled volume.
 func (DockerRuntime) VolumeCreate(ctx context.Context, name string, labels map[string]string) error {
 	return docker.VolumeCreate(ctx, name, labels)

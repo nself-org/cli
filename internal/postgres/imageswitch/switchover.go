@@ -28,6 +28,10 @@ func (s *Switch) switchover(ctx context.Context) error {
 	if err := s.persist(PhaseSwitching); err != nil {
 		return err
 	}
+	// The new volume must still be the one this run restored into: a failed undo may have removed it.
+	if err := s.checkNewVolume(ctx); err != nil {
+		return s.abort(ctx, err)
+	}
 	s.say("stopping postgres on the old volume")
 	if err := s.d.Stack.Stop(ctx, s.cfg.Service); err != nil {
 		return s.abort(ctx, fmt.Errorf("stopping postgres: %w", err))
@@ -63,6 +67,9 @@ func (s *Switch) start(ctx context.Context) error {
 	defer cancel()
 	if err := s.d.Stack.WaitHealthy(wctx, s.cfg.Service); err != nil {
 		return fmt.Errorf("postgres did not become healthy on the new volume: %w", err)
+	}
+	if err := s.onVolume(ctx, s.st.NewVolume); err != nil {
+		return err
 	}
 	if err := s.persist(PhaseDone); err != nil {
 		return err

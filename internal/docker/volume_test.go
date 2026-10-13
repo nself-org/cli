@@ -121,3 +121,23 @@ func TestRunSpecNameAndLabelsAreRendered(t *testing.T) {
 		t.Errorf("args = %q, want %q", got, want)
 	}
 }
+
+func TestVolumeLabels(t *testing.T) {
+	fakeVolumeDocker(t, `{"org.nself.image-switch":"sw-1","com.docker.compose.volume":"postgres_data"}`, "")
+	got, ok, err := VolumeLabels(context.Background(), "v")
+	if err != nil || !ok || got["org.nself.image-switch"] != "sw-1" {
+		t.Errorf("labels = %v exists %v err %v", got, ok, err)
+	}
+	fakeVolumeDocker(t, "", "Error response from daemon: get v: no such volume")
+	if got, ok, err := VolumeLabels(context.Background(), "v"); err != nil || ok || got != nil {
+		t.Errorf("an absent volume: %v %v %v", got, ok, err)
+	}
+	fakeVolumeDocker(t, "not json", "")
+	if _, _, err := VolumeLabels(context.Background(), "v"); err == nil {
+		t.Error("unreadable inspect output must fail")
+	}
+	fakeVolumeDocker(t, "null", "")
+	if got, ok, err := VolumeLabels(context.Background(), "v"); err != nil || !ok || len(got) != 0 {
+		t.Errorf("a volume with no labels: %v %v %v", got, ok, err)
+	}
+}

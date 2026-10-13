@@ -137,6 +137,7 @@ func (s *Switch) Run(ctx context.Context, o RunOptions) (*Report, error) {
 			return nil, err
 		}
 		if r.Already {
+			_ = s.cleanStage() // a leftover from a crash between done and cleanup holds a full dump
 			return &Report{Status: "already-pgvector", OldImage: r.Info.Image, Preflight: r.Checks,
 				Warnings: []string{"postgres is already on pgvector; nothing was changed"}}, nil
 		}

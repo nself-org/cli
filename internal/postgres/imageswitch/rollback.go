@@ -43,7 +43,8 @@ func (s *Switch) undo(ctx context.Context) error {
 	ready := true
 	if info, err := s.d.Runtime.Inspect(ctx, s.cfg.Container); err != nil || !info.Running {
 		ready = step("starting postgres on the old volume", s.d.Stack.Up(ctx, s.cfg.Service)) &&
-			step("waiting for postgres", s.d.Stack.WaitHealthy(ctx, s.cfg.Service))
+			step("waiting for postgres", s.d.Stack.WaitHealthy(ctx, s.cfg.Service)) &&
+			step("checking the data volume", s.onVolume(ctx, s.st.OldVolume))
 	}
 	if s.st.ReadOnlySet && ready {
 		ready = step("resetting the read-only setting", s.resetReadOnly(ctx))
@@ -57,11 +58,26 @@ func (s *Switch) undo(ctx context.Context) error {
 		step("restarting the stopped services", errors.New("not started: postgres is not ready on the old volume"))
 	}
 	if len(failed) > 0 {
+		// Whatever was undone, a resume starts over from the quiesce: it must never
+		// trust a phase whose new volume this undo may already have removed.
+		s.st.Phase = PhaseStarted
 		_ = s.persist("")
 		return errors.Join(failed...)
 	}
 	_ = s.cleanStage()
 	return removeState(s.cfg.ProjectDir)
+}
+
+// onVolume fails unless postgres runs on the named data volume.
+func (s *Switch) onVolume(ctx context.Context, want string) error {
+	info, err := s.d.Runtime.Inspect(ctx, s.cfg.Container)
+	if err != nil {
+		return err
+	}
+	if info.DataVolume != want {
+		return fmt.Errorf("postgres runs on volume %q, expected %q", info.DataVolume, want)
+	}
+	return nil
 }
 
 // ErrNeedsConfirm is returned when a rollback after success was not confirmed.
@@ -101,6 +117,11 @@ func (s *Switch) Rollback(ctx context.Context, yes bool) (*Report, error) {
 
 // rollbackAfter reverses a switch whose env, compose and lock may name the new volume.
 func (s *Switch) rollbackAfter(ctx context.Context) (*Report, error) {
+	// The stack ran on the new volume only after the env was written and the start began.
+	var warnings []string
+	if s.st.Phase == PhaseSwitched || s.st.Phase == PhaseDone {
+		warnings = []string{"writes made on the new volume since the switch are not in the old volume"}
+	}
 	var failed []error
 	step := func(what string, err error) bool {
 		if err != nil {
@@ -116,6 +137,7 @@ func (s *Switch) rollbackAfter(ctx context.Context) (*Report, error) {
 		// Postgres first; the other services start only on a healthy, writable old cluster.
 		if step("starting postgres on the old volume", s.d.Stack.Up(ctx, s.cfg.Service)) &&
 			step("waiting for postgres", s.d.Stack.WaitHealthy(ctx, s.cfg.Service)) &&
+			step("checking the data volume", s.onVolume(ctx, s.st.OldVolume)) &&
 			step("resetting the read-only setting", s.resetReadOnly(ctx)) {
 			step("starting the stack", s.d.Stack.Up(ctx, s.stackServices()...))
 		} else {
@@ -131,7 +153,7 @@ func (s *Switch) rollbackAfter(ctx context.Context) (*Report, error) {
 	_ = s.cleanStage()
 	return &Report{
 		Status: "rolled-back", Phase: PhaseRolledBack, OldVolume: s.st.OldVolume, NewVolume: s.st.NewVolume,
-		Warnings:  []string{"writes made on the new volume since the switch are not in the old volume"},
+		Warnings:  warnings,
 		NextSteps: []string{"the new volume " + s.st.NewVolume + " was kept; remove it by hand when you no longer need it: docker volume rm " + s.st.NewVolume},
 	}, nil
 }
