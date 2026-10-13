@@ -1,6 +1,10 @@
 package plugin
 
-import "context"
+import (
+	"context"
+
+	"github.com/nself-org/cli/internal/plugin/verify/signature"
+)
 
 // RegistryClient abstracts plugin registry HTTP operations for testability.
 type RegistryClient interface {
@@ -237,6 +241,14 @@ type PluginManifest struct {
 	// Format: Ed25519Sign(privateKey, sha256(tarball)).
 	// Pinned in registry alongside AuthorPublicKey.
 	Signature string `json:"signature,omitempty"`
+
+	// ReleaseSignature is the registry's release_signature object (hq PLUG D7,
+	// contract plugins.release-signature v1), verified against the keys
+	// compiled into the CLI. It is the only signature the installer trusts;
+	// AuthorPublicKey and Signature above are decoded for compatibility and
+	// never used for trust. A malformed registry value decodes to a non-nil
+	// empty Release so the install refuses (E121) instead of seeing "absent".
+	ReleaseSignature *signature.Release `json:"release_signature,omitempty"`
 
 	// UpdatedAt is a per-plugin freshness timestamp (CLI-R16). The live
 	// plugins.nself.org registry does not send this field as of 2026-08-23 —

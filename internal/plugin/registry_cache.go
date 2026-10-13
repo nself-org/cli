@@ -154,9 +154,10 @@ func (r Registry) MarshalJSON() ([]byte, error) {
 			// "unsigned" branch — and because publishStatus was empty too, that
 			// branch returns nil instead of refusing a stable plugin. Signature
 			// verification was being skipped on every cache-warm install.
-			PublishStatus:   p.PublishStatus,
-			AuthorPublicKey: p.AuthorPublicKey,
-			Signature:       p.Signature,
+			PublishStatus:    p.PublishStatus,
+			AuthorPublicKey:  p.AuthorPublicKey,
+			Signature:        p.Signature,
+			ReleaseSignature: releaseSignatureRaw(p.ReleaseSignature),
 
 			Author:               p.Author,
 			Homepage:             p.Homepage,

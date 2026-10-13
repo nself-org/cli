@@ -119,7 +119,8 @@ type pluginEntry struct {
 	// registry for signature verification (T09).
 	AuthorPublicKey string `json:"author_public_key,omitempty"`
 	// Signature is the hex-encoded Ed25519 signature of the tarball checksum.
-	Signature string `json:"signature,omitempty"`
+	Signature        string          `json:"signature,omitempty"`
+	ReleaseSignature json.RawMessage `json:"release_signature,omitempty"` // see registry_parse_signature.go
 	// Implementation may appear as a nested object (Cloudflare Worker format)
 	// or as flat fields (older registry format).
 	Implementation *pluginImplementation `json:"implementation,omitempty"`

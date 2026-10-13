@@ -276,6 +276,8 @@ func TestEquivalencePluginInstall(t *testing.T) {
 			t.Fatal(err)
 		}
 		sum := sha256.Sum256(archive.Bytes())
+		checksum := hex.EncodeToString(sum[:])
+		releaseSig := signedFixtureEntry(t, "zzfixture", "1.0.0", checksum)
 		var downloads int
 		registry := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if strings.HasSuffix(r.URL.Path, "/tarball") {
@@ -283,7 +285,7 @@ func TestEquivalencePluginInstall(t *testing.T) {
 				_, _ = w.Write(archive.Bytes())
 				return
 			}
-			_, _ = fmt.Fprintf(w, `{"plugins":[{"name":"zzfixture","version":"1.0.0","description":"fixture","category":"utility","tier":"free","license":"MIT","checksum":"%s"}]}`, hex.EncodeToString(sum[:]))
+			_, _ = fmt.Fprintf(w, `{"plugins":[{"name":"zzfixture","version":"1.0.0","description":"fixture","category":"utility","tier":"free","license":"MIT","checksum":"%s",%s}]}`, checksum, releaseSig)
 		}))
 		defer registry.Close()
 		t.Setenv("NSELF_PLUGIN_REGISTRY", registry.URL)

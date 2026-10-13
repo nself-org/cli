@@ -84,6 +84,8 @@ github.com/munnerz/goautoneg
 github.com/nself-org/cli/sdk/go/v2/compat
 github.com/nself-org/cli/sdk/go/v2/migrate
 github.com/nself-org/cli/sdk/go/v2/remote
+github.com/nself-org/cli/sdk/go/v2/signing
+github.com/nself-org/cli/sdk/go/v2/signing/signingtest
 github.com/nself-org/cli/sdk/go/v2/simharness
 # github.com/prometheus/client_golang v1.25.0
 ## explicit; go 1.26.0
