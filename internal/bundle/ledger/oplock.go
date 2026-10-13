@@ -63,16 +63,27 @@ var opProcess = struct {
 // "bundle install nchat". A cancelled ctx stops the wait with an error that wraps
 // ctx.Err(); fn then never runs.
 func (s *Store) Operation(ctx context.Context, what string, fn func() error) error {
-	key, err := filepath.Abs(filepath.Clean(s.Dir()))
-	if err != nil {
-		key = filepath.Clean(s.Dir())
-	}
+	key := opKey(s.Dir())
 	h, err := s.opAcquire(ctx, key, what)
 	if err != nil {
 		return err
 	}
 	defer opRelease(key, h)
 	return fn()
+}
+
+// opKey is the process-wide key of a state directory: absolute, cleaned and with
+// symlinks resolved when the directory exists, so two spellings of one directory
+// (macOS /tmp vs /private/tmp) share one hold instead of deadlocking on a second flock.
+func opKey(dir string) string {
+	key, err := filepath.Abs(filepath.Clean(dir))
+	if err != nil {
+		key = filepath.Clean(dir)
+	}
+	if real, err := filepath.EvalSymlinks(key); err == nil {
+		key = real
+	}
+	return key
 }
 
 // opAcquire joins the hold of this process or becomes the one that takes the OS lock.

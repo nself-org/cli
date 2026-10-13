@@ -262,3 +262,22 @@ func TestOpLockTableOfLabels(t *testing.T) {
 		}
 	}
 }
+
+// TestOpLockSymlinkedDirIsReentrant: a second Store spelled through a symlink to
+// the same plugin directory joins the hold instead of waiting on a second flock.
+func TestOpLockSymlinkedDirIsReentrant(t *testing.T) {
+	needsFileLock(t)
+	root := t.TempDir()
+	link := filepath.Join(t.TempDir(), "plugins-link")
+	if err := os.Symlink(root, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	guard := time.AfterFunc(20*time.Second, func() { panic("symlinked Operation deadlocked") })
+	defer guard.Stop()
+	err := storeAt(root).Operation(context.Background(), "outer", func() error {
+		return storeAt(link).Operation(context.Background(), "via symlink", func() error { return nil })
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

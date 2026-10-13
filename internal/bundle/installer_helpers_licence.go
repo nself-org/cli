@@ -206,16 +206,25 @@ var validateRemote = plugin.ValidateLicenseRemoteWithDetails
 // allowed is a valid key whose tier is all-access or whose plugin list names
 // the plugin (case-insensitive). The key is never printed or put in an error.
 func remoteConfirmer(key string) func(ctx context.Context, name string) (bool, error) {
+	var (
+		fetched bool // one server call per pre-flight: the answer is the same for every member
+		valid   bool
+		resp    *plugin.LicenseValidateResponse
+		ferr    error
+	)
 	return func(ctx context.Context, name string) (bool, error) {
-		pingURL := "https://ping.nself.org"
-		if u := os.Getenv("NSELF_PING_API_URL"); u != "" {
-			pingURL = strings.TrimRight(u, "/")
+		if !fetched {
+			fetched = true
+			pingURL := "https://ping.nself.org"
+			if u := os.Getenv("NSELF_PING_API_URL"); u != "" {
+				pingURL = strings.TrimRight(u, "/")
+			}
+			cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+			valid, resp, ferr = validateRemote(cctx, key, pingURL)
 		}
-		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
-		valid, resp, err := validateRemote(ctx, key, pingURL)
-		if err != nil {
-			return false, err
+		if ferr != nil {
+			return false, ferr
 		}
 		if !valid || resp == nil {
 			return false, nil

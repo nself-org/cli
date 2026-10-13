@@ -257,3 +257,25 @@ func TestRemoteConfirmer(t *testing.T) {
 		}
 	}
 }
+
+// TestRemoteConfirmerAsksTheServerOnce: several members missed by the cache cost
+// one licence-server call, not one each.
+func TestRemoteConfirmerAsksTheServerOnce(t *testing.T) {
+	saved := validateRemote
+	t.Cleanup(func() { validateRemote = saved })
+	calls := 0
+	validateRemote = func(context.Context, string, string) (bool, *plugin.LicenseValidateResponse, error) {
+		calls++
+		return true, &plugin.LicenseValidateResponse{Tier: "chat", Plugins: []string{"ai"}}, nil
+	}
+	confirm := remoteConfirmer("fake-key-for-test")
+	for name, want := range map[string]bool{"ai": true, "mux": false, "claw": false} {
+		got, err := confirm(context.Background(), name)
+		if err != nil || got != want {
+			t.Errorf("confirm(%q) = %v, %v; want %v, nil", name, got, err, want)
+		}
+	}
+	if calls != 1 {
+		t.Errorf("licence server called %d times, want 1", calls)
+	}
+}
