@@ -103,7 +103,8 @@ func QualifyText(text string, container func(host string) (string, bool)) string
 
 var (
 	upstreamDeclRE = regexp.MustCompile(`(?m)^\s*upstream\s+([A-Za-z0-9_.-]+)\s*\{`)
-	zoneDeclRE     = regexp.MustCompile(`(?:limit_req_zone|limit_conn_zone)\s[^;]*?\bzone=([A-Za-z0-9_.-]+):`)
+	reqZoneDeclRE  = regexp.MustCompile(`limit_req_zone\s[^;]*?\bzone=([A-Za-z0-9_.-]+):`)
+	connZoneDeclRE = regexp.MustCompile(`limit_conn_zone\s[^;]*?\bzone=([A-Za-z0-9_.-]+):`)
 	keysZoneRE     = regexp.MustCompile(`\bkeys_zone=([A-Za-z0-9_.-]+):`)
 	mapDeclRE      = regexp.MustCompile(`(?m)^\s*(?:map|geo)\s[^{;]*?\$([A-Za-z_][A-Za-z0-9_]*)\s*\{`)
 )
@@ -131,13 +132,21 @@ func PrefixDeclared(text, prefix string) string {
 		rewrite(`(?m)(^\s*upstream\s+)`+q+`(\s*\{)`, n)
 		rewrite(`((?:://|proxy_pass\s+|grpc_pass\s+|fastcgi_pass\s+))`+q+`([:/;?$\s"']|$)`, n)
 	}
-	for _, n := range append(names(zoneDeclRE), names(keysZoneRE)...) {
+	// Three separate namespaces: request-limit zones, connection-limit zones, cache zones.
+	for _, n := range names(reqZoneDeclRE) {
 		q := regexp.QuoteMeta(n)
-		rewrite(`(\bzone=)`+q+`(:)`, n)
-		rewrite(`(\bkeys_zone=)`+q+`(:)`, n)
-		rewrite(`(\blimit_req\s+zone=)`+q+`(\b[^.\w-]|\s|;|$)`, n)
+		rewrite(`(limit_req_zone\s[^;]*?\bzone=)`+q+`(:)`, n)
+		rewrite(`(\blimit_req\s[^;]*?\bzone=)`+q+`(\s|;|$)`, n)
+	}
+	for _, n := range names(connZoneDeclRE) {
+		q := regexp.QuoteMeta(n)
+		rewrite(`(limit_conn_zone\s[^;]*?\bzone=)`+q+`(:)`, n)
 		rewrite(`(\blimit_conn\s+)`+q+`(\s)`, n)
-		rewrite(`(\bproxy_cache\s+)`+q+`(\s*;)`, n)
+	}
+	for _, n := range names(keysZoneRE) {
+		q := regexp.QuoteMeta(n)
+		rewrite(`(\bkeys_zone=)`+q+`(:)`, n)
+		rewrite(`(\b(?:proxy|fastcgi|uwsgi|scgi|grpc)_cache\s+)`+q+`(\s*;)`, n)
 	}
 	for _, n := range names(mapDeclRE) {
 		q := regexp.QuoteMeta(n)

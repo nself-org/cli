@@ -108,3 +108,24 @@ server {
 		t.Error("a conf with no declarations must be unchanged")
 	}
 }
+
+func TestPrefixDeclaredZoneNamespaces(t *testing.T) {
+	in := `limit_req_zone $binary_remote_addr zone=rl:10m rate=5r/s;
+limit_conn_zone $binary_remote_addr zone=cz:10m;
+proxy_cache_path /tmp/c keys_zone=api:1m;
+server {
+    location / {
+        limit_req burst=10 zone=rl nodelay;
+        limit_conn cz 5;
+        limit_req zone=api burst=20;
+        fastcgi_cache api;
+    }
+}
+`
+	out := PrefixDeclared(in, "p_")
+	for _, want := range []string{"zone=p_rl:10m", "zone=p_cz:10m", "keys_zone=p_api:1m", "limit_req burst=10 zone=p_rl nodelay", "limit_conn p_cz 5", "limit_req zone=api burst=20", "fastcgi_cache p_api;"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
+	}
+}
