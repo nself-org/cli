@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nself-org/cli/internal/sysexec"
 	"github.com/spf13/cobra"
 )
 
@@ -445,6 +446,10 @@ func runErrorHarnessCmd(t *testing.T, args []string) error {
 // default help behaviour). Those cases are logged rather than failed so the
 // harness stays green on group commands.
 func TestErrorHarness_AllCommandsReturnError(t *testing.T) {
+	// The harness runs real commands (trust, dns, ssl) with bad input; none may
+	// reach the host's privileged tools. A fake runner makes that true on a
+	// machine that has mkcert installed too (sysexec's guard panics otherwise).
+	t.Cleanup(sysexec.Set(&sysexec.Fake{}))
 	for _, tc := range errorHarnessCases {
 		tc := tc // capture range variable
 		name := tc.cmd + " " + tc.desc

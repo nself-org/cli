@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/deploy"
+	"github.com/nself-org/cli/internal/deploy/pintest"
 )
 
 // pipelineStubProber is a test Prober that always succeeds (full manage capability).
@@ -580,7 +581,7 @@ func TestPipelineE487InventoryEnv(t *testing.T) {
 		for _, deployKind := range []string{"app", "one"} {
 			t.Run(envName+"/"+deployKind, func(t *testing.T) {
 				root := t.TempDir()
-				t.Setenv("HOME", t.TempDir())
+				t.Setenv("HOME", pintest.Home(t))
 				t.Setenv("NSELF_V15", "1")
 				host := "u@host.example:2222"
 				srv := Server{Name: "web", Role: RoleApp, Host: host, RemotePath: "/opt/nself", Primary: true}

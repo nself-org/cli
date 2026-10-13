@@ -109,3 +109,54 @@ func TestProbe(t *testing.T) {
 		})
 	}
 }
+
+func TestRuntimeFailureClassifies(t *testing.T) {
+	t.Setenv("GITHUB_ACTIONS", "")
+	t.Setenv("INTEGRATION", "")
+	infra := &fakeTB{TB: t}
+	if !RuntimeFailure(infra, errors.New("docker: Error response from daemon: failed to create task for container: failed to create shim task"), "") || infra.skipped == "" {
+		t.Fatalf("an infrastructure error must skip: %+v", infra)
+	}
+	own := &fakeTB{TB: t}
+	if RuntimeFailure(own, errors.New("exit status 1"), "PROBE-FAIL: wrong header") || own.skipped != "" || own.failed != "" {
+		t.Fatalf("a test's own failure must not be classified as infrastructure: %+v", own)
+	}
+	if RuntimeFailure(&fakeTB{TB: t}, nil, "") {
+		t.Fatal("nil error is never a runtime failure")
+	}
+}
+
+func TestRuntimeFailureKeepsSpecErrorsAsFailures(t *testing.T) {
+	t.Setenv("GITHUB_ACTIONS", "")
+	for _, msg := range []string{
+		"docker: Error response from daemon: failed to create task for container: OCI runtime create failed: runc create failed: invalid mount source /nope",
+		"OCI runtime create failed: exec: \"sh\": executable file not found in $PATH",
+	} {
+		f := &fakeTB{TB: t}
+		if RuntimeFailure(f, errors.New(msg), "") || f.skipped != "" {
+			t.Errorf("spec error must stay a real failure: %q", msg)
+		}
+	}
+}
+
+func TestRuntimeFailureFailsUnderIntegration(t *testing.T) {
+	t.Setenv("GITHUB_ACTIONS", "")
+	t.Setenv("INTEGRATION", "1")
+	f := &fakeTB{TB: t}
+	RuntimeFailure(f, errors.New("failed to create shim task"), "")
+	if f.failed == "" || f.skipped != "" {
+		t.Fatalf("under INTEGRATION=1 an infrastructure error must fail: %+v", f)
+	}
+}
+
+func TestRuntimeFailureStrictOnGitHubLinux(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Strict is linux-only")
+	}
+	t.Setenv("GITHUB_ACTIONS", "true")
+	f := &fakeTB{TB: t}
+	RuntimeFailure(f, errors.New("failed to create shim task"), "")
+	if f.failed == "" || f.skipped != "" {
+		t.Fatalf("on a GitHub Linux runner an infrastructure error must fail: %+v", f)
+	}
+}

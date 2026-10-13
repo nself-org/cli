@@ -1,8 +1,10 @@
 package bundle
 
 import (
-	"os"
 	"testing"
+	"time"
+
+	"github.com/nself-org/cli/internal/testwatch"
 )
 
 // fixtureBundlesJSON is a representative bundles.json payload (ADR-P6-03
@@ -26,7 +28,7 @@ func TestMain(m *testing.M) {
 	if err := LoadBytes([]byte(fixtureBundlesJSON)); err != nil {
 		panic("seeding bundle fixture: " + err.Error())
 	}
-	os.Exit(m.Run())
+	testwatch.Main(m, 90*time.Second) // a never-released operation lock fails in 90 s, not 10 min
 }
 
 func TestGet_KnownBundles(t *testing.T) {

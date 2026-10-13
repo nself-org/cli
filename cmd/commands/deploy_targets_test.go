@@ -12,6 +12,7 @@ import (
 
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/deploy"
+	"github.com/nself-org/cli/internal/deploy/pintest"
 	"github.com/nself-org/cli/internal/output"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 	"github.com/spf13/cobra"
@@ -186,7 +187,7 @@ func TestE487HintEnrollThenDeploy(t *testing.T) {
 	}
 	root, cleanup := newTestRoot(t)
 	defer cleanup()
-	t.Setenv("HOME", t.TempDir())
+	t.Setenv("HOME", pintest.Home(t))
 	t.Setenv("NSELF_V15", "1")
 	host := "u@host.example"
 	writeInventory(t, root, &controlplane.Inventory{SchemaVersion: 2, Environments: map[string]controlplane.Environment{

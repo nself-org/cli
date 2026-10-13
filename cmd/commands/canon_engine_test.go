@@ -869,6 +869,10 @@ func unclassifiedParents(root *cobra.Command, helpOnly, takesArgs []string) []st
 
 func TestHelpOnlyParentsComplete(t *testing.T) {
 	reattachRealTree()
+	// The builtin admin family is mounted at runtime, and only by earlier tests
+	// in this package; mount it here so the test also passes alone (-run) and in
+	// any order (D-0463). The mount is idempotent.
+	mountBuiltinFamiliesFromList(RootCmd)
 	if p := unclassifiedParents(RootCmd, helpOnlyParents, takesArgsParents); len(p) > 0 {
 		t.Fatalf("classify every parent as help-only (helpOnlyParents) or arg-taking (takesArgsParents):\n  %s", strings.Join(p, "\n  "))
 	}

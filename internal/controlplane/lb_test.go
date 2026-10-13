@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/nself-org/cli/internal/compat/compattest"
+	"github.com/nself-org/cli/internal/deploy/pintest"
 )
 
 // skipOnWindows skips tests that rely on Unix shell-script fakery (PATH override
@@ -41,7 +42,7 @@ func stubHostKeyPin(t *testing.T, bin string) {
 			t.Fatalf("write fake %s: %v", name, err)
 		}
 	}
-	home := t.TempDir()
+	home := pintest.Home(t)
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
 	pin := DeployKnownHostsPath()
