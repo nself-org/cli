@@ -1,0 +1,10 @@
+{
+  "schema_version": "1",
+  "command": "mcp setup",
+  "data": {
+    "client": "claude-code",
+    "path": ".mcp.json",
+    "content": "{\"mcpServers\":{\"nself\":{\"command\":\"nself\",\"args\":[\"mcp\"]}}}",
+    "written": true
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "zed": {
+      "command": "z"
+    },
+    "nself": {
+      "command": "nself",
+      "args": [
+        "mcp"
+      ]
+    }
+  },
+  "theme": "dark"
+}

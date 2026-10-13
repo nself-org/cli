@@ -476,8 +476,12 @@ Full page: [[cmd-logs]]
 Start the nSelf MCP server
 
 ```
-nself mcp [flags]
+nself mcp <subcommand> [flags]
 ```
+
+Subcommands:
+
+- `setup` — Print or write the MCP client config and AGENTS.md for this project
 
 Flags:
 

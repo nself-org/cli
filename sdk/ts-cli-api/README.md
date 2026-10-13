@@ -88,7 +88,7 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 
 <!-- BEGIN GENERATED: operations (tools/sdkgen, DO NOT HAND EDIT) -->
 
-210 operations. Every method takes `{ args, flags }` (plus `confirm` where the operation declares it) and resolves to the typed `data` member.
+211 operations. Every method takes `{ args, flags }` (plus `confirm` where the operation declares it) and resolves to the typed `data` member.
 
 | Method | Route | Summary |
 | --- | --- | --- |
@@ -283,6 +283,7 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 | `initTemplatePublish` | `POST /v1/commands/init/template/publish` | Submit a template to the nSelf registry |
 | `initTemplateUpdate` | `POST /v1/commands/init/template/update` | Apply incremental migrations for the installed template |
 | `logs` | `POST /v1/commands/logs` | View and filter service logs |
+| `mcpSetup` | `POST /v1/commands/mcp/setup` | Print or write the MCP client config and AGENTS.md for this project |
 | `reset` | `POST /v1/commands/reset` | Stop containers, remove all data volumes, and clean generated files |
 | `status` | `POST /v1/commands/status` | Show health status of all services |
 | `statusHealth` | `POST /v1/commands/status/health` | Health check management with continuous monitoring |

@@ -112,7 +112,7 @@ Run `make cmd-inventory` to refresh. **Total top-level commands: 24**
 | `nself init` | Initialize a new nSelf project | core | template |
 | `nself license` | Manage license keys for nSelf product bundles | extend | account, add, clear, export, health, import, list, login, logout, migrate, refresh, remove, restore, revalidate, revoke, set, show, simulate-offline, status, tail, upgrade, validate |
 | `nself logs` | View and filter service logs | core | — |
-| `nself mcp` | Start the nSelf MCP server | extend | — |
+| `nself mcp` | Start the nSelf MCP server | extend | setup |
 | `nself remove` | Remove an installed plugin or bundle | extend | — |
 | `nself reset` | Stop containers, remove all data volumes, and clean generated files | core | — |
 | `nself restart` | Smart restart with config change detection | core | — |

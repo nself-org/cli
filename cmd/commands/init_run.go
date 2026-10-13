@@ -215,6 +215,8 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	scaffoldAgentsMD(cwd, quiet)
+
 	if quiet {
 		return nil
 	}

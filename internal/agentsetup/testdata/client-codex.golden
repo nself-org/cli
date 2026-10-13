@@ -1,0 +1,4 @@
+[mcp_servers.nself]
+command = "nself"
+args = ["mcp"]
+
