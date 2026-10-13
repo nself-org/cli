@@ -33,6 +33,11 @@ func loadFloor(data []byte) (map[string]map[string]string, error) {
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return nil, fmt.Errorf("signature: signed_since.json: %w", err)
 	}
+	for _, tier := range []string{TierFree, TierLicensed} {
+		if doc.Tiers[tier] == nil {
+			return nil, fmt.Errorf("signature: signed_since.json: tier %q is missing or null (an empty floor is {})", tier)
+		}
+	}
 	return doc.Tiers, nil
 }
 
@@ -87,15 +92,17 @@ func preLess(a, b string) bool {
 		if x[i] == y[i] {
 			continue
 		}
-		nx, errX := strconv.Atoi(x[i])
-		ny, errY := strconv.Atoi(y[i])
-		if errX == nil && errY == nil {
-			return cmp.Less(nx, ny)
-		}
-		if errX == nil {
+		numX, numY := isDigits(x[i]), isDigits(y[i])
+		switch {
+		case numX && numY:
+			// Digit strings of any length: shorter is smaller, equal length compares as text.
+			if len(x[i]) != len(y[i]) {
+				return len(x[i]) < len(y[i])
+			}
+			return x[i] < y[i]
+		case numX:
 			return true // numeric identifiers sort below alphanumeric ones
-		}
-		if errY == nil {
+		case numY:
 			return false
 		}
 		return cmp.Less(x[i], y[i])
@@ -112,7 +119,11 @@ func parseVersion(s string) (parsedVersion, bool) {
 	var pv parsedVersion
 	s = strings.TrimPrefix(s, "v")
 	s, _, _ = strings.Cut(s, "+")
-	s, pv.pre, _ = strings.Cut(s, "-")
+	s, pre, hasPre := strings.Cut(s, "-")
+	if hasPre && !validPre(pre) {
+		return pv, false // "1.2.3-", "1.2.3-!" and "1.2.3-01" are not semver
+	}
+	pv.pre = pre
 	parts := strings.Split(s, ".")
 	if len(parts) != 3 {
 		return pv, false
@@ -125,4 +136,36 @@ func parseVersion(s string) (parsedVersion, bool) {
 		pv.num[i] = n
 	}
 	return pv, true
+}
+
+// validPre reports whether p is a semver 2.0.0 pre-release: non-empty
+// dot-separated identifiers of [0-9A-Za-z-], numeric ones without a leading zero.
+func validPre(p string) bool {
+	for _, id := range strings.Split(p, ".") {
+		if id == "" {
+			return false
+		}
+		for _, c := range id {
+			if c != '-' && (c < '0' || c > '9') && (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') {
+				return false
+			}
+		}
+		if isDigits(id) && len(id) > 1 && id[0] == '0' {
+			return false
+		}
+	}
+	return true
+}
+
+// isDigits reports whether s is a non-empty run of ASCII digits.
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }

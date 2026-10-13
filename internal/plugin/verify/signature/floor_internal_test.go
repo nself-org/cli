@@ -8,7 +8,13 @@ func TestFloorFailsClosedOnBadFile(t *testing.T) {
 	if _, err := loadFloor([]byte(`{"tiers": [`)); err == nil {
 		t.Fatal("loadFloor accepted broken JSON")
 	}
-	m, err := loadFloor([]byte(`{"tiers":{"free":{"ci":"1.0.0"}}}`))
+	// A structurally broken table (missing or null tier, no tiers key) fails closed too.
+	for _, bad := range []string{`{}`, `null`, `{"tiers":{"licensed":{}}}`, `{"tiers":{"free":{},"licensed":null}}`} {
+		if _, err := loadFloor([]byte(bad)); err == nil {
+			t.Errorf("loadFloor accepted %s", bad)
+		}
+	}
+	m, err := loadFloor([]byte(`{"tiers":{"free":{"ci":"1.0.0"},"licensed":{}}}`))
 	if err != nil || m["free"]["ci"] != "1.0.0" {
 		t.Fatalf("loadFloor = %v, %v", m, err)
 	}
