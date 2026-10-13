@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -235,7 +236,7 @@ func TestWriteRefusesSymlinkedParentAndKeepsMode(t *testing.T) {
 	if _, written, err := WriteClient(d2, ClaudeCode); err != nil || !written {
 		t.Fatalf("merge: %v %v", written, err)
 	}
-	if fi, _ := os.Stat(p); fi.Mode().Perm() != 0o600 {
+	if fi, _ := os.Stat(p); runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600 {
 		t.Errorf("mode = %v, want 0600", fi.Mode().Perm())
 	}
 }
