@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nself-org/cli/internal/trust/sysexec"
+	"github.com/nself-org/cli/internal/sysexec"
 )
 
 // ErrSudoRequired is returned when an operation requires elevated privileges

@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/nself-org/cli/internal/trust/sysexec"
+	"github.com/nself-org/cli/internal/sysexec"
 )
 
 const (

@@ -54,6 +54,7 @@ rules:
   - {match: "internal/output/**", layer: L0}
   - {match: "internal/canon/**", layer: L0}
   - {match: "internal/cmdregistry/**", layer: L0}
+  - {match: "internal/sysexec/**", layer: L0}              # command runner + headless check for system-changing setup (trust, ssl, dns)
   # L2: domain orchestrators plus the planned ones
   - {match: "internal/upgrade/stack/**", layer: L2}
   - {match: "internal/build/**", layer: L2}

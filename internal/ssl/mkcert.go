@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/nself-org/cli/internal/trust/sysexec"
+	"github.com/nself-org/cli/internal/sysexec"
 )
 
 // mkcertAvailable returns true if the mkcert binary is on PATH.

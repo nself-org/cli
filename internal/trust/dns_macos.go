@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nself-org/cli/internal/trust/sysexec"
+	"github.com/nself-org/cli/internal/sysexec"
 )
 
 // dnsmasqConfLine, resolverContent, and resolverPath are defined in

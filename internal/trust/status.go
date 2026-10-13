@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/ssl"
-	"github.com/nself-org/cli/internal/trust/sysexec"
+	"github.com/nself-org/cli/internal/sysexec"
 )
 
 // TrustStatus holds the current state of all trust components.

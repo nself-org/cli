@@ -18,7 +18,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nself-org/cli/internal/trust/sysexec"
+	"github.com/nself-org/cli/internal/sysexec"
 )
 
 // directExecCalls returns "file:line exec.X" for every exec.Command or
@@ -125,7 +125,7 @@ func TestNoDirectExecInPrivilegedSetupCode(t *testing.T) {
 			if f == filepath.FromSlash("../ssl/mkcert.go") && c.bin == "openssl" {
 				continue
 			}
-			t.Errorf("direct os/exec call; route it through internal/trust/sysexec: %s exec.%s(%s)", c.pos, c.fn, c.bin)
+			t.Errorf("direct os/exec call; route it through internal/sysexec: %s exec.%s(%s)", c.pos, c.fn, c.bin)
 		}
 	}
 	if scanned < 15 {

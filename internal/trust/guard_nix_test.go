@@ -5,7 +5,7 @@ package trust
 import (
 	"context"
 
-	"github.com/nself-org/cli/internal/trust/sysexec"
+	"github.com/nself-org/cli/internal/sysexec"
 )
 
 func adminProbe(ctx context.Context) error {

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nself-org/cli/internal/trust/sysexec"
+	"github.com/nself-org/cli/internal/sysexec"
 )
 
 // mutating reports whether the recorded call would change the system.

@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/nself-org/cli/internal/trust/sysexec"
+	"github.com/nself-org/cli/internal/sysexec"
 )
 
 // TestMain makes every test in this package hermetic by default: a fake

@@ -3,7 +3,7 @@ package trust
 import (
 	"errors"
 
-	"github.com/nself-org/cli/internal/trust/sysexec"
+	"github.com/nself-org/cli/internal/sysexec"
 )
 
 // ErrSkippedHeadless is returned by a setup step that found its state missing

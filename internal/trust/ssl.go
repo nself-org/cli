@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/ssl"
-	"github.com/nself-org/cli/internal/trust/sysexec"
+	"github.com/nself-org/cli/internal/sysexec"
 )
 
 const mkcertInstallTimeout = 5 * time.Minute

@@ -11,7 +11,7 @@ import (
 
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/ssl"
-	"github.com/nself-org/cli/internal/trust/sysexec"
+	"github.com/nself-org/cli/internal/sysexec"
 	"github.com/nself-org/cli/internal/ui"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nself-org/cli/internal/trust/sysexec"
+	"github.com/nself-org/cli/internal/sysexec"
 )
 
 // TestRerunWithOsascript_BacktickBlocked verifies that workdir values

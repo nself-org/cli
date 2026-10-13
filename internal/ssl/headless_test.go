@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nself-org/cli/internal/trust/sysexec"
+	"github.com/nself-org/cli/internal/sysexec"
 )
 
 // hermeticSSL installs a recording fake runner, a temp hosts file and a clean
