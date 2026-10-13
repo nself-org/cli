@@ -18,8 +18,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/joho/godotenv"
-
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/docker"
 )
 
@@ -144,7 +143,7 @@ func prepareGenerations(workdir, sslDir string) error {
 
 // hostOwner reads the ids traefik runs as from .nself/compose.env (-1, -1 when absent).
 func hostOwner(workdir string) (uid, gid int) {
-	env, err := godotenv.Read(filepath.Join(workdir, ".nself", "compose.env"))
+	env, err := config.ReadEnvFile(filepath.Join(workdir, ".nself", "compose.env"))
 	if err != nil {
 		return -1, -1
 	}

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -211,6 +212,9 @@ func TestAcmeTraefikGenerationDirsTraversable(t *testing.T) {
 }
 
 func TestAcmeTraefikSpecRefusals(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the spec carries POSIX host paths")
+	}
 	roots := []string{"/p"}
 	mount := func(src, dst string, ro bool) string {
 		return `{"type":"bind","source":"` + src + `","target":"` + dst + `","read_only":` + map[bool]string{true: "true", false: "false"}[ro] + `}`
@@ -248,6 +252,9 @@ func TestAcmeTraefikSpecRefusals(t *testing.T) {
 // The renewal timer runs as root: the new generation is handed to the ids the
 // build exported for traefik, and nothing moves without them or when not root.
 func TestAcmeTraefikGenerationHandOver(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits and ownership")
+	}
 	root := t.TempDir()
 	gen := filepath.Join(root, "ssl", "certificates", ".x.gen-3")
 	if err := os.MkdirAll(gen, 0o700); err != nil {
