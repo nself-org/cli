@@ -23,6 +23,7 @@ import (
 // (non-strict skip); every app-ready step passes for notifications, yet the run
 // is NOT VERIFIED and names jobs.
 func TestBundleInstallSkippedMemberNotAppReady(t *testing.T) {
+	guardOperationLockTest(t)
 	pluginDir := isolate(t)
 	setupOfflineRegistry(t, mockNotificationsOnly())
 	srv := healthServer(t, 1, 1)
