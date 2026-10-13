@@ -179,7 +179,7 @@ func TestValidShapes(t *testing.T) {
 			t.Errorf("ValidFile(%q) = %v, want %v", rel, !want, want)
 		}
 	}
-	for name, want := range map[string]bool{"bproj": true, "b.c-d_e": true, "_owner": false, "": false, "../x": false, "a/b": false, ".hid": false, "a..b": false} {
+	for name, want := range map[string]bool{"bproj": true, "b-c_d": true, "_owner": false, "": false, "../x": false, "a/b": false, ".hid": false, "a.b": false} {
 		if ValidProject(name) != want {
 			t.Errorf("ValidProject(%q) = %v, want %v", name, !want, want)
 		}

@@ -49,6 +49,7 @@ When the owner has `nginx/shared/` with a `_owner.json` (the owner's build write
 | Different pair not owned by this project | `E503` |
 | Directory managed by ACME (symlink to a generation directory, recorded in `ssl/.acme/lineages.json`) | Left alone, never listed, never removed |
 | Any other symlink on the path, or no write permission | `E503`, nothing written |
+| This project has no local pair yet (first build, or `ssl/` cleaned) and the directory exists in the owner's `ssl/` | Own directory: kept and stays listed. Anyone else's: `E503` (it cannot be proven identical) |
 
 ## Refusals
 

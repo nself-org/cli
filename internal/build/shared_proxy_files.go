@@ -78,7 +78,7 @@ func (st *buildState) finishFronted(sp *sharedProxy) error {
 			return err
 		}
 		if (action == certCopy || action == certReplace) && !st.planning() {
-			if err := probeWritable(filepath.Join(sp.sslDir, "certificates", dir)); err != nil {
+			if err := probeWritable(filepath.Join(sp.sslDir, "certificates")); err != nil {
 				return err
 			}
 		}
@@ -89,7 +89,9 @@ func (st *buildState) finishFronted(sp *sharedProxy) error {
 		switch s.action {
 		case certCopy, certReplace:
 			if !s.haveSource {
-				warnOnce("shared proxy: " + sp.project + " has no certificate pair in ssl/certificates/" + s.dir + " to copy to the owner yet; its confs will not load until it does")
+				if !st.planning() {
+					warnOnce("shared proxy: " + sp.project + " has no certificate pair in ssl/certificates/" + s.dir + " to copy to the owner yet; its confs will not load until it does")
+				}
 				continue
 			}
 			if err := st.installCert(sp, s.dir, s.action == certReplace); err != nil {

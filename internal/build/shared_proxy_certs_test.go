@@ -233,3 +233,26 @@ func TestSharedProxyLegacyFrontedUnchanged(t *testing.T) {
 		t.Error("nginx/shared/ appeared without NGINX_MODE=shared")
 	}
 }
+
+// An owner ssl/certificates that cannot be written fails the build before any conf is written.
+func TestSharedProxyCertsUnwritableOwner(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can write anywhere")
+	}
+	x := newSharedFx(t)
+	x.mustBuild(t, x.owner, x.ownerEnv())
+	certs := filepath.Join(x.owner, "ssl", "certificates")
+	if err := os.MkdirAll(certs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(certs, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(certs, 0o755) })
+	writeCert(t, filepath.Join(x.backend(), "ssl", "certificates", "b-test"), time.Now().Add(48*time.Hour))
+	before := treeDigest(t, filepath.Join(x.owner, "nginx"))
+	wantCode(t, x.build(t, x.backend(), x.tlsEnv("bproj", "b.test")), "E503", "not writable")
+	if treeDigest(t, filepath.Join(x.owner, "nginx")) != before {
+		t.Error("a refused build wrote into the owner's nginx tree")
+	}
+}

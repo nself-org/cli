@@ -240,7 +240,8 @@ func (st *buildState) installCert(sp *sharedProxy, dir string, replace bool) err
 		_ = os.Rename(old, target) // put the working pair back
 		return err
 	}
-	return os.RemoveAll(old)
+	_ = os.RemoveAll(old) // the new pair is live; a leftover .old dir is harmless
+	return nil
 }
 
 // checkCertTargets refuses, before any write, a certificate directory of the
@@ -260,7 +261,7 @@ func (st *buildState) checkCertTargets(sp *sharedProxy) error {
 			return err
 		}
 		if (action == certCopy || action == certReplace) && !st.planning() {
-			if err := probeWritable(filepath.Join(sp.sslDir, "certificates", dir)); err != nil {
+			if err := probeWritable(filepath.Join(sp.sslDir, "certificates")); err != nil {
 				return err
 			}
 		}

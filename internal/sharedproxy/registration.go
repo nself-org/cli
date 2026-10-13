@@ -119,15 +119,15 @@ func ValidFile(rel string) bool {
 // token that cannot reach the reserved owner file (`_owner.json`) or leave the
 // directory when used as `<project>.json` or as the `<project>.` file prefix.
 func ValidProject(name string) bool {
-	if name == "" || name[0] == '_' || name[0] == '.' || name[0] == '-' {
+	if name == "" || name[0] == '_' || name[0] == '-' {
 		return false
 	}
 	for _, r := range name {
-		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-' || r == '.') {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-') {
 			return false
 		}
 	}
-	return !strings.Contains(name, "..")
+	return true
 }
 
 // Parse decodes and validates data read from file name `name` (the base name)
