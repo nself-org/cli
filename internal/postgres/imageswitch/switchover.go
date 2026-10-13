@@ -21,19 +21,25 @@ func (s *Switch) newEnv() map[string]string {
 	return map[string]string{EnvImage: s.st.NewImage, EnvDataVolume: s.st.NewVolume}
 }
 
-// switchover stops postgres and rewrites env, compose and lock.
+// switchover stops postgres and rewrites env, compose and lock. A failure to stop
+// postgres changed nothing and undoes the switch; a failure of the rewrite puts
+// the previous env, compose and lock back and starts the old stack, as rollback does.
 func (s *Switch) switchover(ctx context.Context) error {
 	if err := s.persist(PhaseSwitching); err != nil {
 		return err
 	}
 	s.say("stopping postgres on the old volume")
 	if err := s.d.Stack.Stop(ctx, s.cfg.Service); err != nil {
-		return fmt.Errorf("stopping postgres: %w", err)
+		return s.abort(ctx, fmt.Errorf("stopping postgres: %w", err))
 	}
 	s.say("writing %s and %s, regenerating compose and the lock", EnvImage, EnvDataVolume)
 	// An interrupt must not stop the rewrite half way: the Applier holds to the end.
 	if err := s.d.Applier.Apply(context.WithoutCancel(ctx), s.newEnv()); err != nil {
-		return fmt.Errorf("switching env, compose and lock: %w", err)
+		cause := fmt.Errorf("switching env, compose and lock: %w", err)
+		if _, rerr := s.rollbackAfter(ctx); rerr != nil {
+			return withNote(cause, "Putting the old stack back also failed: "+s.redact(rerr.Error(), 3))
+		}
+		return withNote(cause, "The previous env, compose and lock were put back and the old stack runs on the old volume.")
 	}
 	return s.persist(PhaseSwitched)
 }

@@ -44,9 +44,10 @@ func (s *Switch) verify(context.Context) error {
 
 // recheck captures the old cluster again and compares it with the dump-time capture.
 func (s *Switch) recheck(ctx context.Context) error {
+	s.clearOneShots(ctx)
 	s.say("checking the original did not change since the dump")
 	if _, stderr, err := s.d.Runtime.RunOneShot(ctx, s.oldClusterSpec("recheck", "recheck.sh")); err != nil {
-		return coded("E510", "the original could not be re-checked", redactTail(stderr+"\n"+err.Error(), 3), "")
+		return coded("E510", "the original could not be re-checked", s.redact(stderr+"\n"+err.Error(), 3), "")
 	}
 	diffs, err := s.compareSets("old", "chk")
 	if err != nil {

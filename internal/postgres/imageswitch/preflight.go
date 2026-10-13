@@ -18,7 +18,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"unicode"
 )
 
 // preflightResult is everything preflight learned.
@@ -105,47 +104,33 @@ func (s *Switch) readCluster(ctx context.Context) (*clusterDoc, error) {
 	}
 	out, err := s.d.Runtime.ExecSQL(ctx, s.cfg.Container, s.cfg.User, "template1", q)
 	if err != nil {
-		return nil, fmt.Errorf("reading the cluster: %s", redactTail(err.Error(), 3))
+		return nil, fmt.Errorf("reading the cluster: %s", s.redact(err.Error(), 3))
 	}
 	return parseCluster(out)
 }
 
 // checkCluster adds the checks that read the cluster document.
 func (s *Switch) checkCluster(r *preflightResult) {
-	cl := r.Cluster
-	if len(cl.Tablespaces) == 0 {
-		r.add("tablespaces", true, "only the default tablespaces")
-	} else {
-		r.add("tablespaces", false, strings.Join(cl.Tablespaces, ", ")+" (the restore cannot recreate custom tablespaces)")
+	bad := clusterProblems(r.Cluster)
+	if len(bad) == 0 && len(r.Cluster.Databases) > 0 {
+		r.add("cluster", true, fmt.Sprintf("%d databases, default tablespaces only", len(r.Cluster.Databases)))
+		return
 	}
-	var bad []string
-	for _, d := range cl.Databases {
-		if !d.AllowConnections {
-			bad = append(bad, d.Name+" does not allow connections")
-		}
-		if d.Provider != "c" {
-			bad = append(bad, d.Name+" uses locale provider "+d.Provider+" (only libc is moved)")
-		}
-		if strings.IndexFunc(d.Name, unicode.IsControl) >= 0 {
-			bad = append(bad, "a database name holds a control character")
-		}
+	if len(bad) == 0 {
+		bad = []string{"the cluster has no database to move"}
 	}
-	detail := fmt.Sprintf("%d databases", len(cl.Databases))
-	if len(bad) > 0 {
-		detail = strings.Join(bad, "; ")
-	}
-	r.add("databases", len(bad) == 0 && len(cl.Databases) > 0, detail)
+	r.add("cluster", false, strings.Join(bad, "; "))
 }
 
 // checkReadOnlyAndSize adds the read-only and data-size checks.
 func (s *Switch) checkReadOnlyAndSize(ctx context.Context, r *preflightResult) error {
 	out, err := s.d.Runtime.ExecSQL(ctx, s.cfg.Container, s.cfg.User, "template1",
-		`SELECT (SELECT count(*) FROM pg_db_role_setting s, unnest(s.setconfig) c WHERE c ~ '^default_transaction_read_only='), (SELECT coalesce(sum(pg_database_size(datname)), 0) FROM pg_database)`)
+		`SELECT (SELECT count(*) FROM pg_db_role_setting s, unnest(s.setconfig) c WHERE c ~ '^default_transaction_read_only='), (SELECT coalesce(sum(pg_database_size(datname)), 0) FROM pg_database), (SELECT coalesce(string_agg(name, ',' ORDER BY name), '') FROM pg_settings WHERE sourcefile LIKE '%auto.conf')`)
 	if err != nil {
-		return fmt.Errorf("measuring the cluster: %s", redactTail(err.Error(), 3))
+		return fmt.Errorf("measuring the cluster: %s", s.redact(err.Error(), 3))
 	}
 	parts := strings.Split(strings.TrimSpace(out), "|")
-	if len(parts) != 2 {
+	if len(parts) != 3 {
 		return fmt.Errorf("measuring the cluster: unexpected answer %q", strings.TrimSpace(out))
 	}
 	ro, _ := strconv.Atoi(parts[0])
@@ -154,6 +139,9 @@ func (s *Switch) checkReadOnlyAndSize(ctx context.Context, r *preflightResult) e
 		r.add("not read-only", true, "no database sets default_transaction_read_only")
 	} else {
 		r.add("not read-only", false, "a database or role already sets default_transaction_read_only, so the switch cannot tell its own quiesce from yours")
+	}
+	if parts[2] != "" { // informational: the new cluster starts from the image's defaults
+		r.add("settings", true, "set with ALTER SYSTEM and not moved: "+parts[2])
 	}
 	return nil
 }
@@ -164,7 +152,7 @@ func (s *Switch) checkReadOnlyAndSize(ctx context.Context, r *preflightResult) e
 func (s *Switch) checkTarget(ctx context.Context, r *preflightResult) {
 	p, err := s.probeTarget(ctx, r.Target)
 	if err != nil {
-		r.add("target image", false, "could not run it: "+redactTail(err.Error(), 2))
+		r.add("target image", false, "could not run it: "+s.redact(err.Error(), 2))
 	} else {
 		need := r.DataBytes * 2
 		r.add("docker data root", p.freeKB*1024 >= need, fmt.Sprintf("%s free, %s needed (2x the data)", humanBytes(p.freeKB*1024), humanBytes(need)))
@@ -187,7 +175,7 @@ func (s *Switch) checkShips(ctx context.Context, r *preflightResult, p *targetPr
 	for _, d := range r.Cluster.Databases {
 		out, err := s.d.Runtime.ExecSQL(ctx, s.cfg.Container, s.cfg.User, d.Name, "SELECT coalesce(string_agg(extname, ','), '') FROM pg_extension")
 		if err != nil {
-			r.add("extensions", false, "could not list the extensions of "+d.Name+": "+redactTail(err.Error(), 2))
+			r.add("extensions", false, "could not list the extensions of "+d.Name+": "+s.redact(err.Error(), 2))
 			return
 		}
 		for _, e := range strings.Split(strings.TrimSpace(out), ",") {

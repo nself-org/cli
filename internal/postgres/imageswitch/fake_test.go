@@ -59,8 +59,13 @@ type fakeEnv struct {
 	mutate    string // "restore": the restored capture differs; "recheck": the original changed
 	killAt    string // "restore", "apply", "start"
 	applyErr  error
-	sessions  string // answer to the session count query
-	instExt   string // extensions installed in every database
+	stopPGErr error // returned when postgres alone is stopped
+	healthErr error // returned by WaitHealthy
+	// a database appears when the writers stop / while the dump runs
+	newDBOnStop, newDBAtDump bool
+	onDump                   func() // called when the dump one-shot runs
+	sessions                 string // answer to the session count query
+	instExt                  string // extensions installed in every database
 }
 
 // newFake returns a world with a running alpine postgres, two databases and a stack.
@@ -130,7 +135,7 @@ func (f *fakeEnv) ExecSQL(_ context.Context, _, _, db, sql string) (string, erro
 	case strings.Contains(sql, "'major'"):
 		return f.cluster + "\n", nil
 	case strings.Contains(sql, "pg_database_size"):
-		return "0|1048576\n", nil
+		return "0|1048576|\n", nil
 	case strings.Contains(sql, "FROM pg_extension"):
 		return f.instExt + "\n", nil
 	case strings.Contains(sql, "SET default_transaction_read_only = on"):
@@ -161,6 +166,18 @@ func (f *fakeEnv) RunOneShot(_ context.Context, spec docker.RunSpec) (string, st
 	}
 	switch script {
 	case "dump.sh":
+		if f.killAt == "dump" {
+			f.killAt = ""
+			panic(killed{"dump"})
+		}
+		if f.onDump != nil {
+			f.onDump()
+		}
+		if f.newDBAtDump {
+			f.newDBAtDump = false
+			f.dbs = append(f.dbs, "late")
+			f.cluster = f.clusterJSON(f.dbs)
+		}
 		f.writeSet(stage, "old", "")
 		for i := range f.dbs {
 			f.put(stage, dbFile(i, "dump"), "PGDMP")
@@ -173,6 +190,10 @@ func (f *fakeEnv) RunOneShot(_ context.Context, spec docker.RunSpec) (string, st
 		f.writeSet(stage, "new", f.mutate)
 		f.volumes["used"] = true
 	case "recheck.sh":
+		if f.killAt == "recheck" {
+			f.killAt = ""
+			panic(killed{"recheck"})
+		}
 		f.writeSet(stage, "chk", f.mutate)
 	}
 	return "", "", nil
@@ -237,6 +258,14 @@ func (f *fakeEnv) Running(context.Context) ([]string, error) {
 // Stop implements Stack.
 func (f *fakeEnv) Stop(_ context.Context, services ...string) error {
 	f.log("stack.stop: %s", strings.Join(services, ","))
+	if f.stopPGErr != nil && len(services) == 1 && services[0] == "postgres" {
+		return f.stopPGErr
+	}
+	if f.newDBOnStop && len(services) > 1 {
+		f.newDBOnStop = false
+		f.dbs = append(f.dbs, "late")
+		f.cluster = f.clusterJSON(f.dbs)
+	}
 	if f.killAt == "stop" && len(services) > 0 && services[0] == "auth" {
 		f.killAt = ""
 		panic(killed{"stop"})
@@ -270,7 +299,7 @@ func (f *fakeEnv) Up(_ context.Context, services ...string) error {
 }
 
 // WaitHealthy implements Stack.
-func (f *fakeEnv) WaitHealthy(context.Context, string) error { return nil }
+func (f *fakeEnv) WaitHealthy(context.Context, string) error { return f.healthErr }
 
 // Plan implements Applier.
 func (f *fakeEnv) Plan(_ context.Context, env map[string]string) (any, error) {
@@ -284,7 +313,7 @@ func (f *fakeEnv) Apply(_ context.Context, env map[string]string) error {
 		f.killAt = ""
 		panic(killed{"apply"})
 	}
-	if f.applyErr != nil {
+	if f.applyErr != nil && env[EnvImage] == newImage { // only the forward rewrite fails; putting the old env back works
 		return f.applyErr
 	}
 	f.envApplied = append(f.envApplied, env)

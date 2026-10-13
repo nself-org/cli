@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/nself-org/cli/internal/docker"
 )
@@ -46,7 +47,7 @@ func (s *Switch) dump(ctx context.Context) error {
 	}
 	s.say("dumping %d database(s) from %s", len(s.st.Databases), s.st.OldVolume)
 	if _, stderr, err := s.d.Runtime.RunOneShot(ctx, s.oldClusterSpec("dump", "dump.sh")); err != nil {
-		return fmt.Errorf("the dump failed: %s", redactTail(stderr+"\n"+err.Error(), 4))
+		return fmt.Errorf("the dump failed: %s", s.redact(stderr+"\n"+err.Error(), 4))
 	}
 	want := []string{"globals.old.sql", "cluster.old.json"}
 	for i := range s.st.Databases {
@@ -56,6 +57,17 @@ func (s *Switch) dump(ctx context.Context) error {
 		if err := nonEmpty(filepath.Join(s.stage, name)); err != nil {
 			return fmt.Errorf("the dump is incomplete: %w", err)
 		}
+	}
+	raw, err := s.readStage("cluster.old.json")
+	if err != nil {
+		return err
+	}
+	cl, err := parseCluster(raw)
+	if err != nil {
+		return err
+	}
+	if got, want := strings.Join(cl.names(), "\n"), strings.Join(s.st.Databases, "\n"); got != want {
+		return coded("E510", "the databases changed while they were dumped", "the dump covers "+strings.ReplaceAll(want, "\n", ", ")+" but the cluster now has "+strings.ReplaceAll(got, "\n", ", "), "")
 	}
 	return nil
 }

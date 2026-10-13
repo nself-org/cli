@@ -72,7 +72,7 @@ type roRuntime struct{ *fakeEnv }
 
 func (r roRuntime) ExecSQL(ctx context.Context, c, u, db, sql string) (string, error) {
 	if strings.Contains(sql, "pg_database_size") {
-		return "1|1048576\n", nil
+		return "1|1048576|\n", nil
 	}
 	return r.fakeEnv.ExecSQL(ctx, c, u, db, sql)
 }

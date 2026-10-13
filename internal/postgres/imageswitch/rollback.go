@@ -31,22 +31,30 @@ func (s *Switch) undo(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), undoTimeout)
 	defer cancel()
 	var failed []error
-	step := func(what string, err error) {
+	step := func(what string, err error) bool {
 		if err != nil {
 			failed = append(failed, fmt.Errorf("%s: %w", what, err))
+			return false
 		}
+		return true
 	}
 	s.clearOneShots(ctx)
+	// Postgres first: the other services start only on a healthy, writable old cluster.
+	ready := true
 	if info, err := s.d.Runtime.Inspect(ctx, s.cfg.Container); err != nil || !info.Running {
-		step("starting postgres on the old volume", s.d.Stack.Up(ctx, s.cfg.Service))
-		step("waiting for postgres", s.d.Stack.WaitHealthy(ctx, s.cfg.Service))
+		ready = step("starting postgres on the old volume", s.d.Stack.Up(ctx, s.cfg.Service)) &&
+			step("waiting for postgres", s.d.Stack.WaitHealthy(ctx, s.cfg.Service))
 	}
-	if s.st.ReadOnlySet {
-		step("resetting the read-only setting", s.resetReadOnly(ctx))
+	if s.st.ReadOnlySet && ready {
+		ready = step("resetting the read-only setting", s.resetReadOnly(ctx))
 	}
 	step("removing the new volume", s.removeNewVolume(ctx))
-	if len(s.st.StoppedServices) > 0 {
+	switch {
+	case len(s.st.StoppedServices) == 0:
+	case ready:
 		step("restarting the stopped services", s.d.Stack.Up(ctx, s.st.StoppedServices...))
+	default:
+		step("restarting the stopped services", errors.New("not started: postgres is not ready on the old volume"))
 	}
 	if len(failed) > 0 {
 		_ = s.persist("")
@@ -79,14 +87,14 @@ func (s *Switch) Rollback(ctx context.Context, yes bool) (*Report, error) {
 	}
 	switch st.Phase {
 	case PhaseSwitching, PhaseSwitched, PhaseDone:
-		if st.Phase == PhaseDone && !yes {
+		if (st.Phase == PhaseDone || st.Phase == PhaseSwitched) && !yes {
 			return nil, needsConfirm(st.NewVolume)
 		}
 		return s.rollbackAfter(ctx)
 	}
 	s.say("rolling back: nothing was switched yet")
 	if err := s.undo(ctx); err != nil {
-		return nil, coded("E512", "the rollback is incomplete", redactTail(err.Error(), 6), "")
+		return nil, coded("E512", "the rollback is incomplete", s.redact(err.Error(), 6), "")
 	}
 	return &Report{Status: "rolled-back", OldVolume: st.OldVolume, NewImage: st.NewImage}, nil
 }
@@ -105,15 +113,18 @@ func (s *Switch) rollbackAfter(ctx context.Context) (*Report, error) {
 		step("stopping the stack", s.d.Stack.Stop(ctx, running...))
 	}
 	if step("restoring env, compose and lock", s.d.Applier.Apply(context.WithoutCancel(ctx), s.st.PrevEnv)) {
+		// Postgres first; the other services start only on a healthy, writable old cluster.
 		if step("starting postgres on the old volume", s.d.Stack.Up(ctx, s.cfg.Service)) &&
-			step("waiting for postgres", s.d.Stack.WaitHealthy(ctx, s.cfg.Service)) {
-			step("resetting the read-only setting", s.resetReadOnly(ctx))
+			step("waiting for postgres", s.d.Stack.WaitHealthy(ctx, s.cfg.Service)) &&
+			step("resetting the read-only setting", s.resetReadOnly(ctx)) {
+			step("starting the stack", s.d.Stack.Up(ctx, s.stackServices()...))
+		} else {
+			step("starting the stack", errors.New("not started: postgres is not ready on the old volume"))
 		}
-		step("starting the stack", s.d.Stack.Up(ctx, s.stackServices()...))
 	}
 	if len(failed) > 0 {
 		_ = s.persist("")
-		return nil, coded("E512", "the rollback is incomplete", redactTail(errors.Join(failed...).Error(), 6),
+		return nil, coded("E512", "the rollback is incomplete", s.redact(errors.Join(failed...).Error(), 6),
 			"Fix the cause and run `nself db image switch --rollback --yes` again.")
 	}
 	_ = s.persist(PhaseRolledBack)

@@ -10,6 +10,7 @@ SELECT jsonb_build_object(
    CROSS JOIN LATERAL (SELECT (xpath('/row/c/text()', q))[1]::text AS c, (xpath('/row/h/text()', q))[1]::text AS h
         FROM (SELECT query_to_xml(format('SELECT count(*) AS c, coalesce(sum(hashtextextended(t::text, 0)::numeric), 0)::text AS h FROM %I.%I AS t', n.nspname, c.relname), false, true, '') AS q) s) x
    WHERE c.relkind IN ('r', 'p') AND NOT c.relispartition AND n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname !~ '^pg_(toast|temp)'),
+ 'large_objects', (SELECT jsonb_build_array(count(*), coalesce(sum(hashtextextended(l::text, 0)::numeric), 0)::text) FROM pg_largeobject l),
  'sequences', (SELECT coalesce(jsonb_agg(jsonb_build_array(schemaname, sequencename, last_value) ORDER BY schemaname COLLATE "C", sequencename COLLATE "C"), '[]'::jsonb) FROM pg_sequences),
  'extensions', (SELECT coalesce(jsonb_agg(jsonb_build_array(extname, extversion) ORDER BY extname COLLATE "C"), '[]'::jsonb) FROM pg_extension)
 )::text

@@ -127,7 +127,7 @@ func (s *Switch) Run(ctx context.Context, o RunOptions) (*Report, error) {
 		if !o.Resume {
 			return nil, withNote(incompleteError(existing), "run with --resume to finish it or --rollback to go back")
 		}
-		s.st = existing
+		s.st, s.resumed = existing, true
 		s.say("resuming from phase %q", existing.Phase)
 	case o.Resume:
 		return nil, fmt.Errorf("there is no incomplete image switch to resume")
@@ -184,11 +184,22 @@ func (s *Switch) drive(ctx context.Context) (*Report, error) {
 			return nil, s.abort(ctx, err)
 		}
 	}
-	for _, p := range []step{{PhaseRechecked, s.switchover, PhaseSwitched}, {PhaseSwitching, s.switchover, PhaseSwitched}, {PhaseSwitched, s.start, PhaseDone}} {
-		if s.st.Phase != p.from {
+	for _, from := range []Phase{PhaseRechecked, PhaseSwitching} {
+		if s.st.Phase != from {
 			continue
 		}
-		if err := p.run(ctx); err != nil {
+		// A resumed switch re-checks the original: it may have run for hours since the recheck.
+		if s.resumed && from == PhaseRechecked {
+			if err := s.recheck(ctx); err != nil {
+				return nil, s.abort(ctx, err)
+			}
+		}
+		if err := s.switchover(ctx); err != nil {
+			return nil, err
+		}
+	}
+	if s.st.Phase == PhaseSwitched {
+		if err := s.start(ctx); err != nil {
 			return nil, withNote(err, "The old volume is untouched. Run `nself db image switch --to pgvector --resume` to retry or `nself db image switch --rollback` to go back.")
 		}
 	}
@@ -202,7 +213,7 @@ func (s *Switch) drive(ctx context.Context) (*Report, error) {
 func (s *Switch) abort(ctx context.Context, cause error) error {
 	s.say("failed (%s); undoing", firstLine(cause.Error()))
 	if uerr := s.undo(ctx); uerr != nil {
-		return withNote(cause, "Cleanup failed ("+redactTail(uerr.Error(), 3)+"); run `nself db image switch --rollback`.")
+		return withNote(cause, "Cleanup failed ("+s.redact(uerr.Error(), 3)+"); run `nself db image switch --rollback`.")
 	}
 	return withNote(cause, "Nothing was switched and the old stack is running again.")
 }

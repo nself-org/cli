@@ -62,7 +62,7 @@ func (s *Switch) restore(ctx context.Context) error {
 		Image: s.st.NewImage, Name: s.oneShot("restore"), User: "0:0", Network: "none",
 		Args: []string{"bash", "/stage/restore.sh"},
 		EnvPass: map[string]string{
-			"BOOT_USER": cl.Bootstrap, "LC_COLLATE": collate, "LC_CTYPE": ctype,
+			"BOOT_USER": cl.Bootstrap, "NSELF_COLLATE": collate, "NSELF_CTYPE": ctype,
 			"HOST_UID": strconv.Itoa(uid), "HOST_GID": strconv.Itoa(gid),
 		},
 		Mounts: []docker.Mount{
@@ -74,7 +74,7 @@ func (s *Switch) restore(ctx context.Context) error {
 	s.say("restoring into the new volume %s", s.st.NewVolume)
 	if _, stderr, err := s.d.Runtime.RunOneShot(ctx, spec); err != nil {
 		return coded("E511", "the restore into the new volume failed",
-			redactTail(stderr+"\n"+err.Error(), 4), "")
+			s.redact(stderr+"\n"+err.Error(), 4), "")
 	}
 	want := []string{"cluster.new.json", "globals.new.sql"}
 	for i := range s.st.Databases {

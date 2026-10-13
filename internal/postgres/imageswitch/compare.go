@@ -55,6 +55,7 @@ type capDoc struct {
 		Count string `json:"count"`
 		Hash  string `json:"hash"`
 	} `json:"tables"`
+	LargeObjs  []any   `json:"large_objects"`
 	Sequences  [][]any `json:"sequences"`
 	Extensions [][]any `json:"extensions"`
 }
@@ -151,6 +152,9 @@ func describeCapDiff(db, a, b string) []string {
 		if !seen[t.Table] {
 			out = append(out, fmt.Sprintf("%s: table %s is new", db, t.Table))
 		}
+	}
+	if fmt.Sprint(da.LargeObjs) != fmt.Sprint(dbb.LargeObjs) {
+		out = append(out, db+": large objects differ")
 	}
 	if fmt.Sprint(da.Sequences) != fmt.Sprint(dbb.Sequences) {
 		out = append(out, db+": sequence values differ")

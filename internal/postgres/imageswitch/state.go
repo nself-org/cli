@@ -74,7 +74,7 @@ func LoadState(projectDir string) (*State, error) {
 	}
 	var st State
 	if err := json.Unmarshal(data, &st); err != nil {
-		return nil, fmt.Errorf("the image switch state %s is unreadable: %w", StatePath(projectDir), err)
+		return nil, fmt.Errorf("the image switch state %s is unreadable: %w (if no switch is in progress, check `docker volume ls` for a *_pgvector_* volume and remove the file)", StatePath(projectDir), err)
 	}
 	if st.Version != stateVersion {
 		return nil, fmt.Errorf("the image switch state %s has version %d, this nself reads %d", StatePath(projectDir), st.Version, stateVersion)

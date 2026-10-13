@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode"
 )
 
 // clusterDoc is the parsed capcluster.sql output (fields the switch acts on).
@@ -21,7 +22,9 @@ type clusterDoc struct {
 	Major       int      `json:"major"`
 	Bootstrap   string   `json:"bootstrap"`
 	Tablespaces []string `json:"tablespaces"`
-	Databases   []dbDoc  `json:"databases"`
+	// Templates are user-created template databases (not template0 or template1).
+	Templates []string `json:"templates"`
+	Databases []dbDoc  `json:"databases"`
 }
 
 // dbDoc is one database of the cluster document.
@@ -158,4 +161,30 @@ func buildRestoreFiles(globals string, c *clusterDoc) restoreFiles {
 	rf.CreateDBs = strings.Join(create, "\n") + "\n"
 	rf.Replay = strings.Join(replay, "\n") + "\n"
 	return rf
+}
+
+// clusterProblems lists what the switch cannot move in the cluster: custom
+// tablespaces, user template databases, and databases the dump cannot reach
+// or whose name psql would read as a connection string. Empty means movable.
+func clusterProblems(c *clusterDoc) []string {
+	var bad []string
+	if len(c.Tablespaces) > 0 {
+		bad = append(bad, "custom tablespaces "+strings.Join(c.Tablespaces, ", ")+" (the restore cannot recreate them)")
+	}
+	if len(c.Templates) > 0 {
+		bad = append(bad, "template databases "+strings.Join(c.Templates, ", ")+" (only template0, template1 and ordinary databases are moved)")
+	}
+	for _, d := range c.Databases {
+		switch {
+		case !d.AllowConnections:
+			bad = append(bad, d.Name+" does not allow connections")
+		case d.Provider != "c":
+			bad = append(bad, d.Name+" uses locale provider "+d.Provider+" (only libc is moved)")
+		case strings.IndexFunc(d.Name, unicode.IsControl) >= 0:
+			bad = append(bad, "a database name holds a control character")
+		case strings.Contains(d.Name, "=") || strings.HasPrefix(d.Name, "-") || strings.HasPrefix(d.Name, "postgres:") || strings.HasPrefix(d.Name, "postgresql:"):
+			bad = append(bad, d.Name+": the name would be read as a connection string or an option by psql and pg_dump")
+		}
+	}
+	return bad
 }

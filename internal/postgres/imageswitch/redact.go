@@ -20,7 +20,20 @@ var (
 	connPassword   = regexp.MustCompile(`(?i)(password=)\S+`)
 )
 
-// redactTail returns the last n non-empty lines of s with password material replaced.
+// dataLine matches the lines psql and pg_restore add to an error that quote the
+// failing row: "CONTEXT: COPY t, line 3: \"<row>\"", "DETAIL: Key (email)=(a@b.c)", "LINE 1: ...".
+var dataLine = regexp.MustCompile(`^(CONTEXT|DETAIL|LINE \d+):`)
+
+// redact is redactTail that also removes the project's database password value.
+func (s *Switch) redact(text string, n int) string {
+	if len(s.cfg.Password) >= 4 {
+		text = strings.ReplaceAll(text, s.cfg.Password, "<redacted>")
+	}
+	return redactTail(text, n)
+}
+
+// redactTail returns the last n non-empty lines of s with password material
+// replaced and the lines that quote row data left out.
 func redactTail(s string, n int) string {
 	s = passwordClause.ReplaceAllString(s, "${1}'<redacted>'")
 	s = scramHash.ReplaceAllString(s, "<redacted>")
@@ -29,7 +42,7 @@ func redactTail(s string, n int) string {
 	s = connPassword.ReplaceAllString(s, "${1}<redacted>")
 	var lines []string
 	for _, l := range strings.Split(strings.TrimSpace(s), "\n") {
-		if l = strings.TrimSpace(l); l != "" {
+		if l = strings.TrimSpace(l); l != "" && !dataLine.MatchString(l) {
 			lines = append(lines, l)
 		}
 	}

@@ -44,10 +44,22 @@ func (s *Switch) quiesce(ctx context.Context) error {
 			return fmt.Errorf("stopping services: %w", err)
 		}
 	}
+	// A database created since the preflight must be dumped and made read-only too.
+	fresh, err := s.readCluster(ctx)
+	if err != nil {
+		return err
+	}
+	if bad := clusterProblems(fresh); len(bad) > 0 {
+		return coded("E509", "the cluster changed since the preflight", strings.Join(bad, "; "), "")
+	}
+	s.st.Databases = fresh.names()
+	if err := s.persist(""); err != nil {
+		return err
+	}
 	for _, db := range s.st.Databases {
 		sql := "ALTER DATABASE " + quoteIdent(db) + " SET default_transaction_read_only = on"
 		if _, err := s.d.Runtime.ExecSQL(ctx, s.cfg.Container, s.cfg.User, "template1", sql); err != nil {
-			return fmt.Errorf("setting %s read-only: %s", db, redactTail(err.Error(), 2))
+			return fmt.Errorf("setting %s read-only: %s", db, s.redact(err.Error(), 2))
 		}
 	}
 	return s.endSessions(ctx)
@@ -57,11 +69,11 @@ func (s *Switch) quiesce(ctx context.Context) error {
 func (s *Switch) endSessions(ctx context.Context) error {
 	const sel = `FROM pg_stat_activity WHERE backend_type = 'client backend' AND pid <> pg_backend_pid()`
 	if _, err := s.d.Runtime.ExecSQL(ctx, s.cfg.Container, s.cfg.User, "template1", "SELECT pg_terminate_backend(pid) "+sel); err != nil {
-		return fmt.Errorf("ending sessions: %s", redactTail(err.Error(), 2))
+		return fmt.Errorf("ending sessions: %s", s.redact(err.Error(), 2))
 	}
 	out, err := s.d.Runtime.ExecSQL(ctx, s.cfg.Container, s.cfg.User, "template1", "SELECT count(*) "+sel)
 	if err != nil {
-		return fmt.Errorf("checking sessions: %s", redactTail(err.Error(), 2))
+		return fmt.Errorf("checking sessions: %s", s.redact(err.Error(), 2))
 	}
 	if n := strings.TrimSpace(out); n != "0" {
 		return fmt.Errorf("%s client sessions are still connected to the old cluster after they were ended; something reconnects", n)
@@ -74,7 +86,7 @@ func (s *Switch) resetReadOnly(ctx context.Context) error {
 	for _, db := range s.st.Databases {
 		sql := "ALTER DATABASE " + quoteIdent(db) + " RESET default_transaction_read_only"
 		if _, err := s.d.Runtime.ExecSQL(ctx, s.cfg.Container, s.cfg.User, "template1", sql); err != nil {
-			return fmt.Errorf("resetting %s: %s", db, redactTail(err.Error(), 2))
+			return fmt.Errorf("resetting %s: %s", db, s.redact(err.Error(), 2))
 		}
 	}
 	s.st.ReadOnlySet = false

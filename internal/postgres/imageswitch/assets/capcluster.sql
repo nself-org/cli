@@ -4,6 +4,7 @@
 SELECT jsonb_build_object(
  'major', current_setting('server_version_num')::int / 10000,
  'bootstrap', (SELECT rolname FROM pg_authid WHERE oid = 10),
+ 'templates', (SELECT coalesce(jsonb_agg(datname ORDER BY datname COLLATE "C"), '[]'::jsonb) FROM pg_database WHERE datistemplate AND datname NOT IN ('template0', 'template1')),
  'tablespaces', (SELECT coalesce(jsonb_agg(spcname ORDER BY spcname COLLATE "C"), '[]'::jsonb) FROM pg_tablespace WHERE spcname NOT IN ('pg_default', 'pg_global')),
  'roles', (SELECT coalesce(jsonb_agg(jsonb_build_array(rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin, rolreplication, rolbypassrls, rolconnlimit, rolvaliduntil::text, md5(coalesce(rolpassword, ''))) ORDER BY rolname COLLATE "C"), '[]'::jsonb) FROM pg_authid),
  'memberships', (SELECT coalesce(jsonb_agg(jsonb_build_array(r.rolname, m.rolname, g.rolname, a.admin_option, to_jsonb(a) -> 'inherit_option', to_jsonb(a) -> 'set_option') ORDER BY r.rolname COLLATE "C", m.rolname COLLATE "C"), '[]'::jsonb)

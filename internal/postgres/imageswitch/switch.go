@@ -31,6 +31,8 @@ type Switch struct {
 	d     Deps
 	st    *State
 	stage string
+	// resumed is true when Run continued an incomplete switch.
+	resumed bool
 }
 
 // New returns a Switch with defaults filled in.

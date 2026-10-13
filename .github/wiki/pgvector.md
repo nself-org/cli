@@ -56,11 +56,11 @@ nself db image switch --to pgvector --yes    # run it
 
 | Step | What it does |
 |---|---|
-| Preflight | Postgres is running; there is a pgvector image of the same major version; the docker data root has twice the data size free and the stage directory has 1.2 times; the target image ships every extension and locale the databases use; no custom tablespace. A failed check stops the switch with E509 and nothing changes. |
+| Preflight | Postgres is running; there is a pgvector image of the same major version; the docker data root has twice the data size free and the stage directory has 1.2 times; the target image ships every extension and locale the databases use; no custom tablespace and no user-made template database; no database name that psql would read as a connection string. A failed check stops the switch with E509 and nothing changes. |
 | Quiesce | Every service except postgres stops. Each database is set `default_transaction_read_only = on` and other sessions end. **This is the downtime.** |
 | Dump | `pg_dumpall --globals-only` and one `pg_dump -Fc` per database, each inside one exported snapshot, together with a capture of rows, schema, sequences, roles and grants. The files live in `.nself/image-switch/stage` (mode 0700, files 0600) and are deleted at the end. |
 | Restore | A one-shot server of the pgvector image restores into the new volume with `pg_restore --exit-on-error`. It has no network, no published port and none of the project's `postgres/init` scripts, so the `np_plugins` seed cannot collide with the restored data. The only statement it skips is `CREATE ROLE` of the bootstrap role, which `initdb` already made; each skipped statement is printed. |
-| Verify | The restored cluster is captured again and compared: every table's row count and content hash, the schema-only dump of every database, sequence values, roles and their attributes, grants, owners, default privileges, policies and extension versions. A difference is E510 and nothing is switched. |
+| Verify | The restored cluster is captured again and compared: every table's row count and content hash, the schema-only dump of every database, sequence values, large objects (count and content hash), roles and their attributes, grants, owners, default privileges, policies and extension versions. A difference is E510 and nothing is switched. |
 | Recheck | The old cluster is captured once more. If anything changed since the dump, the switch stops with E510: the data written in between would not be in the new volume. |
 | Switch | Postgres stops. `POSTGRES_IMAGE` and `POSTGRES_DATA_VOLUME` (`<project>_postgres_data_pgvector_<time>`) are written to `.env`, compose and `nself.lock.yaml` are regenerated, and the stack starts on the new volume. |
 
@@ -93,7 +93,7 @@ docker volume rm <project>_postgres_data
 - The data is read about four times (dump, restore, verify, recheck), so the downtime grows with the size of the database. `--plan` prints the estimate.
 - Row hashes use each row's text form. A column that stores an `oid`, `xid` or a similar server-local number differs between clusters and fails the verify.
 - The read-only setting stops every normal client. A superuser who turns it off for their own session and writes in the second between the recheck and the postgres stop is not detected; keep people off the database while the switch runs.
-- Settings made with `ALTER SYSTEM` (`postgresql.auto.conf`) and changes to `template1` are not moved. Custom tablespaces and the ICU locale provider are refused in the preflight.
+- Settings made with `ALTER SYSTEM` (`postgresql.auto.conf`), a custom `pg_hba.conf` and changes to `template1` are not moved; the plan lists the `ALTER SYSTEM` settings it finds. Custom tablespaces, user-made template databases and the ICU locale provider are refused in the preflight.
 - The pgvector image is Debian-based and the alpine image is not: text sorts by the C library of the new image. Check ordering-sensitive queries after the switch.
 - `POSTGRES_DATA_VOLUME` is written to `.env`. If another env file in the cascade sets `POSTGRES_IMAGE` or `POSTGRES_DATA_VOLUME`, the switch stops and names the problem; the env file is put back.
 
