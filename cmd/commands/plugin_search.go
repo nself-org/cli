@@ -258,11 +258,11 @@ func renderCatalogSearch(query string, found []catalog.Entry, jsonOut bool) erro
 		if e.Tier == catalog.TierFree {
 			license = ui.C(ui.Green, plugin.Label(e.Tier))
 		}
-		desc := e.Description
+		desc := []rune(e.Description)
 		if len(desc) > 55 {
-			desc = desc[:52] + "..."
+			desc = append(desc[:52], '.', '.', '.')
 		}
-		tbl.AddRow(e.Slug, license, e.Category, desc)
+		tbl.AddRow(e.Slug, license, e.Category, string(desc))
 	}
 	tbl.Render()
 	fmt.Printf("\n  %d result(s) for %q\n", len(found), query)

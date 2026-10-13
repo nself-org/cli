@@ -11,6 +11,9 @@ package catalog
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strings"
+	"unicode"
 
 	"github.com/nself-org/cli/internal/errs"
 )
@@ -36,8 +39,14 @@ func Decode(data []byte) (*Catalog, error) {
 	}
 	seen := make(map[string]bool, len(c.Plugins))
 	for i, p := range c.Plugins {
-		if p.Slug == "" {
-			return nil, invalid("plugins[%d] has no slug", i)
+		// Catalog text reaches the terminal and the "run nself add <slug>"
+		// hint, so a slug must look like one and no printed field may carry
+		// a control character (escape sequences).
+		if !slugPattern.MatchString(p.Slug) {
+			return nil, invalid("plugins[%d] has a malformed slug", i)
+		}
+		if !printable(p.Version, p.Description, p.Category) || !printable(p.Bundles...) {
+			return nil, invalid("plugin %q has control characters in its text", p.Slug)
 		}
 		if p.Tier != TierFree && p.Tier != TierLicensed {
 			return nil, invalid("plugin %q has tier %q, want free or licensed", p.Slug, p.Tier)
@@ -49,6 +58,19 @@ func Decode(data []byte) (*Catalog, error) {
 		seen[key] = true
 	}
 	return &c, nil
+}
+
+// slugPattern is the shape of a plugin slug: lower-case, digits and dashes.
+var slugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
+
+// printable reports that none of the strings holds a control character.
+func printable(ss ...string) bool {
+	for _, s := range ss {
+		if strings.IndexFunc(s, unicode.IsControl) >= 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func invalid(format string, args ...any) error {

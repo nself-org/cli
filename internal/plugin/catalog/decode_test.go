@@ -14,6 +14,11 @@ func TestDecodeInvalidE116(t *testing.T) {
 		"wrong version":    strings.Replace(valid, `"schema_version": 1,`, `"schema_version": 2,`, 1),
 		"no plugins":       `{"schema_version": 1, "plugins": []}`,
 		"empty slug":       strings.Replace(valid, `"slug": "ghost"`, `"slug": ""`, 1),
+		"slug with space":  strings.Replace(valid, `"slug": "ghost"`, `"slug": "a b"`, 1),
+		"slug with escape": strings.Replace(valid, `"slug": "ghost"`, `"slug": "a\u001b[31m"`, 1),
+		"slug upper case":  strings.Replace(valid, `"slug": "ghost"`, `"slug": "Ghost"`, 1),
+		"escape in text":   strings.Replace(valid, `"Scaffolded"`, `"\u001b]0;pwned\u0007"`, 1),
+		"newline in text":  strings.Replace(valid, `"category": "misc"`, `"category": "mi\nsc"`, 1),
 		"unknown tier":     strings.Replace(valid, `"tier": "licensed"`, `"tier": "pro"`, 1),
 		"duplicate row":    strings.Replace(valid, `"tier": "licensed"`, `"tier": "free"`, 1),
 		"oversized":        `{"schema_version": 1, "pad": "` + strings.Repeat("x", maxBody) + `"}`,
@@ -101,7 +106,7 @@ func FuzzDecodeCatalog(f *testing.F) {
 			t.Fatalf("accepted catalog breaks invariants: %+v", c)
 		}
 		for _, p := range c.Plugins {
-			if p.Slug == "" || (p.Tier != TierFree && p.Tier != TierLicensed) {
+			if !slugPattern.MatchString(p.Slug) || !printable(p.Description, p.Category, p.Version) || (p.Tier != TierFree && p.Tier != TierLicensed) {
 				t.Fatalf("accepted bad row %+v", p)
 			}
 			c.FindByCommand(p.Slug)
