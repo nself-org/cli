@@ -111,9 +111,8 @@ func TestProbe(t *testing.T) {
 }
 
 func TestRuntimeFailureClassifies(t *testing.T) {
-	if runtime.GOOS == "linux" {
-		t.Setenv("GITHUB_ACTIONS", "")
-	}
+	t.Setenv("GITHUB_ACTIONS", "")
+	t.Setenv("INTEGRATION", "")
 	infra := &fakeTB{TB: t}
 	if !RuntimeFailure(infra, errors.New("docker: Error response from daemon: failed to create task for container: failed to create shim task"), "") || infra.skipped == "" {
 		t.Fatalf("an infrastructure error must skip: %+v", infra)
@@ -124,6 +123,29 @@ func TestRuntimeFailureClassifies(t *testing.T) {
 	}
 	if RuntimeFailure(&fakeTB{TB: t}, nil, "") {
 		t.Fatal("nil error is never a runtime failure")
+	}
+}
+
+func TestRuntimeFailureKeepsSpecErrorsAsFailures(t *testing.T) {
+	t.Setenv("GITHUB_ACTIONS", "")
+	for _, msg := range []string{
+		"docker: Error response from daemon: failed to create task for container: OCI runtime create failed: runc create failed: invalid mount source /nope",
+		"OCI runtime create failed: exec: \"sh\": executable file not found in $PATH",
+	} {
+		f := &fakeTB{TB: t}
+		if RuntimeFailure(f, errors.New(msg), "") || f.skipped != "" {
+			t.Errorf("spec error must stay a real failure: %q", msg)
+		}
+	}
+}
+
+func TestRuntimeFailureFailsUnderIntegration(t *testing.T) {
+	t.Setenv("GITHUB_ACTIONS", "")
+	t.Setenv("INTEGRATION", "1")
+	f := &fakeTB{TB: t}
+	RuntimeFailure(f, errors.New("failed to create shim task"), "")
+	if f.failed == "" || f.skipped != "" {
+		t.Fatalf("under INTEGRATION=1 an infrastructure error must fail: %+v", f)
 	}
 }
 

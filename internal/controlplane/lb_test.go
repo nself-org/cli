@@ -2,7 +2,6 @@ package controlplane
 
 import (
 	"context"
-	"github.com/nself-org/cli/internal/deploy/pintest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -10,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/nself-org/cli/internal/compat/compattest"
+	"github.com/nself-org/cli/internal/deploy/pintest"
 )
 
 // skipOnWindows skips tests that rely on Unix shell-script fakery (PATH override

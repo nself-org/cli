@@ -2,7 +2,6 @@ package controlplane
 
 import (
 	"context"
-	"github.com/nself-org/cli/internal/deploy/pintest"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -11,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/deploy/pintest"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 

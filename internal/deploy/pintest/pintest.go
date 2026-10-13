@@ -47,23 +47,43 @@ func Home(t testing.TB) string {
 	return ""
 }
 
-// Sealed reports whether dir and every directory above it (symlinks
-// resolved) is not group/world writable, or is a sticky directory.
+// Sealed reports whether dir passes the same ancestor rule as production
+// (sdk/go/remote ancestorOK): every directory above it, on the path as given
+// and with symlinks resolved, is owned by the current user or root, and is not
+// group/world writable unless it is a root-owned sticky directory.
 func Sealed(dir string) bool {
-	resolved, err := filepath.EvalSymlinks(dir)
+	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return false
 	}
-	for d := resolved; ; d = filepath.Dir(d) {
-		fi, err := os.Stat(d)
-		if err != nil {
-			return false
-		}
-		if fi.Mode().Perm()&0o022 != 0 && fi.Mode()&os.ModeSticky == 0 {
-			return false
-		}
-		if d == filepath.Dir(d) {
-			return true
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return false
+	}
+	for _, start := range []string{abs, resolved} {
+		for d := start; ; d = filepath.Dir(d) {
+			fi, err := os.Stat(d)
+			if err != nil || !ancestorOK(fi) {
+				return false
+			}
+			if d == filepath.Dir(d) {
+				break
+			}
 		}
 	}
+	return true
+}
+
+func ancestorOK(fi os.FileInfo) bool {
+	uid, ok := owner(fi)
+	if !ok {
+		return true // no owner information on this platform
+	}
+	if uid != 0 && uid != os.Getuid() {
+		return false
+	}
+	if fi.Mode().Perm()&0o022 != 0 && (fi.Mode()&os.ModeSticky == 0 || uid != 0) {
+		return false
+	}
+	return true
 }

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/nself-org/cli/internal/deploy/pintest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/deploy"
+	"github.com/nself-org/cli/internal/deploy/pintest"
 	"github.com/nself-org/cli/internal/output"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 	"github.com/spf13/cobra"

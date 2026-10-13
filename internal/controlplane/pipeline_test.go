@@ -3,7 +3,6 @@ package controlplane
 import (
 	"context"
 	"errors"
-	"github.com/nself-org/cli/internal/deploy/pintest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/deploy"
+	"github.com/nself-org/cli/internal/deploy/pintest"
 )
 
 // pipelineStubProber is a test Prober that always succeeds (full manage capability).
