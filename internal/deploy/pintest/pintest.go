@@ -79,7 +79,7 @@ func ancestorOK(fi os.FileInfo) bool {
 	if !ok {
 		return true // no owner information on this platform
 	}
-	if uid != 0 && uid != os.Getuid() {
+	if uid != 0 && uid != os.Geteuid() {
 		return false
 	}
 	if fi.Mode().Perm()&0o022 != 0 && (fi.Mode()&os.ModeSticky == 0 || uid != 0) {
