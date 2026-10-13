@@ -123,7 +123,9 @@ fi
 case "$BIN" in /*) ;; *) BIN="$ROOT/$BIN" ;; esac
 [ -x "$BIN" ] || fatal "binary $BIN is not executable"
 
-if CGO_ENABLED=0 go run -mod=vendor ./tools/imagelist > "$WORK/images.tsv" 2>"$WORK/imagelist.err"; then
+# Build into the scratch dir: `go run` leaves a linked executable in GOCACHE.
+if CGO_ENABLED=0 go build -mod=vendor -o "$WORK/imagelist" ./tools/imagelist 2>"$WORK/imagelist.err" \
+  && "$WORK/imagelist" > "$WORK/images.tsv" 2>>"$WORK/imagelist.err"; then
   REF_V14="$(awk -F'\t' '$1=="auth-v14"{print $2}' "$WORK/images.tsv")"
   REF_NEW="$(awk -F'\t' '$1=="auth"{print $2}' "$WORK/images.tsv")"
 else

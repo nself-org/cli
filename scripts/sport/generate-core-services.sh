@@ -13,6 +13,10 @@ cd "$(dirname "$0")/../.."
 
 OUT=".github/wiki/Core-Services.md"
 
+# Build once and reuse: `go run` leaves a linked executable in GOCACHE per call.
+SVCCAT="bin/servicecatalog"
+CGO_ENABLED=0 go build -mod=vendor -o "$SVCCAT" ./tools/servicecatalog
+
 echo "Generating $OUT ..."
 {
   echo "# Core Services"
@@ -23,7 +27,7 @@ echo "Generating $OUT ..."
   echo "\`internal/compose/service_catalog.go\`. The same data backs"
   echo "\`nself service list --core\`, so the CLI and this page cannot disagree."
   echo
-  CGO_ENABLED=0 go run -mod=vendor ./tools/servicecatalog -format markdown
+  "$SVCCAT" -format markdown
   echo
   echo "## Checking your own stack"
   echo
@@ -47,7 +51,7 @@ if [ -n "${NSELF_SPORT_DIR:-}" ] && [ -d "${NSELF_SPORT_DIR}" ]; then
     echo "Last generated: $(date -u +%Y-%m-%d)"
     echo "Source: \`cli/internal/compose/service_catalog.go\`."
     echo
-    CGO_ENABLED=0 go run -mod=vendor ./tools/servicecatalog -format markdown
+    "$SVCCAT" -format markdown
   } > "$SPORT_OUT"
 else
   echo "NSELF_SPORT_DIR not set or missing — skipping SPORT refresh."

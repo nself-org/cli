@@ -28,8 +28,13 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # Build the generators once: `go run` would leave a linked executable in
+      # the Go build cache for each tool.
+      - name: Build doc generators
+        run: CGO_ENABLED=0 go build -mod=vendor -o bin/ ./tools/wikigen ./tools/cmdinventory ./tools/parity
+
       - name: Wiki pages are current
-        run: CGO_ENABLED=0 go run -mod=vendor ./tools/wikigen -check
+        run: bin/wikigen -check
 
       - name: Wiki links resolve
         run: bash scripts/ci/wiki-link-audit.sh
@@ -44,7 +49,7 @@ jobs:
 
       - name: Command inventory is current
         run: |
-          CGO_ENABLED=0 go run -mod=vendor ./tools/cmdinventory -format json -depth 2 > /tmp/inventory.json
+          bin/cmdinventory -format json -depth 2 > /tmp/inventory.json
           diff -u .github/command-inventory.json /tmp/inventory.json
 
       # CLI-R17: the four-surface parity matrix (wiki page, MCP tool, env var
@@ -52,7 +57,7 @@ jobs:
       # command-inventory.json this job already verified above. -check fails
       # if the committed .github/surface-parity.{md,json} are stale.
       - name: Parity matrix is current
-        run: CGO_ENABLED=0 go run -mod=vendor ./tools/parity -check
+        run: bin/parity -check
 
       # Docs are the minimum bar: a command with no wiki page fails the build.
       # (wiki-generated above already guarantees every command gets a page, so

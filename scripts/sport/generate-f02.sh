@@ -25,18 +25,22 @@ REG_OUT=".github/command-registry.json"
 WIKI_OUT=".github/wiki/Commands.md"
 CANON_OUT=".github/wiki/Command-Canon.md"
 
+# Build once and reuse: `go run` leaves a linked executable in GOCACHE per call.
+CMDINV="bin/cmdinventory"
+CGO_ENABLED=0 go build -mod=vendor -o "$CMDINV" ./tools/cmdinventory
+
 echo "Generating $JSON_OUT ..."
-CGO_ENABLED=0 go run -mod=vendor ./tools/cmdinventory -format json -depth 2 > "$JSON_OUT"
+"$CMDINV" -format json -depth 2 > "$JSON_OUT"
 
 echo "Generating $REG_OUT ..."
-CGO_ENABLED=0 go run -mod=vendor ./tools/cmdinventory -format registry > "$REG_OUT"
+"$CMDINV" -format registry > "$REG_OUT"
 
 echo "Generating $CANON_OUT ..."
 CANON_TMP=$(mktemp)
-CGO_ENABLED=0 go run -mod=vendor ./tools/cmdinventory -format canon -prose-from "$CANON_OUT" > "$CANON_TMP"
+"$CMDINV" -format canon -prose-from "$CANON_OUT" > "$CANON_TMP"
 mv "$CANON_TMP" "$CANON_OUT"
 
-COUNT=$(CGO_ENABLED=0 go run -mod=vendor ./tools/cmdinventory -format names | wc -l | tr -d ' ')
+COUNT=$("$CMDINV" -format names | wc -l | tr -d ' ')
 
 echo "Updating $WIKI_OUT ($COUNT top-level commands) ..."
 # The curated grouped index in Commands.md is hand-written and worth keeping.
@@ -52,7 +56,7 @@ trap 'rm -f "$BLOCK"' EXIT
   echo "Generated from the cobra registration tree in \`cmd/commands/\`."
   echo "Run \`make cmd-inventory\` to refresh. **Total top-level commands: $COUNT**"
   echo
-  CGO_ENABLED=0 go run -mod=vendor ./tools/cmdinventory -format markdown -depth 2 \
+  "$CMDINV" -format markdown -depth 2 \
     | sed '$d' | sed '$d'
   echo
   echo "<!-- END GENERATED:command-table -->"
@@ -89,7 +93,7 @@ if [ -n "${NSELF_SPORT_DIR:-}" ] && [ -d "${NSELF_SPORT_DIR}" ]; then
     echo
     echo "**Counts: $COUNT top-level commands.** Subcommands listed but not counted separately."
     echo
-    CGO_ENABLED=0 go run -mod=vendor ./tools/cmdinventory -format markdown -depth 2 \
+    "$CMDINV" -format markdown -depth 2 \
       | sed '$d' | sed '$d'
   } > "$SPORT_OUT"
 else
