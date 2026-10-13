@@ -2,8 +2,9 @@ package commands
 
 // ssl_acme.go: `trust ssl setup|renew --acme`, CLI-owned ACME over DNS-01 (lego
 // one-shot container, ADR 0026). Order: preflight (printed, no writes) -> lego
-// -> atomic generation install -> nginx -t + reload -> served-fingerprint
-// check, with rollback. Certbot paths are untouched; the flags are additive.
+// -> atomic generation install -> proxy reload (nginx -t + reload, or the
+// traefik-config one-shot under traefik) -> served-fingerprint check, with
+// rollback. Certbot paths are untouched; the flags are additive.
 // acmeD holds the seams tests replace (docker, secrets, prober, exit).
 
 import (
@@ -75,6 +76,7 @@ type acmeRun struct {
 	cfg                 *config.Config
 	res                 *acme.Resolution
 	hooks               acme.Hooks
+	provider            string // the serving proxy: nginx or traefik (ssl_acme_traefik.go)
 	file                acme.File
 	dry, staging, agree bool
 	unlock              func() // releases the run lock (a no-op under --dry-run)
@@ -133,10 +135,13 @@ func prepareACME(cmd *cobra.Command, renew bool) (r *acmeRun, err error) {
 	in.Contact = cmp.Or(str("email"), stored, env["ACME_EMAIL"], os.Getenv("ACME_EMAIL"), r.cfg.AdminEmail)
 	home, _ := os.UserHomeDir()
 	in.AgeKeyPath = cmp.Or(os.Getenv("SECRETS_AGE_KEY_PATH"), filepath.Join(home, ".config", "nself", "age-key.txt"))
+	if err = r.useProvider(&in); err != nil {
+		return nil, err
+	}
 	if r.res, err = acme.Resolve(cmd.Context(), in); err != nil {
 		return nil, e151(err)
 	}
-	r.res.Print(r.out)
+	r.printResolution()
 	return r, nil
 }
 
@@ -185,10 +190,9 @@ func (r *acmeRun) printLineage(l acme.Lineage) {
 // probeHTTP checks that the served nginx answers the HTTP-01 challenge location
 // for host, so a missing location fails here with a remediation, not at the CA.
 func (r *acmeRun) probeHTTP(ctx context.Context, host string) error {
-	env, _ := ssl.ServedEnv(r.res.Root, r.cfg.Env)
-	if err := acmeProbeHTTP(ctx, r.res.SSLDir, httpProbeAddr(env), host, nil); err != nil {
-		return e151(acmeRefuse("run `nself build` and restart nginx so the challenge location is served",
-			"the served nginx does not answer the HTTP-01 challenge location for %s: %v", host, err))
+	if err := acmeProbeHTTP(ctx, r.res.SSLDir, httpProbeAddr(r.servedEnv()), host, nil); err != nil {
+		return e151(acmeRefuse("run `nself build` and restart "+r.proxyName()+" so the challenge location is served",
+			"the served %s does not answer the HTTP-01 challenge location for %s: %v", r.proxyName(), host, err))
 	}
 	return nil
 }
@@ -227,17 +231,16 @@ func (r *acmeRun) issueInstall(ctx context.Context, l *acme.Lineage, tos bool) e
 	return nil
 }
 
-// install switches l's targets to the certificate, reloads nginx and verifies
-// the fingerprint nginx serves; a failure restores the previous generation.
+// install switches l's targets to the certificate, reloads the proxy and verifies
+// the fingerprint it serves; a failure restores the previous generation.
 func (r *acmeRun) install(ctx context.Context, l acme.Lineage, cert, key []byte) error {
 	gens, err := acme.Install(ctx, acme.InstallReq{SSLDir: r.res.SSLDir, Targets: l.Targets, Cert: cert, Key: key,
-		Reloader: acme.NginxReloader{Container: r.res.Container, Exec: acmeD.exec}, Verify: r.verifier(l, cert),
-		Fault: r.hooks.Fault, Exit: acmeD.exit})
+		Reloader: r.reloader(), Verify: r.verifier(l, cert), Fault: r.hooks.Fault, Exit: acmeD.exit})
 	if err != nil {
-		return e151(err)
+		return e151(r.afterFailedInstall(ctx, err))
 	}
 	for _, t := range l.Targets {
-		r.say("lineage %s: installed %s as generation %d, nginx reloaded, served certificate verified", l.Name, t, gens[t])
+		r.say("lineage %s: installed %s as generation %d, %s reloaded, served certificate verified", l.Name, t, gens[t], r.proxyName())
 	}
 	return nil
 }
@@ -249,8 +252,7 @@ func (r *acmeRun) verifier(l acme.Lineage, cert []byte) func(context.Context) er
 		return func(context.Context) error { return errors.New("issued certificate is not PEM") }
 	}
 	sum := sha256.Sum256(b.Bytes)
-	env, _ := ssl.ServedEnv(r.res.Root, r.cfg.Env)
-	addr, snis := ssl.ServedAddr(env), r.probeHosts(l)
+	addr, snis := ssl.ServedAddr(r.servedEnv()), r.probeHosts(l)
 	return func(ctx context.Context) error {
 		for _, sni := range snis {
 			if err := pollServed(ctx, addr, sni, hex.EncodeToString(sum[:])); err != nil {
@@ -259,22 +261,6 @@ func (r *acmeRun) verifier(l acme.Lineage, cert []byte) func(context.Context) er
 		}
 		return nil
 	}
-}
-
-// probeHosts picks one served host per target (the first by name whose conf uses
-// that target), else the lineage's first name; a wildcard is probed as check.<zone>.
-func (r *acmeRun) probeHosts(l acme.Lineage) (out []string) {
-	hosts, _ := ssl.ServedHosts(r.res.NginxDir)
-	for _, t := range l.Targets {
-		pick := ""
-		for h, c := range hosts {
-			if strings.Contains(c, "/"+t+"/") && (pick == "" || h < pick) {
-				pick = h
-			}
-		}
-		out = append(out, cmp.Or(pick, strings.Replace(l.Domains[0], "*.", "check.", 1)))
-	}
-	return out
 }
 
 // acmeLockWait is how long a run waits for another --acme run (tests shorten it).

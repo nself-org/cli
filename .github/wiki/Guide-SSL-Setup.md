@@ -112,9 +112,21 @@ State lives in `ssl/.acme/` (0700, with a `.gitignore` of `*`): the ACME account
 
 Once `ssl/.acme/lineages.json` holds lineages, the v1.4 certbot `nself ssl setup` (without `--acme`) refuses: certbot would write over the ACME-managed certificates.
 
+### Certificates under traefik
+
+When the free `traefik` plugin serves the stack (`nself add traefik`, then `nself build --remove-orphans` and `nself start`), `--acme` issues, installs and renews exactly as above, with these differences:
+
+- **Reload.** There is no nginx container to reload. After the generation switch, the CLI re-runs the plugin's `traefik-config` one-shot (`docker run --rm --pull never`, the service's own hardening: read-only root, no capabilities, no network, no Docker socket; the spec comes from the project's compose model and is refused if its image is not a plain reference, a mount lies outside the project and the served stack, or anything but `/dynamic` and `/static` is writable). The renderer points each `certFile` at the lineage's new `.<dir>.gen-<n>/` directory, so `dynamic.yml` parses differently and Traefik's file provider reloads it without a restart. The served-certificate check that follows proves the reload; if the render or the check fails, the previous generation is restored and the render runs once more (best effort) so `dynamic.yml` names the restored pair; if that second render also fails the error says `dynamic.yml` may still name the failed generation (`E151`, "previous certificates restored"). Generation directories are made traversable for others (mode `0711`, key files stay `0600`) because the renderer runs as root without capabilities and could not otherwise stat the files inside a directory owned by you. When the renewal runs as root (the systemd timer) the new generation is also handed to `NSELF_HOST_UID:NSELF_HOST_GID` from `.nself/compose.env`, the user Traefik runs as, so Traefik can open the key. The verify probes dial `NSELF_HTTPS_PORT` (default 443) and `NSELF_HTTP_PORT` (default 80), the ports Traefik publishes, not the nginx port variables.
+- **Preflight.** The CLI looks for the `traefik` container and for the whole `ssl/` directory mounted at `/nself/ssl`; `--nginx-container` names the traefik container. The preflight prints `proxy provider: traefik`.
+- **HTTP-01.** Challenge tokens go to `ssl/.acme-webroot`, which the `traefik-acme` service serves read-only; Traefik's default server answers `/.well-known/acme-challenge/` for hosts no route owns, and each route carries its own challenge location. Create `ssl/.acme-webroot` (owned by you) before the first `nself start`: if Docker creates it, it is owned by root and lego cannot write the tokens.
+- **No ACME inside Traefik.** Certificates stay core-issued (ADR 0026 and ADR 0027); Traefik never contacts a CA.
+- `nself ssl add <domain> --acme` still writes an nginx `conf.d` file and reloads nginx, so it does not work under traefik yet (tracked as debt). Create the lineage before the swap, or use `ssl setup --acme`.
+
+Linux evidence: `scripts/e2e/proxy-swap.sh --renew` (workflow `proxy-swap-e2e`, leg `renew`) swaps a stack to traefik and renews an HTTP-01 lineage against Pebble: the served fingerprint changes, `certFile` names the new generation, Traefik does not restart, and an injected render failure leaves the previous generation served.
+
 ### What the CLI never touches
 
-Host certbot files (`/etc/letsencrypt`, hooks, credential files; the only certbot change is disabling `nself-ssl-renew.timer`), nginx configuration, compose files and container definitions. It does not recreate or restart containers; only `nginx -s reload`.
+Host certbot files (`/etc/letsencrypt`, hooks, credential files; the only certbot change is disabling `nself-ssl-renew.timer`), nginx configuration, compose files and container definitions. It does not recreate or restart containers; only `nginx -s reload` (under traefik, the `traefik-config` one-shot).
 
 ## Custom Domain Certificates (HTTP-01)
 

@@ -78,3 +78,15 @@ func TestRunOneShot_NonZeroExit(t *testing.T) {
 		t.Fatalf("want error quoting stderr, got %v / %q", err, stderr)
 	}
 }
+
+func TestBuildRunArgs_Hardening(t *testing.T) {
+	args, err := buildRunArgs(RunSpec{Image: "img:1", Args: []string{"x"}, PullNever: true, ReadOnly: true,
+		CapDrop: []string{"ALL"}, SecurityOpt: []string{"no-new-privileges:true"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "run --rm --pull never --read-only --cap-drop ALL --security-opt no-new-privileges:true img:1 x"
+	if got := strings.Join(args, " "); got != want {
+		t.Errorf("argv = %q, want %q", got, want)
+	}
+}
