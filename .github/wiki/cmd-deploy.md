@@ -375,7 +375,7 @@ holding whitespace or a quote (rsync re-splits its `-e` string on spaces).
 |---|---|---|
 | Secrets push (`.env.<target>` copied with scp) | strict | strict |
 | Deploy that ships an env file (inventory deploy, `nself deploy <target>` push) | strict, every connection of the run | strict |
-| Compose file only | `StrictHostKeyChecking=accept-new` | strict on production-class hosts, `accept-new` (nself's own key file) on the others |
+| Compose file only | `StrictHostKeyChecking=accept-new` | strict |
 | Read-only commands (probes outside a shipping run, `logs`, `health`) | `StrictHostKeyChecking=accept-new` | `accept-new` with nself's own key file (below) |
 
 Strict means the CLI scans the host's live key and continues only when that key is already trusted,

@@ -55,6 +55,7 @@ func (sp *SSHProber) Architecture(ctx context.Context, s Server) (string, error)
 	tier, envName := probeTier(sp.projectRoot, s)
 	policy, err := HostKeyOptions(ctx, envName, s.Name, tier, s.Host, sp.shipping.on())
 	if err != nil {
+		sp.noteHostKeyErr(err)
 		return "", err
 	}
 	args := []string{"-i", key, "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "-o", "ForwardAgent=no"}

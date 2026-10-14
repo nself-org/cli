@@ -65,6 +65,9 @@ type SSHProber struct {
 
 	// shipping is set while a run that ships secrets uses this prober (probe_shipping.go).
 	shipping shippingMode
+
+	// keyErr is the first host-key error a probe met while shipping (probe_shipping.go).
+	keyErr shippedKeyErr
 }
 
 // NewSSHProber constructs a production Prober. projectRoot is the working
@@ -133,6 +136,7 @@ func (sp *SSHProber) SSHReachable(s Server) (bool, int, error) {
 	policy, err := HostKeyOptions(keyCtx, envName, s.Name, tier, s.Host, sp.shipping.on())
 	cancel()
 	if err != nil {
+		sp.noteHostKeyErr(err)
 		return false, 0, err
 	}
 	args := []string{
@@ -181,6 +185,7 @@ func (sp *SSHProber) DockerOK(s Server) (bool, error) {
 	policy, err := HostKeyOptions(keyCtx, envName, s.Name, tier, s.Host, sp.shipping.on())
 	cancel()
 	if err != nil {
+		sp.noteHostKeyErr(err)
 		return false, err
 	}
 	args := []string{

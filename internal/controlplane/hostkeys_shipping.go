@@ -59,7 +59,7 @@ func checkShippingHostKeys(ctx context.Context, name string, env Environment) er
 func probeHostKeyError(statuses []TargetStatus) error {
 	for _, ts := range statuses {
 		if ts.Capability != CapManage && strings.Contains(ts.Reason, "host key mismatch") {
-			return errs.New("E487", fmt.Sprintf("the host key of %s/%s could not be verified after the pre-run check (it changed during the run); nothing was shipped. Re-verify the key, then deploy again", ts.Env, ts.Server))
+			return errs.New("E487", fmt.Sprintf("the host key of %s/%s could not be verified after the pre-run check (it changed during the run, or the key scan failed); nothing was shipped. Re-verify the key, then deploy again", ts.Env, ts.Server))
 		}
 	}
 	return nil

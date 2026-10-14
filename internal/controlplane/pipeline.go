@@ -79,6 +79,13 @@ func runPayload(ctx context.Context, inv *Inventory, env string, prober Prober, 
 	statuses := Resolve(scoped, prober)
 	emitAudit(statuses)
 	if pl.envFile != "" {
+		// A probe that met a host-key error after the pre-check (the key changed
+		// mid-run) aborts the run; Resolve alone would only mark the server read-only.
+		for _, v := range []any{prober, reader} {
+			if err := takeProbeHostKeyErr(v); err != nil {
+				return nil, err
+			}
+		}
 		if err := probeHostKeyError(statuses); err != nil {
 			return nil, err
 		}
