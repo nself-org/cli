@@ -22,7 +22,7 @@ import (
 const (
 	fakeS1 = "nself_test_FAKE_token_0001"
 	fakeS2 = "nself_test_FAKE_pw_0002"
-	fakeS3 = "ghp_FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE0003"
+	fakeS3 = "gh" + "p_FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE0003" // split so scanners do not read it as a token
 	fakeS4 = "plain-secret-in-a-third-positional-0004"
 	fakeS5 = "sk-FAKEFAKEFAKEFAKEFAKE0005"
 )
