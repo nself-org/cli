@@ -108,7 +108,7 @@ func encodeNetworkNodes(doc, top *yaml.Node, res *resolvedFragment, content []by
 					if nets.Kind == yaml.MappingNode && j%2 == 1 {
 						continue
 					}
-					if n.Kind == yaml.ScalarNode && (keys[n.Value] || dockerNetworkDefaultRE.MatchString(n.Value)) {
+					if n.Kind == yaml.ScalarNode && (keys[n.Value] || n.Value == projectNetworkName || dockerNetworkDefaultRE.MatchString(n.Value)) {
 						n.Value, n.Style = projectNetworkName, yaml.DoubleQuotedStyle
 					}
 				}
