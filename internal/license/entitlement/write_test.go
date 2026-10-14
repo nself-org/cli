@@ -26,6 +26,7 @@ import (
 func seedVerifiedCache(t *testing.T) *license.CacheEntry {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("NSELF_PING_API_URL", "http://127.0.0.1:1")
 	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "synthetic-license-key")
 	for i := 1; i <= 10; i++ {
 		t.Setenv("NSELF_LICENSE_KEY_"+strconv.Itoa(i), "")
@@ -89,12 +90,12 @@ func TestEntitlementRefreshWrites(t *testing.T) {
 		if err := license.WriteCache(entry); err != nil {
 			t.Fatal(err)
 		}
-		if err := entitlement.Refresh(context.Background(), dir); errs.ExitCodeFor(err) != 3 {
-			t.Fatalf("tampered body must produce E125: %v", err)
+		if err := entitlement.Refresh(context.Background(), dir); err != nil {
+			t.Fatalf("valid runtime JWT survives tampered cache: %v", err)
 		}
 		data, err = os.ReadFile(path)
-		if err != nil || len(data) != 0 {
-			t.Fatalf("tampered cache must replace old JWT with empty file: %v", err)
+		if err != nil || string(data) != entry.JWT {
+			t.Fatalf("tampered cache must retain verified runtime JWT: %v", err)
 		}
 	})
 }

@@ -56,7 +56,7 @@ func entitlementFileChecks(projectDir string, now time.Time) []CheckResult {
 		return nil
 	}
 	e := errs.New("E126", "the entitlement JWT expired more than seven days ago")
-	return entitlementWarning("E126: " + e.What + "; refresh with nself build before the thirty-day grace expires.")
+	return entitlementWarning("E126: " + e.What + "; refresh with nself license refresh followed by nself build before the thirty-day grace expires.")
 }
 
 // Purpose: format a safe entitlement diagnostic without exposing the token.

@@ -115,7 +115,7 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	autoInstallAIIfNeeded(ctx)
 
 	if !opts.skipBuild {
-		if err := autoRebuildIfNeeded(projectDir, opts); err != nil {
+		if err := autoRebuildIfNeeded(projectDir, opts); !entitlement.StartMayContinue(err, os.Stderr) {
 			return err
 		}
 	}
@@ -148,9 +148,7 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	// start_config.go (T-P6-E2-W1-S1-T3).
 	composeFiles := loadStartComposeFiles(projectDir, opts)
 	if !opts.skipPlugins {
-		if err := entitlement.RefreshInstalled(ctx, projectDir); err != nil {
-			return err
-		}
+		entitlement.RefreshForStart(ctx, projectDir, os.Stderr)
 	}
 
 	// ── Step 3: Port availability check ──────────────────────────────

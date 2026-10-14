@@ -2,7 +2,11 @@ package entitlement
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io"
 	"net/http"
+	"time"
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
@@ -40,13 +44,52 @@ func RefreshInstalledForKey(ctx context.Context, projectDir, key string) error {
 			return err
 		}
 	}
+	if key != "" {
+		return publishAfterValidation(projectDir)
+	}
 	return Refresh(ctx, projectDir)
+}
+
+// RefreshForStart reports entitlement failures while allowing free services up.
+// Purpose: isolate licensed availability. Inputs: context/project/warnings.
+// Outputs: warning line. Constraints: runtime Guard fails closed. SPORT: start.
+func RefreshForStart(ctx context.Context, projectDir string, warnings io.Writer) {
+	_ = StartMayContinue(RefreshInstalled(ctx, projectDir), warnings)
+}
+
+// StartMayContinue reports E125 without preventing free services from starting.
+// Purpose: share refresh and auto-build failure policy. Inputs: error/warnings.
+// Outputs: continuation decision. Constraints: other errors remain fatal.
+// SPORT: licensed-plugin isolation during start.
+func StartMayContinue(err error, warnings io.Writer) bool {
+	if err == nil {
+		return true
+	}
+	var coded *errs.CLIError
+	if errors.As(err, &coded) && coded.Code == "E125" {
+		_, _ = fmt.Fprintln(warnings, err)
+		return true
+	}
+	return false
+}
+
+// publishAfterValidation avoids validating a new key twice in one command.
+// Purpose: publish validated cache. Inputs: context/root. Outputs: error.
+// Constraints: same coverage and grace checks. SPORT: license set.
+func publishAfterValidation(projectDir string) error {
+	names, err := installedLicensedNames("")
+	if err != nil {
+		return errs.Wrap("E125", "could not inspect installed plugin entitlements", err)
+	}
+	return publishToken(projectDir, false, names, "")
 }
 
 // validateNewKey requires an online result before replacing runtime entitlement.
 // Purpose: preserve valid files offline. Inputs: context/project/key. Outputs: error.
 // Constraints: only explicit server refusal clears the file. SPORT: key validation.
 func validateNewKey(ctx context.Context, projectDir, key string) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	remote := &validationStatus{client: httptimeout.Default}
 	result, err := license.Validate(ctx, key, &license.ValidatorOptions{HTTPClient: remote})
 	if err != nil {
@@ -57,8 +100,7 @@ func validateNewKey(ctx context.Context, projectDir, key string) error {
 	}
 	// The validator treats every other 4xx as auth failure too; only 401/403
 	// or a verified 200 rejection revoke this runtime entitlement.
-	rejected := remote.status == http.StatusUnauthorized || remote.status == http.StatusForbidden ||
-		(remote.status == http.StatusOK && (result.Status == license.StatusRevoked || result.Status == license.StatusExpired))
+	rejected := explicitRejection(remote.status, result)
 	if result.CanProceed && !rejected {
 		return nil
 	}
@@ -66,10 +108,24 @@ func validateNewKey(ctx context.Context, projectDir, key string) error {
 	if !rejected {
 		return errs.New("E125", "could not validate the new licence online; existing entitlement retained")
 	}
-	if writeErr := writeAtomic(Path(projectDir), nil); writeErr != nil {
-		return errs.Wrap("E125", "could not clear the plugin entitlement file", writeErr)
+	if projectDir != "" {
+		if writeErr := writeAtomic(Path(projectDir), nil); writeErr != nil {
+			return errs.Wrap("E125", "could not clear the plugin entitlement file", writeErr)
+		}
 	}
 	return errs.New("E125", "the new licence was rejected and could not obtain a verified entitlement")
+}
+
+// ValidateKeyOutsideProject captures the token now for the next project build.
+// Purpose: avoid a stale-cache dead end. Inputs: context/key. Outputs: E125.
+// Constraints: V15 only; offline saves the key for a later build retry; no file.
+// SPORT: global license set.
+func ValidateKeyOutsideProject(ctx context.Context, key string) error {
+	// compat.V15(P7-PLUG-24): outside-project set saves only format -> validates online for the next project build
+	if !compat.V15() || DevKeyMode() {
+		return nil
+	}
+	return validateNewKey(ctx, "", key)
 }
 
 // validationStatus records the response status without changing validator policy.

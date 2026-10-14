@@ -226,7 +226,11 @@ func TestMountRefreshOnceAfterDiscovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"fixture", "second"} {
-		if err := os.WriteFile(filepath.Join(dir, name, pluginComposeFilename), in, 0600); err != nil {
+		fragment := in
+		if name == "second" {
+			fragment = []byte("services:\n  second:\n    image: fake/second\n")
+		}
+		if err := os.WriteFile(filepath.Join(dir, name, pluginComposeFilename), fragment, 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -234,8 +238,11 @@ func TestMountRefreshOnceAfterDiscovery(t *testing.T) {
 	t.Cleanup(func() { refreshPluginEntitlement = old })
 	calls := 0
 	failure := errs.New("E125", "first refresh failure")
-	refreshPluginEntitlement = func(_ context.Context, project string) error {
+	refreshPluginEntitlement = func(_ context.Context, project, installation string) error {
 		calls++
+		if installation != dir {
+			t.Errorf("refresh installation %q, want %q", installation, dir)
+		}
 		for _, name := range []string{"fixture", "second"} {
 			data, err := os.ReadFile(filepath.Join(dir, name, pluginComposeFilename))
 			if err != nil || !bytes.Contains(data, []byte(entitlementMount)) {

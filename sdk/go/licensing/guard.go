@@ -89,6 +89,9 @@ func Guard(ctx context.Context, slug string, next http.Handler, options ...Guard
 		option(g)
 	}
 	ctx, g.cancel = context.WithCancel(ctx)
+	if TestKeysCompiled() {
+		g.logger.Print("WARNING: nself_testkeys compiled in; operator-supplied entitlement test keys are enabled; UNSAFE FOR RELEASE")
+	}
 	if g.absent {
 		g.logger.Print("NSELF_ENTITLEMENT_FILE unset: runtime entitlement check bypassed for legacy CLI; support ends at v1.6.0")
 		close(g.done)
@@ -170,21 +173,25 @@ func incompleteToken(token string) bool {
 // Purpose: enforce route authorization. Inputs: HTTP request. Outputs: downstream or 503.
 // Constraints: expiration rechecked on every request. SPORT: plugin.entitlement-token.
 func (g *Middleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if g.absent || (r.URL.Path == "/health" && (r.Method == http.MethodGet || r.Method == http.MethodHead)) {
+	if g.absent || (r.URL.EscapedPath() == "/health" && (r.Method == http.MethodGet || r.Method == http.MethodHead)) {
 		g.next.ServeHTTP(w, r)
 		return
 	}
-	g.mu.Lock()
+	g.mu.RLock()
 	now := g.clock.Now()
-	retryAfter := time.Minute
-	if g.retryRead {
-		retryAfter = 5 * time.Second
-	}
-	if (g.retryRead || !g.authorized(now)) && now.Sub(g.lastReload) >= retryAfter {
-		g.reloadLocked(now)
-	}
 	authorized := g.authorized(now)
-	g.mu.Unlock()
+	reload := g.reloadDue(now)
+	g.mu.RUnlock()
+	if reload {
+		g.mu.Lock()
+		// Another request or the ticker may have refreshed while we waited.
+		now = g.clock.Now()
+		if g.reloadDue(now) {
+			g.reloadLocked(now)
+		}
+		authorized = g.authorized(now)
+		g.mu.Unlock()
+	}
 	if !authorized {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -192,6 +199,15 @@ func (g *Middleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	g.next.ServeHTTP(w, r)
+}
+
+// reloadDue checks the retry interval while the caller holds at least a read lock.
+func (g *Middleware) reloadDue(now time.Time) bool {
+	retryAfter := time.Minute
+	if g.retryRead {
+		retryAfter = 5 * time.Second
+	}
+	return (g.retryRead || !g.authorized(now)) && now.Sub(g.lastReload) >= retryAfter
 }
 
 // Purpose: check cached signed expiry. Inputs: time. Outputs: authorization.

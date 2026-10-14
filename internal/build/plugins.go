@@ -39,7 +39,7 @@ const composeManifestFile = ".nself/compose-files.txt"
 // compose service and lacks it is E128 in v1.5, see missingFragmentIsError).
 const pluginComposeFilename = "docker-compose.plugin.yml"
 
-var refreshPluginEntitlement = entitlement.Refresh
+var refreshPluginEntitlement = entitlement.RefreshForPlugins
 
 // DefaultPluginDir returns the default global plugin installation directory
 // (~/.nself/plugins). The NSELF_PLUGIN_DIR environment variable overrides the
@@ -75,6 +75,9 @@ func discoverPluginComposeFilesFx(fx Effects, sink Sink, workdir, pluginDir stri
 			return nil, nil
 		}
 		return nil, fmt.Errorf("reading plugin directory %s: %w", pluginDir, err)
+	}
+	if err := validateEntitlementFragments(pluginDir, entries); err != nil {
+		return nil, err
 	}
 
 	var composePaths []string
@@ -172,7 +175,7 @@ func discoverPluginComposeFilesFx(fx Effects, sink Sink, workdir, pluginDir stri
 	// Runtime credentials are refreshed at apply time, never embedded in a plan:
 	// a signed token changes independently of the reviewed compose configuration.
 	if licensedSeen && !fx.Planning() {
-		entitlementErr = refreshPluginEntitlement(context.Background(), workdir)
+		entitlementErr = refreshPluginEntitlement(context.Background(), workdir, pluginDir)
 	}
 
 	return composePaths, entitlementErr

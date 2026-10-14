@@ -238,6 +238,7 @@ func TestGuardHealthMethodsAndPaths(t *testing.T) {
 		{"GET", "/health", 200}, {"HEAD", "/health", 200}, {"POST", "/health", 503},
 		{"GET", "/HEALTH", 503}, {"GET", "/health/x", 503}, {"GET", "/health/../app", 503},
 		{"GET", "//health", 503}, {"GET", "/health?x=1", 200},
+		{"GET", "/%68ealth", 503}, {"GET", "/heal%74h", 503},
 	} {
 		t.Run(tc.method+tc.path, func(t *testing.T) {
 			w := httptest.NewRecorder()

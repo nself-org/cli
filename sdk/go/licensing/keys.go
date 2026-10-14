@@ -26,6 +26,10 @@ func PingKeys() []PingKey {
 
 var taggedTestKey func() ed25519.PublicKey
 
+// TestKeysCompiled reports whether the nself_testkeys build tag enabled test roots.
+// Release images must return false, regardless of the test-key environment variable.
+func TestKeysCompiled() bool { return taggedTestKey != nil }
+
 // Purpose: select a signature root. Inputs: signed kid. Outputs: public key.
 // Constraints: only the test build tag permits a test root. SPORT: plugin.entitlement-token.
 func signingKey(kid string) ed25519.PublicKey {

@@ -47,6 +47,8 @@ to add a key without replacing existing ones.`,
 				if err := entitlement.RefreshInstalledForKey(cmd.Context(), projectDir, key); err != nil {
 					return err
 				}
+			} else if err := entitlement.ValidateKeyOutsideProject(cmd.Context(), key); err != nil {
+				return err
 			}
 		}
 		pp := license.DetectProduct(key)

@@ -144,6 +144,8 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-PLUG-24 | discovery needs no JWT | licensed runtime files refresh before build completes | `internal/build/plugins.go` |
 | P7-PLUG-24 | no runtime entitlement diagnostic | warn on stale signed entitlement | `internal/doctor/entitlement_file.go` |
 | P7-PLUG-24 | no runtime entitlement file | verified JWT publication and E125 on failure | `internal/license/entitlement/write.go` |
+| P7-PLUG-24 | outside-project set saves only format | validates online for the next project build | `internal/license/entitlement/installed.go` |
+| P7-PLUG-24 | overlapping fragments merge freely | licensed service collisions fail closed | `internal/build/plugins_entitlement_fragments.go` |
 | P7-PLUG-24 | plugin compose has no entitlement mount | licensed services get the signed JWT file | `internal/build/plugins_entitlement_mount.go` |
 | P7-PLUG-24 | start and license set ignore entitlement | refresh licensed installed plugins | `internal/license/entitlement/installed.go` |
 | P7-PLUG-25 | clone template scaffolds without checking its plugins | refused (E110, E137, or E115 with no catalog) before any file is written | `internal/templates/clone/entitlement.go` |

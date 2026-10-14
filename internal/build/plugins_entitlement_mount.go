@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
@@ -43,12 +44,9 @@ func normalizeComposeEntitlement(content []byte, pluginDir, name string) ([]byte
 	if !licensed || skipEntitlementMount() {
 		return content, nil
 	}
-	var doc yaml.Node
-	if err := yaml.Unmarshal(content, &doc); err != nil {
-		return nil, errs.Wrap("E125", "invalid licensed compose fragment in "+filepath.Join(pluginDir, name), err)
-	}
-	if len(doc.Content) != 1 {
-		return nil, errs.New("E125", "invalid licensed compose fragment")
+	doc, err := licensedComposeDocument(content, filepath.Join(pluginDir, name))
+	if err != nil {
+		return nil, err
 	}
 	services := yamlGet(doc.Content[0], "services")
 	if services == nil || services.Kind != yaml.MappingNode {
@@ -60,7 +58,7 @@ func normalizeComposeEntitlement(content []byte, pluginDir, name string) ([]byte
 	var out bytes.Buffer
 	enc := yaml.NewEncoder(&out)
 	enc.SetIndent(2)
-	if err := enc.Encode(&doc); err != nil {
+	if err := enc.Encode(doc); err != nil {
 		return nil, errs.Wrap("E125", "cannot encode licensed compose fragment", err)
 	}
 	if err := enc.Close(); err != nil {
@@ -74,8 +72,14 @@ func normalizeComposeEntitlement(content []byte, pluginDir, name string) ([]byte
 // Constraints: duplicate keys must not bypass fixed environment or mounts.
 // SPORT: contract:plugin.entitlement-token.
 func injectEntitlementServices(services *yaml.Node) error {
+	if err := rejectEntitlementTag(services, "services"); err != nil {
+		return err
+	}
 	for i := 1; i < len(services.Content); i += 2 {
 		svc := services.Content[i]
+		if err := rejectEntitlementTag(svc, "service"); err != nil {
+			return err
+		}
 		if svc.Kind != yaml.MappingNode {
 			return errs.New("E125", "licensed service must be a mapping")
 		}
@@ -89,6 +93,11 @@ func injectEntitlementServices(services *yaml.Node) error {
 				return errs.New("E125", "duplicate licensed service key")
 			}
 			seen[key] = true
+			if key == "environment" || key == "volumes" {
+				if err := rejectEntitlementTag(svc.Content[j+1], key); err != nil {
+					return err
+				}
+			}
 		}
 		if err := injectEntitlementEnv(svc); err != nil {
 			return err
@@ -96,6 +105,15 @@ func injectEntitlementServices(services *yaml.Node) error {
 		if err := injectEntitlementVolume(svc); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// rejectEntitlementTag prevents Compose reset/override tags from dropping the guard.
+// Inputs: guarded YAML node. Outputs: E125 for any non-core tag.
+func rejectEntitlementTag(node *yaml.Node, field string) error {
+	if !strings.HasPrefix(node.Tag, "!!") {
+		return errs.Newf("E125", "licensed %s cannot use YAML tag %q", field, node.Tag)
 	}
 	return nil
 }

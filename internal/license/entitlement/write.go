@@ -30,6 +30,13 @@ func Path(projectDir string) string {
 // Constraints: trust server signatures, not cache copies; v1.4 is unchanged.
 // SPORT: runtime entitlement refresh.
 func Refresh(ctx context.Context, projectDir string) error {
+	return RefreshForPlugins(ctx, projectDir, "")
+}
+
+// RefreshForPlugins publishes entitlement for an explicit installation directory.
+// Purpose: bind discovery and coverage to the same plugins. Inputs: context/paths.
+// Outputs: private token/error. Constraints: v1.5 only. SPORT: entitlement refresh.
+func RefreshForPlugins(ctx context.Context, projectDir, pluginDir string) error {
 	// compat.V15(P7-PLUG-24): no runtime entitlement file -> verified JWT publication and E125 on failure
 	if !compat.V15() || DevKeyMode() {
 		return nil
@@ -37,12 +44,51 @@ func Refresh(ctx context.Context, projectDir string) error {
 	if err := ctx.Err(); err != nil {
 		return errs.Wrap("E125", "plugin entitlement refresh was canceled", err)
 	}
+	names, err := installedLicensedNames(pluginDir)
+	if err != nil {
+		return errs.Wrap("E125", "could not inspect installed plugin entitlements", err)
+	}
+	rejected, renewed := false, false
+	if len(names) > 0 {
+		rejected, renewed = revalidateKeys(ctx)
+	}
+	preferred := ""
+	if !renewed && !rejected {
+		preferred = retainedToken(Path(projectDir))
+	}
+	return publishToken(projectDir, rejected, names, preferred)
+}
+
+// Purpose: select and publish without repeating online validation.
+// Inputs: root/rejection/slugs. Outputs: private file/E125. Constraints: retain
+// verified tokens across transient cache failures. SPORT: entitlement lifecycle.
+func publishToken(projectDir string, rejected bool, names []string, preferred string) error {
 	token, tokenErr := cachedToken()
+	if preferred != "" {
+		token, tokenErr = preferred, nil
+	}
+	if rejected {
+		token, tokenErr = "", fmt.Errorf("the licence was explicitly rejected")
+	}
+	if tokenErr != nil && !rejected {
+		if retained := retainedToken(Path(projectDir)); retained != "" {
+			token = retained
+		}
+	}
+	if token != "" {
+		tokenErr = tokenPolicy(token, names)
+		if tokenErr != nil && !rejected {
+			if retained := retainedToken(Path(projectDir)); retained != "" {
+				token = retained
+				tokenErr = tokenPolicy(token, names)
+			}
+		}
+	}
 	if err := writeAtomic(Path(projectDir), []byte(token)); err != nil {
 		return errs.Wrap("E125", fmt.Sprintf("could not write the plugin entitlement file: %v", err), err)
 	}
 	if tokenErr != nil {
-		return errs.Wrap("E125", "no verified plugin entitlement token is available", tokenErr)
+		return errs.Wrap("E125", "plugin entitlement unavailable: "+tokenErr.Error(), tokenErr)
 	}
 	return nil
 }
@@ -82,6 +128,9 @@ func cachedToken() (string, error) {
 // Constraints: 0600; SDK retries torn reads. SPORT: private state publication.
 func writeAtomic(path string, data []byte) error {
 	dir := filepath.Dir(path)
+	if err := privateDirectories(dir); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
@@ -104,8 +153,8 @@ func writeAtomic(path string, data []byte) error {
 // Purpose: preserve bind mount identity. Inputs: path/data/stat. Outputs: error.
 // Constraints: no symlinks or truncation before writing. SPORT: mounted refresh.
 func writeExisting(path string, data []byte, before os.FileInfo) error {
-	if !before.Mode().IsRegular() {
-		return fmt.Errorf("entitlement target must be a regular file, not a symlink or special file")
+	if !before.Mode().IsRegular() || !singleLink(before) {
+		return fmt.Errorf("entitlement target must be a single-link regular file, not a symlink or special file")
 	}
 	if before.Mode().Perm()&0200 == 0 {
 		if err := normalizePermissions(path, before); err != nil {
@@ -121,7 +170,7 @@ func writeExisting(path string, data []byte, before os.FileInfo) error {
 	if err != nil {
 		return err
 	}
-	if !after.Mode().IsRegular() || !os.SameFile(before, after) {
+	if !after.Mode().IsRegular() || !singleLink(after) || !os.SameFile(before, after) {
 		return fmt.Errorf("entitlement target changed during refresh")
 	}
 	if err := f.Chmod(0600); err != nil {
@@ -149,7 +198,7 @@ func normalizePermissions(path string, before os.FileInfo) error {
 	if err != nil {
 		return err
 	}
-	if !after.Mode().IsRegular() || !os.SameFile(before, after) {
+	if !after.Mode().IsRegular() || !singleLink(after) || !os.SameFile(before, after) {
 		return fmt.Errorf("entitlement target changed during refresh")
 	}
 	return f.Chmod(0600)

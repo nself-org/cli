@@ -11,6 +11,18 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Runtime entitlement APIs in `licensing` (P7-PLUG-24):
+  `Guard(ctx, slug, next, ...GuardOption) *Middleware`,
+  `VerifyEntitlement(slug, now) error`, `ErrEntitlementUnconfigured`,
+  `TestKeysCompiled() bool`, and `EntitlementGracePeriod` (30 days).
+  Ed25519 verification uses ping's signed expiry and exact plugin slug. Guard
+  exempts only GET/HEAD on the literal `/health` path, retains a verified
+  decision through transient reads until signed expiry plus grace, and retries
+  those reads after five seconds. Unset `NSELF_ENTITLEMENT_FILE` serves with
+  one legacy-CLI warning until v1.6.0; non-HTTP callers receive
+  `ErrEntitlementUnconfigured` and must apply the same compatibility rule.
+  Configured invalid files fail closed. Test-tag builds emit a release warning;
+  production images must have `TestKeysCompiled() == false`.
 - `signing` package (P7-CACHE-06): Ed25519 verification pinned to one purpose
   (plugins, agent, ci-release, ci-node, ci-audit) and optionally one scope, with
   key ids (`KeyID`), revocations, key validity windows and sentinel errors;

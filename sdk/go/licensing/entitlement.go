@@ -18,13 +18,22 @@ const EntitlementGracePeriod time.Duration = 2592000000000000
 const maxTokenBytes = 1048576
 
 var ErrEntitlementExpired = errors.New("entitlement_expired")
+
+// ErrEntitlementUnconfigured means FileEnv is unset. Callers should serve with a
+// warning for legacy CLIs until v1.6.0; Guard already applies this compatibility rule.
+var ErrEntitlementUnconfigured = errors.New("entitlement_unconfigured")
 var errTokenTooLarge = errors.New("entitlement token exceeds size limit")
 
 // Purpose: verify the configured file. Inputs: plugin slug and trusted clock.
-// Outputs: nil only for an authorized signed token. Constraints: absent files fail closed;
-// Guard owns the temporary unset-env compatibility rule. SPORT: plugin.entitlement-token.
+// Outputs: nil for authorization, ErrEntitlementUnconfigured when FileEnv is unset.
+// Constraints: configured unreadable files fail closed; callers serve with a warning
+// on ErrEntitlementUnconfigured until v1.6.0. SPORT: plugin.entitlement-token.
 func VerifyEntitlement(slug string, now time.Time) error {
-	return verifyFile(os.Getenv(FileEnv), slug, now)
+	path, present := os.LookupEnv(FileEnv)
+	if !present {
+		return ErrEntitlementUnconfigured
+	}
+	return verifyFile(path, slug, now)
 }
 
 // Purpose: verify a file snapshot. Inputs: path, slug, now. Outputs: authorization.
@@ -43,6 +52,10 @@ func verifyFile(path, slug string, now time.Time) error {
 // Purpose: bound reads of mounted files. Inputs: path. Outputs: bytes or rejection.
 // Constraints: oversized files never allocate unbounded memory. SPORT: plugin.entitlement-token.
 func readTokenFile(path string) ([]byte, error) {
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, ErrEntitlementExpired
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, ErrEntitlementExpired

@@ -13,6 +13,25 @@ import "github.com/nself-org/cli/sdk/go/v2/plugin"
 The module path is `github.com/nself-org/cli/sdk/go/v2` (see [`go.mod`](go.mod)).
 The module lives in the `sdk/go/` directory of the `nself-org/cli` repository.
 
+## Unreleased
+
+`licensing` adds `Guard(ctx, slug, next, ...GuardOption) *Middleware`,
+`VerifyEntitlement(slug, now) error`, `ErrEntitlementUnconfigured`,
+`TestKeysCompiled() bool`, and `EntitlementGracePeriod` (30 days). These APIs
+use `NSELF_ENTITLEMENT_FILE` and ping's Ed25519-signed JWT. Authorization ends
+at signed expiry plus grace; transient read failures retain the last verified
+decision only until that deadline. Guard owns a 24-hour refresh ticker and
+must be closed or have its context cancelled when the plugin shuts down.
+
+For released v1.4.x CLIs, unset `NSELF_ENTITLEMENT_FILE` means serve with one
+warning until v1.6.0. Guard applies this rule. Worker and other non-HTTP callers
+must treat `ErrEntitlementUnconfigured` from `VerifyEntitlement` the same way.
+Set-but-empty, missing, invalid, or non-regular configured files fail closed.
+GET and HEAD on the literal `/health` path bypass Guard; percent-encoded paths
+are guarded. `TestKeysCompiled()` reports the `nself_testkeys` capability even
+when no test key environment variable is set. Release images must return false
+and `go version -m <bin>` must not show `nself_testkeys` in its build tags.
+
 ## Version mapping
 
 The module path ends in `/v2`, so Go resolves only tags named
