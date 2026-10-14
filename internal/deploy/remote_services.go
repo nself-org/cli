@@ -36,6 +36,9 @@ func applyServices(ctx context.Context, o ApplyOptions, model ComposeModel) erro
 		}
 		emit(o.Out, "  [running] Restart %s (sequenced rolling)", svc)
 		up := fmt.Sprintf("cd %s && %s up -d --no-deps -- %s", q(rp), composeBase(files, envs), q(svc))
+		if o.rollbackImages != nil {
+			up = fmt.Sprintf("cd %s && %s up -d --no-deps --pull never --no-build -- %s", q(rp), composeBase(files, envs), q(svc))
+		}
 		if _, err := r.Run(ctx, shScript(up)); err != nil {
 			return fmt.Errorf("remote restart of %s failed: %w\nRun 'nself logs %s' on the host for details", svc, err, svc)
 		}

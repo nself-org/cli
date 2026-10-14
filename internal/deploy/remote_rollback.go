@@ -3,7 +3,7 @@ package deploy
 // Purpose: `nself deploy rollback` for a v1.5 remote apply (D24): put the files
 //          of the pre-deploy tar back in place, restore the verified database
 //          backup when the deploy took one (production-class), then re-apply the
-//          restored artifact set with the same pull, service-by-service up and
+//          restored artifact set with retained image IDs, service-by-service up and
 //          health gate.
 // Inputs:  a Remote, the remote path, the tar path and backup id the deploy
 //          recorded in .nself/state/deploy.json.
@@ -45,6 +45,7 @@ type RollbackOptions struct {
 	StrictHasura bool
 	Clock        docker.Clock
 	Out          io.Writer
+	images       map[string]string
 }
 
 // RollbackRemote undoes the last v1.5 remote apply on the host.
@@ -65,6 +66,10 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 		return err
 	}
 	defer release()
+	o.images, err = readRollbackImages(ctx, r, rp, o.Tar)
+	if err != nil {
+		return err
+	}
 	emit(o.Out, "  [running] restore %s in place on %s", path.Base(o.Tar), r.Label())
 	if err := RestorePreDeployTar(ctx, r, rp, o.Tar, RestoreSpec{Changed: o.Changed, Absent: o.Absent}); err != nil {
 		return err
@@ -101,7 +106,7 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 	return ferr
 }
 
-// reapplyRestored re-applies the restored artifact set: the pull, the services
+// reapplyRestored re-applies the restored artifact set: retained images, services
 // in compose order with the health gate, nginx and hasura. A host whose tar held
 // no compose set (a first deploy) is restored but not re-applied.
 func reapplyRestored(ctx context.Context, o RollbackOptions) error {
@@ -131,7 +136,7 @@ func reapplyRestored(ctx context.Context, o RollbackOptions) error {
 	}
 	emit(o.Out, "  [running] re-apply the restored artifact set")
 	return ReapplyRemote(ctx, ApplyOptions{
-		Remote: r, RemotePath: rp, Set: ArtifactSet{Compose: compose, EnvManifest: envs}, StrictHasura: o.StrictHasura, Clock: o.Clock, Out: o.Out,
+		Remote: r, RemotePath: rp, Set: ArtifactSet{Compose: compose, EnvManifest: envs}, StrictHasura: o.StrictHasura, Clock: o.Clock, Out: o.Out, rollbackImages: o.images,
 	})
 }
 

@@ -185,7 +185,7 @@ func TestRollbackRemoteOrder(t *testing.T) {
 		t.Errorf("manifest not restored: %q", got)
 	}
 	got := steps(f)
-	order := []string{"restore", "dbbackup", "model", "pull", "up:db", "up:web", "up:nginx"}
+	order := []string{"restore", "dbbackup", "model", "up:db", "up:web", "up:nginx"}
 	prevAt := -1
 	for _, want := range order {
 		i := indexOf(got, want)

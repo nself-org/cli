@@ -63,10 +63,11 @@ type ApplyOptions struct {
 	// its backup id (E206 on failure). Used when ProdClass and BackupID is empty.
 	Snapshot func(ctx context.Context, id string) (string, error)
 	// StrictHasura makes a failed metadata apply fail the deploy.
-	StrictHasura bool
-	Clock        docker.Clock
-	Out          io.Writer
-	Now          func() time.Time
+	StrictHasura   bool
+	Clock          docker.Clock
+	Out            io.Writer
+	Now            func() time.Time
+	rollbackImages map[string]string
 }
 
 // ApplyResult records what ApplyRemote did, even when it stopped early.
@@ -149,6 +150,9 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 		if res.BackupID, err = o.Snapshot(ctx, "pre-deploy-"+id); err != nil {
 			return res, err
 		}
+	}
+	if err = archiveRunningImages(ctx, r, rp, bk.Tar); err != nil {
+		return res, err
 	}
 
 	// From the sync to the first `up`, a failure puts the old files back (the
@@ -251,10 +255,11 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 	return res, nil
 }
 
-// ReapplyRemote runs the pull and the service-by-service up with the health
+// ReapplyRemote runs the service-by-service up with the health
 // gate over the manifests already on the host (rollback uses it after the files
 // are back in place), then validates the restored nginx config in a throwaway
-// container before reloading nginx, and applies the hasura metadata.
+// container before reloading nginx, and applies the hasura metadata. Recorded
+// rollback images are pinned locally; legacy callers still pull their images.
 func ReapplyRemote(ctx context.Context, o ApplyOptions) error {
 	if o.Out == nil {
 		o.Out = io.Discard
@@ -263,9 +268,16 @@ func ReapplyRemote(ctx context.Context, o ApplyOptions) error {
 	if err != nil {
 		return err
 	}
-	base := composeBase(o.Set.Compose, o.Set.EnvManifest)
-	if _, err = o.Remote.Run(ctx, shScript(fmt.Sprintf("cd %s && %s pull", q(o.RemotePath), base))); err != nil {
-		return fmt.Errorf("remote pull on %s: %w", o.Remote.Label(), err)
+	cleanup, err := prepareRollbackImages(ctx, &o, &model)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	if o.rollbackImages == nil {
+		base := composeBase(o.Set.Compose, o.Set.EnvManifest)
+		if _, err = o.Remote.Run(ctx, shScript(fmt.Sprintf("cd %s && %s pull", q(o.RemotePath), base))); err != nil {
+			return fmt.Errorf("remote pull on %s: %w", o.Remote.Label(), err)
+		}
 	}
 	if err = applyServices(ctx, o, model); err != nil {
 		return err

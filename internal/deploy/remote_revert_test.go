@@ -190,7 +190,7 @@ func TestRollbackChecksNginxAndAppliesHasura(t *testing.T) {
 	}
 	got := steps(f)
 	prev := -1
-	for _, want := range []string{"restore", "pull", "up:db", "nginx", "reload", "hasura"} {
+	for _, want := range []string{"restore", "up:db", "nginx", "reload", "hasura"} {
 		i := indexOf(got, want)
 		if i <= prev {
 			t.Fatalf("rollback step %q at %d after %d in %v", want, i, prev, got)

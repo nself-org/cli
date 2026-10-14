@@ -18,12 +18,16 @@ var psService = regexp.MustCompile(`ps -a --format json -- '([^']+)'`)
 // crash names a service whose container exits non-zero after its `up`.
 func stackHandler(rp string, crash string) func(string) (string, bool) {
 	upDone := map[string]bool{}
-	upSvc := regexp.MustCompile(`--no-deps -- '([^']+)'`)
+	upSvc := regexp.MustCompile(`--no-deps(?: --pull never --no-build)? -- '([^']+)'`)
 	return func(s string) (string, bool) {
 		if m := upSvc.FindStringSubmatch(s); m != nil {
 			upDone[m[1]] = true
 		}
 		switch {
+		case strings.Contains(s, "ps --status running --quiet"):
+			return "running-container\n", true
+		case strings.Contains(s, "docker inspect --type container --format '{{.Image}}'"):
+			return fakeImageID("a") + "\n", true
 		case strings.Contains(s, "docker image inspect"):
 			return fakeImageID("a") + " postgres:16\n" + fakeImageID("b") + " web:1\n", true
 		case strings.Contains(s, "docker tag"):
@@ -60,6 +64,8 @@ func fakeImageID(digit string) string { return "sha256:" + strings.Repeat(digit,
 
 func classify(s string) string {
 	switch {
+	case strings.Contains(s, "rollback-image-capture"), strings.Contains(s, "ps --status running --quiet"), strings.Contains(s, "docker inspect --type container --format '{{.Image}}'"):
+		return "running-images"
 	case strings.Contains(s, "docker image inspect"):
 		return "imgsave"
 	case strings.Contains(s, "docker tag"):
@@ -99,7 +105,7 @@ func classify(s string) string {
 	case strings.Contains(s, " pull"):
 		return "pull"
 	case strings.Contains(s, "up -d --no-deps"):
-		m := regexp.MustCompile(`--no-deps -- '([^']+)'`).FindStringSubmatch(s)
+		m := regexp.MustCompile(`--no-deps(?: --pull never --no-build)? -- '([^']+)'`).FindStringSubmatch(s)
 		return "up:" + m[1]
 	case strings.Contains(s, "ps -a"), strings.Contains(s, "docker inspect"):
 		return "state"
