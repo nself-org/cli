@@ -639,13 +639,7 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {
-              "expose-network": {
-                "default": false,
-                "description": "Bind to 0.0.0.0 instead of 127.0.0.1 (WARNING: only use behind a TLS reverse proxy)",
-                "type": "boolean"
-              }
-            },
+            "properties": {},
             "type": "object"
           }
         },

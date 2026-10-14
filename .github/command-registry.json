@@ -968,7 +968,7 @@
           "side_effect": null,
           "json": null,
           "output": null,
-          "cli_only": false,
+          "cli_only": true,
           "secret": false
         }
       ],
