@@ -34,6 +34,9 @@ import (
 // ships an env file to a host without a pin would pass vacuously through E487.
 func pinFakeHostKeys(t *testing.T, bin string, hosts ...string) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("needs POSIX shell stubs for ssh-keyscan and ssh-keygen")
+	}
 	for name, body := range map[string]string{
 		"ssh-keyscan": "#!/bin/sh\nfor a; do h=$a; done\nprintf '%s ssh-ed25519 AQID\\n' \"$h\"\n",
 		"ssh-keygen":  "#!/bin/sh\nif [ -f \"$4\" ]; then /bin/cat \"$4\"; fi\n",
