@@ -4,29 +4,35 @@ package catalog
 //
 // Purpose: keep the last good body and its ETag so the next fetch can send
 // If-None-Match, and so search and the unknown-command hint can answer offline.
-// Inputs: the cache directory. Outputs: catalog.json (the body, as served) and
-// catalog.etag beside it, both mode 0600.
-// Constraints: the ETag file is removed before the body is replaced and
-// written after it, so a crash between the two leaves a body with no ETag
-// (an unconditional refetch), never a new body paired with an old ETag.
+// Inputs: the cache directory. Outputs: catalog.cache.json, mode 0600.
+// Constraints: body and ETag share one atomically replaced record. A mutex
+// serializes local writers; atomic rename also keeps other processes' reads
+// paired. Legacy bodies remain usable offline, without trusting their ETags.
 // Writes are best effort: a read-only cache dir never fails a command.
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
+	"sync"
 	"time"
 
 	"github.com/nself-org/cli/internal/errs"
 )
 
 const (
-	bodyFile = "catalog.json"
-	etagFile = "catalog.etag"
+	bodyFile   = "catalog.json"
+	recordFile = "catalog.cache.json"
 )
+
+var cacheMu sync.Mutex
+
+type cacheRecord struct {
+	Body []byte `json:"body"`
+	ETag string `json:"etag"`
+}
 
 // DefaultCacheDir is where the catalog cache lives: NSELF_PLUGIN_CACHE (the
 // registry cache override) or ~/.nself/cache/plugins. Empty when neither can
@@ -55,21 +61,37 @@ func readCache(dir string) (*cached, *Catalog, bool) {
 	if dir == "" {
 		return nil, nil, false
 	}
-	path := filepath.Join(dir, bodyFile)
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > maxBody {
-		return nil, nil, false
+	path := filepath.Join(dir, recordFile)
+	f, err := os.Open(path)
+	legacy := errors.Is(err, os.ErrNotExist)
+	if legacy {
+		f, err = os.Open(filepath.Join(dir, bodyFile))
 	}
-	body, err := os.ReadFile(path)
 	if err != nil {
 		return nil, nil, false
+	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() > 2*maxBody {
+		return nil, nil, false
+	}
+	body, err := io.ReadAll(io.LimitReader(f, 2*maxBody+1))
+	if err != nil {
+		return nil, nil, false
+	}
+	etag := ""
+	if !legacy {
+		var record cacheRecord
+		if json.Unmarshal(body, &record) != nil {
+			return nil, nil, false
+		}
+		body, etag = record.Body, record.ETag
 	}
 	cat, err := Decode(body)
 	if err != nil {
 		return nil, nil, false
 	}
-	etag, _ := os.ReadFile(filepath.Join(dir, etagFile))
-	return &cached{body: body, etag: strings.TrimSpace(string(etag)), at: info.ModTime()}, cat, true
+	return &cached{body: body, etag: etag, at: info.ModTime()}, cat, true
 }
 
 // writeCache stores body and etag (empty etag stores none).
@@ -77,20 +99,18 @@ func writeCache(dir string, body []byte, etag string) {
 	if dir == "" || os.MkdirAll(dir, 0o755) != nil {
 		return
 	}
-	if err := os.Remove(filepath.Join(dir, etagFile)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	data, err := json.Marshal(cacheRecord{Body: body, ETag: etag})
+	if err != nil {
 		return
 	}
-	if writeAtomic(filepath.Join(dir, bodyFile), body) != nil {
-		return
-	}
-	if etag != "" {
-		_ = writeAtomic(filepath.Join(dir, etagFile), []byte(etag+"\n"))
-	}
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
+	_ = writeAtomic(filepath.Join(dir, recordFile), data)
 }
 
 // touchCache marks the cached body as confirmed current just now (a 304).
 func touchCache(dir string, now time.Time) {
-	_ = os.Chtimes(filepath.Join(dir, bodyFile), now, now)
+	_ = os.Chtimes(filepath.Join(dir, recordFile), now, now)
 }
 
 func writeAtomic(path string, data []byte) error {

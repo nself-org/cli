@@ -77,8 +77,8 @@ func TestFetchETag304(t *testing.T) {
 	if second.Source != SourceNetwork || len(second.Catalog.Plugins) != len(first.Catalog.Plugins) {
 		t.Fatalf("304 should reuse the cached catalog, got %v with %d plugins", second.Source, len(second.Catalog.Plugins))
 	}
-	body, _ := os.ReadFile(filepath.Join(dir, bodyFile))
-	if string(body) != string(sampleCatalog(1)) {
+	c, _, ok := readCache(dir)
+	if !ok || string(c.body) != string(sampleCatalog(1)) {
 		t.Fatal("cached body changed on a 304")
 	}
 }
@@ -101,10 +101,9 @@ func TestFetchNewETagReplaces(t *testing.T) {
 	if !strings.HasSuffix(e.Description, "2") {
 		t.Fatalf("fetched description %q, want the new body", e.Description)
 	}
-	body, _ := os.ReadFile(filepath.Join(dir, bodyFile))
-	etag, _ := os.ReadFile(filepath.Join(dir, etagFile))
-	if string(body) != string(sampleCatalog(2)) || strings.TrimSpace(string(etag)) != `"e2"` {
-		t.Fatalf("cache not replaced: etag %q", etag)
+	c, _, ok := readCache(dir)
+	if !ok || string(c.body) != string(sampleCatalog(2)) || c.etag != `"e2"` {
+		t.Fatalf("cache not replaced: %v", c)
 	}
 }
 
@@ -115,7 +114,7 @@ func TestFetchOfflineUsesCache(t *testing.T) {
 		t.Fatal(err)
 	}
 	when := time.Date(2026, 10, 1, 12, 0, 0, 0, time.Local)
-	if err := os.Chtimes(filepath.Join(dir, bodyFile), when, when); err != nil {
+	if err := os.Chtimes(filepath.Join(dir, recordFile), when, when); err != nil {
 		t.Fatal(err)
 	}
 	srv.Close() // unreachable from here on
@@ -165,8 +164,8 @@ func TestFetchInvalidBodyKeepsCache(t *testing.T) {
 	if _, err := Fetch(context.Background(), broken.URL, dir); codeOf(err) != "E116" {
 		t.Fatalf("invalid body: got %v, want E116", err)
 	}
-	body, _ := os.ReadFile(filepath.Join(dir, bodyFile))
-	if string(body) != string(sampleCatalog(1)) {
+	c, _, ok := readCache(dir)
+	if !ok || string(c.body) != string(sampleCatalog(1)) {
 		t.Fatal("an invalid body replaced the cache")
 	}
 }

@@ -117,11 +117,12 @@ export function createTransport(options: ClientOptions): Transport {
     doFetch(base + path, { method: "POST", headers: headers(accept, true), body: JSON.stringify(request ?? {}), signal });
 
   async function call<T>(path: string, request: CommandRequest | undefined, opts: CallOptions = {}): Promise<T> {
-    const res = await post(path, request, "application/json", opts.signal);
+    const body = JSON.stringify(request ?? {});
+    const res = await doFetch(base + path, { method: "POST", headers: headers("application/json", true), body, signal: opts.signal });
     const env = decode(await res.text(), res);
     opts.onResponse?.(infoOf(res, env));
     if (res.status === 428 && env.data) {
-      const resend = (confirm: string) => call<T>(path, { ...request, confirm }, opts);
+      const resend = (confirm: string) => call<T>(path, { ...JSON.parse(body), confirm }, opts);
       throw new ConfirmationRequired<T>(env.data as unknown as Confirmation, resend, env.command);
     }
     if (res.status >= 400 || env.error) throw fail(env, res);
