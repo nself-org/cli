@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -48,7 +49,7 @@ func TestLicenseSetOfflinePreservesAndRejectionClears(t *testing.T) {
 		{"transport", 0, "", false},
 		{"timeout", -1, "", false},
 		{"invalid", http.StatusUnauthorized, "", true},
-		{"forbidden", http.StatusForbidden, "", true},
+		{"forbidden", http.StatusForbidden, `{"valid":false,"error":"License rejected"}`, true},
 		{"revoked", http.StatusOK, `{"valid":false,"reason":"revoked"}`, true},
 		{"expired", http.StatusOK, `{"valid":false,"reason":"expired"}`, true},
 	} {
@@ -102,8 +103,11 @@ func TestLicenseSetOfflinePreservesAndRejectionClears(t *testing.T) {
 				defer cancel()
 			}
 			err = entitlement.RefreshInstalledForKey(ctx, dir, "synthetic-license-key")
-			if errs.ExitCodeFor(err) != 3 {
-				t.Fatalf("validation failure requires E125: %v", err)
+			if tc.clear && errs.ExitCodeFor(err) != 3 {
+				t.Fatalf("explicit rejection requires E125: %v", err)
+			}
+			if !tc.clear && !errors.Is(err, entitlement.ErrValidationUnavailable) {
+				t.Fatalf("transient validation must allow a saved-key warning: %v", err)
 			}
 			after, err := os.ReadFile(entitlement.Path(dir))
 			if err != nil {

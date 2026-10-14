@@ -114,8 +114,9 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	// BEFORE the docker-compose.yml check because build creates it.
 	autoInstallAIIfNeeded(ctx)
 
+	entitlementRefreshed := false
 	if !opts.skipBuild {
-		if err := autoRebuildIfNeeded(projectDir, opts); !entitlement.StartMayContinue(err, os.Stderr) {
+		if entitlementRefreshed, err = autoRebuildIfNeeded(projectDir, opts); err != nil {
 			return err
 		}
 	}
@@ -147,7 +148,7 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	// Compose manifest read + --skip-plugins filter extracted to
 	// start_config.go (T-P6-E2-W1-S1-T3).
 	composeFiles := loadStartComposeFiles(projectDir, opts)
-	if !opts.skipPlugins {
+	if !opts.skipPlugins && !entitlementRefreshed {
 		entitlement.RefreshForStart(ctx, projectDir, os.Stderr)
 	}
 

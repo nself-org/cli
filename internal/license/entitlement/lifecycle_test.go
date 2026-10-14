@@ -136,11 +136,11 @@ func TestRefreshForStartWarnsAndContinues(t *testing.T) {
 	}
 }
 
-func TestStartMayContinueWrappedAutoBuildE125(t *testing.T) {
+func TestStartMayContinueWrappedRefreshE125(t *testing.T) {
 	var warnings bytes.Buffer
-	err := fmt.Errorf("auto-build failed: %w", errs.New("E125", "token missing"))
+	err := fmt.Errorf("entitlement refresh failed: %w", errs.New("E125", "token missing"))
 	if !entitlement.StartMayContinue(err, &warnings) || !strings.Contains(warnings.String(), "E125") {
-		t.Fatal("auto-build entitlement failure aborted free services")
+		t.Fatal("entitlement refresh failure aborted free services")
 	}
 	if entitlement.StartMayContinue(fmt.Errorf("build disk failure"), &warnings) {
 		t.Fatal("unrelated build failure suppressed")

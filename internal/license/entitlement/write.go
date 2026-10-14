@@ -48,42 +48,31 @@ func RefreshForPlugins(ctx context.Context, projectDir, pluginDir string) error 
 	if err != nil {
 		return errs.Wrap("E125", "could not inspect installed plugin entitlements", err)
 	}
-	rejected, renewed := false, false
+	token, _ := cachedToken()
+	candidates := []string{token, retainedToken(Path(projectDir))}
+	var rejected map[string]bool
 	if len(names) > 0 {
+		var renewed []string
 		rejected, renewed = revalidateKeys(ctx)
+		candidates = append(candidates, renewed...)
 	}
-	preferred := ""
-	if !renewed && !rejected {
-		preferred = retainedToken(Path(projectDir))
-	}
-	return publishToken(projectDir, rejected, names, preferred)
+	return publishCandidates(projectDir, names, rejected, candidates)
 }
 
 // Purpose: select and publish without repeating online validation.
-// Inputs: root/rejection/slugs. Outputs: private file/E125. Constraints: retain
+// Inputs: root/slugs. Outputs: private file/E125. Constraints: retain
 // verified tokens across transient cache failures. SPORT: entitlement lifecycle.
-func publishToken(projectDir string, rejected bool, names []string, preferred string) error {
-	token, tokenErr := cachedToken()
-	if preferred != "" {
-		token, tokenErr = preferred, nil
-	}
-	if rejected {
-		token, tokenErr = "", fmt.Errorf("the licence was explicitly rejected")
-	}
-	if tokenErr != nil && !rejected {
-		if retained := retainedToken(Path(projectDir)); retained != "" {
-			token = retained
-		}
-	}
-	if token != "" {
-		tokenErr = tokenPolicy(token, names)
-		if tokenErr != nil && !rejected {
-			if retained := retainedToken(Path(projectDir)); retained != "" {
-				token = retained
-				tokenErr = tokenPolicy(token, names)
-			}
-		}
-	}
+func publishToken(projectDir string, names []string) error {
+	token, _ := cachedToken()
+	return publishCandidates(projectDir, names, nil, []string{token, retainedToken(Path(projectDir))})
+}
+
+// Purpose: publish the newest covering token without reviving rejected subjects.
+// Inputs: verified candidates/slugs/rejected hashes. Outputs: file/E125.
+// Constraints: signed expiry only; preserve diagnostic token if none covers.
+// SPORT: per-key rejection and offline entitlement selection.
+func publishCandidates(projectDir string, names []string, rejected map[string]bool, candidates []string) error {
+	token, tokenErr := selectToken(candidates, names, rejected)
 	if err := writeAtomic(Path(projectDir), []byte(token)); err != nil {
 		return errs.Wrap("E125", fmt.Sprintf("could not write the plugin entitlement file: %v", err), err)
 	}
@@ -154,7 +143,7 @@ func writeAtomic(path string, data []byte) error {
 // Constraints: no symlinks or truncation before writing. SPORT: mounted refresh.
 func writeExisting(path string, data []byte, before os.FileInfo) error {
 	if !before.Mode().IsRegular() || !singleLink(before) {
-		return fmt.Errorf("entitlement target must be a single-link regular file, not a symlink or special file")
+		return fmt.Errorf("entitlement target must be a single-link regular file, not a symlink or special file; remove the entitlement file and run nself build to recreate it")
 	}
 	if before.Mode().Perm()&0200 == 0 {
 		if err := normalizePermissions(path, before); err != nil {

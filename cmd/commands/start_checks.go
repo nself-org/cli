@@ -94,20 +94,22 @@ func autoInstallAIIfNeeded(ctx context.Context) {
 // autoRebuildIfNeeded runs an automatic `nself build` before the
 // docker-compose.yml check when the resolved config has drifted from the
 // generated compose file. Must run before checkComposeFileExists because
-// build creates the file.
-func autoRebuildIfNeeded(projectDir string, opts startOpts) error {
+// build creates the file. Reports whether build already refreshed entitlements.
+func autoRebuildIfNeeded(projectDir string, opts startOpts) (bool, error) {
 	needsRebuild, err := build.NeedsRebuild(projectDir)
 	if err != nil {
-		return fmt.Errorf("checking build state: %w", err)
+		return false, fmt.Errorf("checking build state: %w", err)
 	}
 	if needsRebuild {
 		ui.Info("Configuration changed — rebuilding before start...")
-		if _, err := build.Build(projectDir, build.BuildOptions{Profile: opts.profile}); err != nil {
-			return fmt.Errorf("auto-build failed: %w", err)
+		result, err := build.Build(projectDir, build.BuildOptions{Profile: opts.profile})
+		if !build.StartMayContinue(err, os.Stderr) {
+			return false, fmt.Errorf("auto-build failed: %w", err)
 		}
 		ui.Success("Build completed")
+		return result.EntitlementRefreshed, nil
 	}
-	return nil
+	return false, nil
 }
 
 // checkComposeFileExists validates that docker-compose.yml exists in

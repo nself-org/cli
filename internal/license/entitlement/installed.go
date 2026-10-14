@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"time"
 
 	"github.com/nself-org/cli/internal/compat"
@@ -13,6 +12,10 @@ import (
 	"github.com/nself-org/cli/internal/httptimeout"
 	"github.com/nself-org/cli/internal/license"
 )
+
+// ErrValidationUnavailable means a saved key could not be checked online.
+// Callers may warn and retry at the next build without failing the key save.
+var ErrValidationUnavailable = errors.New("could not validate the new licence online; existing entitlement retained")
 
 // RefreshInstalled refreshes a project only when a licensed plugin is installed.
 // Purpose: keep free-only stacks independent of licences. Inputs: context/project.
@@ -58,7 +61,7 @@ func RefreshForStart(ctx context.Context, projectDir string, warnings io.Writer)
 }
 
 // StartMayContinue reports E125 without preventing free services from starting.
-// Purpose: share refresh and auto-build failure policy. Inputs: error/warnings.
+// Purpose: report direct refresh failure. Inputs: error/warnings.
 // Outputs: continuation decision. Constraints: other errors remain fatal.
 // SPORT: licensed-plugin isolation during start.
 func StartMayContinue(err error, warnings io.Writer) bool {
@@ -81,7 +84,7 @@ func publishAfterValidation(projectDir string) error {
 	if err != nil {
 		return errs.Wrap("E125", "could not inspect installed plugin entitlements", err)
 	}
-	return publishToken(projectDir, false, names, "")
+	return publishToken(projectDir, names)
 }
 
 // validateNewKey requires an online result before replacing runtime entitlement.
@@ -93,31 +96,32 @@ func validateNewKey(ctx context.Context, projectDir, key string) error {
 	remote := &validationStatus{client: httptimeout.Default}
 	result, err := license.Validate(ctx, key, &license.ValidatorOptions{HTTPClient: remote})
 	if err != nil {
-		return errs.Wrap("E125", "could not validate the new licence online; existing entitlement retained", err)
+		return fmt.Errorf("%w: %v", ErrValidationUnavailable, err)
 	}
 	if result.FromCache || result.Status == license.StatusFailOpen {
-		return errs.New("E125", "could not validate the new licence online; existing entitlement retained")
+		return ErrValidationUnavailable
 	}
-	// The validator treats every other 4xx as auth failure too; only 401/403
-	// or a verified 200 rejection revoke this runtime entitlement.
-	rejected := explicitRejection(remote.status, result)
+	// The validator treats other 4xx as auth failure too; only 401, ping-shaped
+	// 403, or a signed rejection revoke this runtime entitlement.
+	rejected := explicitRejection(remote, result)
 	if result.CanProceed && !rejected {
 		return nil
 	}
 	// FromCache alone cannot distinguish an absent cache from an auth rejection.
 	if !rejected {
-		return errs.New("E125", "could not validate the new licence online; existing entitlement retained")
+		return ErrValidationUnavailable
 	}
 	if projectDir != "" {
-		if writeErr := writeAtomic(Path(projectDir), nil); writeErr != nil {
-			return errs.Wrap("E125", "could not clear the plugin entitlement file", writeErr)
+		if writeErr := publishAfterKeyRejection(projectDir, key); writeErr != nil {
+			return writeErr
 		}
+		return errs.New("E125", "the new licence was rejected and could not obtain a verified entitlement")
 	}
-	return errs.New("E125", "the new licence was rejected and could not obtain a verified entitlement")
+	return errors.New("the new licence was rejected and could not obtain a verified entitlement")
 }
 
 // ValidateKeyOutsideProject captures the token now for the next project build.
-// Purpose: avoid a stale-cache dead end. Inputs: context/key. Outputs: E125.
+// Purpose: avoid a stale-cache dead end. Inputs: context/key. Outputs: validation error.
 // Constraints: V15 only; offline saves the key for a later build retry; no file.
 // SPORT: global license set.
 func ValidateKeyOutsideProject(ctx context.Context, key string) error {
@@ -126,20 +130,4 @@ func ValidateKeyOutsideProject(ctx context.Context, key string) error {
 		return nil
 	}
 	return validateNewKey(ctx, "", key)
-}
-
-// validationStatus records the response status without changing validator policy.
-// Purpose: identify explicit refusals. Inputs: HTTP request. Outputs: response/status.
-// Constraints: request-local state, existing timeout client. SPORT: key validation.
-type validationStatus struct {
-	client license.HTTPDoer
-	status int
-}
-
-func (s *validationStatus) Do(req *http.Request) (*http.Response, error) {
-	resp, err := s.client.Do(req)
-	if err == nil && resp != nil {
-		s.status = resp.StatusCode
-	}
-	return resp, err
 }

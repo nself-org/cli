@@ -68,7 +68,7 @@ func DiscoverPluginComposeFiles(workdir, pluginDir string) ([]string, error) {
 // discoverPluginComposeFilesFx is DiscoverPluginComposeFiles with the in-place
 // fragment normalisation routed through fx: plan mode records one
 // plugin-fragment effect per rewritten fragment and leaves the file alone.
-func discoverPluginComposeFilesFx(fx Effects, sink Sink, workdir, pluginDir string) ([]string, error) {
+func discoverPluginComposeFilesFx(fx Effects, sink Sink, workdir, pluginDir string, refreshed ...*bool) ([]string, error) {
 	entries, err := os.ReadDir(pluginDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -175,7 +175,11 @@ func discoverPluginComposeFilesFx(fx Effects, sink Sink, workdir, pluginDir stri
 	// Runtime credentials are refreshed at apply time, never embedded in a plan:
 	// a signed token changes independently of the reviewed compose configuration.
 	if licensedSeen && !fx.Planning() {
+		if len(refreshed) > 0 {
+			*refreshed[0] = true
+		}
 		entitlementErr = refreshPluginEntitlement(context.Background(), workdir, pluginDir)
+		entitlementErr = wrapEntitlementRefresh(entitlementErr)
 	}
 
 	return composePaths, entitlementErr

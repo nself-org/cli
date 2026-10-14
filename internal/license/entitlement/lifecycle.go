@@ -16,35 +16,39 @@ import (
 )
 
 // Purpose: renew configured keys once each without blocking offline starts.
-// Inputs: context/keys. Outputs: explicit rejection. Constraints: five seconds
+// Inputs: context/keys. Outputs: rejected subjects/renewed tokens. Constraints: five seconds
 // overall, existing HTTP timeouts, no cache changes on transient failures.
 // SPORT: online entitlement renewal.
-func revalidateKeys(ctx context.Context) (bool, bool) {
+func revalidateKeys(ctx context.Context) (map[string]bool, []string) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	rejected, renewed := false, false
+	rejected := make(map[string]bool)
+	var renewed []string
 	for _, key := range license.CollectLicenseKeys() {
 		if ctx.Err() != nil {
 			break
 		}
 		remote := &validationStatus{client: httptimeout.Default}
 		result, err := license.Validate(ctx, key, &license.ValidatorOptions{HTTPClient: remote})
-		if err == nil && explicitRejection(remote.status, result) {
-			rejected = true
+		if err == nil && explicitRejection(remote, result) {
+			rejected[license.HashKey(key)] = true
 		}
 		if err == nil && result != nil && result.CanProceed && !result.FromCache && result.Status == license.StatusValid {
-			renewed = true
+			if token, err := cachedToken(); err == nil {
+				renewed = append(renewed, token)
+			}
 		}
 	}
 	return rejected, renewed
 }
 
 // Purpose: distinguish revocation from transport and unrelated HTTP failures.
-// Inputs: status/result. Outputs: refusal. Constraints: signed 200 or 401/403.
+// Inputs: response/result. Outputs: refusal. Constraints: signed rejection,
+// 401, or ping-shaped 403; captive portals cannot revoke.
 // SPORT: fail-closed runtime revocation.
-func explicitRejection(status int, result *license.ValidatorResult) bool {
-	return status == http.StatusUnauthorized || status == http.StatusForbidden ||
-		(status == http.StatusOK && result != nil && !result.FromCache &&
+func explicitRejection(remote *validationStatus, result *license.ValidatorResult) bool {
+	return remote.status == http.StatusUnauthorized || (remote.status == http.StatusForbidden && remote.pingError) ||
+		(remote.status == http.StatusOK && result != nil && !result.FromCache &&
 			(result.Status == license.StatusRevoked || result.Status == license.StatusExpired))
 }
 

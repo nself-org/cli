@@ -11,6 +11,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -43,12 +44,16 @@ to add a key without replacing existing ones.`,
 			fmt.Fprintf(os.Stderr, "Warning: Replacing %d existing keys with single key.\n", replaced)
 		}
 		if cwd, err := os.Getwd(); err == nil {
+			var validationErr error
 			if projectDir, err := config.FindNSelfRoot(cwd); err == nil {
-				if err := entitlement.RefreshInstalledForKey(cmd.Context(), projectDir, key); err != nil {
-					return err
-				}
-			} else if err := entitlement.ValidateKeyOutsideProject(cmd.Context(), key); err != nil {
-				return err
+				validationErr = entitlement.RefreshInstalledForKey(cmd.Context(), projectDir, key)
+			} else {
+				validationErr = entitlement.ValidateKeyOutsideProject(cmd.Context(), key)
+			}
+			if errors.Is(validationErr, entitlement.ErrValidationUnavailable) {
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Warning: key saved; could not validate online, the next build will retry.")
+			} else if validationErr != nil {
+				return validationErr
 			}
 		}
 		pp := license.DetectProduct(key)

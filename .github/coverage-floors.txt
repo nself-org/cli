@@ -92,7 +92,7 @@ internal/installer 11  # measured 13.2 2026-10-05
 internal/installmeta 75  # measured 77.8 2026-10-05
 internal/invoke 89  # measured 91.2 2026-10-10 (P7-SURF-24)
 internal/license 60
-internal/license/entitlement 74  # measured 77.5 2026-10-13 (P7-PLUG-24)
+internal/license/entitlement 79  # measured 81.3 2026-10-13 (P7-PLUG-24)
 internal/lifecycle 14  # measured 16.7 2026-10-05
 internal/lock 90  # measured 92.8 2026-10-10
 internal/machineauth 71  # measured 75.7 2026-10-10

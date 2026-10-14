@@ -78,6 +78,8 @@ const (
 
 // BuildResult summarizes what the build produced.
 type BuildResult struct {
+	// EntitlementRefreshed avoids a second online validation during start.
+	EntitlementRefreshed bool
 	// ProjectName is the sanitized project name from config.
 	ProjectName string
 	// ComposeFile is the path to the generated docker-compose.yml.
@@ -133,6 +135,8 @@ var requiredDirs = []string{
 }
 
 // Build orchestrates the full nself build pipeline.
+// An E125 entitlement refresh failure returns a completed result plus the error;
+// failures in any later build step return that step's error instead.
 //
 // The sequence follows BUILD_SPEC.md:
 //  1. Load config via env cascade
@@ -222,7 +226,8 @@ func Build(workdir string, opts BuildOptions) (*BuildResult, error) {
 		res.Planned.PluginDir = st.pluginDir
 		res.FrontingDir = m.fronting
 	}
-	return res, nil
+	res.EntitlementRefreshed = st.entitlementRefreshed
+	return res, st.entitlementErr
 }
 
 // newBuildState wires the Sink and Effects for the requested mode.
@@ -263,12 +268,14 @@ func (st *buildState) planning() bool { return st.opts.Mode == ModePlan }
 // for 300-line compliance (T-P6-E2-W1-S1-T3); every field here was
 // previously a local variable inside the single Build() function.
 type buildState struct {
-	workdir string
-	opts    BuildOptions
-	start   time.Time
-	cfg     *config.Config
-	routes  *routemodel.Model
-	shared  *sharedProxy // P7-ADOPT-03: shared host proxy plan (nil before modelRoutes)
+	entitlementErr       error
+	entitlementRefreshed bool
+	workdir              string
+	opts                 BuildOptions
+	start                time.Time
+	cfg                  *config.Config
+	routes               *routemodel.Model
+	shared               *sharedProxy // P7-ADOPT-03: shared host proxy plan (nil before modelRoutes)
 
 	// sink receives every file the pipeline writes; fx performs or records
 	// every host effect. Both are chosen by newBuildState from opts.Mode.

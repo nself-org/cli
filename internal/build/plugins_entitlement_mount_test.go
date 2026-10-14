@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -255,7 +256,7 @@ func TestMountRefreshOnceAfterDiscovery(t *testing.T) {
 		return nil
 	}
 	_, err := DiscoverPluginComposeFiles(t.TempDir(), dir)
-	if calls != 1 || err != failure {
+	if calls != 1 || !errors.Is(err, failure) {
 		t.Fatalf("calls=%d err=%v; want first failure once", calls, err)
 	}
 }
