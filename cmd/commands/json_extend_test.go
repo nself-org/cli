@@ -11,6 +11,7 @@ package commands
 // obviously fake names only.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -26,6 +27,7 @@ import (
 	"github.com/nself-org/cli/internal/bundle"
 	"github.com/nself-org/cli/internal/canon"
 	"github.com/nself-org/cli/internal/cmdregistry"
+	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/invoke"
 	"github.com/nself-org/cli/internal/output"
 	"github.com/spf13/cobra"
@@ -133,14 +135,24 @@ func TestEnvelopeCoverageBundleRemove(t *testing.T) {
 	}
 }
 
-// The bare form of `config plugins list --available` (NSELF_JSON_LEGACY=1) keeps
-// the pre-contract rows byte for byte: the v1.5 licence word, keys in map order.
-func TestAvailableListLegacyBytes(t *testing.T) {
+// The bare form of `config plugins list --available` (v1.5, NSELF_JSON_LEGACY=1)
+// is written by the real emitter (output.EmitLegacyCompatible): the pre-contract
+// rows, same members and values in the same (sorted) key order, with the v1.5
+// licence word. It is NOT byte-identical to v1.4: v1.4 printed compact JSON
+// (json.Encoder), the bare form is indented (writeBare); v1.4 mode itself still
+// runs the old code path.
+func TestAvailableListBareFormKeepsLegacyRows(t *testing.T) {
+	compattest.Set(t, true)
+	t.Setenv(output.LegacyEnvVar, "1")
 	rows := []map[string]interface{}{{"name": "notify", "version": "1.0.0", "category": "comms", "tier_pair": true, "is_default": false, "license": "licensed"}}
-	want, _ := json.Marshal(rows)
-	got, _ := json.Marshal(pluginListData{{Category: "comms", IsDefault: boolPtr(false), License: "licensed", Name: "notify", TierPair: boolPtr(true), Version: "1.0.0"}})
-	if string(got) != string(want) {
-		t.Fatalf("bare --available rows differ\n got %s\nwant %s", got, want)
+	want, _ := json.MarshalIndent(rows, "", "  ")
+	var got bytes.Buffer
+	data := pluginListData{{Category: "comms", IsDefault: boolPtr(false), License: "licensed", Name: "notify", TierPair: boolPtr(true), Version: "1.0.0"}}
+	if err := output.EmitLegacyCompatible(output.Writer{Out: &got, Err: &bytes.Buffer{}}, "config plugins list", data); err != nil {
+		t.Fatal(err)
+	}
+	if got.String() != string(want)+"\n" {
+		t.Fatalf("bare --available rows differ\n got %s\nwant %s", got.String(), want)
 	}
 }
 

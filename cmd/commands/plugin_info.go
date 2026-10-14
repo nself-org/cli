@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/compat"
-	"github.com/nself-org/cli/internal/output"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/ui"
 
@@ -80,14 +79,15 @@ func runPluginInfo(cmd *cobra.Command, args []string) error {
 
 	// compat.V15(P7-PLUG-17): --json is ignored by plugin info -> prints the info with its tier and why as JSON
 	if asJSON, _ := cmd.Flags().GetBool("json"); asJSON && compat.V15() {
+		if tierErr != nil && jsonEnvelopeOn(cmd) && !legacyBare() {
+			// P7-SURF-13: a failed lookup is a failure for machine callers (MCP derives isError
+			// from the error member): the v1 error envelope, one document, the cause's exit
+			// status. The reason and the cause travel in its message. NSELF_JSON_LEGACY=1 keeps
+			// the bare info document with tier_reason and tier_error below.
+			return fmt.Errorf("plugin %q: tier unresolved (tier_reason %s): %w", name, tierReason, tierErr)
+		}
 		if err := writePluginInfoJSON(cmd, name, manifest, tier, tierReason, tierErr); err != nil {
 			return err
-		}
-		if tierErr != nil && jsonEnvelopeOn(cmd) {
-			// The envelope on stdout carries tier_reason and tier_error (P7-SURF-13); the exit
-			// status stays the failure's, and a second (error) document is not printed.
-			output.RenderError(os.Stderr, fmt.Errorf("plugin %q: tier unresolved: %w", name, tierErr)) // the redacting renderer, as the unconverted path used
-			return &streamedError{err: tierErr}
 		}
 		return tierErr
 	}

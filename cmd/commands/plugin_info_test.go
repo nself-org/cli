@@ -16,6 +16,8 @@ import (
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -173,8 +175,13 @@ func TestPluginInfoRootChild(t *testing.T) {
 	}
 	os.Args = append([]string{"nself", "plugin", "info", "notify"}, strings.Fields(os.Getenv("NSELF_TEST_INFO_ARGS"))...)
 	if err := Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		// What cmd/nself/report.go does in v1.5: the error envelope on stdout in JSON mode,
+		// the redacting human rendering on stderr, the cause's exit status.
+		if command, jsonMode, known := output.Invocation(); known && jsonMode {
+			_ = output.EmitError(output.Default(), command, err)
+		}
+		output.RenderError(os.Stderr, err)
+		os.Exit(errs.ExitCodeFor(err))
 	}
 	os.Exit(0)
 }
@@ -214,6 +221,37 @@ func infoData(t *testing.T, out string) []byte {
 		t.Fatalf("envelope command %q data %q, want config plugins info with data\n%s", env.Command, env.Data, out)
 	}
 	return env.Data
+}
+
+// infoFailure decodes the v1.5 failure of `plugin info --json`: one error
+// envelope (no data member, so MCP and HTTP callers see a failure), whose message
+// carries the reason and the cause as "plugin <n>: tier unresolved (tier_reason
+// <reason>): <cause>". It returns the reason and the cause.
+func infoFailure(t *testing.T, out string) (reason, cause string) {
+	t.Helper()
+	var env map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("not one JSON document: %v\n%s", err, out)
+	}
+	if _, has := env["data"]; has {
+		t.Fatalf("a failed lookup must not carry a success data member: %s", out)
+	}
+	var e struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(env["error"], &e); err != nil || e.Message == "" {
+		t.Fatalf("no error member: %v\n%s", err, out)
+	}
+	const mid = "): "
+	head, tail, ok := strings.Cut(e.Message, "(tier_reason ")
+	if !ok || !strings.Contains(head, "tier unresolved") {
+		t.Fatalf("message %q lacks the tier_reason marker", e.Message)
+	}
+	reason, cause, ok = strings.Cut(tail, mid)
+	if !ok || cause == "" {
+		t.Fatalf("message %q lacks the cause", e.Message)
+	}
+	return reason, cause
 }
 
 // TestPluginInfoJSONThroughRoot (CR M1, S2): `nself plugin info <n> --json`
@@ -259,17 +297,8 @@ func TestPluginInfoUnresolvedTier(t *testing.T) {
 	if err == nil {
 		t.Fatalf("an unresolved tier must fail, got output %s", out)
 	}
-	var got struct {
-		Version    string `json:"version"`
-		Tier       string `json:"tier"`
-		TierReason string `json:"tier_reason"`
-		TierError  string `json:"tier_error"`
-	}
-	if jerr := json.Unmarshal(infoData(t, out), &got); jerr != nil {
-		t.Fatalf("not JSON: %v\n%s", jerr, out)
-	}
-	if got.TierReason != "unresolved" || got.TierError == "" || got.Version != "" || got.Tier != "" {
-		t.Fatalf("unresolved JSON must carry reason+error and no registry entry: %+v", got)
+	if reason, cause := infoFailure(t, out); reason != "unresolved" || cause == "" || strings.Contains(out, "first entry") {
+		t.Fatalf("unresolved lookup must carry reason+cause and no registry entry: %q %q\n%s", reason, cause, out)
 	}
 	table, terr := runInfoRoot(t)
 	if terr == nil || !strings.Contains(terr.Error(), "tier unresolved") || strings.Contains(table, "first entry") {
@@ -287,16 +316,8 @@ func TestPluginInfoInstalledTierNotServed(t *testing.T) {
 	if err == nil {
 		t.Fatalf("want an error, got output %s", out)
 	}
-	var got struct {
-		Version    string `json:"version"`
-		TierReason string `json:"tier_reason"`
-		TierError  string `json:"tier_error"`
-	}
-	if jerr := json.Unmarshal(infoData(t, out), &got); jerr != nil {
-		t.Fatalf("not JSON: %v\n%s", jerr, out)
-	}
-	if got.TierReason != "unresolved" || got.TierError == "" || got.Version != "" {
-		t.Fatalf("installed tier not served must be unresolved with the cause: %+v", got)
+	if reason, cause := infoFailure(t, out); reason != "unresolved" || !strings.Contains(cause, "registry serves no") || strings.Contains(out, "free only") {
+		t.Fatalf("installed tier not served must be unresolved with the cause: %q %q\n%s", reason, cause, out)
 	}
 }
 
@@ -341,16 +362,8 @@ func TestPluginInfoEntitlementLookupError(t *testing.T) {
 	if err == nil {
 		t.Fatalf("a failed licence lookup must be an error, got %s", out)
 	}
-	var got struct {
-		Tier       string `json:"tier"`
-		TierReason string `json:"tier_reason"`
-		TierError  string `json:"tier_error"`
-	}
-	if jerr := json.Unmarshal(infoData(t, out), &got); jerr != nil {
-		t.Fatalf("not JSON: %v\n%s", jerr, out)
-	}
-	if got.TierReason != "unresolved" || got.TierError == "" || got.Tier != "" || strings.Contains(out, "default-free") {
-		t.Fatalf("lookup error must be tier_error, not default-free: %+v", got)
+	if reason, cause := infoFailure(t, out); reason != "unresolved" || cause == "" || strings.Contains(out, "default-free") {
+		t.Fatalf("lookup error must be the cause, not default-free: %q %q\n%s", reason, cause, out)
 	}
 }
 
