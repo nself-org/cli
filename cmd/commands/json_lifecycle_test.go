@@ -15,6 +15,8 @@ package commands
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -26,6 +28,7 @@ import (
 	"github.com/nself-org/cli/internal/canon"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/docker"
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/health"
 	clonetemplate "github.com/nself-org/cli/internal/templates/clone"
 	"github.com/spf13/cobra"
@@ -391,12 +394,47 @@ func TestRestartedServicesRebuild(t *testing.T) {
 	}
 }
 
-// lastErrorLine is the last "Error: ..." line of a human stderr, or "".
+// TestLifecycleDaemonUnreachable: only a verified unreachable daemon is E002; a
+// compose failure with a live daemon, or an error that never ran compose, is not.
+func TestLifecycleDaemonUnreachable(t *testing.T) {
+	cmd := &cobra.Command{Use: "stop"}
+	composeFail := errors.New("docker compose -f docker-compose.yml down: exit status 1")
+	lifecycleProject(t) // stub whose `docker info` succeeds
+	for name, tc := range map[string]struct {
+		err  error
+		want bool
+	}{
+		"compose failure, live daemon": {composeFail, false},
+		"no compose run":               {errors.New("no docker-compose.yml found"), false},
+		"sentinel":                     {fmt.Errorf("start: %w", errs.ErrDockerNotRunning), true},
+		"daemon message in the tail":   {errors.New("docker compose down: exit status 1: Cannot connect to the Docker daemon at unix:///x"), true},
+		"nil":                          {nil, false},
+	} {
+		if got := daemonUnreachable(cmd, tc.err); got != tc.want {
+			t.Errorf("%s: daemonUnreachable = %v, want %v", name, got, tc.want)
+		}
+	}
+	stub := t.TempDir()
+	if err := os.WriteFile(filepath.Join(stub, "docker"), []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil { //nolint:gosec // test stub must be executable
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", stub+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if !daemonUnreachable(cmd, composeFail) {
+		t.Error("a failed compose run with `docker info` failing must be daemon-unreachable")
+	}
+	if daemonUnreachable(cmd, errors.New("no docker-compose.yml found")) {
+		t.Error("an error that never ran compose must not be classified from `docker info`")
+	}
+}
+
+// lastErrorLine is the last "Error: ..." line of a human stderr, or "", cut at
+// the compose exit status: the stderr tail docker.Compose appends after it is
+// not stable from one run to the next.
 func lastErrorLine(stderr string) string {
 	last := ""
 	for _, l := range strings.Split(stderr, "\n") {
 		if strings.HasPrefix(l, "Error: ") {
-			last = l
+			last, _, _ = strings.Cut(l, ": exit status")
 		}
 	}
 	return last

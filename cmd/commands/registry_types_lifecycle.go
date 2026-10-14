@@ -109,10 +109,19 @@ func emitLifecycle(cmd *cobra.Command, command string, data any) error {
 }
 
 // daemonUnreachable reports whether err is the Docker daemon not answering: the
-// canonical sentinel or the daemon client's own message in compose's stderr tail.
-// Any other compose failure is not Docker being unavailable.
-func daemonUnreachable(err error) bool {
-	return errors.Is(err, errs.ErrDockerNotRunning) || (err != nil && strings.Contains(err.Error(), "Cannot connect to the Docker daemon"))
+// canonical sentinel, the daemon client's own message in compose's stderr tail,
+// or a failed compose run while `docker info` itself fails (the stderr tail of a
+// compose run is not always kept). Any other failure is not Docker being
+// unavailable: a compose error with a live daemon, or an error that never ran
+// compose, keeps its own code.
+func daemonUnreachable(cmd *cobra.Command, err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, errs.ErrDockerNotRunning) || strings.Contains(err.Error(), "Cannot connect to the Docker daemon") {
+		return true
+	}
+	return strings.Contains(err.Error(), "docker compose") && errors.Is(checkDockerAvailable(commandContext(cmd)), errs.ErrDockerNotRunning)
 }
 
 // lifecycleFailure returns err unchanged, except for a verified daemon-unreachable
@@ -122,7 +131,7 @@ func daemonUnreachable(err error) bool {
 // v1.4 keep the original error.
 func lifecycleFailure(cmd *cobra.Command, command string, err error) error {
 	// compat.V15(P7-SURF-10): daemon-unreachable stop/restart failure, unclassified -> E002 envelope with infra exit 2
-	if err == nil || !compat.V15() || !lifecycleJSON(cmd) || !daemonUnreachable(err) {
+	if err == nil || !compat.V15() || !lifecycleJSON(cmd) || !daemonUnreachable(cmd, err) {
 		return err
 	}
 	w := pilotWriter()
