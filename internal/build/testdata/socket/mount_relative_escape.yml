@@ -1,0 +1,6 @@
+# synthetic fixture: relative path that climbs out of the project to /var/run
+services:
+  sockrelescape:
+    image: example.invalid/sockrelescape:1
+    volumes:
+      - ../../../../../../../../../../../../var/run:/h

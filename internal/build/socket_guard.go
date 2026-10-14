@@ -3,12 +3,12 @@ package build
 // socket_guard.go — P7-DEPL-21 (ADR 0027 §3): no proxy or plugin container
 // gets the Docker socket. One merged view of the generated stack, plugin
 // fragments and override file; only nginx/traefik and plugin-declared services
-// are judged (core admin, CS_N are not). Podman sockets and Docker data
-// directories are out of scope. Refuse() is E130 naming plugin and service; an
-// excepted plugin warns once until removal_at; a proxy never inherits one.
-// Ungated by compat.V15 (ADR 0021). Unresolved values, env_file, extends,
-// volumes_from, include and bad shapes fail closed. SocketReport is shared
-// with `nself doctor --deep`; scanSocketService is in orchestrator_compose.go.
+// are judged (core admin, CS_N are not). Bind sources resolve against the
+// project dir (~ is home) with symlinks followed. Fail closed: unresolved
+// values, external/renamed volumes, env_file, extends, volumes_from, include,
+// bad shapes. Podman sockets and Docker data dirs are out of scope. Refuse() is
+// E130; an excepted plugin warns once until removal_at; a proxy never inherits
+// one. Shared with doctor; scanSocketService is in orchestrator_compose.go.
 
 import (
 	"fmt"
@@ -16,6 +16,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -29,7 +30,6 @@ import (
 // SocketException allows one plugin to keep a socket mount until RemovalAt.
 type SocketException struct{ Slug, Ticket, RemovalAt string } // RemovalAt: first CLI version (X.Y.Z) that refuses it
 
-// socketExceptions is keyed by plugin slug; an unparsable version is expired.
 var socketExceptions = map[string]SocketException{
 	"forgejo":    {Slug: "forgejo", RemovalAt: "1.5.0", Ticket: "P7-TRUST-21"},
 	"monitoring": {Slug: "monitoring", RemovalAt: "1.5.0", Ticket: "P7-PLUG-58"},
@@ -38,10 +38,7 @@ var socketExceptions = map[string]SocketException{
 // ActiveSocketException returns slug's exception until it expires.
 func ActiveSocketException(slug string) (SocketException, bool) {
 	ex, ok := socketExceptions[slug]
-	if !ok || versionAtLeast(version.GetVersion(), ex.RemovalAt) {
-		return SocketException{}, false
-	}
-	return ex, true
+	return ex, ok && !versionAtLeast(version.GetVersion(), ex.RemovalAt)
 }
 
 // versionAtLeast reports cur >= threshold on X.Y.Z (any -pre/+build ignored);
@@ -59,7 +56,7 @@ func parseXYZ(v string) (packed int, ok bool) {
 }
 
 // SocketProxyService reports the services no exception can ever cover.
-func SocketProxyService(name string) bool { return name == "nginx" || name == "traefik" }
+func SocketProxyService(n string) bool { return n == "nginx" || n == "traefik" }
 
 // SocketPathExposed reports whether a host path is the Docker socket or a
 // directory that holds it (including the macOS /private alias).
@@ -75,6 +72,34 @@ func SocketPathExposed(p string) bool {
 	return path.Base(c) == "docker.sock"
 }
 
+// ResolveSocketPath makes a bind source absolute (~ is home, a relative path
+// is relative to base) and follows symlinks through its longest existing
+// prefix; ok is false when that fails, including a dangling or looping symlink.
+func ResolveSocketPath(base, p string) (string, bool) {
+	if rest, cut := strings.CutPrefix(p, "~"); cut && (rest == "" || rest[0] == '/') {
+		h, _ := os.UserHomeDir()
+		p = h + rest
+	}
+	if !filepath.IsAbs(p) {
+		if base == "" {
+			return "", false
+		}
+		p = base + string(filepath.Separator) + p
+	}
+	for rest := ""; ; {
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			return filepath.Join(r, rest), true
+		} else if _, serr := os.Lstat(p); serr == nil {
+			return "", false // exists but does not resolve: dangling or looping
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return p, true
+		}
+		rest, p = filepath.Join(filepath.Base(p), rest), parent
+	}
+}
+
 // SocketEnv resolves a ${VAR} name.
 type SocketEnv func(string) (string, bool)
 
@@ -82,13 +107,11 @@ type SocketEnv func(string) (string, bool)
 // then the computed plugin variables (NSELF_PLUGIN_DIR and friends). cfg may be nil.
 func NewSocketEnv(workdir, pluginDir string, cfg *config.Config) SocketEnv {
 	vars := ComputePluginEnvVars(workdir, pluginDir, cfg)
-	for _, f := range []string{".env", composeEnvFile} {
-		data, _ := os.ReadFile(filepath.Join(workdir, f))
-		for _, line := range strings.Split(string(data), "\n") {
-			k, v, ok := strings.Cut(strings.TrimPrefix(strings.TrimSpace(line), "export "), "=")
-			if k = strings.TrimSpace(k); ok && k != "" && !strings.HasPrefix(k, "#") {
-				vars[k] = strings.Trim(strings.TrimSpace(v), `"'`)
-			}
+	data, _ := os.ReadFile(filepath.Join(workdir, ".env"))
+	for _, line := range strings.Split(string(data), "\n") {
+		k, v, ok := strings.Cut(strings.TrimPrefix(strings.TrimSpace(line), "export "), "=")
+		if k = strings.TrimSpace(k); ok && k != "" && !strings.HasPrefix(k, "#") {
+			vars[k] = strings.Trim(strings.TrimSpace(v), `"'`)
 		}
 	}
 	return func(k string) (string, bool) {
@@ -100,51 +123,26 @@ func NewSocketEnv(workdir, pluginDir string, cfg *config.Config) SocketEnv {
 	}
 }
 
-// expandSocket expands ${VAR}, ${VAR:-d} and ${VAR-d}; an unset variable without
-// a default, a bare $VAR and any other form are not ok.
+var socketVarRE = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}$]*))?\}`)
+
+// expandSocket expands ${VAR} and ${VAR:-d} ($$ is a literal $); an unset
+// variable without a default, a bare $VAR and every other form are not ok.
 func expandSocket(s string, env SocketEnv) (string, bool) {
-	var b strings.Builder
-	for i := 0; i < len(s); i++ {
-		if s[i] != '$' {
-			b.WriteByte(s[i])
-			continue
-		}
-		if i+1 < len(s) && s[i+1] == '$' {
-			b.WriteByte('$')
-			i++
-			continue
-		}
-		j, name, rest := i+1, "", ""
-		if j >= len(s) || s[j] != '{' { // bare $VAR is not followed
-			return "", false
-		}
-		if j = strings.IndexByte(s[i:], '}'); j < 0 {
-			return "", false
-		}
-		j += i
-		name = s[i+2 : j]
-		if k := strings.IndexAny(name, ":-?+="); k >= 0 {
-			name, rest = name[:k], name[k:]
-		}
-		i = j
-		v, set := env(name)
-		def, hasDef := strings.CutPrefix(strings.TrimPrefix(rest, ":"), "-")
-		d, dok := "", true
-		if hasDef {
-			d, dok = expandSocket(def, env)
-		}
+	ok := true
+	out := socketVarRE.ReplaceAllStringFunc(strings.ReplaceAll(s, "$$", "\x00"), func(m string) string {
+		g := socketVarRE.FindStringSubmatch(m)
+		v, set := env(g[1])
+		hasDef := strings.Contains(m, ":-")
 		switch {
-		case name == "" || (rest != "" && !hasDef):
-			return "", false
-		case set && (v != "" || !strings.HasPrefix(rest, ":")):
-			b.WriteString(v)
-		case hasDef && dok:
-			b.WriteString(d)
-		default:
-			return "", false
+		case set && (v != "" || !hasDef):
+			return v
+		case hasDef:
+			return g[2]
 		}
-	}
-	return b.String(), true
+		ok = false
+		return ""
+	})
+	return strings.ReplaceAll(out, "\x00", "$"), ok && !strings.Contains(out, "$")
 }
 
 // SocketUse is one way a service reaches the socket, and which input said so.
@@ -159,23 +157,20 @@ type SocketReport struct {
 }
 
 type socketDoc struct {
-	origin string
-	top    map[string]any
+	origin, dir string
+	top         map[string]any
 }
 
 // socketMap reads a mapping that may be absent or an empty `!reset []`.
 func socketMap(v any, what string) (map[string]any, error) {
-	switch m := v.(type) {
-	case nil:
+	if l, isList := v.([]any); isList && len(l) == 0 {
 		return nil, nil
-	case map[string]any:
-		return m, nil
-	case []any:
-		if len(m) == 0 {
-			return nil, nil
-		}
 	}
-	return nil, fmt.Errorf("%s has an unsupported shape", what)
+	m, ok := v.(map[string]any)
+	if !ok && v != nil {
+		return nil, fmt.Errorf("%s has an unsupported shape", what)
+	}
+	return m, nil
 }
 
 // AnalyzeSocket scans the generated stack (core), every enabled plugin
@@ -191,29 +186,31 @@ func AnalyzeSocket(workdir, pluginDir string, env SocketEnv, core []byte) (*Sock
 		if top["include"] != nil {
 			return fmt.Errorf("%s uses include, which is not inspected", origin)
 		}
-		docs = append(docs, socketDoc{origin, top})
+		docs = append(docs, socketDoc{origin, workdir, top})
 		return nil
 	}
 	if err := add("core stack", core); err != nil {
 		return nil, err
 	}
 	entries, _ := os.ReadDir(pluginDir)
-	for _, e := range entries { // enabled plugins only, in name order
-		if _, off := os.Stat(filepath.Join(pluginDir, e.Name(), ".disabled")); !e.IsDir() || off == nil {
-			continue
-		}
-		if data, err := os.ReadFile(filepath.Join(pluginDir, e.Name(), pluginComposeFilename)); err == nil {
-			if err := add("plugin:"+e.Name(), data); err != nil {
-				return nil, err
-			}
+	files := [][2]string{} // origin, file; enabled plugins in name order, then the override
+	for _, e := range entries {
+		if _, off := os.Stat(filepath.Join(pluginDir, e.Name(), ".disabled")); e.IsDir() && off != nil {
+			files = append(files, [2]string{"plugin:" + e.Name(), filepath.Join(pluginDir, e.Name(), pluginComposeFilename)})
 		}
 	}
-	if data, err := os.ReadFile(filepath.Join(workdir, userComposeOverrideFile)); err == nil {
-		if err := add("override", data); err != nil {
+	files = append(files, [2]string{"override", filepath.Join(workdir, userComposeOverrideFile)})
+	for _, f := range files {
+		data, err := os.ReadFile(f[1])
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err == nil {
+			err = add(f[0], data)
+		}
+		if err != nil {
 			return nil, err
 		}
-	} else if !os.IsNotExist(err) {
-		return nil, err
 	}
 	rep := &SocketReport{Uses: map[string][]SocketUse{}, Owners: map[string][]string{}, Core: map[string]bool{}, Volumes: map[string]string{}}
 	for _, d := range docs { // named volumes first: any input may mount another's
@@ -226,10 +223,14 @@ func AnalyzeSocket(workdir, pluginDir string, env SocketEnv, core []byte) (*Sock
 			opts, _ := m["driver_opts"].(map[string]any)
 			dev, _ := opts["device"].(string)
 			x, ok := expandSocket(dev, env)
+			r, rok := ResolveSocketPath(d.dir, x)
 			rep.Volumes[name] += "" // defined; stays "" unless socket-backed
-			if dev != "" && !ok {
+			if m["external"] != nil && m["external"] != false || m["name"] != nil {
+				rep.Volumes[name] = "is external or renamed, so its backing cannot be proven"
+			}
+			if dev != "" && (!ok || !rok) {
 				rep.Volumes[name] = fmt.Sprintf("is backed by %q, which cannot be resolved", dev)
-			} else if dev != "" && SocketPathExposed(x) {
+			} else if dev != "" && (SocketPathExposed(x) || SocketPathExposed(r)) {
 				rep.Volumes[name] = "is backed by " + x
 			}
 		}
@@ -266,9 +267,9 @@ func (r *SocketReport) Refuse() error {
 		if len(uses) == 0 || (len(slugs) == 0 && !SocketProxyService(svc)) {
 			continue // clean, or core/custom: not judged
 		}
-		own := true // every exposure comes from the declaring plugin itself
+		own := len(slugs) == 1 // every exposure comes from the declaring plugin itself
 		for _, u := range uses {
-			own = own && len(slugs) == 1 && u.Origin == "plugin:"+slugs[0]
+			own = own && u.Origin == "plugin:"+slugs[0]
 		}
 		if ex, ok := ActiveSocketException(strings.Join(slugs, "")); ok && own && !SocketProxyService(svc) {
 			warnOnce(fmt.Sprintf("plugin %q holds the Docker socket; allowed until nself %s (%s), then the build refuses it (E130)", ex.Slug, ex.RemovalAt, ex.Ticket))
@@ -285,8 +286,7 @@ func (r *SocketReport) Refuse() error {
 	return nil
 }
 
-// guardDockerSocket scans the stack the generator would write, every plugin
-// fragment and the override file, before provider output moves.
+// guardDockerSocket scans the would-be stack, plugin fragments and override file.
 func (st *buildState) guardDockerSocket(g *compose.Generator) error {
 	stack, err := g.Generate()
 	if err != nil {

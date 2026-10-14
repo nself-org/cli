@@ -33,7 +33,6 @@ func sockCtr(name, service string, mounts []docker.Mount, env map[string]string,
 
 var (
 	bindSock = []docker.Mount{{Source: "/var/run/docker.sock", Destination: "/var/run/docker.sock", Type: "bind"}}
-	bindData = []docker.Mount{{Source: "/srv/data", Destination: "/data", Type: "bind"}}
 	unixHost = map[string]string{"DOCKER_HOST": "unix:///var/run/docker.sock"}
 	volumeOf = func(name string) []docker.Mount {
 		return []docker.Mount{{Source: "/var/lib/docker/volumes/" + name + "/_data", Destination: "/v", Type: "volume"}}
@@ -55,6 +54,22 @@ func socketReport() *build.SocketReport {
 func TestDockerSocketDoctor(t *testing.T) {
 	old := version.Version
 	t.Cleanup(func() { version.Version = old })
+	t.Setenv("DOCKER_HOST", "")
+	dir := t.TempDir()
+	bind := func(src string) []docker.Mount {
+		return []docker.Mount{{Source: src, Destination: "/data", Type: "bind"}}
+	}
+	link := func(name, target string) string {
+		p := filepath.Join(dir, name)
+		if err := os.Symlink(target, p); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	bindData := bind(dir)
+	toRun, toSafe := link("run", "/var/run"), link("safe", dir)
+	dangling, loopA := link("dangling", filepath.Join(dir, "gone")), link("loopa", filepath.Join(dir, "loopb"))
+	link("loopb", loopA)
 
 	cases := []struct {
 		name       string
@@ -71,6 +86,13 @@ func TestDockerSocketDoctor(t *testing.T) {
 		{"parent dir bind fails", []docker.ContainerInfo{sockCtr("p_nginx", "nginx", []docker.Mount{{Source: "/var/run", Destination: "/r", Type: "bind"}}, nil, nil)}, nil, "", "fail", []string{"nginx"}},
 		{"/private alias bind fails", []docker.ContainerInfo{sockCtr("p_nginx", "nginx", []docker.Mount{{Source: "/private/var/run", Destination: "/r", Type: "bind"}}, nil, nil)}, nil, "", "fail", []string{"nginx"}},
 		{"socket at the container path fails", []docker.ContainerInfo{sockCtr("p_nginx", "nginx", []docker.Mount{{Source: "/x", Destination: "/run/docker.sock", Type: "bind"}}, nil, nil)}, nil, "", "fail", []string{"nginx"}},
+		{"bind through a symlink to /var/run fails", []docker.ContainerInfo{sockCtr("p_nginx", "nginx", bind(toRun), nil, nil)}, nil, "", "fail", []string{"nginx", toRun}},
+		{"bind below a symlink to /var/run fails", []docker.ContainerInfo{sockCtr("p_nginx", "nginx", bind(toRun+"/docker.sock"), nil, nil)}, nil, "", "fail", []string{"nginx"}},
+		{"bind through a symlink to a safe dir passes", []docker.ContainerInfo{sockCtr("p_nginx", "nginx", bind(toSafe), nil, nil)}, nil, "", "pass", nil},
+		{"dangling symlink bind is unknown", []docker.ContainerInfo{sockCtr("p_nginx", "nginx", bind(dangling), nil, nil)}, nil, "", "unknown", []string{dangling}},
+		{"looping symlink bind is unknown", []docker.ContainerInfo{sockCtr("p_nginx", "nginx", bind(loopA), nil, nil)}, nil, "", "unknown", []string{loopA}},
+		{"relative bind source is unknown", []docker.ContainerInfo{sockCtr("p_nginx", "nginx", bind("data/x"), nil, nil)}, nil, "", "unknown", []string{"data/x"}},
+		{"bind source this host cannot see is unknown", []docker.ContainerInfo{sockCtr("p_nginx", "nginx", bind("/nonexistent-sockguard/x"), nil, nil)}, nil, "", "unknown", []string{"/nonexistent-sockguard/x"}},
 		{"plugin without an exception fails naming plugin and service", []docker.ContainerInfo{sockCtr("p_s", "sockshort", bindSock, nil, nil)}, nil, "", "fail", []string{"plugin sockshort", "service sockshort"}},
 		{"plugin with unix DOCKER_HOST fails", []docker.ContainerInfo{sockCtr("p_e", "evil", nil, unixHost, nil)}, nil, "", "fail", []string{"plugin evil"}},
 		{"excepted plugin warns", []docker.ContainerInfo{sockCtr("p_f", "forgejo", bindSock, nil, nil)}, nil, "", "warn", []string{"plugin forgejo", "P7-TRUST-21", "1.5.0"}},
@@ -86,9 +108,10 @@ func TestDockerSocketDoctor(t *testing.T) {
 		{"core admin and custom services are not judged", []docker.ContainerInfo{sockCtr("p_a", "nself-admin", bindSock, unixHost, nil), sockCtr("p_p", "ping-api", bindSock, nil, nil)}, nil, "", "pass", nil},
 		{"service falls back to the compose label", []docker.ContainerInfo{{Name: "p_n", State: "running", Mounts: bindSock, Labels: map[string]string{"com.docker.compose.service": "nginx"}}}, nil, "", "fail", []string{"proxy service nginx"}},
 		{"volume backed by the socket fails", []docker.ContainerInfo{sockCtr("p_s", "sockdata", volumeOf("proj_sockvol"), nil, nil)}, nil, "", "fail", []string{"proj_sockvol", "/var/run"}},
-		{"ordinary named volume passes", []docker.ContainerInfo{sockCtr("p_s", "sockdata", volumeOf("proj_plainvol"), nil, nil)}, nil, "", "pass", nil},
-		{"anonymous volume passes", []docker.ContainerInfo{sockCtr("p_s", "sockdata", volumeOf(anonymous), nil, nil)}, nil, "", "pass", nil},
-		{"volume no compose input defines is unknown", []docker.ContainerInfo{sockCtr("p_s", "sockdata", volumeOf("proj_mystery"), nil, nil)}, nil, "", "unknown", []string{"proj_mystery"}},
+		{"ordinary named volume is unknown, a Compose declaration proves nothing", []docker.ContainerInfo{sockCtr("p_s", "sockdata", volumeOf("proj_plainvol"), nil, nil)}, nil, "", "unknown", []string{"proj_plainvol", "cannot be verified"}},
+		{"stale backing: declared plain, live volume unprovable", []docker.ContainerInfo{sockCtr("p_s", "sockdata", volumeOf("plainvol"), nil, nil)}, nil, "", "unknown", []string{"plainvol"}},
+		{"anonymous volume is unknown", []docker.ContainerInfo{sockCtr("p_s", "sockdata", volumeOf(anonymous), nil, nil)}, nil, "", "unknown", []string{anonymous}},
+		{"undeclared volume is unknown", []docker.ContainerInfo{sockCtr("p_s", "sockdata", volumeOf("proj_mystery"), nil, nil)}, nil, "", "unknown", []string{"proj_mystery"}},
 		{"volume whose path cannot be identified is unknown", []docker.ContainerInfo{sockCtr("p_s", "sockdata", []docker.Mount{{Source: "/mnt/odd", Destination: "/v", Type: "volume"}}, nil, nil)}, nil, "", "unknown", []string{"/mnt/odd"}},
 		{"mount of unknown type is unknown", []docker.ContainerInfo{sockCtr("p_s", "sockdata", []docker.Mount{{Source: "/x", Destination: "/v"}}, nil, nil)}, nil, "", "unknown", []string{"unknown type"}},
 		{"container without a state is unknown, not pass", []docker.ContainerInfo{{Name: "p_n", Service: "nginx"}}, nil, "", "unknown", []string{"p_n"}},
@@ -113,6 +136,19 @@ func TestDockerSocketDoctor(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("a remote DOCKER_HOST makes every bind source unverifiable", func(t *testing.T) {
+		t.Setenv("DOCKER_HOST", "tcp://remote.invalid:2375")
+		got := CheckProxyDockerSocket(context.Background(), fakeSocketInspector{containers: []docker.ContainerInfo{sockCtr("p_nginx", "nginx", bind(dir), nil, nil)}}, socketReport())
+		if got.Status != "unknown" {
+			t.Fatalf("got %+v", got)
+		}
+		t.Setenv("DOCKER_HOST", "unix://"+filepath.Join(dir, "d.sock"))
+		got = CheckProxyDockerSocket(context.Background(), fakeSocketInspector{containers: []docker.ContainerInfo{sockCtr("p_nginx", "nginx", bind(dir), nil, nil)}}, socketReport())
+		if got.Status != "pass" {
+			t.Fatalf("a local unix DOCKER_HOST must not block verification: %+v", got)
+		}
+	})
 
 	t.Run("no compose file skips, never passes", func(t *testing.T) {
 		got := DockerSocketChecks(context.Background(), t.TempDir())

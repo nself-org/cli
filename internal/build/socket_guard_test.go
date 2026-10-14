@@ -88,7 +88,13 @@ func TestSocketGuardFragments(t *testing.T) {
 		{"variable DOCKER_HOST resolved to tcp", map[string]string{"sockvarhost": "var_docker_host.yml"}, "", map[string]string{"SOCKGUARD_HOST": safeHost}, nil},
 		{"variable device resolved to a safe path", map[string]string{"sockvardev": "var_device.yml"}, "", map[string]string{"SOCKGUARD_DEVICE": safeMount}, nil},
 		{"core service in the override is not judged", map[string]string{"sockclean": "clean.yml"}, "override_admin.yml", nil, nil},
+		{"ordinary named data volume stays allowed", map[string]string{"socksafevol": "safe_named_volume.yml"}, "", nil, nil},
+		{"relative config mount inside the project stays allowed", map[string]string{"sockrelsafe": "relative_safe.yml"}, "", nil, nil},
 		// socket mounts and DOCKER_HOST
+		{"relative path climbing out to /var/run", map[string]string{"sockrelescape": "mount_relative_escape.yml"}, "", nil, []string{"sockrelescape"}},
+		{"home-relative docker socket", map[string]string{"sockhome": "mount_home.yml"}, "", nil, []string{"sockhome"}},
+		{"external volume on a plugin service", map[string]string{"sockext": "external_volume.yml"}, "", nil, []string{"sockext", "extvol", "cannot be proven"}},
+		{"volume mapped with name:", map[string]string{"sockrenamed": "renamed_volume.yml"}, "", nil, []string{"sockrenamed", "renamedvol", "cannot be proven"}},
 		{"short bind", map[string]string{"sockshort": "mount_short.yml"}, "", nil, []string{"sockshort"}},
 		{"long bind", map[string]string{"socklong": "mount_long.yml"}, "", nil, []string{"socklong"}},
 		{"interpolated default hides the socket", map[string]string{"sockvar": "mount_interpolated.yml"}, "", nil, []string{"sockvar"}},
@@ -175,6 +181,32 @@ func TestSocketGuardFragments(t *testing.T) {
 		}
 	})
 
+	t.Run("symlinked relative bind and device", func(t *testing.T) {
+		safe := t.TempDir()
+		for _, fx := range []struct{ fixture, slug string }{{"mount_symlink.yml", "socklink"}, {"device_symlink.yml", "socklinkdev"}} {
+			for name, tc := range map[string]struct {
+				target  string
+				refused bool
+			}{
+				"to /var/run":   {"/var/run", true},
+				"to a safe dir": {safe, false},
+				"dangling":      {filepath.Join(safe, "gone"), true},
+			} {
+				t.Run(fx.slug+" "+name, func(t *testing.T) {
+					f := newPlanFixture(t, "dev-minimal")
+					writeFixtureFile(t, filepath.Join(f.plugins, fx.slug, pluginComposeFilename), socketFixture(t, used, fx.fixture), 0o644)
+					if err := os.Symlink(tc.target, filepath.Join(f.workdir, "run")); err != nil {
+						t.Fatal(err)
+					}
+					_, err := Build(f.workdir, BuildOptions{Force: true})
+					if tc.refused != (err != nil) || tc.refused && !strings.Contains(err.Error(), fx.slug) {
+						t.Fatalf("refused=%v, got %v", tc.refused, err)
+					}
+				})
+			}
+		}
+	})
+
 	t.Run("a disabled plugin is not checked", func(t *testing.T) {
 		f := newPlanFixture(t, "dev-minimal")
 		writeFixtureFile(t, filepath.Join(f.plugins, "sockoff", pluginComposeFilename), socketFixture(t, used, "mount_short.yml"), 0o644)
@@ -222,12 +254,12 @@ func TestSocketGuardFragments(t *testing.T) {
 			}
 		}
 		env := func(k string) (string, bool) { v, ok := map[string]string{"A": "/a", "E": ""}[k]; return v, ok }
-		for in, want := range map[string]string{"${A}/x": "/a/x", "${U:-/d}": "/d", "${E:-/d}": "/d", "${E-/d}": "", "${A:-/d}": "/a", "$$A": "$A", "${U:-${A}}": ""} {
+		for in, want := range map[string]string{"${A}/x": "/a/x", "${U:-/d}": "/d", "${E:-/d}": "/d", "${A:-/d}": "/a", "$$A": "$A", "${U:-${A}}": ""} {
 			if got, ok := expandSocket(in, env); in == "${U:-${A}}" && ok || in != "${U:-${A}}" && (!ok || got != want) {
 				t.Errorf("expandSocket(%q) = %q, %v; want %q", in, got, ok, want)
 			}
 		}
-		for _, in := range []string{"${U}", "$A", "${A:?x}", "${A:+x}", "${A"} {
+		for _, in := range []string{"${U}", "${E-/d}", "$A", "${A:?x}", "${A:+x}", "${A"} {
 			if _, ok := expandSocket(in, env); ok {
 				t.Errorf("expandSocket(%q) must not resolve", in)
 			}

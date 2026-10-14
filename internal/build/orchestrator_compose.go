@@ -196,8 +196,6 @@ func MergeOllamaSidecar(composeYAML []byte, ollamaEnv map[string]string) ([]byte
 	// Build the ollama service snippet and append it to the services section.
 	snippet := buildOllamaSnippet(keepAlive, enableGPU)
 
-	// Locate the last non-empty line and append the snippet before the end.
-	// The compose YAML ends with a trailing newline; we insert before it.
 	merged := append(bytes.TrimRight(composeYAML, "\n"), []byte("\n"+snippet)...)
 	return merged, true, nil
 }
@@ -231,9 +229,8 @@ func buildOllamaSnippet(keepAlive string, enableGPU bool) string {
 	return sb.String()
 }
 
-// scanSocketService lists how one service reaches the Docker socket: volumes
-// (paths, parent dirs, socket-backed named volumes) and DOCKER_HOST. env_file,
-// extends, volumes_from and unresolvable values count; bad shapes are errors.
+// scanSocketService lists how one service reaches the Docker socket (volumes,
+// DOCKER_HOST). env_file, extends, volumes_from, unresolvable values: exposures.
 func scanSocketService(d socketDoc, name string, body map[string]any, lookup SocketEnv, vols map[string]string) ([]SocketUse, error) {
 	var uses []SocketUse
 	use := func(f string, a ...any) { uses = append(uses, SocketUse{d.origin, fmt.Sprintf(f, a...)}) }
@@ -248,8 +245,7 @@ func scanSocketService(d socketDoc, name string, body map[string]any, lookup Soc
 		return nil, bad("volumes shape")
 	}
 	for _, e := range entries {
-		var src, dst string
-		ok := true
+		src, dst, ok := "", "", true
 		switch v := e.(type) {
 		case string:
 			x, xok := expandSocket(v, lookup)
@@ -264,10 +260,14 @@ func scanSocketService(d socketDoc, name string, body map[string]any, lookup Soc
 		default:
 			return nil, bad("volume entry")
 		}
+		res, rok := src, true
+		if strings.IndexAny(src, "./~") == 0 { // a bind path, not a named volume
+			res, rok = ResolveSocketPath(d.dir, src)
+		}
 		switch {
-		case !ok:
+		case !ok || !rok:
 			use("mounts a volume that cannot be resolved (%v)", e)
-		case SocketPathExposed(src), path.Base(dst) == "docker.sock":
+		case SocketPathExposed(src), SocketPathExposed(res), path.Base(dst) == "docker.sock":
 			use("mounts the Docker socket (volume %q)", src+":"+dst)
 		case vols[src] != "":
 			use("mounts named volume %q, which %s", src, vols[src])

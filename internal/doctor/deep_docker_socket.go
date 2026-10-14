@@ -12,7 +12,7 @@ package doctor
 //          core stack does not declare, so a deleted or disabled fragment
 //          cannot hide one; the exception table is build's own, applies to a
 //          plugin the fragments name exactly once, never to a proxy. An
-//          inspection error, a malformed field or an unexplained volume is
+//          inspection error, a malformed field or any volume mount is
 //          "unknown", never "pass" (Constitution §4.1).
 
 import (
@@ -21,7 +21,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -162,7 +161,11 @@ func CheckProxyDockerSocket(ctx context.Context, ins SocketInspector, rep *build
 	return socketResult("pass", "no proxy or plugin container holds the Docker socket", "")
 }
 
-var anonymousVolume = regexp.MustCompile(`^[0-9a-f]{64}$`)
+// remoteDocker reports a DOCKER_HOST that is not a local unix socket.
+func remoteDocker() bool {
+	h := strings.ToLower(os.Getenv("DOCKER_HOST"))
+	return h != "" && !strings.HasPrefix(h, "unix:")
+}
 
 // containerSocketExposure lists how one live container reaches the socket,
 // and what could not be established.
@@ -173,8 +176,16 @@ func containerSocketExposure(c docker.ContainerInfo, rep *build.SocketReport) (f
 		}
 		switch m.Type {
 		case "bind":
-			if build.SocketPathExposed(m.Source) {
+			// A bind source is a host path; follow symlinks where this host can
+			// see it. A missing, dangling or relative source, or a remote
+			// DOCKER_HOST (whose paths are not ours), cannot be verified.
+			r, ok := build.ResolveSocketPath("", m.Source)
+			_, statErr := os.Lstat(m.Source)
+			switch {
+			case build.SocketPathExposed(m.Source) || ok && build.SocketPathExposed(r):
 				found = append(found, fmt.Sprintf("mounts the Docker socket (%s)", m.Source))
+			case !ok || statErr != nil || remoteDocker():
+				unknown = append(unknown, fmt.Sprintf("has a bind source %q that cannot be verified on this host", m.Source))
 			}
 		case "volume":
 			name, ok := strings.CutPrefix(filepath.ToSlash(m.Source), "/var/lib/docker/volumes/")
@@ -183,21 +194,15 @@ func containerSocketExposure(c docker.ContainerInfo, rep *build.SocketReport) (f
 				unknown = append(unknown, fmt.Sprintf("has a volume mount %q whose volume cannot be identified", m.Source))
 				break
 			}
-			if anonymousVolume.MatchString(name) {
-				break
-			}
-			matched := false
+			// The docker package cannot show a volume's live backing, so a
+			// Compose declaration (or a name) never proves it safe: only a
+			// declared socket-backed volume is a definite exposure.
 			for logical, why := range rep.Volumes {
-				if name == logical || strings.HasSuffix(name, "_"+logical) {
-					matched = true
-					if why != "" {
-						found = append(found, fmt.Sprintf("mounts named volume %s, which %s", name, why))
-					}
+				if strings.HasPrefix(why, "is backed by") && (name == logical || strings.HasSuffix(name, "_"+logical)) {
+					found = append(found, fmt.Sprintf("mounts named volume %s, which %s", name, why))
 				}
 			}
-			if !matched {
-				unknown = append(unknown, fmt.Sprintf("mounts volume %s, which no compose input defines, so its backing is unknown", name))
-			}
+			unknown = append(unknown, fmt.Sprintf("mounts volume %s, whose live backing cannot be verified", name))
 		case "tmpfs", "image":
 		default:
 			unknown = append(unknown, fmt.Sprintf("has a mount of unknown type %q", m.Type))
