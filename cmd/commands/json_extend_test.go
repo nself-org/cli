@@ -129,7 +129,7 @@ func TestInstallSourceIdentity(t *testing.T) {
 	for in, want := range map[string]string{
 		"waf": "waf",
 		"https://user" + ":" + "synthetic@example.test/p/plugin.tgz?token=abc#frag": "https://example.test/p/plugin.tgz",
-		"https://example.test/p/plugin.tgz":                           "https://example.test/p/plugin.tgz",
+		"https://example.test/p/plugin.tgz":                                         "https://example.test/p/plugin.tgz",
 	} {
 		if got := installSourceIdentity(in); got != want {
 			t.Errorf("installSourceIdentity(%q) = %q, want %q", in, got, want)
