@@ -100,7 +100,7 @@ func TestRunWithEnvProbeCannotSeedTrust(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err = RunWithEnv(context.Background(), inv, "qa", NewSSHProber(filepath.Dir(compose), false), compose, envFile, "qa")
-		if err == nil || !strings.Contains(err.Error(), "E487") || !strings.Contains(err.Error(), "after the pre-run check") {
+		if err == nil || !strings.Contains(err.Error(), "E487") || !strings.Contains(err.Error(), "unknown host key") {
 			t.Fatalf("want the mid-run E487 abort, got %v", err)
 		}
 		if b, _ := os.ReadFile(filepath.Join(bin, "calls.log")); strings.Contains(string(b), "rsync") {
@@ -123,7 +123,7 @@ func TestRunWithEnvProbeCannotSeedTrust(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err = RunWithEnv(context.Background(), inv, "qa", NewSSHProber(filepath.Dir(compose), false), compose, envFile, "qa")
-		if err == nil || !strings.Contains(err.Error(), "E487") || !strings.Contains(err.Error(), "after the pre-run check") {
+		if err == nil || !strings.Contains(err.Error(), "E487") || !strings.Contains(err.Error(), "unknown host key") {
 			t.Fatalf("want the mid-run E487 abort, got %v", err)
 		}
 		if b, _ := os.ReadFile(filepath.Join(bin, "calls.log")); strings.Contains(string(b), "rsync") {
