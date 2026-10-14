@@ -20559,7 +20559,7 @@
               },
               "profile": {
                 "default": "",
-                "description": "Service profile passed to an automatic rebuild when the compose file is stale.\n  app (default) — full service set.\n  ops           — observability + CI server (postgres, hasura, auth, nginx, monitoring).\nOverrides NSELF_PROFILE env var. Has no effect when --skip-build is set.",
+                "description": "Service profile passed to an automatic rebuild when the compose file is stale. app (default) — full service set. ops — observability + CI server (postgres, hasura, auth, nginx, monitoring). Overrides NSELF_PROFILE env var. Has no effect when --skip-build is set.",
                 "type": "string"
               },
               "quick": {
