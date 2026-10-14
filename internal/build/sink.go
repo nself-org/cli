@@ -138,14 +138,11 @@ func under(dir, p string) (string, bool) {
 }
 
 func (m *memSink) WriteFile(p string, data []byte, perm fs.FileMode) error {
+	// Like os.WriteFile: a rewrite keeps the planned mode, an existing file keeps its mode.
 	if file, planned := m.files[m.key(p)]; planned {
-		// Rewrites preserve the current planned mode, just as os.WriteFile does.
 		perm = file.Perm
-	} else {
-		// os.WriteFile keeps the mode of a file that already exists.
-		if info, err := os.Stat(m.abs(p)); err == nil && info.Mode().IsRegular() {
-			perm = info.Mode().Perm()
-		}
+	} else if info, err := os.Stat(m.abs(p)); err == nil && info.Mode().IsRegular() {
+		perm = info.Mode().Perm()
 	}
 	return m.WriteAtomic(p, data, perm)
 }
