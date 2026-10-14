@@ -1,13 +1,9 @@
 package build
 
-// orchestrator_compose.go — post-generation compose helpers: the
-// .env.computed content builder, the GENERATED-file header marker, and
-// the Ollama sidecar injection (AI_OLLAMA_ENABLED=true). Split from
-// orchestrator.go (T-P6-E2-W1-S1-T3).
-// Inputs:  resolved *config.Config, generated docker-compose.yml bytes,
-//          OS environment (Ollama vars).
-// Outputs: .env.computed content string, the prefixed compose YAML, and
-//          the merged compose YAML with the ollama service appended.
+// orchestrator_compose.go — post-generation compose helpers: the .env.computed
+// content builder, the GENERATED-file header marker, the Ollama sidecar
+// injection (AI_OLLAMA_ENABLED=true) and scanSocketService, the per-service half
+// of the Docker-socket guard (socket_guard.go). Split from orchestrator.go.
 // Constraints: same values/output; .env.computed extras are emitted in sorted key order (P7-LIVE-21).
 
 import (
@@ -229,8 +225,7 @@ func buildOllamaSnippet(keepAlive string, enableGPU bool) string {
 	return sb.String()
 }
 
-// scanSocketService lists how one service reaches the Docker socket (volumes,
-// DOCKER_HOST). env_file, extends, volumes_from, unresolvable values: exposures.
+// scanSocketService lists how one service reaches the Docker socket; env_file, extends, volumes_from and unresolvable values count.
 func scanSocketService(d socketDoc, name string, body map[string]any, lookup SocketEnv, vols map[string]string) ([]SocketUse, error) {
 	var uses []SocketUse
 	use := func(f string, a ...any) { uses = append(uses, SocketUse{d.origin, fmt.Sprintf(f, a...)}) }
@@ -245,7 +240,7 @@ func scanSocketService(d socketDoc, name string, body map[string]any, lookup Soc
 		return nil, bad("volumes shape")
 	}
 	for _, e := range entries {
-		src, dst, ok := "", "", true
+		src, dst, ok, bind := "", "", true, false
 		switch v := e.(type) {
 		case string:
 			x, xok := expandSocket(v, lookup)
@@ -256,12 +251,12 @@ func scanSocketService(d socketDoc, name string, body map[string]any, lookup Soc
 			t, _ := v["target"].(string)
 			xs, ok1 := expandSocket(s, lookup)
 			xt, ok2 := expandSocket(t, lookup)
-			src, dst, ok = xs, xt, ok1 && ok2
+			src, dst, ok, bind = xs, xt, ok1 && ok2, v["type"] == "bind"
 		default:
 			return nil, bad("volume entry")
 		}
 		res, rok := src, true
-		if strings.IndexAny(src, "./~") == 0 { // a bind path, not a named volume
+		if bind || strings.IndexAny(src, "./~") == 0 { // a bind path, not a named volume
 			res, rok = ResolveSocketPath(d.dir, src)
 		}
 		switch {
@@ -284,15 +279,21 @@ func scanSocketService(d socketDoc, name string, body map[string]any, lookup Soc
 			if !ok {
 				return nil, bad("environment entry")
 			}
-			k, v, _ := strings.Cut(str, "=")
-			env[k] = v
+			k, v, has := strings.Cut(str, "=")
+			if env[k] = nil; has { // no "=": forwarded from the effective env
+				env[k] = v
+			}
 		}
 	default:
 		return nil, bad("environment shape")
 	}
-	if v := env["DOCKER_HOST"]; v != nil {
-		if x, ok := expandSocket(fmt.Sprint(v), lookup); !ok || strings.Contains(strings.ToLower(x), "unix:") {
-			use("sets DOCKER_HOST to %q (a unix socket, or not resolvable)", v)
+	if v, present := env["DOCKER_HOST"]; present {
+		val, _ := lookup("DOCKER_HOST") // null or no "=": forwarded, the effective value counts
+		if v != nil {
+			val = fmt.Sprint(v)
+		}
+		if x, ok := expandSocket(val, lookup); !ok || strings.Contains(strings.ToLower(x), "unix:") {
+			use("sets DOCKER_HOST to %q (a unix socket, or not resolvable)", val)
 		}
 	}
 	return uses, nil

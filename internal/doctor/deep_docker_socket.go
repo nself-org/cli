@@ -8,9 +8,10 @@ package doctor
 //          compose ps and inspect (behind SocketInspector, faked in tests);
 //          build.AnalyzeSocket's view of the compose inputs.
 // Outputs: one CheckResult: fail > unknown > warn > pass (skip: no project).
-// Constraints: read-only. Plugin containers are every non-proxy service the
-//          core stack does not declare, so a deleted or disabled fragment
-//          cannot hide one; the exception table is build's own, applies to a
+// Constraints: read-only. Plugin containers are every non-proxy service neither
+//          the generated stack nor the service catalog declares (an override
+//          alone does not make a name core), so a deleted or disabled
+//          fragment cannot hide one; the exception table is build's own, applies to a
 //          plugin the fragments name exactly once, never to a proxy. An
 //          inspection error, a malformed field or any volume mount is
 //          "unknown", never "pass" (Constitution §4.1).
@@ -25,6 +26,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/build"
+	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/docker"
 )
 
@@ -81,7 +83,7 @@ func DockerSocketChecks(ctx context.Context, projectDir string) []CheckResult {
 	var rep *build.SocketReport
 	var files, envFiles []string
 	if err == nil {
-		rep, err = build.AnalyzeSocket(projectDir, pluginDir, build.NewSocketEnv(projectDir, pluginDir, nil), core)
+		rep, err = build.AnalyzeSocket(projectDir, pluginDir, build.NewSocketEnv(nil, filepath.Join(projectDir, ".env"), filepath.Join(projectDir, ".nself", "compose.env")), core)
 	}
 	if err == nil {
 		files, err = build.ReadComposeManifest(projectDir)
@@ -117,7 +119,7 @@ func CheckProxyDockerSocket(ctx context.Context, ins SocketInspector, rep *build
 		}
 		owners, label := rep.Owners[service], c.Labels["nself.plugin"]
 		proxy := build.SocketProxyService(service)
-		if !proxy && label == "" && len(owners) == 0 && rep.Core[service] {
+		if !proxy && label == "" && len(owners) == 0 && isCoreService(rep, service) {
 			continue // a core or custom service: not judged
 		}
 		who := fmt.Sprintf("service %s (container %s)", service, c.Name)
@@ -132,6 +134,16 @@ func CheckProxyDockerSocket(ctx context.Context, ins SocketInspector, rep *build
 			who = "plugin (no fragment names it) " + who
 		}
 		found, unk := containerSocketExposure(c, rep)
+		// The docker package decodes inspect JSON into non-nil empty values, so a
+		// missing Config.Env or Mounts looks like an empty one. Two cross-checks
+		// prove presence: every container has PATH, and a service whose inputs
+		// declare volumes has mounts. Anything else cannot be told apart.
+		if _, ok := c.Env["PATH"]; !ok {
+			unk = append(unk, "has no Config.Env in its inspect output, so DOCKER_HOST is unknown")
+		}
+		if rep.Mounted[service] && len(c.Mounts) == 0 {
+			unk = append(unk, "is declared with volumes but its inspect output lists no mounts")
+		}
 		for _, u := range unk {
 			unknown = append(unknown, who+" "+u)
 		}
@@ -161,6 +173,18 @@ func CheckProxyDockerSocket(ctx context.Context, ins SocketInspector, rep *build
 	return socketResult("pass", "no proxy or plugin container holds the Docker socket", "")
 }
 
+// isCoreService reports a service the generated stack declares or the service
+// catalog knows (a disabled optional service may still be running). A service
+// only an override names is not core.
+func isCoreService(rep *build.SocketReport, name string) bool {
+	for _, e := range compose.ServiceCatalog() {
+		if e.Name == name {
+			return true
+		}
+	}
+	return rep.Core[name]
+}
+
 // remoteDocker reports a DOCKER_HOST that is not a local unix socket.
 func remoteDocker() bool {
 	h := strings.ToLower(os.Getenv("DOCKER_HOST"))
@@ -171,11 +195,19 @@ func remoteDocker() bool {
 // and what could not be established.
 func containerSocketExposure(c docker.ContainerInfo, rep *build.SocketReport) (found, unknown []string) {
 	for _, m := range c.Mounts {
+		if m.Destination == "" {
+			unknown = append(unknown, fmt.Sprintf("has a %q mount without a destination", m.Type))
+			continue
+		}
 		if path.Base(m.Destination) == "docker.sock" {
 			found = append(found, fmt.Sprintf("mounts the Docker socket at %s", m.Destination))
 		}
 		switch m.Type {
 		case "bind":
+			if m.Source == "" {
+				unknown = append(unknown, "has a bind mount without a source")
+				break
+			}
 			// A bind source is a host path; follow symlinks where this host can
 			// see it. A missing, dangling or relative source, or a remote
 			// DOCKER_HOST (whose paths are not ours), cannot be verified.

@@ -20,8 +20,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/joho/godotenv"
 	"github.com/nself-org/cli/internal/compose"
-	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/version"
 	"gopkg.in/yaml.v3"
@@ -44,15 +44,10 @@ func ActiveSocketException(slug string) (SocketException, bool) {
 // versionAtLeast reports cur >= threshold on X.Y.Z (any -pre/+build ignored);
 // a version that does not parse counts as at-least (fail closed).
 func versionAtLeast(cur, threshold string) bool {
-	c, okC := parseXYZ(cur)
-	t, okT := parseXYZ(threshold)
-	return !okC || !okT || c >= t
-}
-
-func parseXYZ(v string) (packed int, ok bool) {
-	var a, b, c int
-	n, _ := fmt.Sscanf(strings.TrimPrefix(strings.TrimSpace(v), "v"), "%d.%d.%d", &a, &b, &c)
-	return a*1e8 + b*1e4 + c, n == 3 && min(a, b, c) >= 0 && max(b, c) < 1e4
+	var c, t [3]int
+	nc, _ := fmt.Sscanf(strings.TrimPrefix(strings.TrimSpace(cur), "v"), "%d.%d.%d", &c[0], &c[1], &c[2])
+	nt, _ := fmt.Sscanf(threshold, "%d.%d.%d", &t[0], &t[1], &t[2])
+	return nc != 3 || nt != 3 || c[0] > t[0] || c[0] == t[0] && (c[1] > t[1] || c[1] == t[1] && c[2] >= t[2])
 }
 
 // SocketProxyService reports the services no exception can ever cover.
@@ -103,17 +98,16 @@ func ResolveSocketPath(base, p string) (string, bool) {
 // SocketEnv resolves a ${VAR} name.
 type SocketEnv func(string) (string, bool)
 
-// NewSocketEnv resolves from the process env, then the project's .env files,
-// then the computed plugin variables (NSELF_PLUGIN_DIR and friends). cfg may be nil.
-func NewSocketEnv(workdir, pluginDir string, cfg *config.Config) SocketEnv {
-	vars := ComputePluginEnvVars(workdir, pluginDir, cfg)
-	data, _ := os.ReadFile(filepath.Join(workdir, ".env"))
-	for _, line := range strings.Split(string(data), "\n") {
-		k, v, ok := strings.Cut(strings.TrimPrefix(strings.TrimSpace(line), "export "), "=")
-		if k = strings.TrimSpace(k); ok && k != "" && !strings.HasPrefix(k, "#") {
-			vars[k] = strings.Trim(strings.TrimSpace(v), `"'`)
-		}
+// NewSocketEnv layers like Compose: the process env, then base (computed
+// values), then the env files in order (later wins). godotenv expands nested,
+// quoted and escaped values; an unreadable file adds nothing.
+func NewSocketEnv(base map[string]string, files ...string) SocketEnv {
+	vars := map[string]string{}
+	for _, f := range files {
+		m, _ := godotenv.Read(f)
+		maps.Copy(vars, m)
 	}
+	maps.Copy(vars, base)
 	return func(k string) (string, bool) {
 		if v, ok := os.LookupEnv(k); ok {
 			return v, true
@@ -152,8 +146,9 @@ type SocketUse struct{ Origin, Detail string }
 type SocketReport struct {
 	Uses    map[string][]SocketUse // service -> exposures
 	Owners  map[string][]string    // service -> plugin slugs that declare it
-	Core    map[string]bool        // services declared by the core stack or the override
+	Core    map[string]bool        // services declared by the generated core stack
 	Volumes map[string]string      // named volume -> "" or why it is socket-backed
+	Mounted map[string]bool        // services whose inputs declare at least one volume
 }
 
 type socketDoc struct {
@@ -212,7 +207,7 @@ func AnalyzeSocket(workdir, pluginDir string, env SocketEnv, core []byte) (*Sock
 			return nil, err
 		}
 	}
-	rep := &SocketReport{Uses: map[string][]SocketUse{}, Owners: map[string][]string{}, Core: map[string]bool{}, Volumes: map[string]string{}}
+	rep := &SocketReport{Uses: map[string][]SocketUse{}, Owners: map[string][]string{}, Core: map[string]bool{}, Volumes: map[string]string{}, Mounted: map[string]bool{}}
 	for _, d := range docs { // named volumes first: any input may mount another's
 		vols, err := socketMap(d.top["volumes"], d.origin+" volumes")
 		if err != nil {
@@ -247,8 +242,11 @@ func AnalyzeSocket(workdir, pluginDir string, env SocketEnv, core []byte) (*Sock
 			}
 			if slug, isPlugin := strings.CutPrefix(d.origin, "plugin:"); isPlugin {
 				rep.Owners[name] = append(rep.Owners[name], slug)
-			} else {
-				rep.Core[name] = true
+			} else if d.origin == "core stack" {
+				rep.Core[name] = true // not the override: a ghost plugin service is no core service
+			}
+			if v, _ := body["volumes"].([]any); len(v) > 0 {
+				rep.Mounted[name] = true
 			}
 			uses, err := scanSocketService(d, name, body, env, rep.Volumes)
 			if err != nil {
@@ -292,7 +290,7 @@ func (st *buildState) guardDockerSocket(g *compose.Generator) error {
 	if err != nil {
 		return nil // the real render reports it
 	}
-	rep, err := AnalyzeSocket(st.workdir, st.pluginDir, NewSocketEnv(st.workdir, st.pluginDir, st.cfg), stack)
+	rep, err := AnalyzeSocket(st.workdir, st.pluginDir, NewSocketEnv(ComputePluginEnvVars(st.workdir, st.pluginDir, st.cfg), filepath.Join(st.workdir, ".env")), stack)
 	if err != nil {
 		return errs.Newf("E130", "compose inputs cannot be checked for the Docker socket: %v", err)
 	}

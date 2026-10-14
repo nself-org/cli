@@ -33,6 +33,8 @@ func warnedCount() int {
 	return n
 }
 
+func ptr(s string) *string { return &s }
+
 // socketFixture reads a testdata/socket fixture and records that it was used.
 func socketFixture(t *testing.T, used map[string]bool, name string) string {
 	t.Helper()
@@ -183,7 +185,7 @@ func TestSocketGuardFragments(t *testing.T) {
 
 	t.Run("symlinked relative bind and device", func(t *testing.T) {
 		safe := t.TempDir()
-		for _, fx := range []struct{ fixture, slug string }{{"mount_symlink.yml", "socklink"}, {"device_symlink.yml", "socklinkdev"}} {
+		for _, fx := range []struct{ fixture, slug string }{{"mount_symlink.yml", "socklink"}, {"device_symlink.yml", "socklinkdev"}, {"bare_long_bind.yml", "sockbare"}, {"device_symlink_bare.yml", "sockbaredev"}} {
 			for name, tc := range map[string]struct {
 				target  string
 				refused bool
@@ -204,6 +206,55 @@ func TestSocketGuardFragments(t *testing.T) {
 					}
 				})
 			}
+		}
+	})
+
+	t.Run("effective env: forwarding, nested dotenv, stale artifact", func(t *testing.T) {
+		const unix, tcp = "unix:///var/run/docker.sock", "tcp://safe.invalid:2375"
+		for _, tc := range []struct {
+			name, fixture, slug, dotenv, stale string
+			host                               *string // process DOCKER_HOST; nil = unset
+			refused                            bool
+		}{
+			{"forwarded list entry, effective unix", "docker_host_inherit_list.yml", "sockinheritlist", "", "", ptr(unix), true},
+			{"forwarded list entry, effective tcp", "docker_host_inherit_list.yml", "sockinheritlist", "", "", ptr(tcp), false},
+			{"forwarded list entry, unset", "docker_host_inherit_list.yml", "sockinheritlist", "", "", nil, false},
+			{"forwarded null entry, effective unix", "docker_host_inherit_null.yml", "sockinheritnull", "", "", ptr(unix), true},
+			{"forwarded null entry, effective tcp", "docker_host_inherit_null.yml", "sockinheritnull", "", "", ptr(tcp), false},
+			{"forwarded null entry, unset", "docker_host_inherit_null.yml", "sockinheritnull", "", "", nil, false},
+			{"forwarded entry, unix from the project .env", "docker_host_inherit_list.yml", "sockinheritlist", "DOCKER_HOST=" + unix + "\n", "", nil, true},
+			{"nested dotenv value resolves to unix", "docker_host_nested.yml", "socknested", "SOCKGUARD_BASE=" + unix + "\nSOCKGUARD_NESTED=${SOCKGUARD_BASE}\n", "", nil, true},
+			{"nested dotenv value resolves to tcp", "docker_host_nested.yml", "socknested", "SOCKGUARD_BASE=" + tcp + "\nSOCKGUARD_NESTED=${SOCKGUARD_BASE}\n", "", nil, false},
+			{"single-quoted dotenv value keeps a dollar and fails closed", "docker_host_nested.yml", "socknested", "SOCKGUARD_BASE=" + tcp + "\nSOCKGUARD_NESTED='${SOCKGUARD_BASE}'\n", "", nil, true},
+			{"stale compose.env tcp does not hide the project .env unix", "var_docker_host.yml", "sockvarhost", "SOCKGUARD_HOST=" + unix + "\n", "SOCKGUARD_HOST=" + tcp + "\n", nil, true},
+			{"stale compose.env unix does not refuse a safe project .env", "var_docker_host.yml", "sockvarhost", "SOCKGUARD_HOST=" + tcp + "\n", "SOCKGUARD_HOST=" + unix + "\n", nil, false},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				f := newPlanFixture(t, "dev-minimal")
+				if tc.host == nil {
+					old, had := os.LookupEnv("DOCKER_HOST")
+					_ = os.Unsetenv("DOCKER_HOST")
+					t.Cleanup(func() {
+						if had {
+							_ = os.Setenv("DOCKER_HOST", old)
+						}
+					})
+				} else {
+					t.Setenv("DOCKER_HOST", *tc.host)
+				}
+				if tc.dotenv != "" {
+					base, _ := os.ReadFile(filepath.Join(f.workdir, ".env"))
+					writeFixtureFile(t, filepath.Join(f.workdir, ".env"), string(base)+tc.dotenv, 0o600)
+				}
+				if tc.stale != "" {
+					writeFixtureFile(t, filepath.Join(f.workdir, ".nself", "compose.env"), tc.stale, 0o600)
+				}
+				writeFixtureFile(t, filepath.Join(f.plugins, tc.slug, pluginComposeFilename), socketFixture(t, used, tc.fixture), 0o644)
+				_, err := Build(f.workdir, BuildOptions{Force: true})
+				if tc.refused != (err != nil) || tc.refused && !strings.Contains(err.Error(), tc.slug) {
+					t.Fatalf("refused=%v, got %v", tc.refused, err)
+				}
+			})
 		}
 	})
 
@@ -266,6 +317,36 @@ func TestSocketGuardFragments(t *testing.T) {
 		}
 	})
 
+	t.Run("override-only services are not core; declared volumes are recorded", func(t *testing.T) {
+		wd := t.TempDir()
+		writeFixtureFile(t, filepath.Join(wd, userComposeOverrideFile), socketFixture(t, used, "override_plugin.yml"), 0o644)
+		none := func(string) (string, bool) { return "", false }
+		rep, err := AnalyzeSocket(wd, t.TempDir(), none, []byte("services:\n  nginx:\n    volumes: [\"./a:/a\"]\n"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !rep.Core["nginx"] || rep.Core["sockclean"] || !rep.Mounted["nginx"] || !rep.Mounted["sockclean"] {
+			t.Fatalf("core=%v mounted=%v", rep.Core, rep.Mounted)
+		}
+	})
+
+	t.Run("env layering: process env, base, then files in order", func(t *testing.T) {
+		dir := t.TempDir()
+		a, b := filepath.Join(dir, "a.env"), filepath.Join(dir, "b.env")
+		writeFixtureFile(t, a, "L=from-a\nM=${L}-m\nN=a\n", 0o600)
+		writeFixtureFile(t, b, "N=b\nP=b\n", 0o600)
+		t.Setenv("SOCKGUARD_LAYER_PROC", "proc")
+		env := NewSocketEnv(map[string]string{"N": "base-n", "SOCKGUARD_LAYER_PROC": "base"}, a, b, filepath.Join(dir, "missing.env"))
+		for k, want := range map[string]string{"L": "from-a", "M": "from-a-m", "N": "base-n", "P": "b", "SOCKGUARD_LAYER_PROC": "proc"} {
+			if got, ok := env(k); !ok || got != want {
+				t.Errorf("%s = %q, %v; want %q", k, got, ok, want)
+			}
+		}
+		if _, ok := env("SOCKGUARD_NOPE"); ok {
+			t.Error("an unset variable resolved")
+		}
+	})
+
 	t.Run("every fixture is exercised", func(t *testing.T) {
 		entries, err := os.ReadDir(filepath.Join("testdata", "socket"))
 		if err != nil {
@@ -282,7 +363,7 @@ func TestSocketGuardFragments(t *testing.T) {
 func TestSocketGuardExceptionExpiry(t *testing.T) {
 	t.Run("table entries all expire", func(t *testing.T) {
 		for slug, ex := range socketExceptions {
-			if _, ok := parseXYZ(ex.RemovalAt); !ok || ex.Slug != slug || ex.Ticket == "" {
+			if versionAtLeast("0.0.0", ex.RemovalAt) || !versionAtLeast(ex.RemovalAt, ex.RemovalAt) || ex.Slug != slug || ex.Ticket == "" {
 				t.Errorf("%s: removal_at %q ticket %q slug %q is not a usable, expiring entry", slug, ex.RemovalAt, ex.Ticket, ex.Slug)
 			}
 		}
