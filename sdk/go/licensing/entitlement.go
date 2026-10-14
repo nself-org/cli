@@ -46,7 +46,7 @@ func readTokenFile(path string) ([]byte, error) {
 	if err != nil {
 		return nil, ErrEntitlementExpired
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	data, err := io.ReadAll(io.LimitReader(f, maxTokenBytes+1))
 	if err != nil || len(data) > maxTokenBytes {
 		return nil, ErrEntitlementExpired
