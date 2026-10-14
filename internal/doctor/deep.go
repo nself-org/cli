@@ -36,6 +36,7 @@ func DeepChecks(ctx context.Context, projectDir string, verbose bool) []CheckRes
 	results = append(results, CheckPayPalCSVParity(ctx))
 
 	results = append(results, LicenseChecks(ctx, projectDir, verbose)...)
+	results = append(results, EntitlementFileChecks(ctx, projectDir)...)
 	results = append(results, MonitoringChecks(ctx)...)
 	results = append(results, BackupChecks(ctx, projectDir)...)
 	results = append(results, SecurityChecks(ctx, projectDir)...)

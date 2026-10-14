@@ -14,6 +14,7 @@ package build
 //              change.
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -22,6 +23,7 @@ import (
 
 	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/compose/monitoring"
+	"github.com/nself-org/cli/internal/errs"
 )
 
 // generateCompose runs Steps 8-9.8 of Build().
@@ -97,9 +99,13 @@ func (st *buildState) generateCompose() error {
 	st.filesGenerated++
 
 	// ── Step 9.5: Discover plugin compose files ────────────────────
-	pluginComposeFiles, err := discoverPluginComposeFilesFx(st.fx, st.sink, st.workdir, st.pluginDir)
+	pluginComposeFiles, err := discoverPluginComposeFilesFx(st.fx, st.sink, st.workdir, st.pluginDir, &st.entitlementRefreshed)
 	if err != nil {
-		return fmt.Errorf("discovering plugin compose files: %w", err)
+		var refresh *EntitlementRefreshError
+		if !errors.As(err, &refresh) || errs.Describe(err) == nil || errs.Describe(err).Code != "E125" {
+			return fmt.Errorf("discovering plugin compose files: %w", err)
+		}
+		st.entitlementErr = err
 	}
 	st.pluginComposeFiles = pluginComposeFiles
 

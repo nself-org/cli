@@ -35,8 +35,9 @@ shift
 #                      other file is excluded from the run. A LIVED or NOT COVERED
 #                      mutant in a listed file fails the run (exit 1).
 #   --allow FILE       equivalent-mutant allowlist replacing the built-in
-#                      MUTATION_EQUIVALENT list: one `MUTATOR at file.go:line:col | reason`
-#                      per line; an entry without a reason is an error. Used with --only.
+#                      MUTATION_EQUIVALENT list: one `MUTATOR at repo/path.go:line:col | reason`
+#                      per line; an entry without a reason is an error.
+#                      --only also accepts file.go IDs scoped to PKG_DIR.
 only=""
 allow=""
 passthru=()
@@ -53,6 +54,7 @@ done
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root" || exit 1
 srcdir="$pkg"
+source_prefix="${pkg#./}"
 moddir="$root" # the directory srcdir is relative to (the module root)
 
 # Module-aware: sdk/go is its own module.
@@ -81,12 +83,36 @@ else
   gremlins() { "$bindir/gremlins" "$@"; }
 fi
 
-# Equivalent mutants for --only runs, by gremlins id, each with the reason no test
+# Equivalent mutants, by repo-qualified gremlins id, each with the reason no test
 # can tell the mutant from the original. Line numbers are those of the current
 # source; a moved line needs its entry moved. Keep this list short and honest.
 MUTATION_EQUIVALENT='
-ARITHMETIC_BASE at validate.go:23:32 | unmeasurable, not equivalent: const initialiser: Go emits no coverage block for a const, so gremlins can only report NOT COVERED; TestDefaultCheckIntervalIsSixHours pins the value
+ARITHMETIC_BASE at internal/license/validate.go:23:32 | unmeasurable, not equivalent: const initialiser: Go emits no coverage block for a const, so gremlins can only report NOT COVERED; TestDefaultCheckIntervalIsSixHours pins the value
+CONDITIONALS_BOUNDARY at internal/license/entitlement/selection.go:22:31 | exp=0 cannot beat the selected expiry initialized to zero, so accepting this boundary never changes the selection
+CONDITIONALS_BOUNDARY at internal/license/entitlement/lifecycle.go:73:30 | exp=0 is already rejected by the grace deadline at the Unix epoch plus 30 days
 '
+
+# Load exact repo-relative IDs for either verdict mode; never match basenames
+# across packages. Inputs: destination file. Output: validated IDs, or exit 1.
+mutation_allowlist() {
+  local dest="$1" line id why bad=0
+  : > "$dest"
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in ''|'#'*) continue ;; esac
+    id="${line%% | *}"; why="${line#* | }"
+    if [ "$id" = "$line" ] || [ -z "$(printf '%s' "$why" | tr -d '[:space:]')" ]; then
+      echo "mutation: allowlist entry without a reason: $line" >&2; bad=1; continue
+    fi
+    if [ -n "$only" ] && printf '%s\n' "$id" | grep -qE '^[A-Z_]+ at [^/:]+\.go:[0-9]+:[0-9]+$'; then
+      id="${id/ at / at $source_prefix/}"
+    fi
+    if ! printf '%s\n' "$id" | grep -qE '^[A-Z_]+ at [^:]+/[^:]+\.go:[0-9]+:[0-9]+$'; then
+      echo "mutation: allowlist entry needs a repo-qualified file: $id" >&2; bad=1; continue
+    fi
+    printf '%s\n' "$id" >> "$dest"
+  done < <(if [ -n "$allow" ]; then cat "$allow"; else printf '%s\n' "$MUTATION_EQUIVALENT"; fi)
+  [ "$bad" -eq 0 ] && { [ -z "$allow" ] || [ -r "$allow" ]; }
+}
 
 # --only mode. Passes: a file whose first line is `//go:build nself_devkeys` only
 # compiles with that tag, so it is mutated in a second pass run with
@@ -149,24 +175,8 @@ mutation_only_main() {
   [ -f "$tmp/r2" ] && cat "$tmp/r2" >> "$out"
   echo "mutation output: $out"
 
-  # Allowlist: `MUTATOR at file.go:line:col | reason`; a reason is mandatory.
-  # Default: the built-in list below; --allow FILE replaces it.
-  : > "$tmp/allow"
-  if [ -n "$allow" ]; then
-    cp "$allow" "$tmp/allowsrc" || { rm -rf "$tmp"; return 1; }
-  else
-    printf '%s\n' "$MUTATION_EQUIVALENT" > "$tmp/allowsrc"
-  fi
-  local line id why bad=0
-  while IFS= read -r line || [ -n "$line" ]; do
-    case "$line" in ''|'#'*) continue ;; esac
-    id="${line%% | *}"; why="${line#* | }"
-    if [ "$id" = "$line" ] || [ -z "$(printf '%s' "$why" | tr -d '[:space:]')" ]; then
-      echo "mutation: allowlist entry without a reason: $line" >&2; bad=1; continue
-    fi
-    echo "$id" >> "$tmp/allow"
-  done < "$tmp/allowsrc"
-  [ "$bad" -ne 0 ] && { rm -rf "$tmp"; return 1; }
+  mutation_allowlist "$tmp/allow" || { rm -rf "$tmp"; return 1; }
+  local id
 
   # Bad = LIVED or NOT COVERED in a listed file and not allowlisted. TIMED OUT
   # counts as detected (the tests hung on the mutant), as in gremlins' efficacy.
@@ -175,7 +185,7 @@ mutation_only_main() {
     sort -u | while IFS= read -r id; do
       base="${id#* at }"; base="${base%%:*}"
       printf '%s\n' "$list" | grep -qx "$base" || continue
-      grep -qxF "$id" "$tmp/allow" && continue
+      grep -qxF "${id/ at / at $source_prefix/}" "$tmp/allow" && continue
       echo "$id"
     done > "$tmp/bad"
   # Judged = every mutant gremlins reported in a listed file, whatever its verdict.
@@ -230,7 +240,13 @@ if [ "${judged:-0}" -eq 0 ]; then
   echo "mutation: zero mutants were judged in $pkg (nothing was tested; see $out)" >&2
   exit 1
 fi
-lived="$(grep -cE '^[[:space:]]*LIVED' "$out" || true)"
+allowfile="$(mktemp "${TMPDIR:-/tmp}/mutation-allow.XXXXXX")"
+mutation_allowlist "$allowfile" || { rm -f "$allowfile"; exit 1; }
+lived="$(sed -nE 's/^[[:space:]]*LIVED[[:space:]]+//p' "$out" |
+  while IFS= read -r id; do
+    grep -qxF "${id/ at / at $source_prefix/}" "$allowfile" || printf '%s\n' "$id"
+  done | wc -l | tr -d ' ')"
+rm -f "$allowfile"
 if [ "${lived:-0}" -gt 0 ]; then
   echo "mutation: $lived mutant(s) survived in $pkg" >&2
   exit 1

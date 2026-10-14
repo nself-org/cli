@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/mutation_test.sh
 #
-# Purpose: test scripts/mutation.sh --only without running real mutation
+# Purpose: test scripts/mutation.sh verdicts without running real mutation
 #          testing: a fake gremlins (GREMLINS_BIN) prints canned reports and
 #          records its working directory and arguments.
 # Usage:   bash scripts/mutation_test.sh
@@ -77,6 +77,37 @@ run_case $'       LIVED CONDITIONALS_NEGATION at validate.go:40:9\n' internal/li
 check "internal lived mutant exits non-zero" 1 "$rc"
 run_case $'       LIVED ARITHMETIC_BASE at validate.go:23:32\n      KILLED CONDITIONALS_NEGATION at validate.go:40:9\n' internal/license --only validate.go
 check "internal allowlisted equivalent still passes" 0 "$rc"
+
+# 6. Default recursive runs honor exact qualified equivalents, not sibling IDs.
+printf '%s\n' 'CONDITIONALS_NEGATION at internal/license/entitlement/write.go:54:16 | fixture equivalent' > "$work/allow"
+equivalent=$'       LIVED CONDITIONALS_NEGATION at entitlement/write.go:54:16\n'
+run_case "$equivalent" internal/license --allow "$work/allow"
+check "recursive qualified equivalent passes" 0 "$rc"
+run_case $'       LIVED CONDITIONALS_NEGATION at write.go:54:16\n' internal/license/entitlement --allow "$work/allow"
+check "standalone qualified equivalent passes" 0 "$rc"
+run_case "$equivalent"$'       LIVED CONDITIONALS_NEGATION at write.go:54:16\n' internal/license --allow "$work/allow"
+check "same basename in parent package still fails" 1 "$rc"
+run_case "$equivalent"$'       LIVED CONDITIONALS_NEGATION at entitlement/write.go:55:16\n' internal/license --allow "$work/allow"
+check "different location still fails" 1 "$rc"
+run_case "$equivalent"$'       LIVED CONDITIONALS_BOUNDARY at entitlement/write.go:54:16\n' internal/license --allow "$work/allow"
+check "different mutator still fails" 1 "$rc"
+printf '%s\n' 'CONDITIONALS_NEGATION at internal/license/entitlement/write.go:54:16 | ' > "$work/allow"
+run_case "$equivalent" internal/license --allow "$work/allow"
+check "default rejects reasonless equivalent" 1 "$rc"
+printf '%s\n' 'CONDITIONALS_NEGATION at write.go:54:16 | fixture equivalent' > "$work/allow"
+run_case "$equivalent" internal/license --allow "$work/allow"
+check "default rejects unqualified equivalent" 1 "$rc"
+printf '%s\n' 'CONDITIONALS_NEGATION at validate.go:40:9 | legacy scoped equivalent' > "$work/allow"
+run_case $'       LIVED CONDITIONALS_NEGATION at validate.go:40:9\n' internal/license --only validate.go --allow "$work/allow"
+check "only preserves legacy basename allowlists" 0 "$rc"
+run_case "$equivalent" internal/license --allow "$work/missing-allow"
+check "default rejects missing allowlist" 1 "$rc"
+run_case $' NOT COVERED CONDITIONALS_NEGATION at validate.go:40:9\n' internal/license
+check "default tolerates uncovered mutants" 0 "$rc"
+run_case $' NOT COVERED CONDITIONALS_NEGATION at validate.go:40:9\n' internal/license --only validate.go
+check "only still rejects uncovered mutants" 1 "$rc"
+run_case '' internal/license
+check "default still rejects zero judged mutants" 1 "$rc"
 
 [ "$fail" = 0 ] && echo "ALL PASS" || echo "SOME FAILED"
 exit "$fail"

@@ -6,16 +6,19 @@ package commands
 // Inputs: cobra command args (the key value(s) or a key-prefix/product query).
 // Outputs: stdout confirmation messages; errors wrap the underlying license
 // package failures.
-// Constraints: pure move, no behavior change. defaultPingURL/pricingURL
+// Constraints: entitlement refresh is v1.5-only. defaultPingURL/pricingURL
 // consts and the licenseCmd/init() registration remain in license.go.
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
 
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/license"
+	"github.com/nself-org/cli/internal/license/entitlement"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/ui"
 
@@ -39,6 +42,19 @@ to add a key without replacing existing ones.`,
 		}
 		if replaced > 1 {
 			fmt.Fprintf(os.Stderr, "Warning: Replacing %d existing keys with single key.\n", replaced)
+		}
+		if cwd, err := os.Getwd(); err == nil {
+			var validationErr error
+			if projectDir, err := config.FindNSelfRoot(cwd); err == nil {
+				validationErr = entitlement.RefreshInstalledForKey(cmd.Context(), projectDir, key)
+			} else {
+				validationErr = entitlement.ValidateKeyOutsideProject(cmd.Context(), key)
+			}
+			if errors.Is(validationErr, entitlement.ErrValidationUnavailable) {
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Warning: key saved; could not validate online, the next build will retry.")
+			} else if validationErr != nil {
+				return validationErr
+			}
 		}
 		pp := license.DetectProduct(key)
 		if pp != nil {
