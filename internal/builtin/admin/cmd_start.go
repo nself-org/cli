@@ -144,29 +144,49 @@ func (r runner) startFacts(cmd *cobra.Command, _ []string) any {
 	return BindingOf(info.Ports)
 }
 
-// BindingOf reads the host bindings ("127.0.0.1:3021->3021/tcp") of a
-// container: the first, in sorted order, is Listen; any non-loopback host marks
-// the exposure.
+// BindingOf reads the host bindings of a container as internal/docker formats
+// them ("127.0.0.1:3021->3021/tcp", and for IPv6 the unbracketed
+// ":::3021->3021/tcp"). Listen is the first binding in sorted order, with an
+// IPv6 host bracketed ("[::]:3021"). ExposeNetwork fails closed: any host that
+// is not a loopback address, or that cannot be parsed, marks the exposure.
 func BindingOf(ports []string) StartData {
 	var bound []string
+	exposed := false
 	for _, p := range ports {
-		if i := strings.Index(p, "->"); i > 0 {
-			bound = append(bound, p[:i])
+		i := strings.Index(p, "->")
+		if i <= 0 {
+			continue
+		}
+		addr, ok := normalizeBinding(p[:i])
+		if !ok {
+			exposed = true // a binding that cannot be read must not look like loopback
+			continue
+		}
+		bound = append(bound, addr)
+		host, _, _ := net.SplitHostPort(addr)
+		if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
+			exposed = true
 		}
 	}
 	sort.Strings(bound)
-	d := StartData{}
-	for _, addr := range bound {
-		host, _, err := net.SplitHostPort(addr)
-		if err != nil {
-			continue
-		}
-		if !d.Observed {
-			d.Listen, d.Observed = addr, true
-		}
-		if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
-			d.ExposeNetwork = true
-		}
+	d := StartData{ExposeNetwork: exposed}
+	if len(bound) > 0 {
+		d.Listen = bound[0]
 	}
+	d.Observed = len(bound) > 0 || exposed
 	return d
+}
+
+// normalizeBinding splits "host:port" at the last colon (docker leaves an IPv6
+// host unbracketed) and joins it back in the form net.SplitHostPort reads.
+func normalizeBinding(addr string) (string, bool) {
+	i := strings.LastIndex(addr, ":")
+	if i < 0 {
+		return "", false
+	}
+	host, port := strings.Trim(addr[:i], "[]"), addr[i+1:]
+	if port == "" {
+		return "", false
+	}
+	return net.JoinHostPort(host, port), true
 }

@@ -451,19 +451,25 @@ func adminTree(t *testing.T, words ...string) *cobra.Command {
 
 func TestAdminStartBinding(t *testing.T) {
 	for _, tc := range []struct {
+		name   string
 		ports  []string
 		listen string
 		expose bool
 		seen   bool
 	}{
-		{[]string{"127.0.0.1:3021->3021/tcp"}, "127.0.0.1:3021", false, true},
-		{[]string{"0.0.0.0:3021->3021/tcp", "3000/tcp"}, "0.0.0.0:3021", true, true},
-		{[]string{"3021/tcp"}, "", false, false},
-		{nil, "", false, false},
+		{"ipv4 loopback", []string{"127.0.0.1:3021->3021/tcp"}, "127.0.0.1:3021", false, true},
+		{"ipv4 wildcard", []string{"0.0.0.0:3021->3021/tcp", "3000/tcp"}, "0.0.0.0:3021", true, true},
+		{"ipv6 wildcard (docker prints it unbracketed)", []string{":::3021->3021/tcp"}, "[::]:3021", true, true},
+		{"ipv6 loopback", []string{"::1:3021->3021/tcp"}, "[::1]:3021", false, true},
+		{"ipv4 loopback and ipv6 wildcard", []string{"127.0.0.1:3021->3021/tcp", ":::3021->3021/tcp"}, "127.0.0.1:3021", true, true},
+		{"ipv4 and ipv6 loopback", []string{"::1:3021->3021/tcp", "127.0.0.1:3021->3021/tcp"}, "127.0.0.1:3021", false, true},
+		{"unreadable binding fails closed", []string{"garbage->3021/tcp"}, "", true, true},
+		{"unbound port", []string{"3021/tcp"}, "", false, false},
+		{"nothing", nil, "", false, false},
 	} {
 		got := admin.BindingOf(tc.ports)
 		if got.Listen != tc.listen || got.ExposeNetwork != tc.expose || got.Observed != tc.seen {
-			t.Errorf("BindingOf(%v) = %+v", tc.ports, got)
+			t.Errorf("%s: BindingOf(%v) = %+v", tc.name, tc.ports, got)
 		}
 	}
 }
