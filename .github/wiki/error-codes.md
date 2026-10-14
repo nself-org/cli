@@ -412,7 +412,7 @@ Codes are grouped in blocks. A block has exactly one category, so the category o
 | E500-E529 | adopt | Adopting existing stacks |
 | E540-E549 | secret | Secret resolution |
 | E600-E719 | reserved | The ci plugin's own registry; never allocated in the CLI |
-| E720-E739 | reserved | The k8s plugin's own registry; never allocated in the CLI. See [[K8s]]. |
+| E720-E739 | reserved | The k8s plugin's own registry; never allocated in the CLI; documented with the k8s plugin. |
 
 Codes are never reused or renumbered. Several blocks have no registered codes yet; a block appears in the tables above once it has one.
 
