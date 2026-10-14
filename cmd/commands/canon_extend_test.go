@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -28,7 +29,7 @@ func TestCanonExtendResolution(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
 		undo := prepareTreeWith(&canonTable, RootCmd, compat.V15(), false)
 		defer undo()
-		for _, row := range [][2]string{{"install", "add"}, {"plugin", "config plugins"}, {"plugin install", "add"}, {"plugin remove", "remove"}, {"bundle", "config bundles"}, {"bundle install", "config bundles install"}, {"bundle remove", "remove"}} {
+		for _, row := range [][2]string{{"install", "add"}, {"plugin", "config plugins"}, {"plugin install", "add"}, {"plugin remove", "remove"}, {"bundle", "config bundles"}, {"bundle install", "add"}, {"bundle remove", "remove"}} {
 			args, _, err := rewriteCanonArgsWith(&canonTable, RootCmd, strings.Fields(row[0]), compat.V15())
 			if err != nil {
 				t.Fatalf("rewrite %s: %v", row[0], err)
@@ -302,6 +303,58 @@ func TestEquivalencePluginInstall(t *testing.T) {
 			t.Fatalf("fixture install was not exercised: %+v", legacy)
 		}
 		compareExtensionResults(t, legacy, canonical)
+	})
+}
+
+func TestEquivalenceBundleInstall(t *testing.T) {
+	compattest.Both(t, func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(fixtureBundlesJSON))
+		}))
+		defer srv.Close()
+		t.Setenv("NSELF_BUNDLES_URL", srv.URL)
+		t.Setenv("NSELF_BUNDLES_CACHE_PATH", filepath.Join(t.TempDir(), "bundles.json"))
+		t.Setenv("NSELF_PLUGIN_REGISTRY", srv.URL)
+
+		for _, cmd := range []*cobra.Command{bundleInstallCmd, installCmd} {
+			if err := cmd.Flags().Set("dry-run", "true"); err != nil {
+				t.Fatal(err)
+			}
+			cmd := cmd
+			t.Cleanup(func() { resetFlag(cmd, "dry-run") })
+		}
+
+		oldInstall := bundleInstall
+		var calls []bundle.InstallOpts
+		bundleInstall = func(_ context.Context, slug string, opts bundle.InstallOpts) (*bundle.InstallResult, error) {
+			if slug != "nchat" {
+				t.Fatalf("bundle install slug = %q, want nchat", slug)
+			}
+			calls = append(calls, opts)
+			return &bundle.InstallResult{Bundle: slug, DryRun: opts.DryRun}, nil
+		}
+		t.Cleanup(func() { bundleInstall = oldInstall })
+
+		staleCatalog := strings.Replace(fixtureBundlesJSON, `"chat":`, `"other":`, 1)
+		if err := bundle.LoadBytes([]byte(staleCatalog)); err != nil {
+			t.Fatal(err)
+		}
+		if err := bundleCmd.PersistentPreRunE(bundleInstallCmd, nil); err != nil {
+			t.Fatal(err)
+		}
+		if err := runBundleInstall(bundleInstallCmd, []string{"nchat"}); err != nil {
+			t.Fatalf("bundle install: %v", err)
+		}
+
+		if err := bundle.LoadBytes([]byte(staleCatalog)); err != nil {
+			t.Fatal(err)
+		}
+		if err := runInstall(installCmd, []string{"nchat"}); err != nil {
+			t.Fatalf("install: %v", err)
+		}
+		if len(calls) != 2 || !reflect.DeepEqual(calls[0], calls[1]) {
+			t.Fatalf("bundle install calls = %+v, want equivalent legacy and canonical calls", calls)
+		}
 	})
 }
 

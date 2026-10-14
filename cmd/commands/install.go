@@ -72,6 +72,13 @@ Examples:
 }
 
 func init() {
+	// bundle install remains callable in v1.5, but it must route through add so
+	// both spellings use the same bundle-aware, atomic install path.
+	canonTable.Shims = append(canonTable.Shims, canonRowT{
+		From: []string{"bundle", "install"}, To: []string{"add"},
+		Since: "v1.5.0", RemovalAt: "v1.6.0",
+	})
+
 	// Flags are forwarded to the underlying plugin/bundle commands, so the two
 	// surfaces cannot drift apart in what they accept.
 	installCmd.Flags().Bool("yes", false, "Skip confirmation prompts (required for third-party URL installs in CI)")
@@ -110,6 +117,13 @@ func resolvesToBundle(name string) bool {
 
 func runInstall(cmd *cobra.Command, args []string) error {
 	if handled, err := toggleBuiltin(args, true); handled {
+		return err
+	}
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := bundle.Load(ctx); err != nil {
 		return err
 	}
 	var bundles, plugins []string
