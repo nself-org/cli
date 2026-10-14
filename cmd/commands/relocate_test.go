@@ -23,6 +23,7 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/lock"
 	"github.com/nself-org/cli/internal/plugin"
+	"github.com/spf13/cobra"
 )
 
 // stubScript records the argv and the two contract:cli.plugin-exec-env v1
@@ -171,6 +172,11 @@ func TestRelocateBreakout(t *testing.T) {
 	t.Run("mounted plugin runs through cobra", func(t *testing.T) {
 		_, calls, _ := relocateSetup(t, "", nil)
 		node := walkNames(RootCmd, []string{"ci"})
+		if node == nil { // an earlier test left the canon applied: no core ci in the tree
+			node = &cobra.Command{Use: "ci"}
+			RootCmd.AddCommand(node)
+			t.Cleanup(func() { RootCmd.RemoveCommand(node) })
+		}
 		prev := node.Annotations
 		node.Annotations = map[string]string{"nself.plugin": "ci"}
 		t.Cleanup(func() { node.Annotations = prev })
