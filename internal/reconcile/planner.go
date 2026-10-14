@@ -69,7 +69,10 @@ func compute(ctx context.Context, req Request) (*computed, error) {
 		envChanged = req.envChanged
 	}
 	opts.EnvOverlay = env
-	res, err := nbuild.Build(req.ProjectDir, opts)
+	if req.resolvedEnv == "" {
+		req.resolvedEnv = resolveBuildEnv(req.ProjectDir, env)
+	}
+	res, err := buildWithEnv(req.ProjectDir, opts, req.resolvedEnv, nbuild.Build)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +113,7 @@ func compute(ctx context.Context, req Request) (*computed, error) {
 	p := &Plan{
 		Command:   req.Command,
 		Trigger:   req.Trigger,
-		Env:       res.Env,
+		Env:       req.resolvedEnv,
 		Artifacts: arts,
 		Effects:   append(effectsOf(res.Planned.Effects, hasSitesChange(arts)), req.Extra...),
 	}
@@ -127,10 +130,11 @@ func compute(ctx context.Context, req Request) (*computed, error) {
 	if p.Trigger.Kind == "" {
 		p.Trigger.Kind = TriggerBuild
 	}
+	retainProdEnv(p, res.Env)
 	p.Containers = Containers{Known: true, Items: []ContainerItem{}}
 	// Container impact asks Docker, so a dev build that needs no plan output
 	// skips it; a prod-class plan, --plan and --json (req.Containers) always ask.
-	if req.Containers || EnvClass(NormalizeEnv(res.Env)) == ClassProd {
+	if req.Containers || EnvClass(p.Env) == ClassProd || EnvClass(res.Env) == ClassProd {
 		c, extra := containerImpact(ctx, req, req.ProjectDir, res, ov)
 		p.Containers = c
 		p.Effects = append(p.Effects, extra...)

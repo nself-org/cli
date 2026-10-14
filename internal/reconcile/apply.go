@@ -87,6 +87,11 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (applied *Pl
 	if req.HandEdited == nil {
 		req.HandEdited = state.HandEditedFn(req.ProjectDir)
 	}
+	env, _, err := pendingEnv(req.ProjectDir, req.EnvOverlay)
+	if err != nil {
+		return nil, nil, err
+	}
+	req.resolvedEnv = resolveBuildEnv(req.ProjectDir, env)
 	c, err := compute(ctx, req)
 	if err != nil {
 		return nil, nil, err
@@ -183,7 +188,7 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (applied *Pl
 	// with docker-compose.yml and would skip changes in .env.secrets, nself.yaml,
 	// plugin dirs and the like (EPIC round 3, F1).
 	wopts.Force = wopts.Force || !p.Empty
-	res, err := buildBuild(req.ProjectDir, wopts)
+	res, err := buildWithEnv(req.ProjectDir, wopts, req.resolvedEnv, buildBuild)
 	if err != nil {
 		return nil, nil, err
 	}

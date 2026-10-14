@@ -78,6 +78,7 @@ func TestCascadeIntegration(t *testing.T) {
 		{"config_set_cascades", cascadeConfigSet},
 		{"hand_edit_refused_then_force", cascadeHandEdit},
 		{"prod_class_refusal", cascadeProdClass},
+		{"process_env_prod_refusal", cascadeProcessEnvProd},
 		{"doctor_fix_idempotent", cascadeDoctorFix},
 	}
 	for _, mode := range []cascadeMode{{"v15", true}, {"v14", false}} {
@@ -107,14 +108,15 @@ func cascadeBuildBinary(t *testing.T) string {
 
 // cascadeProject is one temp project with its own HOME and plugin dir.
 type cascadeProject struct {
-	t       *testing.T
-	bin     string
-	v15     bool
-	name    string // PROJECT_NAME: unique per run, the docker label value
-	root    string // holds project/, home/, plugins/
-	dir     string
-	home    string
-	plugins string
+	t          *testing.T
+	bin        string
+	v15        bool
+	name       string // PROJECT_NAME: unique per run, the docker label value
+	root       string // holds project/, home/, plugins/
+	dir        string
+	home       string
+	plugins    string
+	processEnv string // an operator's explicit cascade selection
 }
 
 // newCascadeProject copies a fixture the way scripts/ci/live-safety-fixture.sh
@@ -246,6 +248,9 @@ func (p *cascadeProject) env() []string {
 	if p.v15 {
 		e = append(e, "NSELF_V15=1")
 	}
+	if p.processEnv != "" {
+		e = append(e, "ENV="+p.processEnv)
+	}
 	return e
 }
 
@@ -353,6 +358,7 @@ func (p *cascadeProject) assertUnchanged(snap treeSnap, what string) {
 // cascadePlan is the part of the change-plan envelope the suite asserts on.
 type cascadePlan struct {
 	Empty                bool   `json:"empty"`
+	Env                  string `json:"env"`
 	EnvClass             string `json:"env_class"`
 	RequiresConfirmation bool   `json:"requires_confirmation"`
 	PlanID               string `json:"plan_id"`
