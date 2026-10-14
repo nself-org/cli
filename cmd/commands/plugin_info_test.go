@@ -197,6 +197,25 @@ func runInfoRoot(t *testing.T, extra ...string) (string, error) {
 	return stdout.String(), nil
 }
 
+// infoData unwraps the v1.5 envelope of `plugin info --json` (command
+// `config plugins info`) and returns its data member (P7-SURF-13: the document
+// that was bare JSON is now the data of the v1 envelope; its members are
+// unchanged).
+func infoData(t *testing.T, out string) []byte {
+	t.Helper()
+	var env struct {
+		Command string          `json:"command"`
+		Data    json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("not an envelope: %v\n%s", err, out)
+	}
+	if env.Command != "config plugins info" || len(env.Data) == 0 {
+		t.Fatalf("envelope command %q data %q, want config plugins info with data\n%s", env.Command, env.Data, out)
+	}
+	return env.Data
+}
+
 // TestPluginInfoJSONThroughRoot (CR M1, S2): `nself plugin info <n> --json`
 // works through the root command. v1.5 prints the JSON (the registry row is
 // json legacy, so the E402 gate lets it through); v1.4 still ignores the flag
@@ -219,7 +238,7 @@ func TestPluginInfoJSONThroughRoot(t *testing.T) {
 			Tier       string `json:"tier"`
 			TierReason string `json:"tier_reason"`
 		}
-		if jerr := json.Unmarshal([]byte(out), &got); jerr != nil {
+		if jerr := json.Unmarshal(infoData(t, out), &got); jerr != nil {
 			t.Fatalf("v1.5 output is not JSON: %v\n%s", jerr, out)
 		}
 		if got.Name != "notify" || got.Tier != "free" || got.TierReason != "installed" {
@@ -246,7 +265,7 @@ func TestPluginInfoUnresolvedTier(t *testing.T) {
 		TierReason string `json:"tier_reason"`
 		TierError  string `json:"tier_error"`
 	}
-	if jerr := json.Unmarshal([]byte(out), &got); jerr != nil {
+	if jerr := json.Unmarshal(infoData(t, out), &got); jerr != nil {
 		t.Fatalf("not JSON: %v\n%s", jerr, out)
 	}
 	if got.TierReason != "unresolved" || got.TierError == "" || got.Version != "" || got.Tier != "" {
@@ -273,7 +292,7 @@ func TestPluginInfoInstalledTierNotServed(t *testing.T) {
 		TierReason string `json:"tier_reason"`
 		TierError  string `json:"tier_error"`
 	}
-	if jerr := json.Unmarshal([]byte(out), &got); jerr != nil {
+	if jerr := json.Unmarshal(infoData(t, out), &got); jerr != nil {
 		t.Fatalf("not JSON: %v\n%s", jerr, out)
 	}
 	if got.TierReason != "unresolved" || got.TierError == "" || got.Version != "" {
@@ -299,7 +318,7 @@ func TestPluginInfoMaxTier(t *testing.T) {
 		if err != nil {
 			t.Fatalf("installed=%q: %v\n%s", tc.installed, err, out)
 		}
-		if jerr := json.Unmarshal([]byte(out), &got); jerr != nil {
+		if jerr := json.Unmarshal(infoData(t, out), &got); jerr != nil {
 			t.Fatal(jerr)
 		}
 		if got.Tier != "licensed" || got.TierReason != tc.reason {
@@ -327,7 +346,7 @@ func TestPluginInfoEntitlementLookupError(t *testing.T) {
 		TierReason string `json:"tier_reason"`
 		TierError  string `json:"tier_error"`
 	}
-	if jerr := json.Unmarshal([]byte(out), &got); jerr != nil {
+	if jerr := json.Unmarshal(infoData(t, out), &got); jerr != nil {
 		t.Fatalf("not JSON: %v\n%s", jerr, out)
 	}
 	if got.TierReason != "unresolved" || got.TierError == "" || got.Tier != "" || strings.Contains(out, "default-free") {

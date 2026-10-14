@@ -25,7 +25,7 @@ commands:
   config plugins info: {side_effect: read, json: legacy}
   # cmd/commands/plugin_query.go:143 only queries installed-plugin inventory
   config plugins inventory: {side_effect: read}
-  config plugins list: {side_effect: read, json: legacy}
+  config plugins list: {side_effect: read}
   config plugins logs: {side_effect: read, output: stream} # raw container log lines from docker, filtered by --grep: not framed as envelope records
   config plugins outdated: {side_effect: read, json: legacy, exit_codes: {"1": "at least one installed plugin is outdated (exits 0 when every plugin is current)"}}
   config plugins refresh: {side_effect: write}

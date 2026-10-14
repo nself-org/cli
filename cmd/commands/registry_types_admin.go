@@ -5,9 +5,9 @@
 // envelope in v1.5 mode (P7-SURF-13). The builtin admin package owns the
 // emission and exports the data types; the registry, schemas and goldens live
 // here with the other fragments. `admin logs --follow` is a stream
-// (contract:cli.json-stream v1) of admin.LogRecord lines; `admin connect` is
-// interactive (an SSH tunnel that stays up) and `admin serve` is a stream; neither
-// registers anything. `admin projects list` printed
+// (contract:cli.json-stream v1) of admin.LogRecord lines; `admin connect` (an
+// SSH tunnel that stays up) and `admin serve` are streams; neither registers
+// anything. `admin projects list` printed
 // a JSON array before the contract: it stays in v1.4 mode and in the v1.4
 // registry view (`json: legacy` in admin.yaml); the v1.5 envelope carries the
 // same array.

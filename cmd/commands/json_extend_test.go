@@ -47,9 +47,12 @@ func TestEnvelopeCoverageExtend(t *testing.T) {
 		t.Fatalf("add = %+v, want remote with a confirm block naming --yes", r)
 	}
 	old := registryRows(t, false)
+	if rows["nself config plugins list"].JSON != canon.JSONEnvelope {
+		t.Errorf("v1.5 config plugins list json = %q, want envelope", rows["nself config plugins list"].JSON)
+	}
 	// The v1.4 view has the v1.4 spellings (plugin, bundle); v1.5 moved them.
 	for v14, v15 := range map[string]string{
-		"plugin list": "config plugins list", "plugin info": "config plugins info", "plugin search": "config plugins search",
+		"plugin info": "config plugins info", "plugin search": "config plugins search",
 		"plugin count": "config plugins count", "bundle list": "config bundles list", "bundle info": "config bundles info",
 	} {
 		if old["nself "+v14].JSON != canon.JSONLegacy {
@@ -90,8 +93,8 @@ func TestEnvelopeCoverageAdmin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r := rows["nself admin connect"]; r.Output != canon.OutputInteractive || !rowHasReason(string(raw), "admin connect") {
-		t.Fatalf("admin connect = output %s, want interactive with a reason comment", r.Output)
+	if r := rows["nself admin connect"]; r.Output != canon.OutputStream || !rowHasReason(string(raw), "admin connect") {
+		t.Fatalf("admin connect = output %s, want stream with a reason comment", r.Output)
 	}
 }
 

@@ -79,12 +79,14 @@ func runPluginInfo(cmd *cobra.Command, args []string) error {
 
 	// compat.V15(P7-PLUG-17): --json is ignored by plugin info -> prints the info with its tier and why as JSON
 	if asJSON, _ := cmd.Flags().GetBool("json"); asJSON && compat.V15() {
-		if tierErr != nil && jsonEnvelopeOn(cmd) {
-			// One document: the error envelope (P7-SURF-13); the cause is its message.
-			return fmt.Errorf("plugin %q: tier unresolved: %w", name, tierErr)
-		}
 		if err := writePluginInfoJSON(cmd, name, manifest, tier, tierReason, tierErr); err != nil {
 			return err
+		}
+		if tierErr != nil && jsonEnvelopeOn(cmd) {
+			// The envelope on stdout carries tier_reason and tier_error (P7-SURF-13); the exit
+			// status stays the failure's, and a second (error) document is not printed.
+			fmt.Fprintf(os.Stderr, "plugin %q: tier unresolved: %v\n", name, tierErr)
+			return &streamedError{err: tierErr}
 		}
 		return tierErr
 	}
