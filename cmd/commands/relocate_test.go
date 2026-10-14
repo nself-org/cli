@@ -397,16 +397,17 @@ func TestCanonBreakoutsRegistry(t *testing.T) {
 			}
 		}
 	}
-	pending := func(f *canon.File) (n int) {
-		for _, e := range f.Commands {
-			if e.Canon == canon.CanonPending {
-				n++
-			}
+	// exactly the four pending roots leave the v1.5 view because of break-outs
+	// (other moves also change the view; the binary-level count is in the verification)
+	gone := 0
+	for _, r := range canonTable.Breakouts {
+		root := r.From[0]
+		if _, in15 := v15.Commands[root]; len(r.From) == 1 && v14.Commands[root].Canon == canon.CanonPending && !in15 {
+			gone++
 		}
-		return n
 	}
-	if d := pending(v14) - pending(v15); d < 4 {
-		t.Errorf("v1.5 has %d fewer pending roots than v1.4, want at least the 4 break-outs", d)
+	if gone != 4 {
+		t.Errorf("%d pending roots leave the v1.5 view through break-outs, want 4", gone)
 	}
 }
 

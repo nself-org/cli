@@ -147,7 +147,7 @@ expect_e404() { # <label> <env assignment or ""> <args...>
 expect_e404 "NSELF_NO_AUTO_ADD=1" "NSELF_NO_AUTO_ADD=1" ci --check
 expect_e404 "offline registry" "NSELF_PLUGIN_REGISTRY=http://127.0.0.1:9" ci --check
 expect_e404 "unsigned release" "NSELF_PLUGIN_REGISTRY=$BASE_URL/unsigned" ci --check
-expect_e404 "tampered release" "NSELF_PLUGIN_REGISTRY=$BASE_URL/tampered" runner verify x
+expect_e404 "tampered release (refused before download: no key pinned; the in-process test proves the checksum and signature)" "NSELF_PLUGIN_REGISTRY=$BASE_URL/tampered" runner verify x
 
 # 4. v1.5: the marketplace is gone.
 for c in "plugin marketplace" "plugin submit"; do

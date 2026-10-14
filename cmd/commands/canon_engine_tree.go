@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/plugin/mount"
 	"github.com/spf13/cobra"
 )
 
@@ -88,7 +89,7 @@ func resolveRows(t *canonTableT, root *cobra.Command) map[string]*cobra.Command 
 	m := map[string]*cobra.Command{}
 	for k, rows := range map[string][]canonRowT{"move": t.Moves, "shim": t.Shims, "retired": t.RetiredHubs, "breakout": t.Breakouts, "removed": t.Removed} {
 		for _, r := range rows {
-			if c := walkNames(root, r.From); c != nil && c != root && c.Annotations["nself.mount.source"] != sourceInstalled {
+			if c := walkNames(root, r.From); c != nil && c != root && c.Annotations[mount.AnnSource] != sourceInstalled {
 				m[rowKey(k, r)] = c
 			}
 		}
