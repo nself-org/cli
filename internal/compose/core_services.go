@@ -108,7 +108,7 @@ func (g *Generator) buildHasuraService() (ServiceConfig, error) {
 	}
 
 	env := map[string]string{
-		"HASURA_GRAPHQL_DATABASE_URL":      cfg.DatabaseURL(),
+		"HASURA_GRAPHQL_DATABASE_URL":      databaseURLRef(cfg),
 		"HASURA_GRAPHQL_ADMIN_SECRET":      cfg.Hasura.AdminSecret,
 		"HASURA_GRAPHQL_ENABLE_CONSOLE":    consoleStr,
 		"HASURA_GRAPHQL_DEV_MODE":          devModeStr,

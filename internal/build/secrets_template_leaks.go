@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/nself-org/cli/internal/config"
 	"gopkg.in/yaml.v3"
 )
 
@@ -35,6 +36,12 @@ func LiteralSecretLeaks(composeYAML []byte, secrets map[string]string) []string 
 			continue
 		}
 		if strings.Contains(doc, val) || containsAny(values, val) {
+			leaked = append(leaked, key)
+			continue
+		}
+		// A password that needs percent-encoding appears in connection URLs in
+		// its encoded form; the raw-value search above misses that (D-0334).
+		if enc := config.URLPassword(val); enc != val && (strings.Contains(doc, enc) || containsAny(values, enc)) {
 			leaked = append(leaked, key)
 		}
 	}

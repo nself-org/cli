@@ -62,7 +62,7 @@ func fixedCoreEnvVars(cfg *config.Config, svc config.CustomService) map[string]s
 		"POSTGRES_DB":       cfg.Postgres.DB,
 		"POSTGRES_USER":     cfg.Postgres.User,
 		"POSTGRES_PASSWORD": cfg.Postgres.Password,
-		"DATABASE_URL":      cfg.DatabaseURL(),
+		"DATABASE_URL":      databaseURLRef(cfg),
 		// Gap #7: Hasura always listens on 8080 INSIDE its container regardless
 		// of the host-mapped cfg.Hasura.Port (compose maps
 		// "127.0.0.1:<Hasura.Port>:8080" — see buildHasuraService). Custom

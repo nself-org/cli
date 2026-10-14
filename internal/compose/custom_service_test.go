@@ -230,8 +230,10 @@ func TestCoreEnvVars_MinioPresent(t *testing.T) {
 	if env["S3_ACCESS_KEY"] != "minioadmin" {
 		t.Errorf("S3_ACCESS_KEY = %q, want %q", env["S3_ACCESS_KEY"], "minioadmin")
 	}
-	if env["S3_SECRET_KEY"] != "minioadminpass" {
-		t.Errorf("S3_SECRET_KEY = %q, want %q", env["S3_SECRET_KEY"], "minioadminpass")
+	// The MinIO root password reaches the container through compose.env, not as
+	// a literal in the compose file (D-0334).
+	if env["S3_SECRET_KEY"] != "${MINIO_ROOT_PASSWORD}" {
+		t.Errorf("S3_SECRET_KEY = %q, want %q", env["S3_SECRET_KEY"], "${MINIO_ROOT_PASSWORD}")
 	}
 	if env["S3_BUCKET"] != "uploads" {
 		t.Errorf("S3_BUCKET = %q, want %q", env["S3_BUCKET"], "uploads")
