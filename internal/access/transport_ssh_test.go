@@ -1,9 +1,42 @@
 package access
 
 import (
+	"context"
+	"strconv"
 	"strings"
 	"testing"
 )
+
+func TestSSHTransportStrictPolicyDisablesMultiplexing(t *testing.T) {
+	t.Setenv("NSELF_V15", "1")
+	for _, host := range []string{"u@example.test", "u@example.test:2222"} {
+		for _, supplied := range []bool{false, true} {
+			t.Run(host+"/supplied="+strconv.FormatBool(supplied), func(t *testing.T) {
+				transport := &SSHTransport{Host: host}
+				if supplied {
+					transport.HostKeyOptions = func(context.Context) ([]string, error) {
+						return []string{"-o", "StrictHostKeyChecking=yes"}, nil
+					}
+				}
+				args, err := transport.sshArgs()
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, option := range []string{"ControlMaster=no", "ControlPath=none"} {
+					found := false
+					for i := 0; i+1 < len(args); i++ {
+						if args[i] == "-o" && args[i+1] == option {
+							found = true
+						}
+					}
+					if !found {
+						t.Errorf("strict policy omitted -o %s: %q", option, args)
+					}
+				}
+			})
+		}
+	}
+}
 
 func TestSSHTransportHostSpecPolicy(t *testing.T) {
 	for _, tc := range []struct {
