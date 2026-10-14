@@ -11,7 +11,7 @@ import (
 // to connect to PostgreSQL. These are required alongside POSTGRES_*.
 // The internal container port is always 5432.
 func authPGAliasVars(pg config.PostgresConfig) map[string]string {
-	dsn := fmt.Sprintf("postgresql://%s@postgres:5432/%s", config.URLUserInfo(pg.User, pg.Password), pg.DB)
+	dsn := fmt.Sprintf("postgresql://%s@postgres:5432/%s", secretURLUserInfo(pg.User, pg.Password, "POSTGRES_PASSWORD"), pg.DB)
 	return map[string]string{
 		"AUTH_DB_HOST":     "postgres",
 		"AUTH_DB_PORT":     "5432",
