@@ -4,17 +4,19 @@ package routemodel
 //
 // Purpose: map each directive inside a `location` to a model field, to "no
 // observable effect", or to the route's `unmodelled`.
-// Inputs: one location's directives, the server-level directives it inherits
-// (timeouts, body size, access_log, proxy_set_header) and the `set` variables in scope.
+// Inputs: the directives of one location, the server-level directives it
+// inherits (timeouts, body size, access_log, proxy_set_header) and the `set`
+// variables in scope.
 // Outputs: one Location per mappable `location` block.
 // Constraints: a value that cannot be represented exactly is recorded, never
-// rounded. Every `set` runs before its proxy_pass (rewrite phase); a variable set
-// twice, or beside an if, rewrite, break, return or another writer, is not
-// resolved. websocket needs proxy_http_version 1.1 (nginx defaults to 1.0).
-// Recorded as unmodelled: a proxy_pass with a URI part (its upstream is kept, v1
-// cannot carry the path), regex, named and ^~ locations, nested locations, `if`,
-// `client_max_body_size 0`, a `deny` other than `all`, a sub-second timeout, proxy
-// buffers, blocks on simple directives and any directive outside the table.
+// rounded. Every `set` of a location runs before its proxy_pass (rewrite
+// phase); a variable set twice, or beside an if, rewrite, break, return or
+// another writer, is not resolved. websocket needs proxy_http_version 1.1
+// (nginx defaults to 1.0).
+// A proxy_pass with a URI part keeps its upstream AND is recorded (v1 cannot
+// carry the path). Regex, named and ^~ locations, nested locations,
+// `if`, `client_max_body_size 0`, a `deny` other than `all`, a sub-second
+// timeout and any directive outside the table are recorded.
 
 import (
 	"net"
@@ -77,10 +79,11 @@ func (s *srv) location(l *Block) {
 		}
 		acc.vars[k] = v
 	}
-	// Every `set` runs (rewrite phase) before proxy_pass (content phase): the location's own sets are in scope anywhere.
+	// nginx runs every `set` (rewrite phase) before proxy_pass (content phase),
+	// so the location's own set lines are in scope wherever they sit.
 	seen := map[string]bool{}
 	for _, d := range l.Children {
-		if d.Block || d.Name != "set" || len(d.Args) != 2 || !strings.HasPrefix(d.Arg(0), "$") {
+		if d.Name != "set" || len(d.Args) != 2 || !strings.HasPrefix(d.Arg(0), "$") {
 			continue
 		}
 		name := strings.ToLower(d.Arg(0)[1:])
@@ -119,14 +122,8 @@ func (a *locAcc) take(d *Block, ok bool) bool {
 
 // apply handles one directive of the location (or one inherited from the server).
 func (a *locAcc) apply(d *Block) {
-	if d.Block && d.Name != "limit_except" {
-		a.s.unm(d)
-		return
-	}
 	switch d.Name {
-	case "proxy_buffer_size", "proxy_buffers", "proxy_busy_buffers_size":
-		a.s.unm(d)
-	case "resolver":
+	case "proxy_buffer_size", "proxy_buffers", "proxy_busy_buffers_size", "resolver":
 		a.s.sn.disp[d] = "ignored"
 	case "proxy_http_version":
 		if a.take(d, len(d.Args) == 1 && d.Arg(0) == "1.1") { // 1.0 (also nginx's default) cannot upgrade: recorded
@@ -242,7 +239,8 @@ func (a *locAcc) proxyPass(d *Block) {
 	}
 }
 
-// finish turns the collected proxy_set_header lines into flags and headers_set and records unused `set` lines.
+// finish turns the collected proxy_set_header lines into flags and
+// headers_set and records `set` lines no proxy_pass used.
 func (a *locAcc) finish() {
 	if a.ret != nil && (a.loc.Upstream != nil || a.loc.DenyAll) {
 		a.s.unm(a.ret) // nginx runs return before proxy_pass and before deny (rewrite phase before access); the model has no precedence for either
