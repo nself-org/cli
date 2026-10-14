@@ -51,6 +51,13 @@ func init() {
 func runPluginCount(cmd *cobra.Command, _ []string) error {
 	jsonOut, _ := cmd.Flags().GetBool("json")
 
+	if jsonEnvelopeOn(cmd) {
+		a, err := count.Load()
+		if err != nil {
+			return fmt.Errorf("plugin count: %w", err)
+		}
+		return emitEnv(cmd, a, true) // P7-SURF-13
+	}
 	if jsonOut {
 		_, err := os.Stdout.Write(count.RawJSON())
 		return err

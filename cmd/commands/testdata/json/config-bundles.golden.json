@@ -1,0 +1,16 @@
+{
+  "schema_version": "1",
+  "command": "config bundles",
+  "data": {
+    "subcommands": [
+      {
+        "name": "info",
+        "summary": "Show bundle details, plugins, and license status"
+      },
+      {
+        "name": "list",
+        "summary": "List all available bundles with pricing"
+      }
+    ]
+  }
+}

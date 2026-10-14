@@ -55,6 +55,7 @@ func runPluginRemove(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(os.Stderr, "warning: the project config did not load (%v); planning with plugin dir %s\n", err, pluginDir)
 		}
 		// A --dry-run that deletes is a bug fix, not a behaviour change, so it is not V15-gated (P7-PLUG-20 S1).
+		recordRemove(cmd, nil, nil, []string{name}) // P7-SURF-13
 		return printPluginRemovePlan(pluginDir, name, data, force)
 	}
 
@@ -80,6 +81,7 @@ func runPluginRemove(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "warning: plugin %q is removed but the bundle ledger could not be updated: %v\n", name, err)
 	}
 
+	recordRemove(cmd, []string{name}, nil, nil) // P7-SURF-13
 	fmt.Fprintf(os.Stderr, "Plugin %q removed successfully.\n", name)
 	// compat.V15(P7-LIVE-06): plugin removal leaves generated state for a later build -> reconcile now
 	if compat.V15() {

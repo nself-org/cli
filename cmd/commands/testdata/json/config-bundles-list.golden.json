@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "command": "config bundles list",
+  "data": [
+    {
+      "slug": "nchat",
+      "name": "nChat Bundle",
+      "price": "$0.99/mo",
+      "plugin_count": 2,
+      "plugins": [
+        "chat",
+        "notify"
+      ],
+      "status": "active",
+      "has_active": false,
+      "ledger": {
+        "installed": false,
+        "plugins": []
+      }
+    }
+  ]
+}

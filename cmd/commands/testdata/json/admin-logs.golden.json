@@ -1,0 +1,11 @@
+{
+  "schema_version": "1",
+  "command": "admin logs",
+  "data": {
+    "container": "smoke_admin",
+    "lines": [
+      "admin up",
+      "admin ready"
+    ]
+  }
+}

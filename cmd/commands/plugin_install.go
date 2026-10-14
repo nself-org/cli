@@ -194,13 +194,13 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 	for _, srcURL := range thirdPartyURLs {
 		if err := confirmThirdPartyInstall(cmd, srcURL, yes); err != nil {
 			fmt.Fprintf(os.Stderr, "  %v\n", err)
-			failures = append(failures, srcURL)
+			failures = append(failures, installSourceIdentity(srcURL)) // P7-SURF-13: the failure message reaches the error envelope
 			continue
 		}
 		fmt.Fprintf(os.Stderr, "Installing plugin from %s...\n", srcURL)
 		if err := plugin.InstallFromURL(ctx, cfg, srcURL, pluginDir, checksum); err != nil {
 			fmt.Fprintf(os.Stderr, "  error installing from %q: %v\n", srcURL, err)
-			failures = append(failures, srcURL)
+			failures = append(failures, installSourceIdentity(srcURL)) // P7-SURF-13: the failure message reaches the error envelope
 			continue
 		}
 		installedCount++
@@ -208,6 +208,7 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 	}
 
 	recordExplicitInstalls(os.Stderr, pluginDir, installed) // P7-PLUG-19: explicit in the bundle ledger
+	recordInstall(cmd, installed, nil)                      // P7-SURF-13: the envelope lists what this run installed
 	// S20: Upsell prompt after 3rd successful free-plugin install.
 	if installedCount > 0 {
 		maybeShowFreeUpsell(installedCount)
@@ -216,7 +217,7 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 	// compat.V15(P7-LIVE-06): plugin install leaves generated state for a later build -> reconcile now
 	ferr := finishPluginInstall(compat.V15(), installed, failures, func() error {
 		reconcileErr = stage.reconcile(ctx, cfg, os.Stderr, func() error {
-			return reconcileAfterExtension(cmd, reconcile.Trigger{Kind: reconcile.TriggerPlugin, Subject: strings.Join(installed, ",")})
+			return reconcileAfterExtension(cmd, reconcile.Trigger{Kind: reconcile.TriggerPlugin, Subject: strings.Join(installSourceIdentities(installed), ",")})
 		})
 		return reconcileErr
 	})

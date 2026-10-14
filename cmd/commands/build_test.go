@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/sysexec"
 	"github.com/spf13/cobra"
 )
 
@@ -34,6 +35,15 @@ func newBuildCmd() *cobra.Command {
 	return root
 }
 
+// isolateBuildCmd runs the test in an empty directory, so no project is found above
+// the package dir, and keeps the build off the host's privileged tools (mkcert)
+// with a fake runner: sysexec's guard panics on a machine that has mkcert installed.
+func isolateBuildCmd(t *testing.T) {
+	t.Helper()
+	t.Chdir(t.TempDir())
+	t.Cleanup(sysexec.Set(&sysexec.Fake{}))
+}
+
 // TestBuildCmd_Registered verifies that the build subcommand is registered on
 // the root command.
 func TestBuildCmd_Registered(t *testing.T) {
@@ -52,6 +62,7 @@ func TestBuildCmd_Registered(t *testing.T) {
 // TestBuildCmd_FlagForce verifies that the --force flag is accepted by the
 // build command without a parse error.
 func TestBuildCmd_FlagForce(t *testing.T) {
+	isolateBuildCmd(t)
 	root := newBuildCmd()
 	var buf bytes.Buffer
 	root.SetOut(&buf)
@@ -70,6 +81,7 @@ func TestBuildCmd_FlagForce(t *testing.T) {
 
 // TestBuildCmd_FlagNoCache verifies that the --no-cache flag is accepted.
 func TestBuildCmd_FlagNoCache(t *testing.T) {
+	isolateBuildCmd(t)
 	root := newBuildCmd()
 	var buf bytes.Buffer
 	root.SetOut(&buf)
@@ -85,6 +97,7 @@ func TestBuildCmd_FlagNoCache(t *testing.T) {
 
 // TestBuildCmd_FlagCheck verifies that the --check flag is accepted.
 func TestBuildCmd_FlagCheck(t *testing.T) {
+	isolateBuildCmd(t)
 	root := newBuildCmd()
 	var buf bytes.Buffer
 	root.SetOut(&buf)

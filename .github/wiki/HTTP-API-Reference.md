@@ -176,6 +176,16 @@ One row per operation of the committed OpenAPI document. Side effect is the high
 | Method | Path | Summary | Side effect | Streaming |
 |---|---|---|---|---|
 | GET | `/openapi.json` | Read this OpenAPI document | `read` | no |
+| POST | `/v1/commands/add` | Install a plugin or bundle | `remote` | no |
+| POST | `/v1/commands/admin` | Manage the nSelf Admin dashboard | `read` | no |
+| POST | `/v1/commands/admin/health` | Check Admin service liveness | `read` | no |
+| POST | `/v1/commands/admin/logs` | Tail Admin container logs | `read` | with `follow` |
+| POST | `/v1/commands/admin/projects` | Manage multi-project admin configuration | `read` | no |
+| POST | `/v1/commands/admin/projects/add` | Add a project to the admin multi-project config | `write` | no |
+| POST | `/v1/commands/admin/projects/list` | List configured admin projects | `read` | no |
+| POST | `/v1/commands/admin/projects/remove` | Remove a project from admin config | `write` | no |
+| POST | `/v1/commands/admin/start` | Start the Admin service | `write` | no |
+| POST | `/v1/commands/admin/stop` | Stop the Admin container | `write` | no |
 | POST | `/v1/commands/backup` | Backup operations: create, list, restore, verify, prune, config, status, init-key | `read` | no |
 | POST | `/v1/commands/backup/config` | View backup configuration | `write` | no |
 | POST | `/v1/commands/backup/create` | Create a new backup | `remote` | no |
@@ -198,6 +208,10 @@ One row per operation of the committed OpenAPI document. Side effect is the high
 | POST | `/v1/commands/build` | Compose your infrastructure from .env | `write` | no |
 | POST | `/v1/commands/clean` | Remove generated artifacts (docker-compose.yml, nginx configs, build cache) | `destructive` | no |
 | POST | `/v1/commands/config` | Manage project configuration | `read` | no |
+| POST | `/v1/commands/config/bundles` | Manage and inspect nSelf plugin bundles | `read` | no |
+| POST | `/v1/commands/config/bundles/info` | Show bundle details, plugins, and license status | `read` | no |
+| POST | `/v1/commands/config/bundles/install` | Install every plugin in a bundle (license-gated, atomic rollback on failure) | `write` | no |
+| POST | `/v1/commands/config/bundles/list` | List all available nSelf plugin bundles | `read` | no |
 | POST | `/v1/commands/config/env` | Multi-environment management: switch, list, diff, copy | `read` | no |
 | POST | `/v1/commands/config/env/copy` | Scaffold a new environment from an existing one | `write` | no |
 | POST | `/v1/commands/config/env/diff` | Compare two environment configs side-by-side | `read` | no |
@@ -222,6 +236,22 @@ One row per operation of the committed OpenAPI document. Side effect is the high
 | POST | `/v1/commands/config/list` | List all known config keys with current values | `read` | no |
 | POST | `/v1/commands/config/oauth` | Manage OAuth provider tokens | `read` | no |
 | POST | `/v1/commands/config/oauth/refresh` | Trigger immediate OAuth token refresh for a provider | `remote` | no |
+| POST | `/v1/commands/config/plugins/audit-tables` | Audit np_* table row counts and multi-tenant isolation compliance | `read` | no |
+| POST | `/v1/commands/config/plugins/compat-check` | Check installed plugins against the current CLI version | `read` | no |
+| POST | `/v1/commands/config/plugins/count` | Show the authoritative plugin counts (free, pro, advertised) | `read` | no |
+| POST | `/v1/commands/config/plugins/disable` | Disable a plugin (excluded from compose on next build) | `write` | no |
+| POST | `/v1/commands/config/plugins/enable` | Re-enable a previously disabled plugin | `write` | no |
+| POST | `/v1/commands/config/plugins/info` | Show detailed plugin information | `read` | no |
+| POST | `/v1/commands/config/plugins/inventory` | List installed plugins with version, tier, and status | `read` | no |
+| POST | `/v1/commands/config/plugins/list` | List available and installed plugins | `read` | no |
+| POST | `/v1/commands/config/plugins/outdated` | List installed plugins with a newer version available | `read` | no |
+| POST | `/v1/commands/config/plugins/refresh` | Force refresh the registry cache | `write` | no |
+| POST | `/v1/commands/config/plugins/search` | Search plugins by name, description, or tag | `read` | no |
+| POST | `/v1/commands/config/plugins/start` | Start a plugin service | `write` | no |
+| POST | `/v1/commands/config/plugins/status` | Show plugin status | `read` | no |
+| POST | `/v1/commands/config/plugins/stop` | Stop a plugin service | `write` | no |
+| POST | `/v1/commands/config/plugins/update` | Update a specific plugin or all plugins | `write` | no |
+| POST | `/v1/commands/config/plugins/updates` | Check for available plugin updates | `read` | no |
 | POST | `/v1/commands/config/secrets` | Manage encrypted project secrets (age encryption) | `read` | no |
 | POST | `/v1/commands/config/secrets/audit` | Report secrets that haven't been rotated in >90 days | `read` | no |
 | POST | `/v1/commands/config/secrets/init` | Generate age key and set up .secrets/ directory | `write` | no |
@@ -236,6 +266,19 @@ One row per operation of the committed OpenAPI document. Side effect is the high
 | POST | `/v1/commands/config/secrets/schedule` | Add a rotation schedule or show all schedule statuses | `write` | no |
 | POST | `/v1/commands/config/secrets/set` | Set a secret value (prompts if value not provided) | `destructive` | no |
 | POST | `/v1/commands/config/secrets/verify` | Verify that a named secret exists in the store | `read` | no |
+| POST | `/v1/commands/config/services` | Manage optional services | `read` | no |
+| POST | `/v1/commands/config/services/add` | Scaffold a custom service (CS_N slot) into the current project | `write` | no |
+| POST | `/v1/commands/config/services/configure` | Configure service settings (e.g. email provider presets) | `write` | no |
+| POST | `/v1/commands/config/services/disable` | Disable an optional service | `write` | no |
+| POST | `/v1/commands/config/services/enable` | Enable an optional service | `write` | no |
+| POST | `/v1/commands/config/services/list` | List all optional services with enabled/disabled status | `read` | no |
+| POST | `/v1/commands/config/services/ps` | Show status of all nSelf stack services | `read` | no |
+| POST | `/v1/commands/config/services/restart` | Restart a named nSelf service | `write` | no |
+| POST | `/v1/commands/config/services/scale` | Set the replica count for a named service | `write` | no |
+| POST | `/v1/commands/config/services/start` | Start a named nSelf service | `write` | no |
+| POST | `/v1/commands/config/services/stop` | Stop a named nSelf service (container preserved) | `write` | no |
+| POST | `/v1/commands/config/services/update` | Pull the latest image for a service and restart it | `write` | no |
+| POST | `/v1/commands/config/services/upgrade` | Pin a service to a specific image version | `write` | no |
 | POST | `/v1/commands/config/set` | Update a configuration value (writes to .env) | `destructive` | no |
 | POST | `/v1/commands/config/show` | Show all config key=value pairs (masked by default) | `read` | no |
 | POST | `/v1/commands/config/telemetry` | Manage CLI telemetry preferences | `read` | no |
@@ -369,6 +412,7 @@ One row per operation of the committed OpenAPI document. Side effect is the high
 | POST | `/v1/commands/init/template/update` | Apply incremental migrations for the installed template | `destructive` | no |
 | POST | `/v1/commands/logs` | View and filter service logs | `read` | with `follow` |
 | POST | `/v1/commands/mcp/setup` | Print or write the MCP client config and AGENTS.md for this project | `write` | no |
+| POST | `/v1/commands/remove` | Remove an installed plugin or bundle | `destructive` | no |
 | POST | `/v1/commands/reset` | Stop containers, remove all data volumes, and clean generated files | `destructive` | no |
 | POST | `/v1/commands/restart` | Smart restart with config change detection | `write` | no |
 | POST | `/v1/commands/start` | Boot your nSelf stack | `write` | no |

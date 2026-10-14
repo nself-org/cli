@@ -1,0 +1,14 @@
+{
+  "schema_version": "1",
+  "command": "config plugins info",
+  "data": {
+    "name": "waf",
+    "version": "1.0.0",
+    "description": "Web application firewall",
+    "category": "security",
+    "license": "MIT",
+    "tier": "free",
+    "tier_reason": "the registry serves only a free entry",
+    "port": 3101
+  }
+}

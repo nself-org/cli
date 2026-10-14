@@ -57,6 +57,9 @@ func runPluginOutdated(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("listing installed plugins: %w", err)
 	}
 	if len(installed) == 0 {
+		if jsonEnvelopeOn(cmd) {
+			return emitEnv(cmd, []outdatedPluginRow{}, true) // P7-SURF-13
+		}
 		if jsonOut {
 			return ui.PrintJSON([]outdatedPluginRow{})
 		}
@@ -101,7 +104,14 @@ func runPluginOutdated(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if jsonOut {
+	if jsonEnvelopeOn(cmd) {
+		if rows == nil && !legacyBare() {
+			rows = []outdatedPluginRow{} // the envelope data is an array; the bare legacy form printed null
+		}
+		if err := emitEnv(cmd, rows, true); err != nil { // P7-SURF-13
+			return err
+		}
+	} else if jsonOut {
 		if err := ui.PrintJSON(rows); err != nil {
 			return err
 		}

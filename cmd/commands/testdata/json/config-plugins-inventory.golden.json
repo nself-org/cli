@@ -1,0 +1,15 @@
+{
+  "schema_version": "1",
+  "command": "config plugins inventory",
+  "data": {
+    "plugins": [
+      {
+        "name": "waf",
+        "version": "1.0.0",
+        "license": "Free",
+        "status": "installed",
+        "description": "Web application firewall"
+      }
+    ]
+  }
+}

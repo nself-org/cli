@@ -88,10 +88,20 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 
 <!-- BEGIN GENERATED: operations (tools/sdkgen, DO NOT HAND EDIT) -->
 
-215 operations. Every method takes `{ args, flags }` (plus `confirm` where the operation declares it) and resolves to the typed `data` member.
+259 operations. Every method takes `{ args, flags }` (plus `confirm`, or the free-form `argv` of a plugin command that declares no args or flags, where the operation declares it) and resolves to the typed `data` member.
 
 | Method | Route | Summary |
 | --- | --- | --- |
+| `add` | `POST /v1/commands/add` | Install a plugin or bundle |
+| `admin` | `POST /v1/commands/admin` | Manage the nSelf Admin dashboard |
+| `adminHealth` | `POST /v1/commands/admin/health` | Check Admin service liveness |
+| `adminLogs` | `POST /v1/commands/admin/logs` | Tail Admin container logs |
+| `adminProjects` | `POST /v1/commands/admin/projects` | Manage multi-project admin configuration |
+| `adminProjectsAdd` | `POST /v1/commands/admin/projects/add` | Add a project to the admin multi-project config |
+| `adminProjectsList` | `POST /v1/commands/admin/projects/list` | List configured admin projects |
+| `adminProjectsRemove` | `POST /v1/commands/admin/projects/remove` | Remove a project from admin config |
+| `adminStart` | `POST /v1/commands/admin/start` | Start the Admin service |
+| `adminStop` | `POST /v1/commands/admin/stop` | Stop the Admin container |
 | `backup` | `POST /v1/commands/backup` | Backup operations: create, list, restore, verify, prune, config, status, init-key |
 | `backupConfig` | `POST /v1/commands/backup/config` | View backup configuration |
 | `backupCreate` | `POST /v1/commands/backup/create` | Create a new backup |
@@ -114,6 +124,10 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 | `build` | `POST /v1/commands/build` | Compose your infrastructure from .env |
 | `clean` | `POST /v1/commands/clean` | Remove generated artifacts (docker-compose.yml, nginx configs, build cache) |
 | `config` | `POST /v1/commands/config` | Manage project configuration |
+| `configBundles` | `POST /v1/commands/config/bundles` | Manage and inspect nSelf plugin bundles |
+| `configBundlesInfo` | `POST /v1/commands/config/bundles/info` | Show bundle details, plugins, and license status |
+| `configBundlesInstall` | `POST /v1/commands/config/bundles/install` | Install every plugin in a bundle (license-gated, atomic rollback on failure) |
+| `configBundlesList` | `POST /v1/commands/config/bundles/list` | List all available nSelf plugin bundles |
 | `configEnv` | `POST /v1/commands/config/env` | Multi-environment management: switch, list, diff, copy |
 | `configEnvCopy` | `POST /v1/commands/config/env/copy` | Scaffold a new environment from an existing one |
 | `configEnvDiff` | `POST /v1/commands/config/env/diff` | Compare two environment configs side-by-side |
@@ -138,6 +152,22 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 | `configList` | `POST /v1/commands/config/list` | List all known config keys with current values |
 | `configOauth` | `POST /v1/commands/config/oauth` | Manage OAuth provider tokens |
 | `configOauthRefresh` | `POST /v1/commands/config/oauth/refresh` | Trigger immediate OAuth token refresh for a provider |
+| `configPluginsAuditTables` | `POST /v1/commands/config/plugins/audit-tables` | Audit np_* table row counts and multi-tenant isolation compliance |
+| `configPluginsCompatCheck` | `POST /v1/commands/config/plugins/compat-check` | Check installed plugins against the current CLI version |
+| `configPluginsCount` | `POST /v1/commands/config/plugins/count` | Show the authoritative plugin counts (free, pro, advertised) |
+| `configPluginsDisable` | `POST /v1/commands/config/plugins/disable` | Disable a plugin (excluded from compose on next build) |
+| `configPluginsEnable` | `POST /v1/commands/config/plugins/enable` | Re-enable a previously disabled plugin |
+| `configPluginsInfo` | `POST /v1/commands/config/plugins/info` | Show detailed plugin information |
+| `configPluginsInventory` | `POST /v1/commands/config/plugins/inventory` | List installed plugins with version, tier, and status |
+| `configPluginsList` | `POST /v1/commands/config/plugins/list` | List available and installed plugins |
+| `configPluginsOutdated` | `POST /v1/commands/config/plugins/outdated` | List installed plugins with a newer version available |
+| `configPluginsRefresh` | `POST /v1/commands/config/plugins/refresh` | Force refresh the registry cache |
+| `configPluginsSearch` | `POST /v1/commands/config/plugins/search` | Search plugins by name, description, or tag |
+| `configPluginsStart` | `POST /v1/commands/config/plugins/start` | Start a plugin service |
+| `configPluginsStatus` | `POST /v1/commands/config/plugins/status` | Show plugin status |
+| `configPluginsStop` | `POST /v1/commands/config/plugins/stop` | Stop a plugin service |
+| `configPluginsUpdate` | `POST /v1/commands/config/plugins/update` | Update a specific plugin or all plugins |
+| `configPluginsUpdates` | `POST /v1/commands/config/plugins/updates` | Check for available plugin updates |
 | `configSecrets` | `POST /v1/commands/config/secrets` | Manage encrypted project secrets (age encryption) |
 | `configSecretsAudit` | `POST /v1/commands/config/secrets/audit` | Report secrets that haven't been rotated in >90 days |
 | `configSecretsInit` | `POST /v1/commands/config/secrets/init` | Generate age key and set up .secrets/ directory |
@@ -152,6 +182,19 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 | `configSecretsSchedule` | `POST /v1/commands/config/secrets/schedule` | Add a rotation schedule or show all schedule statuses |
 | `configSecretsSet` | `POST /v1/commands/config/secrets/set` | Set a secret value (prompts if value not provided) |
 | `configSecretsVerify` | `POST /v1/commands/config/secrets/verify` | Verify that a named secret exists in the store |
+| `configServices` | `POST /v1/commands/config/services` | Manage optional services |
+| `configServicesAdd` | `POST /v1/commands/config/services/add` | Scaffold a custom service (CS_N slot) into the current project |
+| `configServicesConfigure` | `POST /v1/commands/config/services/configure` | Configure service settings (e.g. email provider presets) |
+| `configServicesDisable` | `POST /v1/commands/config/services/disable` | Disable an optional service |
+| `configServicesEnable` | `POST /v1/commands/config/services/enable` | Enable an optional service |
+| `configServicesList` | `POST /v1/commands/config/services/list` | List all optional services with enabled/disabled status |
+| `configServicesPs` | `POST /v1/commands/config/services/ps` | Show status of all nSelf stack services |
+| `configServicesRestart` | `POST /v1/commands/config/services/restart` | Restart a named nSelf service |
+| `configServicesScale` | `POST /v1/commands/config/services/scale` | Set the replica count for a named service |
+| `configServicesStart` | `POST /v1/commands/config/services/start` | Start a named nSelf service |
+| `configServicesStop` | `POST /v1/commands/config/services/stop` | Stop a named nSelf service (container preserved) |
+| `configServicesUpdate` | `POST /v1/commands/config/services/update` | Pull the latest image for a service and restart it |
+| `configServicesUpgrade` | `POST /v1/commands/config/services/upgrade` | Pin a service to a specific image version |
 | `configSet` | `POST /v1/commands/config/set` | Update a configuration value (writes to .env) |
 | `configShow` | `POST /v1/commands/config/show` | Show all config key=value pairs (masked by default) |
 | `configTelemetry` | `POST /v1/commands/config/telemetry` | Manage CLI telemetry preferences |
@@ -285,6 +328,7 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 | `initTemplateUpdate` | `POST /v1/commands/init/template/update` | Apply incremental migrations for the installed template |
 | `logs` | `POST /v1/commands/logs` | View and filter service logs |
 | `mcpSetup` | `POST /v1/commands/mcp/setup` | Print or write the MCP client config and AGENTS.md for this project |
+| `remove` | `POST /v1/commands/remove` | Remove an installed plugin or bundle |
 | `reset` | `POST /v1/commands/reset` | Stop containers, remove all data volumes, and clean generated files |
 | `restart` | `POST /v1/commands/restart` | Smart restart with config change detection |
 | `start` | `POST /v1/commands/start` | Boot your nSelf stack |

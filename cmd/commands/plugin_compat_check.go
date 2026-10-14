@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/version"
 
@@ -65,6 +66,9 @@ func runPluginCompatCheck(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(installed) == 0 {
+		if jsonEnvelopeOn(cmd) {
+			return emitEnv(cmd, newCompatCheckData(nil), true) // P7-SURF-13
+		}
 		if !jsonOut {
 			fmt.Println("No plugins installed.")
 		}
@@ -111,6 +115,17 @@ func runPluginCompatCheck(cmd *cobra.Command, args []string) error {
 		results = append(results, res)
 	}
 
+	if jsonEnvelopeOn(cmd) {
+		if err := emitEnv(cmd, newCompatCheckData(results), true); err != nil { // P7-SURF-13
+			return err
+		}
+		if incompatCount > 0 {
+			// The envelope is the answer; the human message goes to stderr and the exit stays 1.
+			fmt.Fprintf(os.Stderr, "%d incompatible plugin(s) found\n", incompatCount)
+			return errs.Exit(1)
+		}
+		return nil
+	}
 	if jsonOut {
 		printCompatJSON(results, cliVer)
 	} else {

@@ -41,6 +41,9 @@ func runPluginList(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("listing plugins: %w", err)
 	}
+	if jsonEnvelopeOn(cmd) {
+		return emitEnv(cmd, newPluginListData(plugins, showEOL, category), false) // P7-SURF-13
+	}
 
 	if len(plugins) == 0 {
 		if installed {
@@ -117,18 +120,15 @@ func runPluginListAvailable(cmd *cobra.Command, category string) error {
 	if err != nil {
 		return fmt.Errorf("listing available plugin tiers: %w", err)
 	}
+	if jsonEnvelopeOn(cmd) {
+		return emitEnv(cmd, newAvailableListData(filterTiersByCategory(rows, category)), true) // P7-SURF-13
+	}
 	if len(rows) == 0 {
 		fmt.Println("No plugins found in registry.")
 		return nil
 	}
 	if category != "" {
-		filtered := rows[:0]
-		for _, r := range rows {
-			if strings.EqualFold(r.Category, category) {
-				filtered = append(filtered, r)
-			}
-		}
-		rows = filtered
+		rows = filterTiersByCategory(rows, category)
 	}
 	jsonOut, _ := cmd.Flags().GetBool("json")
 	if jsonOut {
@@ -228,4 +228,18 @@ func runPluginStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// filterTiersByCategory keeps the rows of one category (all when category is empty).
+func filterTiersByCategory(rows []plugin.TieredPluginInfo, category string) []plugin.TieredPluginInfo {
+	if category == "" {
+		return rows
+	}
+	filtered := []plugin.TieredPluginInfo{}
+	for _, r := range rows {
+		if strings.EqualFold(r.Category, category) {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered
 }

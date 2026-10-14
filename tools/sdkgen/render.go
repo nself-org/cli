@@ -92,7 +92,7 @@ func requestDecls(name string, op Operation) ([]typeDecl, bool, error) {
 		props = op.Request.Properties
 	}
 	for k := range props {
-		if k != "args" && k != "flags" && k != "confirm" {
+		if k != "args" && k != "flags" && k != "confirm" && k != "argv" {
 			return nil, false, fmt.Errorf("sdkgen: %s request has unsupported member %q", op.ID, k)
 		}
 	}
@@ -115,7 +115,13 @@ func requestDecls(name string, op Operation) ([]typeDecl, bool, error) {
 	if c := props["confirm"]; c != nil {
 		confirm = "  confirm?: " + tsType(c, 1) + ";\n"
 	}
-	req := "{\n  args" + map[bool]string{true: "", false: "?"}[argsRequired] + ": " + name + "Args;\n  flags?: " + name + "Flags;\n" + confirm + "}"
+	// argv is the free-form member of a plugin command that declares no args or
+	// flags (internal/invoke FreeFormArgv): the strings go to the plugin as they are.
+	argv := ""
+	if a := props["argv"]; a != nil {
+		argv = "  argv?: " + tsType(a, 1) + ";\n"
+	}
+	req := "{\n  args" + map[bool]string{true: "", false: "?"}[argsRequired] + ": " + name + "Args;\n  flags?: " + name + "Flags;\n" + confirm + argv + "}"
 	decls := []typeDecl{
 		{Name: name + "Args", Body: tsType(args, 0), Kind: "type"},
 		{Name: name + "Flags", Body: tsType(flags, 0), Kind: "type"},

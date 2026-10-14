@@ -409,10 +409,15 @@
       "target": null,
       "side_effect": "remote",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/add.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -439,8 +444,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/admin.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -571,7 +576,7 @@
       "plugin": "admin",
       "target": null,
       "side_effect": "remote",
-      "output": "stream",
+      "output": "interactive",
       "json": "none",
       "data_schema": null,
       "exit_codes": {},
@@ -595,8 +600,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/admin-health.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -626,7 +631,7 @@
           "env": null,
           "side_effect": null,
           "json": null,
-          "output": null,
+          "output": "stream",
           "cli_only": false,
           "secret": false
         },
@@ -652,9 +657,9 @@
       "plugin": "admin",
       "target": null,
       "side_effect": "read",
-      "output": "stream",
-      "json": "none",
-      "data_schema": null,
+      "output": "document",
+      "json": "envelope",
+      "data_schema": "schemas/commands/admin-logs.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -676,8 +681,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/admin-projects.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -768,8 +773,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/admin-projects-add.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -809,8 +814,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/admin-projects-list.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -839,8 +844,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/admin-projects-remove.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -963,7 +968,7 @@
           "side_effect": null,
           "json": null,
           "output": null,
-          "cli_only": false,
+          "cli_only": true,
           "secret": false
         }
       ],
@@ -972,8 +977,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/admin-start.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -1013,8 +1018,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/admin-stop.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -4227,8 +4232,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-bundles.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -4274,8 +4279,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-bundles-info.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -4389,8 +4394,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-bundles-install.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -4446,8 +4451,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-bundles-list.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -5574,8 +5579,8 @@
       "target": null,
       "side_effect": "destructive",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-plugins.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -5631,8 +5636,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-plugins-audit-tables.v1.schema.json",
       "exit_codes": {
         "0": "all tables compliant",
         "1": "one or more tables missing source_account_id column",
@@ -5675,8 +5680,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-plugins-compat-check.v1.schema.json",
       "exit_codes": {
         "0": "all installed plugins are compatible",
         "1": "one or more plugins are incompatible (details printed to stderr)"
@@ -5718,8 +5723,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-plugins-count.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -5892,8 +5897,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-plugins-disable.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -5921,8 +5926,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-plugins-enable.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -5985,8 +5990,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-plugins-info.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -6260,8 +6265,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-plugins-inventory.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -6449,8 +6454,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-plugins-list.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -7113,8 +7118,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-plugins-outdated.v1.schema.json",
       "exit_codes": {
         "1": "at least one installed plugin is outdated (exits 0 when every plugin is current)"
       },
@@ -7137,8 +7142,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-plugins-refresh.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -7235,8 +7240,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-plugins-search.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -7264,8 +7269,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-plugins-start.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -7311,8 +7316,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-plugins-status.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -7340,8 +7345,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-plugins-stop.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -7561,8 +7566,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-plugins-update.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -7583,8 +7588,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-plugins-updates.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -8469,8 +8474,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-services.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -8567,8 +8572,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-services-add.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -8614,8 +8619,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-services-configure.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -8643,8 +8648,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-services-disable.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -8672,8 +8677,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-services-enable.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -8729,8 +8734,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-services-list.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -8751,8 +8756,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-services-ps.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -8780,8 +8785,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-services-restart.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -8815,8 +8820,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-services-scale.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -8844,8 +8849,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-services-start.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -8873,8 +8878,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-services-stop.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -8902,8 +8907,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-services-update.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -8937,8 +8942,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-services-upgrade.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -21190,8 +21195,8 @@
       "target": null,
       "side_effect": "destructive",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/remove.v1.schema.json",
       "exit_codes": {},
       "confirm": {
         "flags": [
@@ -24385,7 +24390,7 @@
     "deprecated_shims": 48,
     "plugin": 11,
     "core_missing": [],
-    "json_envelope": 228,
-    "json_legacy": 27
+    "json_envelope": 273,
+    "json_legacy": 17
   }
 }

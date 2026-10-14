@@ -52,6 +52,8 @@ export interface CommandRequest {
   args?: readonly unknown[];
   flags?: object;
   confirm?: string;
+  /** Free-form arguments of a plugin command that declares no args or flags. */
+  argv?: readonly string[];
 }
 
 /** One NDJSON line: every line is a v1 envelope; the last is a result or an error. */

@@ -110,6 +110,9 @@ func resolvesToBundle(name string) bool {
 
 func runInstall(cmd *cobra.Command, args []string) error {
 	if handled, err := toggleBuiltin(args, true); handled {
+		if err == nil {
+			recordInstall(cmd, args, nil) // P7-SURF-13: the envelope names the enabled builtin
+		}
 		return err
 	}
 	var bundles, plugins []string
@@ -144,6 +147,9 @@ func runInstall(cmd *cobra.Command, args []string) error {
 
 func runRemove(cmd *cobra.Command, args []string) error {
 	if handled, err := toggleBuiltin(args, false); handled {
+		if err == nil {
+			recordRemove(cmd, args, nil, nil) // P7-SURF-13: the envelope names the disabled builtin
+		}
 		return err
 	}
 	name := args[0]

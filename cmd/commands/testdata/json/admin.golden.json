@@ -1,0 +1,8 @@
+{
+  "schema_version": "1",
+  "command": "admin",
+  "data": {
+    "url": "http://localhost:3021",
+    "opened": false
+  }
+}

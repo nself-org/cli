@@ -245,7 +245,7 @@ func renderCatalogSearch(query string, found []catalog.Entry, jsonOut bool) erro
 			}
 			data.Plugins = append(data.Plugins, searchRow{e.Slug, e.Tier, bundles, e.Description, e.Category})
 		}
-		return output.EmitData(pilotWriter(), "plugin search", data)
+		return output.EmitData(pilotWriter(), "config plugins search", data)
 	}
 	if len(found) == 0 {
 		fmt.Printf("  %s No plugins matched %q.\n", ui.C(ui.Yellow, ui.IconWarning), query)

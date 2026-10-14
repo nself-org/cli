@@ -13,7 +13,7 @@ func healthCommand(r runner) *cobra.Command {
 	return &cobra.Command{
 		Use:   "health",
 		Short: "Check Admin service liveness",
-		RunE:  r.runAdminHealth,
+		RunE:  withEnvelope(r.runAdminHealth, healthFacts),
 	}
 
 }
@@ -47,4 +47,9 @@ func (r runner) runAdminHealth(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Admin health: unhealthy (HTTP %d, %s)\n", resp.StatusCode, elapsed.Truncate(time.Millisecond))
 	return fmt.Errorf("admin returned HTTP %d", resp.StatusCode)
+}
+
+// healthFacts is the success document: runAdminHealth fails on anything but HTTP 200.
+func healthFacts(*cobra.Command, []string) any {
+	return HealthData{URL: "http://localhost:" + adminPort() + "/health", Healthy: true, StatusCode: http.StatusOK}
 }

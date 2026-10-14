@@ -1,0 +1,17 @@
+{
+  "schema_version": "1",
+  "command": "config bundles info",
+  "data": {
+    "slug": "nchat",
+    "name": "nChat Bundle",
+    "price": "$0.99/mo",
+    "description": "Chat bundle",
+    "plugins": [
+      "chat",
+      "notify"
+    ],
+    "plugin_count": 2,
+    "license_status": "not set",
+    "install_hint": "nself license set <key> && nself plugin install chat  |  Buy: https://nself.org/pricing"
+  }
+}

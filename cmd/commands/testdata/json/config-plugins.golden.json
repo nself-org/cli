@@ -1,0 +1,16 @@
+{
+  "schema_version": "1",
+  "command": "config plugins",
+  "data": {
+    "subcommands": [
+      {
+        "name": "list",
+        "summary": "List available and installed plugins"
+      },
+      {
+        "name": "install",
+        "summary": "Install one or more plugins"
+      }
+    ]
+  }
+}

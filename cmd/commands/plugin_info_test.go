@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,6 +18,8 @@ import (
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -173,8 +177,19 @@ func TestPluginInfoRootChild(t *testing.T) {
 	}
 	os.Args = append([]string{"nself", "plugin", "info", "notify"}, strings.Fields(os.Getenv("NSELF_TEST_INFO_ARGS"))...)
 	if err := Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		// What cmd/nself/report.go does in v1.5 (report_legacy.go has the same first check):
+		// a silent error was already reported, only its exit status is returned; otherwise
+		// the error envelope on stdout in JSON mode, the redacting human rendering on
+		// stderr, the cause's exit status.
+		var silencer errs.Silencer
+		if errors.As(err, &silencer) && silencer.Silent() {
+			os.Exit(errs.ExitCodeFor(err))
+		}
+		if command, jsonMode, known := output.Invocation(); known && jsonMode {
+			_ = output.EmitError(output.Default(), command, err)
+		}
+		output.RenderError(os.Stderr, err)
+		os.Exit(errs.ExitCodeFor(err))
 	}
 	os.Exit(0)
 }
@@ -195,6 +210,56 @@ func runInfoRoot(t *testing.T, extra ...string) (string, error) {
 		return stdout.String(), fmt.Errorf("%v: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return stdout.String(), nil
+}
+
+// infoData unwraps the v1.5 envelope of `plugin info --json` (command
+// `config plugins info`) and returns its data member (P7-SURF-13: the document
+// that was bare JSON is now the data of the v1 envelope; its members are
+// unchanged).
+func infoData(t *testing.T, out string) []byte {
+	t.Helper()
+	var env struct {
+		Command string          `json:"command"`
+		Data    json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("not an envelope: %v\n%s", err, out)
+	}
+	if env.Command != "config plugins info" || len(env.Data) == 0 {
+		t.Fatalf("envelope command %q data %q, want config plugins info with data\n%s", env.Command, env.Data, out)
+	}
+	return env.Data
+}
+
+// infoFailure decodes the v1.5 failure of `plugin info --json`: one error
+// envelope (no data member, so MCP and HTTP callers see a failure), whose message
+// carries the reason and the cause as "plugin <n>: tier unresolved (tier_reason
+// <reason>): <cause>". It returns the reason and the cause.
+func infoFailure(t *testing.T, out string) (reason, cause string) {
+	t.Helper()
+	var env map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("not one JSON document: %v\n%s", err, out)
+	}
+	if _, has := env["data"]; has {
+		t.Fatalf("a failed lookup must not carry a success data member: %s", out)
+	}
+	var e struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(env["error"], &e); err != nil || e.Message == "" {
+		t.Fatalf("no error member: %v\n%s", err, out)
+	}
+	const mid = "): "
+	head, tail, ok := strings.Cut(e.Message, "(tier_reason ")
+	if !ok || !strings.Contains(head, "tier unresolved") {
+		t.Fatalf("message %q lacks the tier_reason marker", e.Message)
+	}
+	reason, cause, ok = strings.Cut(tail, mid)
+	if !ok || cause == "" {
+		t.Fatalf("message %q lacks the cause", e.Message)
+	}
+	return reason, cause
 }
 
 // TestPluginInfoJSONThroughRoot (CR M1, S2): `nself plugin info <n> --json`
@@ -219,7 +284,7 @@ func TestPluginInfoJSONThroughRoot(t *testing.T) {
 			Tier       string `json:"tier"`
 			TierReason string `json:"tier_reason"`
 		}
-		if jerr := json.Unmarshal([]byte(out), &got); jerr != nil {
+		if jerr := json.Unmarshal(infoData(t, out), &got); jerr != nil {
 			t.Fatalf("v1.5 output is not JSON: %v\n%s", jerr, out)
 		}
 		if got.Name != "notify" || got.Tier != "free" || got.TierReason != "installed" {
@@ -240,21 +305,68 @@ func TestPluginInfoUnresolvedTier(t *testing.T) {
 	if err == nil {
 		t.Fatalf("an unresolved tier must fail, got output %s", out)
 	}
-	var got struct {
-		Version    string `json:"version"`
-		Tier       string `json:"tier"`
-		TierReason string `json:"tier_reason"`
-		TierError  string `json:"tier_error"`
-	}
-	if jerr := json.Unmarshal([]byte(out), &got); jerr != nil {
-		t.Fatalf("not JSON: %v\n%s", jerr, out)
-	}
-	if got.TierReason != "unresolved" || got.TierError == "" || got.Version != "" || got.Tier != "" {
-		t.Fatalf("unresolved JSON must carry reason+error and no registry entry: %+v", got)
+	if reason, cause := infoFailure(t, out); reason != "unresolved" || cause == "" || strings.Contains(out, "first entry") {
+		t.Fatalf("unresolved lookup must carry reason+cause and no registry entry: %q %q\n%s", reason, cause, out)
 	}
 	table, terr := runInfoRoot(t)
 	if terr == nil || !strings.Contains(terr.Error(), "tier unresolved") || strings.Contains(table, "first entry") {
 		t.Fatalf("table mode: err=%v out=%q", terr, table)
+	}
+}
+
+// TestPluginInfoLegacyEnvFailureIsOneBareDocument: with NSELF_JSON_LEGACY=1 the
+// failed lookup keeps the pre-contract shape, one bare document with tier_reason
+// and tier_error, and no second (error envelope) document; the exit stays
+// non-zero and the stderr line is redacted.
+func TestPluginInfoLegacyEnvFailureIsOneBareDocument(t *testing.T) {
+	compattest.Set(t, true)
+	t.Setenv(output.LegacyEnvVar, "1")
+	infoFixtureRegistry(t, "", `{"plugins":[`+
+		`{"name":"notify","tier":"free","version":"1.0.0","description":"first entry"},`+
+		`{"name":"notify","tier":"pro","version":"2.0.0","description":"second entry"}]}`)
+	out, err := runInfoRoot(t, "--json")
+	if err == nil {
+		t.Fatalf("an unresolved tier must still fail, got output %s", out)
+	}
+	if !strings.Contains(err.Error(), "exit status") || !strings.Contains(err.Error(), "tier unresolved") {
+		t.Fatalf("want a non-zero exit and the reported failure on stderr, got %v", err)
+	}
+	dec := json.NewDecoder(strings.NewReader(out))
+	var doc map[string]json.RawMessage
+	if jerr := dec.Decode(&doc); jerr != nil {
+		t.Fatalf("not a JSON document: %v\n%s", jerr, out)
+	}
+	var more json.RawMessage
+	if dec.Decode(&more) != io.EOF {
+		t.Fatalf("a second document follows the bare one:\n%s", out)
+	}
+	for _, key := range []string{"name", "tier", "tier_reason", "tier_error"} {
+		if _, ok := doc[key]; !ok {
+			t.Errorf("bare document lacks %q: %s", key, out)
+		}
+	}
+	for _, key := range []string{"schema_version", "command", "data", "error"} {
+		if _, ok := doc[key]; ok {
+			t.Errorf("bare document carries the envelope member %q: %s", key, out)
+		}
+	}
+	var reason, cause string
+	_ = json.Unmarshal(doc["tier_reason"], &reason)
+	_ = json.Unmarshal(doc["tier_error"], &cause)
+	if reason != "unresolved" || cause == "" {
+		t.Fatalf("tier_reason %q tier_error %q", reason, cause)
+	}
+}
+
+// The tier_error text goes through the public redaction seam.
+func TestRedactedMessageRemovesCredentials(t *testing.T) {
+	err := errors.New("license lookup failed: https://user" + ":" + "synthetic@license.example.test/check?token=abc123")
+	got := redactedMessage(err)
+	if strings.Contains(got, "synthetic") || strings.Contains(got, "abc123") || !strings.Contains(got, "license lookup failed") {
+		t.Fatalf("redactedMessage = %q", got)
+	}
+	if plain := redactedMessage(errors.New("registry serves no licensed entry")); plain != "registry serves no licensed entry" {
+		t.Fatalf("a plain message changed: %q", plain)
 	}
 }
 
@@ -268,16 +380,8 @@ func TestPluginInfoInstalledTierNotServed(t *testing.T) {
 	if err == nil {
 		t.Fatalf("want an error, got output %s", out)
 	}
-	var got struct {
-		Version    string `json:"version"`
-		TierReason string `json:"tier_reason"`
-		TierError  string `json:"tier_error"`
-	}
-	if jerr := json.Unmarshal([]byte(out), &got); jerr != nil {
-		t.Fatalf("not JSON: %v\n%s", jerr, out)
-	}
-	if got.TierReason != "unresolved" || got.TierError == "" || got.Version != "" {
-		t.Fatalf("installed tier not served must be unresolved with the cause: %+v", got)
+	if reason, cause := infoFailure(t, out); reason != "unresolved" || !strings.Contains(cause, "registry serves no") || strings.Contains(out, "free only") {
+		t.Fatalf("installed tier not served must be unresolved with the cause: %q %q\n%s", reason, cause, out)
 	}
 }
 
@@ -299,7 +403,7 @@ func TestPluginInfoMaxTier(t *testing.T) {
 		if err != nil {
 			t.Fatalf("installed=%q: %v\n%s", tc.installed, err, out)
 		}
-		if jerr := json.Unmarshal([]byte(out), &got); jerr != nil {
+		if jerr := json.Unmarshal(infoData(t, out), &got); jerr != nil {
 			t.Fatal(jerr)
 		}
 		if got.Tier != "licensed" || got.TierReason != tc.reason {
@@ -322,16 +426,8 @@ func TestPluginInfoEntitlementLookupError(t *testing.T) {
 	if err == nil {
 		t.Fatalf("a failed licence lookup must be an error, got %s", out)
 	}
-	var got struct {
-		Tier       string `json:"tier"`
-		TierReason string `json:"tier_reason"`
-		TierError  string `json:"tier_error"`
-	}
-	if jerr := json.Unmarshal([]byte(out), &got); jerr != nil {
-		t.Fatalf("not JSON: %v\n%s", jerr, out)
-	}
-	if got.TierReason != "unresolved" || got.TierError == "" || got.Tier != "" || strings.Contains(out, "default-free") {
-		t.Fatalf("lookup error must be tier_error, not default-free: %+v", got)
+	if reason, cause := infoFailure(t, out); reason != "unresolved" || cause == "" || strings.Contains(out, "default-free") {
+		t.Fatalf("lookup error must be the cause, not default-free: %q %q\n%s", reason, cause, out)
 	}
 }
 

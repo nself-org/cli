@@ -1,0 +1,16 @@
+{
+  "schema_version": "1",
+  "command": "config services",
+  "data": {
+    "subcommands": [
+      {
+        "name": "list",
+        "summary": "List all optional services with enabled/disabled status"
+      },
+      {
+        "name": "enable",
+        "summary": "Enable an optional service"
+      }
+    ]
+  }
+}

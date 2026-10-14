@@ -45,6 +45,9 @@ func runServiceList(cmd *cobra.Command, args []string) error {
 	// compose catalog rather than from the project's .env, so it works before
 	// `nself init` and gives the docs a machine-readable source (CLI-R07).
 	if coreOnly {
+		if jsonEnvelopeOn(cmd) {
+			return emitEnv(cmd, newServiceListData(nil, serviceCatalogRows()), true) // P7-SURF-13
+		}
 		return printServiceCatalog(jsonOut)
 	}
 
@@ -100,6 +103,9 @@ func runServiceList(cmd *cobra.Command, args []string) error {
 		})
 	}
 
+	if jsonEnvelopeOn(cmd) {
+		return emitEnv(cmd, newServiceListData(rows, nil), true) // P7-SURF-13
+	}
 	if jsonOut {
 		return ui.PrintJSON(rows)
 	}
@@ -130,18 +136,7 @@ type catalogRow struct {
 // published form of internal/compose's catalog — the same data the generated
 // wiki page is built from, so the CLI and the docs cannot disagree.
 func printServiceCatalog(jsonOut bool) error {
-	entries := compose.ServiceCatalog()
-	rows := make([]catalogRow, 0, len(entries))
-	for _, e := range entries {
-		rows = append(rows, catalogRow{
-			Service:      e.Name,
-			Tier:         string(e.Tier),
-			Purpose:      e.Purpose,
-			EnableEnv:    e.EnableEnv,
-			VersionEnv:   e.VersionEnv,
-			DefaultImage: e.DefaultImage,
-		})
-	}
+	rows := serviceCatalogRows()
 
 	if jsonOut {
 		return ui.PrintJSON(rows)
@@ -157,4 +152,21 @@ func printServiceCatalog(jsonOut bool) error {
 	}
 	tbl.Render()
 	return nil
+}
+
+// serviceCatalogRows lists the compose catalog as catalog rows.
+func serviceCatalogRows() []catalogRow {
+	entries := compose.ServiceCatalog()
+	rows := make([]catalogRow, 0, len(entries))
+	for _, e := range entries {
+		rows = append(rows, catalogRow{
+			Service:      e.Name,
+			Tier:         string(e.Tier),
+			Purpose:      e.Purpose,
+			EnableEnv:    e.EnableEnv,
+			VersionEnv:   e.VersionEnv,
+			DefaultImage: e.DefaultImage,
+		})
+	}
+	return rows
 }

@@ -1,8 +1,11 @@
 package admin
 
 import (
+	"bufio"
 	"fmt"
+	"github.com/nself-org/cli/internal/output"
 	"github.com/spf13/cobra"
+	"io"
 	"os"
 	"os/exec"
 )
@@ -29,7 +32,82 @@ func (r runner) runAdminLogs(cmd *cobra.Command, args []string) error {
 	dockerArgs = append(dockerArgs, cid)
 
 	logsCmd := exec.CommandContext(ctx, "docker", dockerArgs...)
+	if jsonOn(cmd) {
+		return runAdminLogsJSON(cmd, logsCmd, cid, follow)
+	}
 	logsCmd.Stdout = os.Stdout
 	logsCmd.Stderr = os.Stderr
 	return logsCmd.Run()
 }
+
+// runAdminLogsJSON prints the v1.5 JSON form of `admin logs`: one envelope, or
+// with --follow a stream (contract:cli.json-stream v1) of log records ending
+// in a result line. docker forwards the container's stderr on its own stderr,
+// so both streams share one pipe and the lines keep their order. When reading
+// or writing fails the producer is killed and the pipe drained before Wait, so
+// Wait cannot block on a process that is still writing.
+func runAdminLogsJSON(cmd *cobra.Command, logsCmd *exec.Cmd, cid string, follow bool) error {
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		return fmt.Errorf("admin logs: %w", err)
+	}
+	defer func() { _ = pr.Close() }()
+	logsCmd.Stdout, logsCmd.Stderr = pw, pw
+	if err := logsCmd.Start(); err != nil {
+		_ = pw.Close()
+		return fmt.Errorf("admin logs: %w", err)
+	}
+	_ = pw.Close() // the child holds the write end now; EOF arrives when it exits
+	w := output.Default()
+	data := LogsData{Container: cid, Lines: []string{}}
+	count := 0
+	werr := readLines(pr, func(line string) error {
+		count++
+		if follow {
+			return output.StreamRecord(w.Out, commandKey(cmd), LogRecord{Type: "log", Message: line})
+		}
+		data.Lines = append(data.Lines, line)
+		return nil
+	})
+	if werr != nil {
+		_ = logsCmd.Process.Kill()
+		_, _ = io.Copy(io.Discard, pr)
+	}
+	if rerr := logsCmd.Wait(); werr == nil {
+		werr = rerr
+	}
+	if follow {
+		_ = output.StreamEnd(w.Out, commandKey(cmd), LogsEnd{Lines: count}, werr)
+		if werr != nil {
+			return silentReported{werr}
+		}
+		return nil
+	}
+	if werr != nil {
+		return werr
+	}
+	return emit(cmd, data, false)
+}
+
+// readLines calls fn for each line of r until EOF or fn fails. A line over
+// 1 MiB is an error, not a truncation.
+func readLines(r io.Reader, fn func(string) error) error {
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for sc.Scan() {
+		if err := fn(sc.Text()); err != nil {
+			return err
+		}
+	}
+	return sc.Err()
+}
+
+// silentReported marks a stream failure already written as the last (error
+// envelope) line, so main prints no second document.
+type silentReported struct{ cause error }
+
+func (e silentReported) Error() string { return e.cause.Error() }
+func (e silentReported) Unwrap() error { return e.cause }
+
+// Silent tells main the error envelope is already on stdout.
+func (silentReported) Silent() bool { return true }

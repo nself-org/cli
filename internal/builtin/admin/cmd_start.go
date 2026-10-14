@@ -7,9 +7,12 @@ import (
 	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/httptimeout"
 	"github.com/spf13/cobra"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
+	"sort"
+	"strings"
 	"time"
 )
 
@@ -26,7 +29,7 @@ reachable from other hosts on your network.
 WARNING: --expose-network must only be used behind a TLS-terminating reverse
 proxy with authentication enabled. Never expose the Admin UI to the public
 internet without additional protection.`,
-		RunE: r.runAdminStart,
+		RunE: withEnvelope(r.runAdminStart, r.startFacts),
 	}
 
 	cmd.Flags().Bool("expose-network", false, "Bind to 0.0.0.0 instead of 127.0.0.1 (WARNING: only use behind a TLS reverse proxy)")
@@ -123,4 +126,67 @@ func (r runner) runAdminStart(cmd *cobra.Command, args []string) error {
 	listenAddr := adminBindHost + ":" + port
 	fmt.Printf("Admin started. Listening on %s\n", listenAddr)
 	return nil
+}
+
+// startFacts reports where Admin is bound, read from the container
+// (docker inspect through internal/docker): when Admin was already running the
+// start returns early and the flags of this run say nothing about its binding.
+// When docker cannot answer, Listen is empty and Observed false.
+func (r runner) startFacts(cmd *cobra.Command, _ []string) any {
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	info, err := docker.InspectContainer(ctx, r.adminContainerID())
+	if err != nil {
+		return StartData{}
+	}
+	return BindingOf(info.Ports)
+}
+
+// BindingOf reads the host bindings of a container as internal/docker formats
+// them ("127.0.0.1:3021->3021/tcp", and for IPv6 the unbracketed
+// ":::3021->3021/tcp"). Listen is the first binding in sorted order, with an
+// IPv6 host bracketed ("[::]:3021"). ExposeNetwork fails closed: any host that
+// is not a loopback address, or that cannot be parsed, marks the exposure.
+func BindingOf(ports []string) StartData {
+	var bound []string
+	exposed := false
+	for _, p := range ports {
+		i := strings.Index(p, "->")
+		if i <= 0 {
+			continue
+		}
+		addr, ok := normalizeBinding(p[:i])
+		if !ok {
+			exposed = true // a binding that cannot be read must not look like loopback
+			continue
+		}
+		bound = append(bound, addr)
+		host, _, _ := net.SplitHostPort(addr)
+		if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
+			exposed = true
+		}
+	}
+	sort.Strings(bound)
+	d := StartData{ExposeNetwork: exposed}
+	if len(bound) > 0 {
+		d.Listen = bound[0]
+	}
+	d.Observed = len(bound) > 0 || exposed
+	return d
+}
+
+// normalizeBinding splits "host:port" at the last colon (docker leaves an IPv6
+// host unbracketed) and joins it back in the form net.SplitHostPort reads.
+func normalizeBinding(addr string) (string, bool) {
+	i := strings.LastIndex(addr, ":")
+	if i < 0 {
+		return "", false
+	}
+	host, port := strings.Trim(addr[:i], "[]"), addr[i+1:]
+	if port == "" {
+		return "", false
+	}
+	return net.JoinHostPort(host, port), true
 }

@@ -56,6 +56,7 @@ func TestSdkgenTypeScript(t *testing.T) {
 		"export type WidgetListData = Array<{\n  name?: string;\n}>;",
 		"export interface WidgetGetRequest {\n  args: WidgetGetArgs;",
 		"export interface WidgetListRequest {\n  args?: WidgetListArgs;\n  flags?: WidgetListFlags;\n  confirm?: string;",
+		"confirm?: string;\n  argv?: Array<string>;\n}",
 		"export interface WidgetGetRequest {\n  args: WidgetGetArgs;\n  flags?: WidgetGetFlags;\n}",
 		"export interface ErrorDetail {",
 		"Get a widget | with pipe *​/",
