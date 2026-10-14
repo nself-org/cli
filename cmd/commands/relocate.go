@@ -49,6 +49,28 @@ var (
 	relocateWarnOut io.Writer = os.Stderr
 )
 
+// relocateInvocation is relocateBreakout over a whole argv (the arguments after
+// the program name): root flags before the command word are skipped, and the
+// ones a plugin keeps (--json) follow the arguments, before any `--`.
+func relocateInvocation(argv []string) (handled bool, err error) {
+	start := commandStart(RootCmd, argv)
+	if start < 0 {
+		return false, nil
+	}
+	tail := append([]string{}, argv[start+1:]...)
+	if kept := stripRootPersistentFlags(argv[:start]); len(kept) > 0 {
+		at := len(tail)
+		for i, a := range tail {
+			if a == "--" {
+				at = i
+				break
+			}
+		}
+		tail = append(tail[:at], append(kept, tail[at:]...)...)
+	}
+	return relocateBreakout(argv[start], tail)
+}
+
 // relocateBreakout handles `nself <cmdName> <args...>` when it names a break-out
 // whose plugin is not mounted.
 func relocateBreakout(cmdName string, args []string) (handled bool, err error) {

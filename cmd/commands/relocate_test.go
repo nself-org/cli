@@ -144,6 +144,23 @@ func TestRelocateBreakout(t *testing.T) {
 			}
 		})
 	}
+	t.Run("root flags before the command", func(t *testing.T) {
+		proof, calls, _ := relocateSetup(t, "", nil)
+		autoAddPlugin = recordOver(calls, publishStub(t))
+		handled, err := relocateInvocation([]string{"--json", "--no-deprecation-warnings", "runner", "verify", "x", "--", "--raw"})
+		if !handled || err != nil {
+			t.Fatalf("handled=%v err=%v", handled, err)
+		}
+		if got := readProof(t, proof)["argv"]; got != "nodes verify x --json -- --raw" {
+			t.Fatalf("plugin argv %q", got)
+		}
+		if handled, _ := relocateInvocation([]string{"--json"}); handled {
+			t.Fatal("a bare flag is not a break-out")
+		}
+		if handled, _ := relocateInvocation([]string{"--", "ci"}); handled {
+			t.Fatal("an argv the engine cannot place is left to cobra")
+		}
+	})
 	t.Run("not a break-out", func(t *testing.T) {
 		for _, argv := range [][]string{{"start"}, {"plugin", "install", "x"}, {"plugin"}, {"runnerx"}, {"--help"}, {"help", "ci"}} {
 			if _, _, ok := breakoutRow(argv[0], argv[1:]); ok {

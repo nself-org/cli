@@ -79,7 +79,7 @@ func Execute() error {
 
 	// compat.V15(P7-CANON-13): core ci, runner, functions, server and plugin author commands -> the ci, functions, infra and plugin-dev plugins, auto-added and run (E404 when they cannot be)
 	if len(os.Args) > 1 && compat.V15() {
-		if handled, err := relocateBreakout(os.Args[1], os.Args[2:]); handled {
+		if handled, err := relocateInvocation(os.Args[1:]); handled {
 			return err
 		}
 	}
