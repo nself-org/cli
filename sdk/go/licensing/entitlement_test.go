@@ -264,3 +264,16 @@ func TestLicensetestUseKeyRestores(t *testing.T) {
 		}
 	})
 }
+
+func TestEntitlementPolicyConstants(t *testing.T) {
+	if EntitlementGracePeriod != 30*24*time.Hour || maxTokenBytes != 1024*1024 {
+		t.Fatal("entitlement grace or bounded read contract changed")
+	}
+}
+
+func TestPingKeysCommittedDefault(t *testing.T) {
+	keys := PingKeys()
+	if len(keys) != 1 || keys[0].ID != "1" || hex.EncodeToString(keys[0].Public) != "0ac4c2d7ec30d23bf2be55775e7170bd24a7544bad036d0d19f2a4deb516e00c" {
+		t.Fatalf("unexpected committed keys: %+v", keys)
+	}
+}
