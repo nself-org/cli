@@ -1,0 +1,14 @@
+# synthetic fixture: renamed volume (unknown backing) that also names a socket device
+services:
+  sockcombo:
+    image: example.invalid/sockcombo:1
+    volumes:
+      - combovol:/data
+volumes:
+  combovol:
+    name: shared_socket
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /var/run

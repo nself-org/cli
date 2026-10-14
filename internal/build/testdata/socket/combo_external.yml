@@ -1,0 +1,14 @@
+# synthetic fixture: external volume (unknown backing) that also names a socket device
+services:
+  sockcomboext:
+    image: example.invalid/sockcomboext:1
+    volumes:
+      - comboextvol:/data
+volumes:
+  comboextvol:
+    external: true
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /var/run

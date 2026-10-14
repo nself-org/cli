@@ -1,0 +1,6 @@
+# synthetic fixture: a list entry whose KEY is a variable (Compose interpolates the whole entry)
+services:
+  sockkeyvar:
+    image: example.invalid/sockkeyvar:1
+    environment:
+      - ${SOCKGUARD_KEY}=unix:///var/run/docker.sock

@@ -243,13 +243,13 @@ func AnalyzeSocket(workdir, pluginDir string, env SocketEnv, core []byte) (*Sock
 			x, ok := expandSocket(dev, env)
 			r, rok := ResolveSocketPath(d.dir, x)
 			rep.Volumes[name] += "" // defined; stays "" unless socket-backed
-			if m["external"] != nil && m["external"] != false || m["name"] != nil {
-				rep.Volumes[name] = "has a backing that cannot be proven (external or renamed)"
-			}
 			if dev != "" && (!ok || !rok) {
 				rep.Volumes[name] = fmt.Sprintf("has a backing that cannot be proven (device %q cannot be resolved)", dev)
-			} else if dev != "" && (SocketPathExposed(x) || SocketPathExposed(r)) {
-				rep.Volumes[name] = "is backed by " + x
+			} else if dev != "" && (SocketPathExposed(x) || SocketPathExposed(r)) && !strings.HasPrefix(rep.Volumes[name], "has a backing") {
+				rep.Volumes[name] = "is backed by " + x // never replaces an unprovable reason: no exception waives that
+			}
+			if m["external"] != nil && m["external"] != false || m["name"] != nil {
+				rep.Volumes[name] = "has a backing that cannot be proven (external or renamed)"
 			}
 		}
 	}
