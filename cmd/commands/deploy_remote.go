@@ -79,7 +79,7 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 		workdir = abs // rsync sources are absolute: the snapshot path is workdir-relative
 	}
 
-	// sshKey is interpolated into the rsync "-e" command, which rsync passes
+	// sshKey goes into the rsync ssh command string, which rsync passes
 	// through a shell. Reject any key path containing shell metacharacters to
 	// prevent command injection via NSELF_DEPLOY_SSH_KEY.
 	if sshKey != "" && !sshKeyRe.MatchString(sshKey) {
