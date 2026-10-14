@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -37,6 +38,9 @@ type seamCall struct{ slug, version string }
 // recording seam over fn and a buffer for the warning.
 func relocateSetup(t *testing.T, lockVersion string, fn func(slug, version string) (string, error)) (proof string, calls *[]seamCall, warn *bytes.Buffer) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the plugin stub is a /bin/sh script")
+	}
 	compattest.Set(t, true)
 	proof = filepath.Join(t.TempDir(), "proof")
 	t.Setenv("ENV_PROOF", proof)
