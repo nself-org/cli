@@ -31,6 +31,18 @@ func Preflight(ctx context.Context, inv *Inventory, env string, composeFiles []s
 	return preflightWith(ctx, inv, env, composeFiles, NewSSHProber(root, false), archguard.RegistryLookup)
 }
 
+// PreflightShipping is Preflight for a run that ships secrets: its architecture
+// read uses the strict host-key policy (E487 on an unverified key), in v1.4 too.
+func PreflightShipping(ctx context.Context, inv *Inventory, env string, composeFiles []string) error {
+	root := "."
+	if len(composeFiles) > 0 {
+		root = filepath.Dir(composeFiles[0])
+	}
+	prober := NewSSHProber(root, false)
+	prober.shipping.Add(1)
+	return preflightWith(WithShippingRun(ctx), inv, env, composeFiles, prober, archguard.RegistryLookup)
+}
+
 // ComposeFilesForDeploy includes every generated compose fragment in its
 // recorded merge order. A missing listed file fails closed in composeImages.
 func ComposeFilesForDeploy(base string) ([]string, error) {

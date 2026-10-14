@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -76,8 +75,11 @@ var remoteDeployPushFn = remoteDeployPushDispatch
 // environment to the host, then pulls and restarts services over SSH.
 func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut bool) error {
 	sshKey := sshKeyPath()
+	if abs, absErr := filepath.Abs(workdir); absErr == nil {
+		workdir = abs // rsync sources are absolute: the snapshot path is workdir-relative
+	}
 
-	// sshKey is interpolated into the rsync "-e" command, which rsync passes
+	// sshKey goes into the rsync ssh command string, which rsync passes
 	// through a shell. Reject any key path containing shell metacharacters to
 	// prevent command injection via NSELF_DEPLOY_SSH_KEY.
 	if sshKey != "" && !sshKeyRe.MatchString(sshKey) {
@@ -106,7 +108,17 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 	if err != nil {
 		return err
 	}
-	if err := controlplane.Preflight(ctx, inv, target, files); err != nil {
+	// The merged .env is shipped below: the host key is checked with the shipping policy
+	// (strict in v1.4 too, E487) before the preflight architecture read and before any rsync.
+	tier := controlplane.DeriveTier(target, "remote")
+	if e, ok := loadedInv.Environments[target]; ok {
+		tier = e.Tier
+	}
+	policy, err := controlplane.HostKeyOptions(ctx, target, target+"-app", tier, spec.String(), true)
+	if err != nil {
+		return err
+	}
+	if err := controlplane.PreflightShipping(ctx, inv, target, files); err != nil {
 		return err
 	}
 	sshTarget := spec.Dest()
@@ -126,26 +138,10 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 	if !remotePathRe.MatchString(remotePath) {
 		return fmt.Errorf("NSELF_DEPLOY_HOST_%s remote path contains unsafe characters (got %q): only [a-zA-Z0-9/_.-] allowed", strings.ToUpper(target), remotePath)
 	}
-	tier := controlplane.DeriveTier(target, "remote")
-	if loadedInv != nil {
-		if e, ok := loadedInv.Environments[target]; ok {
-			tier = e.Tier
-		}
-	}
-	policy, err := controlplane.HostKeyOptions(ctx, target, target+"-app", tier, spec.String(), true)
+	tr, err := newPushRunner(workdir, spec, sshKey, policy)
 	if err != nil {
 		return err
 	}
-	sshOptions := append([]string{"-i", sshKey}, policy...)
-	sshOptions = append(sshOptions, "-o", "ForwardAgent=no")
-	sshOptions = append(sshOptions, spec.SSHOptions()...)
-	sshArgs := append(append([]string{}, sshOptions...), spec.SSHArgs()[len(spec.SSHOptions()):]...)
-	for _, option := range sshOptions {
-		if strings.ContainsAny(option, " \t\n\r'\"\\`$;|&<>()") {
-			return fmt.Errorf("unsafe SSH option for rsync transport: %q", option)
-		}
-	}
-	sshCommand := "ssh " + strings.Join(sshOptions, " ")
 
 	// Gap #13 fix: the file that used to be rsynced here (.env.<target> alone,
 	// e.g. .env.staging) is only ONE layer of the cascade that config.Load
@@ -166,24 +162,12 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 	}
 	defer cleanupResolvedEnv()
 
-	// rsync compose + env files to the remote.
-	// Agent forwarding is disabled via ForwardAgent=no in the -e ssh command —
-	// it is an ssh option and must never appear in rsync argv (breaks rsync 3.x).
-	rsyncArgs := []string{
-		"-az",
-		"-e", sshCommand,
-		"--",
-		"docker-compose.yml",
-		resolvedEnvPath,
-		fmt.Sprintf("%s:%s/", sshTarget, remotePath),
-	}
+	// rsync compose + env files to the remote. Every ssh option is built by the deploy
+	// transport (ForwardAgent=no is an ssh option, never an rsync one).
 	if !jsonOut {
 		fmt.Printf("  [running] rsync compose + resolved env to %s:%s\n", sshTarget, remotePath)
 	}
-	rc := exec.CommandContext(ctx, "rsync", rsyncArgs...)
-	rc.Dir = workdir
-	rc.Env = os.Environ()
-	if out, err := rc.CombinedOutput(); err != nil {
+	if out, err := tr.rsync(ctx, nil, remotePath+"/", "docker-compose.yml", resolvedEnvPath); err != nil {
 		return fmt.Errorf("rsync to %s failed: %w\n%s", sshTarget, err, strings.TrimSpace(string(out)))
 	}
 
@@ -195,25 +179,14 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 		if !jsonOut {
 			fmt.Printf("  [running] rsync hasura/ metadata to %s:%s\n", sshTarget, remotePath)
 		}
-		hasuraRsync := exec.CommandContext(ctx, "rsync",
-			"-az", "--delete",
-			"-e", sshCommand,
-			"--",
-			"hasura/",
-			fmt.Sprintf("%s:%s/hasura/", sshTarget, remotePath),
-		)
-		hasuraRsync.Dir = workdir
-		hasuraRsync.Env = os.Environ()
-		if out, err := hasuraRsync.CombinedOutput(); err != nil {
+		if out, err := tr.rsync(ctx, []string{"--delete"}, remotePath+"/hasura/", "hasura/"); err != nil {
 			return fmt.Errorf("rsync hasura/ to %s failed: %w\n%s", sshTarget, err, strings.TrimSpace(string(out)))
 		}
 	}
 	// Rename the pushed snapshot to the expected .env.<target> name on the
 	// remote (rsync above pushes it under its resolvedEnvPath basename).
 	renameCmd := fmt.Sprintf("cd %s && mv %s .env.%s", remote.ShellQuote(remotePath), remote.ShellQuote(filepath.Base(resolvedEnvPath)), target)
-	rn := exec.CommandContext(ctx, "ssh", append(sshArgs, renameCmd)...)
-	rn.Env = os.Environ()
-	if out, err := rn.CombinedOutput(); err != nil {
+	if out, err := tr.ssh(ctx, renameCmd); err != nil {
 		return fmt.Errorf("finalizing resolved .env on %s failed: %w\n%s", sshTarget, err, strings.TrimSpace(string(out)))
 	}
 
@@ -222,9 +195,7 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 	if !jsonOut {
 		fmt.Printf("  [running] docker compose pull on %s\n", sshTarget)
 	}
-	pc := exec.CommandContext(ctx, "ssh", append(sshArgs, sshPull)...)
-	pc.Env = os.Environ()
-	if out, err := pc.CombinedOutput(); err != nil {
+	if out, err := tr.ssh(ctx, sshPull); err != nil {
 		return fmt.Errorf("remote pull on %s failed: %w\n%s", sshTarget, err, strings.TrimSpace(string(out)))
 	}
 
@@ -235,9 +206,7 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 	// exactly the production incident (deploy_service_order.go) this guards
 	// against, just on the remote path instead of the local one.
 	lsCmd := fmt.Sprintf("cd %s && docker compose config --services", remote.ShellQuote(remotePath))
-	lc := exec.CommandContext(ctx, "ssh", append(sshArgs, lsCmd)...)
-	lc.Env = os.Environ()
-	out, err := lc.CombinedOutput()
+	out, err := tr.ssh(ctx, lsCmd)
 	if err != nil {
 		return fmt.Errorf("remote rolling restart: listing services on %s failed: %w\n%s", sshTarget, err, strings.TrimSpace(string(out)))
 	}
@@ -260,9 +229,7 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 		if !jsonOut {
 			fmt.Printf("  [running] Rolling restart: %s on %s\n", svc, sshTarget)
 		}
-		sc := exec.CommandContext(ctx, "ssh", append(sshArgs, restartCmd)...)
-		sc.Env = os.Environ()
-		if out, err := sc.CombinedOutput(); err != nil {
+		if out, err := tr.ssh(ctx, restartCmd); err != nil {
 			return fmt.Errorf("remote rolling restart of %s failed: %w\n%s\nRun 'nself logs %s' on the remote host for details", svc, err, strings.TrimSpace(string(out)), svc)
 		}
 	}
@@ -277,9 +244,7 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 	if !jsonOut {
 		fmt.Printf("  [running] hasura metadata apply on %s\n", sshTarget)
 	}
-	ac := exec.CommandContext(ctx, "ssh", append(sshArgs, deploy.HasuraMetadataApplyCommand(remotePath))...)
-	ac.Env = os.Environ()
-	if out, err := ac.CombinedOutput(); err != nil {
+	if out, err := tr.ssh(ctx, deploy.HasuraMetadataApplyCommand(remotePath)); err != nil {
 		// Mirrors hasura.IsStrict's default (strict in staging/prod, warn in
 		// dev/local) — this path has no *config.Config to read cfg.Env from,
 		// so it keys off the deploy target string directly instead.

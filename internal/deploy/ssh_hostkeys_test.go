@@ -92,8 +92,8 @@ func writableAncestor(t *testing.T, dir string) bool {
 }
 
 // TestSecretShippingPinsHostKeyV14: PushSecrets ships secrets, so it verifies
-// the host key in v1.4 as well. DeployViaSsh with an env file stays accept-new
-// in v1.4 (moved to P7-DEPL-29) and runs no ssh-keyscan.
+// the host key in v1.4 as well, and so does DeployViaSsh with an env file
+// (P7-DEPL-29); compose-only DeployViaSsh stays accept-new and runs no keyscan.
 func TestSecretShippingPinsHostKeyV14(t *testing.T) {
 	requireKeygen(t)
 	for _, v15 := range []string{"", "0"} {
@@ -130,20 +130,27 @@ func TestSecretShippingPinsHostKeyV14(t *testing.T) {
 			}
 		})
 	}
-	t.Run("DeployViaSsh env file v1.4 stays accept-new without a scan", func(t *testing.T) {
+	t.Run("DeployViaSsh env file is strict in v1.4 (P7-DEPL-29)", func(t *testing.T) {
 		t.Setenv("NSELF_V15", "")
 		t.Setenv("HOME", pinHome(t))
 		read := installFakeSSHTools(t)
 		scans := installFakeKeyscan(t)
 		cfg := SSHConfig{Host: "u@203.0.113.7", RemotePath: "/opt/nself", EnvName: "live", EnvFile: writeEnvFile(t), KeyPath: "/k/id"}
+		err := DeployViaSsh(context.Background(), cfg, "/work/compose.yml")
+		if err == nil || !strings.Contains(err.Error(), "E487") || len(read()) != 0 {
+			t.Fatalf("v1.4 unknown host: %v", err)
+		}
+		if err := (remote.PinnedHostKeys{Path: DeployKnownHostsPath()}).Add("nself-203.0.113.7-22", "ssh-ed25519 AQID"); err != nil {
+			t.Fatal(err)
+		}
 		if err := DeployViaSsh(context.Background(), cfg, "/work/compose.yml"); err != nil {
-			t.Fatalf("env deploy: %v", err)
+			t.Fatalf("pinned env deploy: %v", err)
 		}
 		calls := read()
-		if len(calls) == 0 || !strings.Contains(strings.Join(calls[0].args, " "), "StrictHostKeyChecking=accept-new") {
+		if len(calls) == 0 || !strings.Contains(strings.Join(calls[0].args, " "), "StrictHostKeyChecking=yes") {
 			t.Fatalf("calls = %#v", calls)
 		}
-		if n := scans(); n != 0 {
+		if n := scans(); n < 2 {
 			t.Errorf("ssh-keyscan ran %d time(s)", n)
 		}
 	})

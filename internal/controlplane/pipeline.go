@@ -62,11 +62,33 @@ func runPayload(ctx context.Context, inv *Inventory, env string, prober Prober, 
 	if err != nil {
 		return nil, err
 	}
-	statuses := Resolve(scoped, prober)
-	emitAudit(statuses)
 	reader, ok := prober.(archReader)
 	if !ok {
 		reader = NewSSHProber(filepath.Dir(composePath), false)
+	}
+	if pl.envFile != "" {
+		// A run that ships an env file: host keys are checked (shipping policy) on every
+		// remote server before any probe, and every connection of the run is strict.
+		defer markShipping(prober)()
+		defer markShipping(reader)()
+		ctx = WithShippingRun(ctx)
+		if err := checkShippingHostKeys(ctx, env, scoped.Environments[env]); err != nil {
+			return nil, err
+		}
+	}
+	statuses := Resolve(scoped, prober)
+	emitAudit(statuses)
+	if pl.envFile != "" {
+		// A probe that met a host-key error after the pre-check (the key changed
+		// mid-run) aborts the run; Resolve alone would only mark the server read-only.
+		for _, v := range []any{prober, reader} {
+			if err := takeProbeHostKeyErr(v); err != nil {
+				return nil, err
+			}
+		}
+		if err := probeHostKeyError(statuses); err != nil {
+			return nil, err
+		}
 	}
 	files, err := ComposeFilesForDeploy(composePath)
 	if err != nil {
@@ -147,44 +169,6 @@ func ScopeToEnv(inv *Inventory, env string) (*Inventory, error) {
 type payload struct {
 	compose, envFile, envName string
 	apply                     *RemoteApply
-}
-
-// serverPair bundles a Server with its resolved TargetStatus.
-type serverPair struct {
-	srv Server
-	ts  TargetStatus
-}
-
-// filterEnv returns the TargetStatuses that belong to envName.
-func filterEnv(statuses []TargetStatus, envName string) []TargetStatus {
-	var out []TargetStatus
-	for _, ts := range statuses {
-		if ts.Env == envName {
-			out = append(out, ts)
-		}
-	}
-	return out
-}
-
-// serversByRole returns servers of the given role with their TargetStatus,
-// excluding CapHidden servers.
-func serversByRole(env Environment, statuses []TargetStatus, role ServerRole) []serverPair {
-	statusMap := make(map[string]TargetStatus, len(statuses))
-	for _, ts := range statuses {
-		statusMap[ts.Server] = ts
-	}
-	var out []serverPair
-	for _, srv := range env.Servers {
-		if srv.Role != role {
-			continue
-		}
-		ts, ok := statusMap[srv.Name]
-		if !ok || ts.Capability == CapHidden {
-			continue
-		}
-		out = append(out, serverPair{srv: srv, ts: ts})
-	}
-	return out
 }
 
 // runLocal handles a "local" kind environment in the deployment pipeline.
@@ -282,18 +266,4 @@ func reloadLB(_ context.Context, envName string, srv Server, ts TargetStatus) Se
 	// The Drain/Enable calls above trigger the reload as a side-effect.
 	// A separate explicit reload may be added in a future ticket.
 	return ServerResult{Env: envName, Server: srv.Name, Role: srv.Role, Status: "ok"}
-}
-
-// checkPrimarySkipped sets result.PrimarySkipped if any primary server was skipped.
-func checkPrimarySkipped(result *DeployResult, srs []ServerResult) {
-	for _, sr := range srs {
-		if sr.Primary && sr.Status == "skipped" {
-			result.PrimarySkipped = true
-		}
-	}
-}
-
-// logSkipped writes a SKIPPED line to stderr for a server that was not deployed.
-func logSkipped(envName, serverName string) {
-	_, _ = fmt.Fprintf(os.Stderr, "SKIPPED %s/%s (read-only capability)\n", envName, serverName)
 }

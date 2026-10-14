@@ -92,18 +92,42 @@ func (t sshTransport) sshArgv(command string) []string {
 // rsyncArgv is the rsync argv for copying src to dest on the host. dest must
 // pass remote.ValidateCopyPath and be non-empty; src becomes absolute.
 func (t sshTransport) rsyncArgv(src, dest string) ([]string, error) {
+	return t.rsyncMultiArgv(nil, dest, src)
+}
+
+// rsyncMultiArgv is rsyncArgv for several sources and extra rsync flags (each
+// must start with "--"). A source that is already absolute is kept as it is, so
+// a trailing "/" (copy the contents of a directory) survives.
+func (t sshTransport) rsyncMultiArgv(flags []string, dest string, srcs ...string) ([]string, error) {
 	if dest == "" {
 		return nil, fmt.Errorf("remote path is empty")
 	}
 	if err := remote.ValidateCopyPath(dest); err != nil {
 		return nil, err
 	}
-	local, err := localOperand(src)
-	if err != nil {
-		return nil, err
+	if len(srcs) == 0 {
+		return nil, fmt.Errorf("rsync needs at least one source")
+	}
+	args := []string{"-az"}
+	for _, f := range flags {
+		if !strings.HasPrefix(f, "--") || f == "--" {
+			return nil, fmt.Errorf("rsync flag %q is not a long option", f)
+		}
+		if err := checkTransportToken(f); err != nil {
+			return nil, err
+		}
+		args = append(args, f)
 	}
 	eOpts := append(append([]string{}, t.opts...), t.spec.SSHOptions()...)
-	return []string{"-az", "-e", "ssh " + strings.Join(eOpts, " "), "--", local, t.operand(dest)}, nil
+	args = append(args, "-e", "ssh "+strings.Join(eOpts, " "), "--")
+	for _, src := range srcs {
+		local, err := localOperand(src)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, local)
+	}
+	return append(args, t.operand(dest)), nil
 }
 
 // scpArgv is the scp argv: options, -P port, "--", local, host:dest. The

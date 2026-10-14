@@ -62,6 +62,12 @@ type SSHProber struct {
 
 	// memCache holds in-process results for the lifetime of this prober.
 	memCache map[string]cachedEntry
+
+	// shipping is set while a run that ships secrets uses this prober (probe_shipping.go).
+	shipping shippingMode
+
+	// keyErr is the first host-key error a probe met while shipping (probe_shipping.go).
+	keyErr shippedKeyErr
 }
 
 // NewSSHProber constructs a production Prober. projectRoot is the working
@@ -127,9 +133,10 @@ func (sp *SSHProber) SSHReachable(s Server) (bool, int, error) {
 	}
 	tier, envName := probeTier(sp.projectRoot, s)
 	keyCtx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
-	policy, err := HostKeyOptions(keyCtx, envName, s.Name, tier, s.Host, false)
+	policy, err := HostKeyOptions(keyCtx, envName, s.Name, tier, s.Host, sp.shipping.on())
 	cancel()
 	if err != nil {
+		sp.noteHostKeyErr(err)
 		return false, 0, err
 	}
 	args := []string{
@@ -175,9 +182,10 @@ func (sp *SSHProber) DockerOK(s Server) (bool, error) {
 	}
 	tier, envName := probeTier(sp.projectRoot, s)
 	keyCtx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
-	policy, err := HostKeyOptions(keyCtx, envName, s.Name, tier, s.Host, false)
+	policy, err := HostKeyOptions(keyCtx, envName, s.Name, tier, s.Host, sp.shipping.on())
 	cancel()
 	if err != nil {
+		sp.noteHostKeyErr(err)
 		return false, err
 	}
 	args := []string{

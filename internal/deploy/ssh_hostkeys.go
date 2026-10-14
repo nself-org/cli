@@ -76,7 +76,7 @@ func TrustHostKey(ctx context.Context, host, offered string) error {
 
 // HostKeyOptions returns accept-new or strict policy after validating the live key.
 func HostKeyOptions(ctx context.Context, host, env, server string, strict bool) ([]string, error) {
-	return hostKeyPolicy(ctx, host, env, server, strict, false)
+	return HostKeyPolicy(ctx, host, env, server, strict, false)
 }
 
 // pinnedFingerprints returns the fingerprints pinned for alias in the deploy
@@ -91,16 +91,23 @@ func pinnedFingerprints(ctx context.Context, alias string) (map[string]bool, err
 	return deployTrustedFingerprints(ctx, alias, DeployKnownHostsPath()), nil
 }
 
-// hostKeyPolicy is the shared host-key policy. shipsSecrets forces strict
-// checking in v1.4 too (EPIC D28, D-0248): secrets never go to an unverified key.
+// hostKeyPolicy is the unexported spelling of HostKeyPolicy, kept for the
+// callers in this package that predate the export.
 func hostKeyPolicy(ctx context.Context, host, env, server string, strict, shipsSecrets bool) ([]string, error) {
+	return HostKeyPolicy(ctx, host, env, server, strict, shipsSecrets)
+}
+
+// HostKeyPolicy is the shared host-key policy. shipsSecrets forces strict
+// checking in v1.4 too (EPIC D28, D-0248): secrets never go to an unverified
+// key. Every caller that sends a secret off this machine passes shipsSecrets.
+func HostKeyPolicy(ctx context.Context, host, env, server string, strict, shipsSecrets bool) ([]string, error) {
 	spec, err := remote.ParseHostSpec(host)
 	if err != nil {
 		return nil, errs.New("E484", err.Error())
 	}
 	// compat.V15(P7-DEPL-13): accept-new -> strict for secret shipping and prod targets.
 	if !shipsSecrets && (!compat.V15() || !strict) {
-		return []string{"-o", "StrictHostKeyChecking=accept-new"}, nil
+		return acceptNewPolicy(), nil
 	}
 	keys, err := ScanDeployKeys(ctx, spec)
 	if err != nil {
@@ -119,7 +126,10 @@ func hostKeyPolicy(ctx context.Context, host, env, server string, strict, shipsS
 	}
 	for _, k := range keys {
 		if operator[k.Fingerprint] || pinned[k.Fingerprint] {
-			opts := []string{"-o", "StrictHostKeyChecking=yes", "-o", knownHostsOption()}
+			// A client that joins an existing ControlMaster socket does no host-key
+			// check, so a strict connection never shares one (an accept-new probe
+			// could have opened it): ControlMaster=no, ControlPath=none.
+			opts := []string{"-o", "StrictHostKeyChecking=yes", "-o", knownHostsOption(), "-o", "ControlMaster=no", "-o", "ControlPath=none"}
 			if alias != spec.Host && !operator[k.Fingerprint] {
 				opts = append(opts, "-o", "HostKeyAlias="+alias)
 			}

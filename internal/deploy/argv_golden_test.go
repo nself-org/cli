@@ -98,6 +98,7 @@ func assertCalls(t *testing.T, got, want []recordedCall) {
 }
 
 func TestGoldenArgv_RunRemoteCommand(t *testing.T) {
+	t.Setenv("NSELF_V15", "")
 	read := installFakeSSHTools(t)
 	rt := RemoteTarget{SSHTarget: "deploy@203.0.113.7", KeyPath: "/k/id"}
 	if _, err := RunRemoteCommand(context.Background(), rt, "docker exec 'c' ls"); err != nil {
@@ -112,6 +113,7 @@ func TestGoldenArgv_RunRemoteCommand(t *testing.T) {
 }
 
 func TestGoldenArgv_DeployViaSsh(t *testing.T) {
+	t.Setenv("NSELF_V15", "")
 	read := installFakeSSHTools(t)
 	cfg := SSHConfig{Host: "deploy@203.0.113.7:/opt/app", KeyPath: "/k/id", Follow: true}
 	if err := DeployViaSsh(context.Background(), cfg, "/work/compose.yml"); err != nil {
@@ -134,6 +136,7 @@ func TestGoldenArgv_DeployViaSsh(t *testing.T) {
 }
 
 func TestGoldenArgv_DeployViaSshDefaultRemotePath(t *testing.T) {
+	t.Setenv("NSELF_V15", "")
 	read := installFakeSSHTools(t)
 	cfg := SSHConfig{Host: "deploy@203.0.113.7", KeyPath: "/k/id"}
 	if err := DeployViaSsh(context.Background(), cfg, "/work/compose.yml"); err != nil {
@@ -151,6 +154,8 @@ func TestGoldenArgv_DeployViaSshDefaultRemotePath(t *testing.T) {
 // TestGoldenArgv_PushSecrets changes ON PURPOSE (P7-DEPL-28, D-0248): secret
 // shipping is strict in v1.4 too, so the argv now carries the pinned host-key
 // policy, a HostKeyAlias for the IP host, and an absolute local operand.
+// P7-DEPL-29 adds ControlMaster=no/ControlPath=none: a strict connection never
+// joins a connection-sharing master that an accept-new connection opened.
 func TestGoldenArgv_PushSecrets(t *testing.T) {
 	requireKeygen(t)
 	t.Setenv("HOME", pinHome(t))
@@ -177,6 +182,7 @@ func TestGoldenArgv_PushSecrets(t *testing.T) {
 			"-i", "/k/id",
 			"-o", "StrictHostKeyChecking=yes",
 			"-o", "GlobalKnownHostsFile=" + DeployKnownHostsPath(),
+			"-o", "ControlMaster=no", "-o", "ControlPath=none",
 			"-o", "HostKeyAlias=nself-203.0.113.7-22",
 			"-o", "ForwardAgent=no",
 			"--", envFile, "deploy@203.0.113.7:/opt/app/.env",
@@ -184,4 +190,42 @@ func TestGoldenArgv_PushSecrets(t *testing.T) {
 		probe: "inherited",
 	}}
 	assertCalls(t, read(), want)
+}
+
+// TestGoldenArgv_Transport pins the argv of the exported transport builder the
+// v1.4 `nself deploy <target>` push uses (P7-DEPL-29): ssh, a multi-source
+// rsync and a rsync with a long flag, all from one option list.
+func TestGoldenArgv_Transport(t *testing.T) {
+	spec, err := remote.ParseHostSpec("deploy@203.0.113.7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := []string{"-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=/h/deploy_known_hosts"}
+	tr, err := NewTransport(spec, "/k/id", policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := "-i /k/id -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/h/deploy_known_hosts -o ForwardAgent=no"
+	if got, want := tr.SSHArgv("docker compose pull"), strings.Fields(opts+" -- deploy@203.0.113.7"); !reflect.DeepEqual(got[:len(got)-1], want) || got[len(got)-1] != "docker compose pull" {
+		t.Errorf("ssh argv = %q", got)
+	}
+	got, err := tr.RsyncArgv(nil, "/opt/nself/", "/w/docker-compose.yml", "/w/.nself-deploy-env-qa-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"-az", "-e", "ssh " + opts, "--", "/w/docker-compose.yml", "/w/.nself-deploy-env-qa-1", "deploy@203.0.113.7:/opt/nself/"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("rsync argv = %q\nwant %q", got, want)
+	}
+	got, err = tr.RsyncArgv([]string{"--delete"}, "/opt/nself/hasura/", "/w/hasura/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want = []string{"-az", "--delete", "-e", "ssh " + opts, "--", "/w/hasura/", "deploy@203.0.113.7:/opt/nself/hasura/"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("rsync --delete argv = %q\nwant %q", got, want)
+	}
+	if _, err := tr.RsyncArgv([]string{"-e evil"}, "/opt/nself/", "/w/x"); err == nil {
+		t.Error("a flag that is not a long option was accepted")
+	}
 }

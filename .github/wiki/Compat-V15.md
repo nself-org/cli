@@ -98,6 +98,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-DEPL-24 | promote snapshot rollback | restore the remote pre-deploy tar (and the prod database backup) in place | `cmd/commands/deploy_lifecycle.go` |
 | P7-DEPL-24 | remote build in the operator's project dir | scratch build after the target snapshot | `cmd/commands/deploy_scratch.go` |
 | P7-DEPL-24 | remoteDeployPush single-compose rsync + pull + up | artifact-set apply | `cmd/commands/deploy_apply_v15.go` |
+| P7-DEPL-29 | accept-new seeds ~/.ssh/known_hosts | accept-new seeds nself's TOFU file, operator file read-only | `internal/deploy/ssh_tofu.go` |
 | P7-LIVE-03 | a lock held by another command does not stop a build (it takes the O_EXCL build.lock) | a lock held by another command refuses the build | `internal/build/build_lock.go` |
 | P7-LIVE-03 | a prod-class or hand-edited change proceeds with a notice | refused with E403 without --yes or --force | `internal/reconcile/apply.go` |
 | P7-LIVE-05 | --json accepted and ignored | v1 envelope {key, file, applied, plan} | `cmd/commands/config_set.go` |
