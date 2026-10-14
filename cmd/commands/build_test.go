@@ -35,8 +35,6 @@ func newBuildCmd() *cobra.Command {
 	return root
 }
 
-// TestBuildCmd_Registered verifies that the build subcommand is registered on
-// the root command.
 // isolateBuildCmd runs the test in an empty directory, so no project is found above
 // the package dir, and keeps the build off the host's privileged tools (mkcert)
 // with a fake runner: sysexec's guard panics on a machine that has mkcert installed.
@@ -46,6 +44,8 @@ func isolateBuildCmd(t *testing.T) {
 	t.Cleanup(sysexec.Set(&sysexec.Fake{}))
 }
 
+// TestBuildCmd_Registered verifies that the build subcommand is registered on
+// the root command.
 func TestBuildCmd_Registered(t *testing.T) {
 	found := false
 	for _, c := range RootCmd.Commands() {
