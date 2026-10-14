@@ -45,9 +45,14 @@ func advConsentInjection(t *testing.T) {
 
 	t.Run("an ungated command never gets consent flags", func(t *testing.T) {
 		e := advGate(t)
-		e.call("gx plain", `{}`)
-		e.call("gx scan", `{}`)
-		e.call("gx read", `{}`)
+		for _, path := range []string{"gx plain", "gx scan", "gx read"} {
+			if res := e.call(path, `{}`); res.ExitCode != 0 {
+				t.Fatalf("%s was refused: exit %d %s", path, res.ExitCode, res.Stdout)
+			}
+		}
+		if got := len(e.argvs()); got != 3 {
+			t.Fatalf("want three runs, got %d", got)
+		}
 		for _, av := range e.argvs() {
 			for _, a := range av {
 				if a == "--yes=true" || a == "--force=true" {

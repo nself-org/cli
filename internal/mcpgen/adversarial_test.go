@@ -127,6 +127,8 @@ func TestMCPGenAdversarial(t *testing.T) {
 	t.Run("name_collisions", testNameCollisions)
 	t.Run("tool_names_are_unique_and_match_the_pattern", testRealToolNames)
 	t.Run("hostile_descriptions_are_sanitised", testHostileDescriptions)
+	t.Run("plugin_command_named_like_a_legacy_tool", testPluginLegacyName)
+	t.Run("string_defaults_are_exact_or_absent", testExactDefaults)
 	t.Run("hostile_flag_schema_does_not_panic", testHostileSchema)
 	t.Run("handler_rejects_bad_arguments", testHandlerBadArguments)
 	t.Run("handler_never_runs_an_unexposed_command", testHandlerUnexposed)
@@ -406,7 +408,7 @@ func testHostileSchema(t *testing.T) {
 	}
 	walkSchema(t, "input", schema)
 	if strings.Contains(string(tool.input), "nself_test_FAKE_token_0001") {
-		t.Log("note: a declared secret default is carried into the schema")
+		t.Error("a declared secret default is carried into the tool schema")
 	}
 }
 
@@ -427,6 +429,69 @@ func walkSchema(t *testing.T, path string, v any) {
 	case []any:
 		for i, e := range x {
 			walkSchema(t, fmt.Sprintf("%s[%d]", path, i), e)
+		}
+	}
+}
+
+// testPluginLegacyName: a plugin command whose tool name is a legacy tool name
+// of a core command (config-get -> nself_config_get) is skipped with a warning,
+// never a generation error, and the core tool stays.
+func testPluginLegacyName(t *testing.T) {
+	reg, err := advRegistry(t, advNode("config-get", "plugin config-get", "read", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, warns, err := advTools(t, reg)
+	if err != nil {
+		t.Fatalf("a plugin command named like a legacy tool stopped the list: %v", err)
+	}
+	if tool, ok := got["nself_config_get"]; !ok || strings.Contains(tool.title, "plugin") {
+		t.Errorf("nself_config_get is missing or taken by the plugin: %+v", tool.title)
+	}
+	if len(warns) == 0 {
+		t.Error("the shadowed plugin command was dropped without a warning")
+	}
+}
+
+// testExactDefaults: a string default reaches the schema exactly as declared
+// or not at all (a client may send it back), and a secret flag has none.
+func testExactDefaults(t *testing.T) {
+	flags := []map[string]any{
+		{"name": "plain", "type": "string", "default": "keep-me"},
+		{"name": "spaced", "type": "string", "default": "  a\nb  "},
+		{"name": "long", "type": "string", "default": strings.Repeat("x", 600)},
+	}
+	raw, err := json.Marshal(flags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg, err := advRegistry(t, advNode("sentry", "plugin sentry", "read", "", advNode("defaults", "s", "write", string(raw))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _, err := advTools(t, reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type prop struct {
+		Default *string `json:"default"`
+	}
+	var schema struct {
+		Properties struct {
+			Flags struct {
+				Properties map[string]prop `json:"properties"`
+			} `json:"flags"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(got["nself_sentry_defaults"].input, &schema); err != nil {
+		t.Fatal(err)
+	}
+	if d := schema.Properties.Flags.Properties["plain"].Default; d == nil || *d != "keep-me" {
+		t.Errorf("an exact default was changed: %v", d)
+	}
+	for _, name := range []string{"spaced", "long"} {
+		if d := schema.Properties.Flags.Properties[name].Default; d != nil {
+			t.Errorf("default of %s was rewritten instead of dropped: %q", name, *d)
 		}
 	}
 }

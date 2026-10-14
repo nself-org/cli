@@ -131,6 +131,9 @@ func flagSchema(f cmdregistry.Flag) map[string]any {
 		s["type"] = "string"
 		s["default"] = f.Default
 	}
+	if f.Secret {
+		delete(s, "default") // tools/list and the OpenAPI document are not a place for a secret's value
+	}
 	return s
 }
 

@@ -9,6 +9,7 @@ package httpapi
 import (
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -106,8 +107,12 @@ func advSlow(t *testing.T) {
 		c := r.dial(t)
 		_, _ = fmt.Fprintf(c, "POST /v1/commands/config/get HTTP/1.1\r\nHost: localhost:%d\r\nX-Slow: a", r.port)
 		buf := make([]byte, 1)
-		if _, err := c.Read(buf); err == nil && buf[0] == 0 {
-			t.Fatal("unexpected byte")
+		n, err := c.Read(buf)
+		if ne, ok := err.(net.Error); ok && ne.Timeout() {
+			t.Fatalf("the server kept a stalled-header connection open past its header timeout: %v", err)
+		}
+		if n != 0 || err == nil {
+			t.Fatalf("a stalled-header connection got a byte instead of a close: n=%d err=%v", n, err)
 		}
 		if r.inv.count() != 0 {
 			t.Fatal("stalled headers reached the invoker")

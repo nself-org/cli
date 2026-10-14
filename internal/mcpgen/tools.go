@@ -102,6 +102,9 @@ func Tools(o Options) ([]server.ServerTool, error) {
 			}
 			return nil, fmt.Errorf("mcpgen: generated name %q is also the %s legacy name of %q", name, row.Kind, row.Target)
 		case legacy && barePath(cmd.Path) != row.Target:
+			if skipPlugin(o, cmd, "its tool name is the legacy name of another command") {
+				continue
+			}
 			return nil, fmt.Errorf("mcpgen: merged row %s targets %q but the generated tool is %q", name, row.Target, cmd.Path)
 		}
 		if !legacy {

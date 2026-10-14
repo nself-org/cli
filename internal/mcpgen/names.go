@@ -118,14 +118,22 @@ func cleanText(s string, max int) string {
 	return strings.TrimRight(string(r[:max-3]), " ") + "..."
 }
 
-// cleanSchema cleans, in place, every description and string default of a
-// JSON Schema document built from maps and slices.
+// cleanSchema cleans, in place, every description of a JSON Schema document
+// built from maps and slices. A string default that cleaning would change is
+// removed, never rewritten.
 func cleanSchema(v any) {
 	switch x := v.(type) {
 	case map[string]any:
 		for k, e := range x {
-			if s, ok := e.(string); ok && (k == "description" || k == "default") {
+			if s, ok := e.(string); ok && k == "description" {
 				x[k] = cleanText(s, maxSchemaTextRunes)
+				continue
+			}
+			if s, ok := e.(string); ok && k == "default" {
+				// A default is a value a client may send back: keep it exact or drop it.
+				if cleanText(s, maxSchemaTextRunes) != s {
+					delete(x, k)
+				}
 				continue
 			}
 			cleanSchema(e)

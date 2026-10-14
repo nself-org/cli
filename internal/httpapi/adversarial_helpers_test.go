@@ -170,7 +170,9 @@ func (r *rawSrv) req(target, body string, extra ...string) string {
 	return h + "\r\n" + body
 }
 
-// readResponses reads up to n responses from c; it stops early on EOF.
+// readResponses reads up to n responses from c; it stops early when the server
+// closes the connection. A read that runs into the client deadline (a server
+// that hangs) fails the test.
 func readResponses(t *testing.T, c net.Conn, n int) []*http.Response {
 	t.Helper()
 	br := bufio.NewReader(c)
@@ -178,6 +180,9 @@ func readResponses(t *testing.T, c net.Conn, n int) []*http.Response {
 	for i := 0; i < n; i++ {
 		resp, err := http.ReadResponse(br, nil)
 		if err != nil {
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				t.Fatalf("the server neither answered nor closed the connection before the client deadline: %v", err)
+			}
 			break
 		}
 		b, _ := io.ReadAll(resp.Body)
