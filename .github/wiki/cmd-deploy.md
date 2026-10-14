@@ -374,19 +374,34 @@ holding whitespace or a quote (rsync re-splits its `-e` string on spaces).
 | Deploy path | v1.4 (default) | v1.5 (`NSELF_V15=1`) |
 |---|---|---|
 | Secrets push (`.env.<target>` copied with scp) | strict | strict |
-| Deploy that ships an env file (inventory deploy, `nself deploy <target>` push) | `StrictHostKeyChecking=accept-new` (being closed, see below) | strict |
-| Compose file only | `StrictHostKeyChecking=accept-new` | strict |
+| Deploy that ships an env file (inventory deploy, `nself deploy <target>` push) | strict, every connection of the run | strict |
+| Compose file only | `StrictHostKeyChecking=accept-new` | strict on production-class hosts, `accept-new` (nself's own key file) on the others |
+| Read-only commands (probes outside a shipping run, `logs`, `health`) | `StrictHostKeyChecking=accept-new` | `accept-new` with nself's own key file (below) |
 
-Strict means the CLI scans the host's live ED25519 key and continues only when that key is already
-trusted, either in your `~/.ssh/known_hosts` or in the deploy pin file
-`~/.config/nself/deploy_known_hosts`. ssh then runs with `StrictHostKeyChecking=yes`. Nothing is
-copied before the check. Only ED25519 host keys are scanned: a host that offers only RSA or ECDSA
-keys fails the strict check (`host key scan ... returned no ED25519 key`).
+Strict means the CLI scans the host's live key and continues only when that key is already trusted,
+either in your `~/.ssh/known_hosts` or in the deploy pin file `~/.config/nself/deploy_known_hosts`.
+ssh then runs with `StrictHostKeyChecking=yes`. Nothing is copied before the check. The scan asks
+for an ED25519 key first and falls back to ECDSA, then RSA, one `ssh-keyscan` connection per try
+(an ED25519 host needs one call). A host that offers only an RSA or ECDSA key can be pinned with
+`--trust-host-key` and then passes the strict check. A host whose entry in `~/.ssh/known_hosts`
+holds only a non-ED25519 key fails with `E487` when the scan finds an ED25519 key, because that key
+is not trusted: pin the key the scan reports.
 
-Known gap in v1.4 mode: deploys that ship env files still use `accept-new`, and any `accept-new`
-connection (a probe, a compose-only deploy) records a first-seen key in `~/.ssh/known_hosts`.
-Until that is closed, verify a new host's fingerprint before its first deploy (or pin it with
+A run that ships an env file is strict from its first connection. The inventory pipeline checks
+every remote server of the environment before any probe, preflight, load-balancer step or copy, and
+an unknown key stops the whole run with `E487` (it is never reported as a skipped server). The probes
+that follow use strict ssh too, so no probe can record a key that the secrets check then trusts.
+
+Outside a shipping run, v1.4 keeps `accept-new` byte for byte, and ssh records a first-seen key in
+`~/.ssh/known_hosts`. Verify a new host's fingerprint before its first deploy (or pin it with
 `--trust-host-key`), or run with `NSELF_V15=1`.
+
+In v1.5 nself never seeds your `~/.ssh/known_hosts`. An `accept-new` connection reads
+`~/.ssh/known_hosts` as a read-only global file (a changed key there still fails) and records
+first-seen keys in nself's own file `~/.config/nself/deploy_tofu_hosts`. The strict check never
+reads that file, so a key seen once by a read-only command is never trusted for secrets. If your home
+path holds a space, the two options are skipped with a one-line warning and plain `accept-new` is
+used; such a home already fails every strict path.
 
 **First contact with a new host.** A strict deploy to a host you have never connected to
 fails with `E487` and prints the live fingerprint:
@@ -398,8 +413,8 @@ E487 unknown host key SHA256:... for deploy@203.0.113.10; verify it, then run ns
 
 Compare the fingerprint with the one your provider shows (console or `ssh-keygen -lf
 /etc/ssh/ssh_host_ed25519_key.pub` on the server), then either pin it with
-`--trust-host-key`, or ssh to the host once and accept the key. Before this change the v1.4 secrets push
-accepted any key on first contact (`accept-new`).
+`--trust-host-key`, or ssh to the host once and accept the key. Before P7-DEPL-28 and P7-DEPL-29 the v1.4
+secrets push and env-shipping deploys accepted any key on first contact (`accept-new`).
 
 IP-address hosts are pinned under the alias `nself-<ip>-<port>` (for example
 `nself-203.0.113.10-22`) and ssh gets a matching `HostKeyAlias`; hosts on a non-default port use

@@ -185,3 +185,41 @@ func TestGoldenArgv_PushSecrets(t *testing.T) {
 	}}
 	assertCalls(t, read(), want)
 }
+
+// TestGoldenArgv_Transport pins the argv of the exported transport builder the
+// v1.4 `nself deploy <target>` push uses (P7-DEPL-29): ssh, a multi-source
+// rsync and a rsync with a long flag, all from one option list.
+func TestGoldenArgv_Transport(t *testing.T) {
+	spec, err := remote.ParseHostSpec("deploy@203.0.113.7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := []string{"-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=/h/deploy_known_hosts"}
+	tr, err := NewTransport(spec, "/k/id", policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := "-i /k/id -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/h/deploy_known_hosts -o ForwardAgent=no"
+	if got, want := tr.SSHArgv("docker compose pull"), strings.Fields(opts+" -- deploy@203.0.113.7"); !reflect.DeepEqual(got[:len(got)-1], want) || got[len(got)-1] != "docker compose pull" {
+		t.Errorf("ssh argv = %q", got)
+	}
+	got, err := tr.RsyncArgv(nil, "/opt/nself/", "/w/docker-compose.yml", "/w/.nself-deploy-env-qa-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"-az", "-e", "ssh " + opts, "--", "/w/docker-compose.yml", "/w/.nself-deploy-env-qa-1", "deploy@203.0.113.7:/opt/nself/"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("rsync argv = %q\nwant %q", got, want)
+	}
+	got, err = tr.RsyncArgv([]string{"--delete"}, "/opt/nself/hasura/", "/w/hasura/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want = []string{"-az", "--delete", "-e", "ssh " + opts, "--", "/w/hasura/", "deploy@203.0.113.7:/opt/nself/hasura/"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("rsync --delete argv = %q\nwant %q", got, want)
+	}
+	if _, err := tr.RsyncArgv([]string{"-e evil"}, "/opt/nself/", "/w/x"); err == nil {
+		t.Error("a flag that is not a long option was accepted")
+	}
+}
