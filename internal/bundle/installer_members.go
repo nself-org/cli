@@ -40,6 +40,10 @@ type memberRun struct {
 
 func (m *memberRun) run(ctx context.Context) error {
 	out, result, pluginDir := m.out, m.result, m.pluginDir
+	freePairs, err := m.retainedFreePairs(ctx)
+	if err != nil {
+		return err
+	}
 	// Build a lookup of currently installed plugin versions for downgrade detection.
 	existingVersions := buildInstalledVersionMap(pluginDir)
 	backups := make(map[string]string)
@@ -106,6 +110,11 @@ func (m *memberRun) run(ctx context.Context) error {
 	if backupRoot != "" {
 		if err := os.RemoveAll(backupRoot); err != nil {
 			return fmt.Errorf("removing bundle upgrade backup: %w", err)
+		}
+	}
+	for _, name := range m.planned {
+		if tier, _, ok := plugin.InstalledTier(pluginDir, name); freePairs[name] && ok && tier == plugin.LicenseFree {
+			_, _ = fmt.Fprintf(out, "  ⚠ kept %s free; run nself plugin update %s --tier licensed\n", name, name)
 		}
 	}
 	return nil
