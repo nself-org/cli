@@ -67,7 +67,9 @@ type Middleware struct {
 	clock      Clock
 	logger     *log.Logger
 	mu         sync.RWMutex
-	token      string
+	deadline   int64
+	valid      bool
+	lastReload time.Time
 	cancel     context.CancelFunc
 	done       chan struct{}
 }
@@ -111,33 +113,50 @@ func (g *Middleware) refresh(ctx context.Context, ticker Ticker) {
 // Purpose: replace cached token. Inputs: configured path. Outputs: snapshot.
 // Constraints: read failures erase authorization. SPORT: plugin.entitlement-token.
 func (g *Middleware) reload() {
-	data, err := readTokenFile(g.path)
-	token := ""
-	if err == nil {
-		token = strings.TrimSpace(string(data))
-	}
 	g.mu.Lock()
-	g.token = token
-	g.mu.Unlock()
+	defer g.mu.Unlock()
+	g.reloadLocked(g.clock.Now())
+}
+
+// Purpose: verify a new snapshot once. Inputs: current time. Outputs: cached decision.
+// Constraints: caller holds mu; failures erase authorization. SPORT: plugin.entitlement-token.
+func (g *Middleware) reloadLocked(now time.Time) {
+	g.lastReload = now
+	g.valid = false
+	data, err := readTokenFile(g.path)
+	if err == nil {
+		g.deadline, err = verifiedDeadline(strings.TrimSpace(string(data)), g.slug)
+		g.valid = err == nil
+	}
 }
 
 // Purpose: enforce route authorization. Inputs: HTTP request. Outputs: downstream or 503.
 // Constraints: expiration rechecked on every request. SPORT: plugin.entitlement-token.
 func (g *Middleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if g.absent || r.URL.Path == "/health" {
+	if g.absent || (r.URL.Path == "/health" && (r.Method == http.MethodGet || r.Method == http.MethodHead)) {
 		g.next.ServeHTTP(w, r)
 		return
 	}
-	g.mu.RLock()
-	token := g.token
-	g.mu.RUnlock()
-	if verifyToken(token, g.slug, g.clock.Now()) != nil {
+	g.mu.Lock()
+	now := g.clock.Now()
+	if !g.authorized(now) && now.Sub(g.lastReload) >= time.Minute {
+		g.reloadLocked(now)
+	}
+	authorized := g.authorized(now)
+	g.mu.Unlock()
+	if !authorized {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = w.Write([]byte(`{"error":"entitlement_expired"}`))
 		return
 	}
 	g.next.ServeHTTP(w, r)
+}
+
+// Purpose: check cached signed expiry. Inputs: time. Outputs: authorization.
+// Constraints: caller holds mu; grace includes its exact final instant. SPORT: plugin.entitlement-token.
+func (g *Middleware) authorized(now time.Time) bool {
+	return g.valid && (now.Unix() < g.deadline || (now.Unix() == g.deadline && now.Nanosecond() == 0))
 }
 
 // Purpose: release guard resources. Inputs: none. Outputs: joined refresh worker.

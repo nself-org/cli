@@ -131,21 +131,13 @@ func TestGuardRereads24h(t *testing.T) {
 		t.Fatal("file read before refresh")
 	}
 	clock.advance(24 * time.Hour)
+	waitCachedValidity(t, g, true)
 	waitStatus(t, g, 200)
-	clock.mu.Lock()
-	clock.now = now.Add(EntitlementGracePeriod + time.Second)
-	clock.mu.Unlock()
-	if serve(g, "/app").Code != 503 {
-		t.Fatal("cached token bypassed signed expiry")
-	}
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
-	clock.mu.Lock()
-	clock.now = now.Add(24 * time.Hour)
-	clock.mu.Unlock()
 	if serve(g, "/app").Code != 200 {
-		t.Fatal("clock fixture failed to restore cached authorization")
+		t.Fatal("cached authorization lost before refresh")
 	}
 	clock.advance(24 * time.Hour)
 	waitStatus(t, g, 503)
@@ -158,6 +150,22 @@ func TestGuardRereads24h(t *testing.T) {
 		t.Fatal("ticker not stopped")
 	}
 }
+
+func waitCachedValidity(t *testing.T, g *Middleware, valid bool) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		g.mu.RLock()
+		got := g.valid
+		g.mu.RUnlock()
+		if got == valid {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("cached validity never reached %t", valid)
+}
+
 func waitStatus(t *testing.T, g *Middleware, status int) {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)

@@ -5,7 +5,6 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"sync"
-	"testing"
 )
 
 // Key identifies a committed ping signing public key.
@@ -39,16 +38,12 @@ func Snapshot() []Key {
 	return result
 }
 
-// Purpose: support synthetic-key tests. Inputs: testing owner and public key.
+// Purpose: support synthetic-key tests. Inputs: cleanup hook and public key.
 // Outputs: restored roots at cleanup. Constraints: not parallel-safe across tests.
 // SPORT: plugin.entitlement-token.
-func UseTestingKey(t testing.TB, pub ed25519.PublicKey) {
-	t.Helper()
-	if len(pub) != ed25519.PublicKeySize {
-		t.Fatal("invalid synthetic public key")
-	}
+func UseTestingKey(cleanup func(func()), pub ed25519.PublicKey) {
 	old := swap([]Key{{"1", append(ed25519.PublicKey(nil), pub...)}})
-	t.Cleanup(func() { swap(old) })
+	cleanup(func() { swap(old) })
 }
 
 // Purpose: swap test-owned roots. Inputs: replacement. Outputs: prior roots.

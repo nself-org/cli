@@ -14,8 +14,8 @@ import (
 const FileEnv = "NSELF_ENTITLEMENT_FILE"
 
 // EntitlementGracePeriod is how long past the signed exp a licence JWT still grants a plugin (D8; distinct from DefaultGracePeriod, the CLI offline ladder).
-const EntitlementGracePeriod = 30 * 24 * time.Hour
-const maxTokenBytes = 1024 * 1024
+const EntitlementGracePeriod time.Duration = 2592000000000000
+const maxTokenBytes = 1048576
 
 var ErrEntitlementExpired = errors.New("entitlement_expired")
 
@@ -88,6 +88,27 @@ func verifyToken(token, slug string, now time.Time) error {
 		return ErrEntitlementExpired
 	}
 	return verifyClaims(payload, slug, now)
+}
+
+// Purpose: cache signature and slug authorization. Inputs: token and slug.
+// Outputs: signed grace deadline. Constraints: expiry remains checked per request.
+// SPORT: plugin.entitlement-token.
+func verifiedDeadline(token, slug string) (int64, error) {
+	if err := verifyToken(token, slug, time.Unix(0, 0)); err != nil {
+		return 0, err
+	}
+	// The verified compact token and claims are already validated above.
+	payload, err := base64.RawURLEncoding.DecodeString(strings.Split(token, ".")[1])
+	if err != nil {
+		return 0, ErrEntitlementExpired
+	}
+	var claims struct {
+		Exp int64 `json:"exp"`
+	}
+	if json.Unmarshal(payload, &claims) != nil {
+		return 0, ErrEntitlementExpired
+	}
+	return claims.Exp + int64(EntitlementGracePeriod/time.Second), nil
 }
 
 // Purpose: enforce signed claims. Inputs: verified JSON, slug, now.

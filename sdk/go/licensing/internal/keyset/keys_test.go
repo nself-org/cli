@@ -30,7 +30,7 @@ func TestSnapshotAndRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Run("temporary", func(t *testing.T) {
-		UseTestingKey(t, pub)
+		UseTestingKey(t.Cleanup, pub)
 		pub[0] ^= 255
 		if reflect.DeepEqual(Snapshot()[0].Public, pub) {
 			t.Fatal("input aliases active roots")

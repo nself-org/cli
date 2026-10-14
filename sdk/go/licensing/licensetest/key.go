@@ -10,4 +10,10 @@ import (
 // Purpose: replace roots for a test. Inputs: test owner and synthetic public key.
 // Outputs: automatic cleanup restoration. Constraints: do not use in parallel tests.
 // SPORT: plugin.entitlement-token.
-func UseKey(t testing.TB, pub ed25519.PublicKey) { t.Helper(); keyset.UseTestingKey(t, pub) }
+func UseKey(t testing.TB, pub ed25519.PublicKey) {
+	t.Helper()
+	if len(pub) != ed25519.PublicKeySize {
+		t.Fatal("invalid synthetic public key")
+	}
+	keyset.UseTestingKey(t.Cleanup, pub)
+}
