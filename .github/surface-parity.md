@@ -15,14 +15,12 @@ One row per top-level command (CLI-R17), scored against the four surfaces a comm
 | `nself add` | — | yes | yes | n/a | n/a (see below) |
 | `nself backup` | data | yes | yes | undocumented: PATH | n/a (see below) |
 | `nself build` | core | yes | yes | undocumented: NSELF_L03_REF_BIN, NSELF_PROFILE, PATH, UPDATE_GOLDEN | n/a (see below) |
-| `nself ci` | deploy | yes | no | undocumented: NSELF_CI_ALLOWED_REPOS, NSELF_CI_ALLOW_UNSANDBOXED, NSELF_FORGEJO_ADMIN_PASSWORD, NSELF_FORGEJO_ADMIN_USER | n/a (see below) |
 | `nself clean` | core | yes | no | n/a | n/a (see below) |
 | `nself config` | config | yes | yes | undocumented: NSELF_REQUIRE_AGE | n/a (see below) |
 | `nself db` | data | yes | yes | n/a | n/a (see below) |
 | `nself deploy` | deploy | yes | yes | undocumented: API_URL, LAPTOP_ONLY, M_DEV, M_PROD, M_QA, M_SEC, NSELF_DEPLOY_ENV, NSELF_DEPLOY_HOST_, NSELF_DEPLOY_HOST_OPS, NSELF_FEATURE_BLUE_GREEN_DEPLOY, NSELF_HASURA_METADATA_STRICT, NSELF_REMOTE_PATH_, OPS_DEPLOY_HOST, PATH, VERCEL_TOKEN | n/a (see below) |
 | `nself doctor` | core | yes | yes | undocumented: NSELF_PING_API_URL, OLLAMA_BASE_URL, OLLAMA_HOST, PLUGIN_AI_INTERNAL_URL, PLUGIN_INTERNAL_SECRET | n/a (see below) |
 | `nself exec` | core | yes | no | n/a | n/a (see below) |
-| `nself functions` | data | yes | no | n/a | n/a (see below) |
 | `nself init` | core | yes | no | documented | n/a (see below) |
 | `nself license` | extend | yes | no | undocumented: NSELF_LICENSE_SKIP_VERIFY, NSELF_PING_API_URL | n/a (see below) |
 | `nself logs` | core | yes | yes | n/a | n/a (see below) |
@@ -30,11 +28,9 @@ One row per top-level command (CLI-R17), scored against the four surfaces a comm
 | `nself remove` | extend | yes | no | n/a | n/a (see below) |
 | `nself reset` | core | yes | no | n/a | n/a (see below) |
 | `nself restart` | core | yes | yes | n/a | n/a (see below) |
-| `nself runner` | advanced | yes | no | undocumented: GITHUB_RUNNER_TOKEN | n/a (see below) |
-| `nself server` | advanced | yes | no | n/a | n/a (see below) |
 | `nself start` | core | yes | yes | undocumented: NSELF_PROFILE, NSELF_SKIP_DB_INIT | n/a (see below) |
 | `nself status` | core | yes | yes | n/a | n/a (see below) |
 | `nself stop` | core | yes | yes | n/a | n/a (see below) |
 | `nself update` | account | yes | no | undocumented: NSELF_PLUGIN_REGISTRY | n/a (see below) |
 
-Total: 24 commands. Missing wiki page: 0. No MCP tool: 12. Env vars found but undocumented: 11.
+Total: 20 commands. Missing wiki page: 0. No MCP tool: 8. Env vars found but undocumented: 9.

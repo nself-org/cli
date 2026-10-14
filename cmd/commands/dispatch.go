@@ -24,6 +24,7 @@ import (
 	"github.com/spf13/pflag"
 	"os"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/plugin"
 
@@ -51,55 +52,6 @@ func invokedCommandPath(cmd *cobra.Command) string {
 	return prefix + " " + called
 }
 
-// warnRelocatedCommand emits the deprecation notice for a command that has
-// moved out of core into a plugin.
-//
-// The registry is keyed on the spelling the user typed, same as
-// invokedCommandPath, but this path runs before cobra: an extracted command is
-// no longer registered, so RootCmd.Execute never reaches PersistentPreRunE for
-// it. Without this the entry exists only as documentation and the user is told
-// nothing about where the command went.
-// relocatedCommand looks up a command that moved out of core, returning the
-// install hint the registry names and whether an entry exists.
-//
-// The hint has to come from the registry rather than be assembled from the
-// command name, because a plugin is not always named after its command:
-// `claw` lives in a plugin called `claw-cli`, since a paid `claw` service
-// plugin already owns that name. Deriving it produced two contradictory
-// instructions one line apart.
-//
-// Kept separate from printing the warning so that suppressing the warning does
-// not also lose the accurate hint — `--no-deprecation-warnings` silences
-// deprecation notices, but the proxy's "no such plugin" error is not one.
-func relocatedCommand(cmdName string) (installHint string, ok bool) {
-	if deprecationRegistry == nil {
-		return "", false
-	}
-	item, found := deprecationRegistry.Lookup("nself " + cmdName)
-	if !found {
-		return "", false
-	}
-	return item.Replacement, true
-}
-
-// warnRelocatedCommand prints the "this moved to a plugin" notice, and reports
-// whether it printed. The caller needs to know: when the notice is silenced,
-// the install hint it carries has to reappear in the proxy's error instead.
-func warnRelocatedCommand(cmdName string) bool {
-	if deprecationRegistry == nil {
-		return false
-	}
-	if warningsSilenced(os.Args) {
-		return false
-	}
-	item, ok := deprecationRegistry.Lookup("nself " + cmdName)
-	if !ok {
-		return false
-	}
-	deprecationRegistry.Warn(os.Stderr, item)
-	return true
-}
-
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main().
 func Execute() error {
@@ -123,6 +75,13 @@ func Execute() error {
 	// (invoke_pin.go, P7-SURF-25).
 	if err := checkInvokePin(RootCmd, os.Args[1:]); err != nil {
 		return err
+	}
+
+	// compat.V15(P7-CANON-13): core ci, runner, functions, server and plugin author commands -> the ci, functions, infra and plugin-dev plugins, auto-added and run (E404 when they cannot be)
+	if len(os.Args) > 1 && compat.V15() {
+		if handled, err := relocateBreakout(os.Args[1], os.Args[2:]); handled {
+			return err
+		}
 	}
 
 	// Intercept unknown commands for the plugin router

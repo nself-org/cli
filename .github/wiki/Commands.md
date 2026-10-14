@@ -94,21 +94,19 @@ tree in `cmd/commands/`. Run `make cmd-inventory` to refresh.
 ## Complete index
 
 Generated from the cobra registration tree in `cmd/commands/`.
-Run `make cmd-inventory` to refresh. **Total top-level commands: 24**
+Run `make cmd-inventory` to refresh. **Total top-level commands: 20**
 
 | Command | Short Description | Group | Subcommands |
 |---|---|---|---|
 | `nself add` | Install a plugin or bundle | — | — |
 | `nself backup` | Backup operations: create, list, restore, verify, prune, config, status, init-key | data | config, create, drill, init-key, list, pitr, prune, restore, restore-remote, resume, schedule, status, stream, verify |
 | `nself build` | Compose your infrastructure from .env | core | — |
-| `nself ci` | Run the nself-ci gate suite and post a GitHub commit status | deploy | build, eval, forgejo, serve |
 | `nself clean` | Remove generated artifacts (docker-compose.yml, nginx configs, build cache) | core | — |
 | `nself config` | Manage project configuration | config | bundles, env, explain, export, features, get, import, list, oauth, plugins, secrets, services, set, show, telemetry, trust, validate |
 | `nself db` | Database operations: migrations, backups, restore, seed, shell | data | backup, backup-sync, backup-sync-status, drift, drop, export, fk-index, generate, hasura, image, import, lint, list, migrate, pgbouncer, pitr, reconcile, reset, reset-checksum, restore, restore-drill, restore-drill-list, rls, seed, shell, soft-delete, verify, verify-checksums |
 | `nself deploy` | Deploy the stack to a target environment | deploy | access, check-access, environments, health, logs, ops, promote, promote-env, rollback, security, status, targets, web |
 | `nself doctor` | Run comprehensive system diagnostics | core | heal, images, report, security |
 | `nself exec` | Execute a command inside a service container | core | — |
-| `nself functions` | Manage serverless functions | data | delete, deploy, invoke, list, logs |
 | `nself init` | Initialize a new nSelf project | core | template |
 | `nself license` | Manage license keys for nSelf product bundles | extend | account, add, clear, export, health, import, list, login, logout, migrate, refresh, remove, restore, revalidate, revoke, set, show, simulate-offline, status, tail, upgrade, validate |
 | `nself logs` | View and filter service logs | core | — |
@@ -116,8 +114,6 @@ Run `make cmd-inventory` to refresh. **Total top-level commands: 24**
 | `nself remove` | Remove an installed plugin or bundle | extend | — |
 | `nself reset` | Stop containers, remove all data volumes, and clean generated files | core | — |
 | `nself restart` | Smart restart with config change detection | core | — |
-| `nself runner` | Provision and audit self-hosted GitHub Actions CI runner hosts | advanced | provision, verify |
-| `nself server` | Provision, list, resize, and destroy Hetzner Cloud servers | advanced | destroy, list, provision, resize |
 | `nself start` | Boot your nSelf stack | core | dev |
 | `nself status` | Show health status of all services | core | health, urls |
 | `nself stop` | Gracefully shut down all services or specific services | core | — |

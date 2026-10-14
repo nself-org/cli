@@ -63,6 +63,23 @@ var canonTable = canonTableT{
 		{From: []string{"doctor", "security"}, Summary: "Diagnose server security"},
 		{From: []string{"update", "project"}, Summary: "Upgrade a project's layout from an older nself"},
 	},
+	Breakouts: []canonRowT{
+		{From: []string{"plugin", "debug"}, To: []string{"plugin-dev", "debug"}, Since: "v1.5.0", Plugin: "plugin-dev"},
+		{From: []string{"plugin", "dev"}, To: []string{"plugin-dev", "dev"}, Since: "v1.5.0", Plugin: "plugin-dev"},
+		{From: []string{"plugin", "init"}, To: []string{"plugin-dev", "init"}, Since: "v1.5.0", Plugin: "plugin-dev"},
+		{From: []string{"plugin", "link"}, To: []string{"plugin-dev", "link"}, Since: "v1.5.0", Plugin: "plugin-dev"},
+		{From: []string{"plugin", "new"}, To: []string{"plugin-dev", "new"}, Since: "v1.5.0", Plugin: "plugin-dev"},
+		{From: []string{"plugin", "test"}, To: []string{"plugin-dev", "test"}, Since: "v1.5.0", Plugin: "plugin-dev"},
+		{From: []string{"plugin", "unlink"}, To: []string{"plugin-dev", "unlink"}, Since: "v1.5.0", Plugin: "plugin-dev"},
+		{From: []string{"ci"}, To: []string{"ci"}, Since: "v1.5.0", Plugin: "ci"},
+		{From: []string{"functions"}, To: []string{"functions"}, Since: "v1.5.0", Plugin: "functions"},
+		{From: []string{"runner"}, To: []string{"ci", "nodes"}, Since: "v1.5.0", Plugin: "ci"},
+		{From: []string{"server"}, To: []string{"infra", "server"}, Since: "v1.5.0", Plugin: "infra"},
+	},
+	Removed: []canonRowT{
+		{From: []string{"plugin", "marketplace"}, Since: "v1.5.0", Message: "nself has no plugin marketplace; see https://nself.org/plugins"},
+		{From: []string{"plugin", "submit"}, Since: "v1.5.0", Message: "nself has no plugin marketplace; see https://nself.org/plugins"},
+	},
 	Builtins: [][]string{
 		{"completion"},
 		{"man"},

@@ -14,7 +14,7 @@ nself build   # generate docker-compose + nginx
 nself start   # boot the stack
 ```
 
-## Commands (25)
+## Commands (21)
 
 ### nself add
 
@@ -126,34 +126,6 @@ Overrides NSELF_PROFILE env var. Valid values: app, ops.
 - `--yes` (default false) — Confirm a change on a prod-class env (prod, staging) without a prompt
 
 Full page: [[cmd-build]]
-
-### nself ci
-
-Run the nself-ci gate suite and post a GitHub commit status
-
-```
-nself ci [repo-root] <subcommand> [flags]
-```
-
-Subcommands:
-
-- `build` — Build a signed release artifact locally (Android only)
-- `eval` — Run eval-gate suite or validate an eval-set YAML
-- `forgejo` — Show Forgejo server + runner health (ops profile)
-- `serve` — Start the nself-ci webhook listener daemon (port 3845)
-
-Flags:
-
-- `--check` (default false) — Run gates only; do not post a GitHub commit status
-- `--filesystem` (default false) — Force gitleaks filesystem scan (--no-git) even inside a git checkout; opt-in for non-checkout source trees such as an exported tarball
-- `--no-gitleaks` (default false) — Skip the gitleaks secret scan
-- `--no-status` (default false) — Alias for --check
-- `--owner` (default "") — GitHub owner (default: from git remote)
-- `--repo` (default "") — GitHub repo name (default: from git remote)
-- `--sha` (default "") — Commit SHA to report on (default: HEAD)
-- `--verbose` (default false) — Print each gate command before running
-
-Full page: [[cmd-ci]]
 
 ### nself clean
 
@@ -350,24 +322,6 @@ Flags:
 
 Full page: [[cmd-exec]]
 
-### nself functions
-
-Manage serverless functions
-
-```
-nself functions <subcommand> [flags]
-```
-
-Subcommands:
-
-- `delete` — Delete a deployed function
-- `deploy` — Deploy a function from a file or directory
-- `invoke` — Invoke a deployed function
-- `list` — List deployed functions
-- `logs` — Stream logs for a function
-
-Full page: [[cmd-functions]]
-
 ### nself init
 
 Initialize a new nSelf project
@@ -544,38 +498,6 @@ Flags:
 - `--verbose` (default false) — Detailed output
 
 Full page: [[cmd-restart]]
-
-### nself runner
-
-Provision and audit self-hosted GitHub Actions CI runner hosts
-
-```
-nself runner <subcommand> [flags]
-```
-
-Subcommands:
-
-- `provision` — Install runner dependencies, user, sudoers, and N runner instances
-- `verify` — Check host(s) against the dependency manifest and report drift
-
-Full page: [[cmd-runner]]
-
-### nself server
-
-Provision, list, resize, and destroy Hetzner Cloud servers
-
-```
-nself server <subcommand> [flags]
-```
-
-Subcommands:
-
-- `destroy` — Delete a Hetzner Cloud server
-- `list` — List Hetzner Cloud servers
-- `provision` — Create a new Hetzner Cloud server
-- `resize` — Change a server's type (CPU/RAM/disk)
-
-Full page: [[cmd-server]]
 
 ### nself start
 
