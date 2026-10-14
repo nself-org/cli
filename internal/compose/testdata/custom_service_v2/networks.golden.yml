@@ -26,7 +26,7 @@ services:
             AUTH_CLIENT_URL: http://localhost:3000
             AUTH_SERVER_URL: http://auth:4000
             BASE_DOMAIN: localhost
-            DATABASE_URL: postgresql://postgres:pgpass@postgres:5432/nself
+            DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD_URLENC:-${POSTGRES_PASSWORD}}@postgres:5432/nself
             ENV: dev
             HASURA_GRAPHQL_ADMIN_SECRET: secret
             HASURA_GRAPHQL_ENDPOINT: http://hasura:8080/v1/graphql

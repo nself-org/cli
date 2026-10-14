@@ -12,6 +12,7 @@ package compose
 // carries the value (secret_literal_external_test.go enforces this). D-0266.
 
 import (
+	"fmt"
 	"net/url"
 	"strings"
 
@@ -50,4 +51,16 @@ func secretURLUserInfo(user, password, name string) string {
 		return config.URLUserInfo(user, password)
 	}
 	return url.User(user).String() + ":${" + name + config.URLPasswordEnvSuffix + ":-${" + name + "}}"
+}
+
+// databaseURLRef is config.Config.DatabaseURL with the password written as the
+// ${POSTGRES_PASSWORD_URLENC:-${POSTGRES_PASSWORD}} reference (secretURLUserInfo),
+// so a password that needs percent-encoding never lands in the compose file in
+// either raw or encoded form (D-0334).
+func databaseURLRef(cfg *config.Config) string {
+	return fmt.Sprintf("postgresql://%s@%s:5432/%s",
+		secretURLUserInfo(cfg.Postgres.User, cfg.Postgres.Password, "POSTGRES_PASSWORD"),
+		cfg.Postgres.Host,
+		cfg.Postgres.DB,
+	)
 }
