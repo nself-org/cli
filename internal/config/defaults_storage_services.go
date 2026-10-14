@@ -148,6 +148,9 @@ func applyDefaultsMailpit(cfg *Config) {
 
 // applyDefaultsFunctions sets edge-functions service port and route defaults.
 func applyDefaultsFunctions(cfg *Config) {
+	if cfg.Functions.Runtime == "" {
+		cfg.Functions.Runtime = "node"
+	}
 	if cfg.Functions.Version == "" {
 		cfg.Functions.Version = "latest"
 		slog.Debug("default", "key", "FUNCTIONS_VERSION", "value", cfg.Functions.Version)
