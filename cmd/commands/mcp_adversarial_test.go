@@ -248,7 +248,7 @@ func advNonceReuse(t *testing.T) {
 	}
 	// Cross tool: a nonce of config set does not confirm another command.
 	n2 := nonceOf(t, sess, "nself_config_set", args)
-	if res := callTool(t, sess, "nself_config_secrets_rotate", withConfirm(`{}`, n2)); !res.IsError || !strings.Contains(resText(res), `"E424"`) {
+	if res := callTool(t, sess, "nself_config_secrets_rotate", withConfirm(`{"args":["ADV_KEY"]}`, n2)); !res.IsError || !strings.Contains(resText(res), `"E424"`) {
 		t.Errorf("a nonce of another tool was accepted: %+v", res)
 	}
 	// ...and is burned by the attempt: the right request cannot use it now.
