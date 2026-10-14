@@ -26,7 +26,6 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/nginx"
 	"github.com/nself-org/cli/internal/nginx/routemodel"
-	"github.com/nself-org/cli/internal/setup"
 )
 
 // loadValidateConfig runs Steps 1-4 of Build(). See file header for the
@@ -149,13 +148,10 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 	return nil, nil
 }
 
-// ensureEnvFilePermissions delegates disk writes to setup's permission rule.
-// Other sinks retain the seam: plans record changes and confirmed writes
-// validate them. A missing file is a no-op.
+// ensureEnvFilePermissions fixes an existing env file to 0600 when it is more
+// permissive, through the sink (setup.EnsureEnvFilePermissions semantics: a
+// missing file is a no-op). Plan mode records the mode change, not applies it.
 func ensureEnvFilePermissions(sink Sink, path string) error {
-	if disk, ok := sink.(*diskSink); ok {
-		return setup.EnsureEnvFilePermissions(disk.abs(path))
-	}
 	info, err := sink.Stat(path)
 	if os.IsNotExist(err) {
 		return nil
