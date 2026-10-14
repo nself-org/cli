@@ -131,7 +131,7 @@ func mcpPluginInstallHandler() server.ToolHandlerFunc {
 			return mcpErrorResult("Error: %v", err)
 		}
 		pluginDir := resolvePluginDir()
-		if err := plugin.Install(ctx, cfg, name, pluginDir); err != nil {
+		if err := installPluginWithOperation(ctx, cfg, name, pluginDir); err != nil {
 			return mcp.NewToolResultStructuredOnly(PluginInstallResult{Name: name, Installed: false, Message: err.Error()}), nil
 		}
 		return mcp.NewToolResultStructuredOnly(PluginInstallResult{Name: name, Installed: true}), nil

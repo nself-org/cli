@@ -184,7 +184,7 @@ var newUpdateDeps = func() updateDeps {
 			if err != nil {
 				return err
 			}
-			if err := plugin.Update(ctx, cfg, slug, resolvePluginDir()); err != nil {
+			if err := updatePluginWithOperation(ctx, cfg, slug, resolvePluginDir()); err != nil {
 				return err
 			}
 			// plugin.Update leaves the bundle ledger, which supplies the build's

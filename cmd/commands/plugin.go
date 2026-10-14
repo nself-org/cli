@@ -266,5 +266,5 @@ func updateWithTier(ctx context.Context, cfg *config.Config, name, pluginDir, ti
 			}
 		}()
 	}
-	return plugin.Update(ctx, cfg, name, pluginDir)
+	return updatePluginWithOperation(ctx, cfg, name, pluginDir)
 }

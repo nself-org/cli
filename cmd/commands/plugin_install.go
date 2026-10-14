@@ -152,7 +152,7 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 	}
 
 	pluginDir := resolvePluginDir()
-	stage := beginInstallStage(pluginDir) // D-0433: what this run creates is undone if the reconcile refuses
+	stage := beginInstallStage(pluginDir) // Only this invocation's creations are undone on refusal.
 
 	// Install each named plugin. Collect per-plugin errors so that a failure on
 	// one plugin does not abort the remaining installs.
@@ -168,7 +168,7 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 		}
 
 		fmt.Fprintf(os.Stderr, "Installing plugin %q...\n", name)
-		if err := plugin.Install(ctx, cfg, name, pluginDir); err != nil {
+		if err := stage.install(ctx, func() error { return plugin.Install(ctx, cfg, name, pluginDir) }); err != nil {
 			fmt.Fprintf(os.Stderr, "  error installing %q: %v\n", name, err)
 			failures = append(failures, name)
 			continue
@@ -199,7 +199,9 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 			continue
 		}
 		fmt.Fprintf(os.Stderr, "Installing plugin from %s...\n", srcURL)
-		if err := plugin.InstallFromURL(ctx, cfg, srcURL, pluginDir, checksum); err != nil {
+		if err := stage.install(ctx, func() error {
+			return plugin.InstallFromURL(ctx, cfg, srcURL, pluginDir, checksum)
+		}); err != nil {
 			fmt.Fprintf(os.Stderr, "  error installing from %q: %v\n", srcURL, err)
 			failures = append(failures, installSourceIdentity(srcURL)) // P7-SURF-13: the failure message reaches the error envelope
 			continue
