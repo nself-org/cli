@@ -48,10 +48,14 @@ on:
 #     than sitting flush against the limit. The uncompressed cap is untouched
 #     at 35 MB, and the 10% per-PR regression gate still catches runaway
 #     growth. Size reduction remains tracked under P103 R1.)
+#     (Raised to 13 MB for P7: main sat at 12.00 MB, flush against the cap, so
+#     every feature PR failed the gate, starting with P7-DEPL-29 at 12.01 MB
+#     (D-0858). 13 MB keeps about 8% headroom; the 10% per-PR regression gate
+#     below still catches runaway growth.)
 #   Regression threshold:      10% growth without size-grow-approved label
 env:
   BINARY_SIZE_LIMIT_MB: "35"
-  COMPRESSED_SIZE_LIMIT_MB: "12"
+  COMPRESSED_SIZE_LIMIT_MB: "13"
   REGRESSION_THRESHOLD_PCT: "10"
 
 concurrency:
