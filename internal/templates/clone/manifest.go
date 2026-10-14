@@ -1,7 +1,7 @@
 // Package clone provides embedded app-clone templates for nself init --template.
-// Each template bundles a Postgres schema, Hasura metadata, seed data, and a
-// Flutter UI starter. Templates are embedded in the binary via go:embed so no
-// network access is required at scaffold time.
+// Each template bundles a Postgres schema and Hasura metadata; the app clones
+// also carry seed data and a legacy Flutter starter. Templates are embedded in
+// the binary via go:embed so no network access is required at scaffold time.
 package clone
 
 import (
@@ -14,7 +14,9 @@ import (
 	"strings"
 )
 
-//go:embed airbnb-clone discord-clone notion-clone slack-clone substack-clone zoom-clone
+// all: keeps multi-app's .env.example, which embed would otherwise skip as a dotfile.
+//
+//go:embed airbnb-clone discord-clone notion-clone slack-clone substack-clone zoom-clone all:multi-app
 var templateFS embed.FS
 
 // Manifest describes a clone template.
@@ -23,6 +25,9 @@ type Manifest struct {
 	Version         string   `json:"version"`
 	Description     string   `json:"description"`
 	RequiredPlugins []string `json:"required_plugins"`
+	// NextSteps is optional: when set, init prints exactly these commands
+	// after scaffolding instead of the generic clone hint.
+	NextSteps []string `json:"next_steps,omitempty"`
 }
 
 // All returns the list of all bundled clone template names.
@@ -34,10 +39,11 @@ func All() []string {
 		"slack-clone",
 		"substack-clone",
 		"zoom-clone",
+		"multi-app",
 	}
 }
 
-// IsCloneTemplate reports whether name is one of the six bundled clone templates.
+// IsCloneTemplate reports whether name is one of the bundled clone templates.
 func IsCloneTemplate(name string) bool {
 	for _, t := range All() {
 		if t == name {
@@ -45,6 +51,12 @@ func IsCloneTemplate(name string) bool {
 		}
 	}
 	return false
+}
+
+// HasFlutter reports whether the embedded template ships a flutter/ starter.
+func HasFlutter(name string) bool {
+	info, err := fs.Stat(templateFS, name+"/flutter")
+	return err == nil && info.IsDir()
 }
 
 // GetManifest reads the manifest.json for the named template.
@@ -107,8 +119,16 @@ func Scaffold(name string, opts ScaffoldOptions) ([]string, error) {
 			return fmt.Errorf("reading %s: %w", path, err)
 		}
 
-		if err := os.WriteFile(dest, data, 0644); err != nil {
+		// .env* files hold settings meant to be private: 0600, also over an existing 0644 file.
+		perm := os.FileMode(0644)
+		if strings.HasPrefix(filepath.Base(rel), ".env") {
+			perm = 0600
+		}
+		if err := os.WriteFile(dest, data, perm); err != nil {
 			return fmt.Errorf("writing %s: %w", dest, err)
+		}
+		if err := os.Chmod(dest, perm); err != nil {
+			return fmt.Errorf("setting mode of %s: %w", dest, err)
 		}
 		return nil
 	})

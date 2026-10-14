@@ -23,6 +23,7 @@ import (
 	"github.com/nself-org/cli/internal/httptimeout"
 	clonetemplate "github.com/nself-org/cli/internal/templates/clone"
 	"github.com/nself-org/cli/internal/ui"
+	"github.com/spf13/cobra"
 )
 
 // runInitCloneTemplate scaffolds one of the six embedded app-clone templates
@@ -36,16 +37,13 @@ func runInitCloneTemplate(name, destDir string, noSeed, dryRun, force, quiet boo
 		}
 		ui.CommandHeader("nself init --template", fmt.Sprintf("%s clone template %q", verb, name))
 	}
-
 	m, err := clonetemplate.GetManifest(name)
 	if err != nil {
 		return fmt.Errorf("loading template manifest: %w", err)
 	}
-
 	if err := clonetemplate.Enforce(os.Stderr, name, m.RequiredPlugins, templateSource); err != nil {
 		return err
 	}
-
 	// Resolve destination directory.
 	absDest, err := filepath.Abs(destDir)
 	if err != nil {
@@ -90,26 +88,70 @@ func runInitCloneTemplate(name, destDir string, noSeed, dryRun, force, quiet boo
 			fmt.Printf("\n  Install plugins:\n")
 			fmt.Printf("    %s\n", ui.C(ui.Cyan, fmt.Sprintf("nself plugin install %s", strings.Join(m.RequiredPlugins, " "))))
 		}
-		printCloneNextSteps(os.Stdout, absDest, m.RequiredPlugins)
+		printTemplateNextSteps(os.Stdout, absDest, m)
 	}
 	return nil
 }
 
-// printCloneNextSteps writes the commands that bring a scaffolded clone
-// template up. Metadata goes through `nself db hasura metadata apply`, which
-// reads hasura/metadata.json from the project directory (there is no --file
-// flag). The flutter/ starter is legacy (Flutter is eliminated for new
-// surfaces), so it is pointed at, never run.
+// printTemplateNextSteps prints next_steps, else the generic clone steps; the flutter note only if flutter/ ships.
+func printTemplateNextSteps(w io.Writer, dest string, m clonetemplate.Manifest) {
+	printSteps(w, dest, m, clonetemplate.HasFlutter(m.Name))
+}
+
 func printCloneNextSteps(w io.Writer, dest string, plugins []string) {
-	_, _ = fmt.Fprintf(w, "\n  Next steps:\n")
-	_, _ = fmt.Fprintf(w, "    cd %s\n", dest)
-	_, _ = fmt.Fprintf(w, "    nself start\n")
-	_, _ = fmt.Fprintf(w, "    nself db migrate\n")
-	_, _ = fmt.Fprintf(w, "    nself db hasura metadata apply\n")
-	if len(plugins) > 0 {
-		_, _ = fmt.Fprintf(w, "    nself plugin install %s\n", strings.Join(plugins, " "))
+	printSteps(w, dest, clonetemplate.Manifest{RequiredPlugins: plugins}, true)
+}
+
+func printSteps(w io.Writer, dest string, m clonetemplate.Manifest, flutter bool) {
+	steps := m.NextSteps
+	if len(steps) == 0 {
+		steps = []string{"nself start", "nself db migrate", "nself db hasura metadata apply"}
+		if len(m.RequiredPlugins) > 0 {
+			steps = append(steps, "nself plugin install "+strings.Join(m.RequiredPlugins, " "))
+		}
 	}
-	_, _ = fmt.Fprintf(w, "\n  The flutter/ folder holds a legacy starter app; see README.md.\n\n")
+	_, _ = fmt.Fprintf(w, "\n  Next steps:\n    cd %s\n    %s\n\n", dest, strings.Join(steps, "\n    "))
+	if flutter {
+		_, _ = fmt.Fprint(w, "  The flutter/ folder holds a legacy starter app; see README.md.\n\n")
+	}
+}
+
+func init() {
+	legacyInit := initCmd.RunE // multi-app's `init --json` reports its manifest next_steps, never the generic metadata apply
+	initCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		t, _ := cmd.Flags().GetString("template")
+		if t != "multi-app" {
+			return legacyInit(cmd, args)
+		}
+		m, err := clonetemplate.GetManifest(t)
+		if err != nil {
+			return err
+		}
+		res := InitResult{FilesWritten: []string{}, Next: []string{}}
+		res.ProjectDir, _ = os.Getwd()
+		if err := runInitFlow(cmd, args, &res); err != nil {
+			return err
+		}
+		res.Next = m.NextSteps
+		return emitLifecycle(cmd, "init", res)
+	}
+	registry := templateInfoCmd.RunE // `nself template info multi-app` answers offline; other names ask the registry
+	templateInfoCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		m, err := clonetemplate.GetManifest(args[0])
+		if args[0] != "multi-app" || err != nil {
+			return registry(cmd, args)
+		}
+		e := templateEntry{Slug: m.Name, DisplayName: m.Name, Description: m.Description, Category: "bundled", Author: "nSelf", RequiredPlugins: nonNilStrings(m.RequiredPlugins), TemplateVersion: m.Version}
+		if jsonEnvelopeOn(cmd) {
+			return emitEnv(cmd, e, true)
+		}
+		if asJSON, _ := cmd.Flags().GetBool("json"); asJSON {
+			return ui.PrintJSON(e)
+		}
+		fmt.Printf("\n  %s v%s (bundled, no network required)\n  %s\n", m.Name, m.Version, m.Description)
+		printTemplateNextSteps(os.Stdout, "<dest-dir>", m)
+		return nil
+	}
 }
 
 // runInitMarketplaceTemplate downloads a marketplace template tarball, verifies
@@ -118,10 +160,8 @@ func runInitMarketplaceTemplate(slug, destDir string, force, quiet bool) error {
 	if !quiet {
 		ui.CommandHeader("nself init --template", fmt.Sprintf("Installing marketplace template %q", slug))
 	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-
 	baseURL := resolveTemplateRegistryURL()
 	t, err := fetchTemplateSingle(ctx, baseURL, slug)
 	if err != nil {
@@ -130,7 +170,6 @@ func runInitMarketplaceTemplate(slug, destDir string, force, quiet bool) error {
 			"Or visit: https://nself.org/templates\n"+
 			"Original error: %w", slug, err)
 	}
-
 	// Resolve destination directory.
 	absDest, err := filepath.Abs(destDir)
 	if err != nil {
@@ -144,7 +183,6 @@ func runInitMarketplaceTemplate(slug, destDir string, force, quiet bool) error {
 	if mkErr := os.MkdirAll(absDest, 0755); mkErr != nil {
 		return fmt.Errorf("creating destination directory: %w", mkErr)
 	}
-
 	// License check for paid templates.
 	if t.PriceUSD > 0 {
 		licenseKey := os.Getenv("NSELF_LICENSE_KEY")
@@ -157,11 +195,9 @@ func runInitMarketplaceTemplate(slug, destDir string, force, quiet bool) error {
 			)
 		}
 	}
-
 	if !quiet {
 		ui.Info(fmt.Sprintf("Downloading %s v%s...", t.DisplayName, t.TemplateVersion))
 	}
-
 	// Download tarball.
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, t.TarballURL, nil)
 	if err != nil {
@@ -171,27 +207,23 @@ func runInitMarketplaceTemplate(slug, destDir string, force, quiet bool) error {
 	if licKey := os.Getenv("NSELF_LICENSE_KEY"); licKey != "" {
 		req.Header.Set("X-Nself-License", licKey)
 	}
-
 	client := httptimeout.WithTimeout(120 * time.Second)
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("downloading template tarball: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-
 	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
 		return fmt.Errorf("access denied for template %q — check your license key", slug)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("download failed with status %d", resp.StatusCode)
 	}
-
 	// Buffer the body so we can verify SHA256 before extraction.
 	tarData, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("reading tarball: %w", err)
 	}
-
 	// Verify SHA256.
 	if t.TarballSHA256 != "" {
 		h := sha256.New()
@@ -207,18 +239,15 @@ func runInitMarketplaceTemplate(slug, destDir string, force, quiet bool) error {
 			ui.Success("Checksum verified.")
 		}
 	}
-
 	// Extract tarball into destDir.
 	if !quiet {
 		ui.Info(fmt.Sprintf("Extracting into %s...", absDest))
 	}
-
 	gr, err := gzip.NewReader(strings.NewReader(string(tarData)))
 	if err != nil {
 		return fmt.Errorf("opening gzip stream: %w", err)
 	}
 	defer func() { _ = gr.Close() }()
-
 	tr := tar.NewReader(gr)
 	for {
 		header, tarErr := tr.Next()
@@ -228,7 +257,6 @@ func runInitMarketplaceTemplate(slug, destDir string, force, quiet bool) error {
 		if tarErr != nil {
 			return fmt.Errorf("reading tarball entry: %w", tarErr)
 		}
-
 		// Guard against path traversal.
 		target := filepath.Join(absDest, filepath.Clean("/" + header.Name)[1:])
 		if !strings.HasPrefix(target, absDest+string(os.PathSeparator)) && target != absDest {
@@ -255,7 +283,6 @@ func runInitMarketplaceTemplate(slug, destDir string, force, quiet bool) error {
 			_ = f.Close()
 		}
 	}
-
 	if !quiet {
 		ui.Success(fmt.Sprintf("Template %q installed in %s", slug, absDest))
 		fmt.Println()
