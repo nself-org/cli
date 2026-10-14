@@ -1,0 +1,9 @@
+# synthetic fixture: an ordinary generated named data volume stays allowed
+services:
+  socksafevol:
+    image: example.invalid/socksafevol:1
+    volumes:
+      - datavol:/data
+volumes:
+  datavol:
+    driver: local

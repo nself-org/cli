@@ -1,0 +1,7 @@
+# synthetic fixture: DOCKER_HOST forwarded from the effective env (list form, no value)
+services:
+  sockinheritlist:
+    image: example.invalid/sockinheritlist:1
+    environment:
+      - DOCKER_HOST
+      - FOO=bar

@@ -1,0 +1,9 @@
+# synthetic fixture: volume mapped to an existing volume with name:
+services:
+  sockrenamed:
+    image: example.invalid/sockrenamed:1
+    volumes:
+      - renamedvol:/d
+volumes:
+  renamedvol:
+    name: shared_actual_volume

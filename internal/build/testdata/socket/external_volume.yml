@@ -1,0 +1,9 @@
+# synthetic fixture: external volume mounted by a plugin service
+services:
+  sockext:
+    image: example.invalid/sockext:1
+    volumes:
+      - extvol:/d
+volumes:
+  extvol:
+    external: true

@@ -1,0 +1,6 @@
+# synthetic fixture: DOCKER_HOST from a name the build rewrites in compose.env
+services:
+  sockfuturehost:
+    image: example.invalid/sockfuturehost:1
+    environment:
+      DOCKER_HOST: ${DOCKER_NETWORK}

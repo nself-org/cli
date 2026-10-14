@@ -1,0 +1,11 @@
+# synthetic fixture: defines a socket-backed volume, mounts nothing
+services:
+  sockvolowner:
+    image: example.invalid/sockvolowner:1
+volumes:
+  sharedsock:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /var/run/docker.sock

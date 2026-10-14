@@ -1,0 +1,6 @@
+# synthetic fixture: first declarer of a shared service name, with the socket
+services:
+  sockdup:
+    image: example.invalid/sockdup:1
+    volumes:
+      - /var/run/docker.sock:/s

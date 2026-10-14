@@ -1,0 +1,10 @@
+# synthetic fixture: a config whose file is the socket, referenced by the service
+services:
+  sockconfig:
+    image: example.invalid/sockconfig:1
+    configs:
+      - source: sockcfg
+        target: /etc/sock
+configs:
+  sockcfg:
+    file: /var/run/docker.sock

@@ -1,0 +1,13 @@
+# synthetic fixture: named volume whose device is ./run, a symlink the test plants
+services:
+  socklinkdev:
+    image: example.invalid/socklinkdev:1
+    volumes:
+      - linkvol:/d
+volumes:
+  linkvol:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./run

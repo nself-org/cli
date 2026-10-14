@@ -1,0 +1,12 @@
+# synthetic fixture: two services, several exposures each
+services:
+  sockmultia:
+    image: example.invalid/sockmultia:1
+    volumes:
+      - /var/run/docker.sock:/s
+    environment:
+      DOCKER_HOST: unix:///var/run/docker.sock
+  sockmultib:
+    image: example.invalid/sockmultib:1
+    volumes:
+      - /var/run:/r

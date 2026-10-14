@@ -1,0 +1,6 @@
+# synthetic fixture: a map KEY with a variable is not interpolated
+services:
+  sockkeymap:
+    image: example.invalid/sockkeymap:1
+    environment:
+      "${SOCKGUARD_KEY}": unix:///var/run/docker.sock

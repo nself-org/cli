@@ -1,0 +1,6 @@
+# synthetic fixture: mount source from a variable nobody sets
+services:
+  sockvarunset:
+    image: example.invalid/sockvarunset:1
+    volumes:
+      - ${SOCKGUARD_UNSET_SOURCE}:/s

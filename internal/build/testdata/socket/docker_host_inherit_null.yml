@@ -1,0 +1,6 @@
+# synthetic fixture: DOCKER_HOST forwarded from the effective env (map form, null)
+services:
+  sockinheritnull:
+    image: example.invalid/sockinheritnull:1
+    environment:
+      DOCKER_HOST:

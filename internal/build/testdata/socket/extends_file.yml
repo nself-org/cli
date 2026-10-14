@@ -1,0 +1,7 @@
+# synthetic fixture: service extends one from another file
+services:
+  sockextends:
+    image: example.invalid/sockextends:1
+    extends:
+      file: ./other.yml
+      service: base
