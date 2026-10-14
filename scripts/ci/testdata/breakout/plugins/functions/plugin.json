@@ -1,0 +1,38 @@
+{
+  "binaryName": "nself-functions",
+  "category": "infrastructure",
+  "commands": {
+    "binary": "nself-functions",
+    "command": "functions",
+    "subcommands": [
+      {
+        "name": "list",
+        "side_effect": "read",
+        "summary": "fixture list"
+      },
+      {
+        "name": "deploy",
+        "side_effect": "read",
+        "summary": "fixture deploy"
+      }
+    ],
+    "summary": "fixture functions commands"
+  },
+  "description": "fixture functions plugin for breakout-smoke.sh (synthetic)",
+  "license": "free",
+  "licenseType": "free",
+  "manifest_version": 2,
+  "maturity": "implemented",
+  "minNselfVersion": "1.5.0",
+  "name": "functions",
+  "pluginType": "cli",
+  "requires": {
+    "nself": ">=1.5.0"
+  },
+  "service": {
+    "kind": "cli"
+  },
+  "status": "stable",
+  "tier": "free",
+  "version": "1.0.0"
+}

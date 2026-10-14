@@ -1,0 +1,38 @@
+{
+  "binaryName": "nself-infra",
+  "category": "infrastructure",
+  "commands": {
+    "binary": "nself-infra",
+    "command": "infra",
+    "subcommands": [
+      {
+        "name": "server list",
+        "side_effect": "read",
+        "summary": "fixture server list"
+      },
+      {
+        "name": "server provision",
+        "side_effect": "read",
+        "summary": "fixture server provision"
+      }
+    ],
+    "summary": "fixture infra commands"
+  },
+  "description": "fixture infra plugin for breakout-smoke.sh (synthetic)",
+  "license": "free",
+  "licenseType": "free",
+  "manifest_version": 2,
+  "maturity": "implemented",
+  "minNselfVersion": "1.5.0",
+  "name": "infra",
+  "pluginType": "cli",
+  "requires": {
+    "nself": ">=1.5.0"
+  },
+  "service": {
+    "kind": "cli"
+  },
+  "status": "stable",
+  "tier": "free",
+  "version": "1.0.0"
+}

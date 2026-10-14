@@ -122,6 +122,9 @@ func TestRelocateBreakout(t *testing.T) {
 		{[]string{"plugin", "new", "demo"}, "plugin-dev", "new demo"},
 		{[]string{"plugin", "test"}, "plugin-dev", "test"},
 		{[]string{"server", "list", "--json", "--no-deprecation-warnings"}, "infra", "server list --json"},
+		{[]string{"infra", "server", "--help"}, "infra", "server --help"},
+		{[]string{"infra", "plan"}, "infra", "plan"},
+		{[]string{"plugin-dev", "init", "--help"}, "plugin-dev", "init --help"},
 	} {
 		t.Run(strings.Join(tc.argv, "_"), func(t *testing.T) {
 			proof, calls, warn := relocateSetup(t, "", nil)
@@ -143,7 +146,7 @@ func TestRelocateBreakout(t *testing.T) {
 	}
 	t.Run("not a break-out", func(t *testing.T) {
 		for _, argv := range [][]string{{"start"}, {"plugin", "install", "x"}, {"plugin"}, {"runnerx"}, {"--help"}, {"help", "ci"}} {
-			if _, ok := breakoutRow(argv[0], argv[1:]); ok {
+			if _, _, ok := breakoutRow(argv[0], argv[1:]); ok {
 				t.Errorf("%v is not a break-out", argv)
 			}
 		}

@@ -1,0 +1,43 @@
+{
+  "binaryName": "nself-ci",
+  "category": "infrastructure",
+  "commands": {
+    "binary": "nself-ci",
+    "command": "ci",
+    "subcommands": [
+      {
+        "name": "nodes provision",
+        "side_effect": "read",
+        "summary": "fixture nodes provision"
+      },
+      {
+        "name": "nodes verify",
+        "side_effect": "read",
+        "summary": "fixture nodes verify"
+      },
+      {
+        "name": "build",
+        "side_effect": "read",
+        "summary": "fixture build"
+      }
+    ],
+    "summary": "fixture ci commands"
+  },
+  "description": "fixture ci plugin for breakout-smoke.sh (synthetic)",
+  "license": "free",
+  "licenseType": "free",
+  "manifest_version": 2,
+  "maturity": "implemented",
+  "minNselfVersion": "1.5.0",
+  "name": "ci",
+  "pluginType": "cli",
+  "requires": {
+    "nself": ">=1.5.0"
+  },
+  "service": {
+    "kind": "cli"
+  },
+  "status": "stable",
+  "tier": "free",
+  "version": "1.0.0"
+}

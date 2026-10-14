@@ -52,11 +52,14 @@ var (
 // relocateBreakout handles `nself <cmdName> <args...>` when it names a break-out
 // whose plugin is not mounted.
 func relocateBreakout(cmdName string, args []string) (handled bool, err error) {
-	row, ok := breakoutRow(cmdName, args)
+	row, pluginArgs, ok := breakoutRow(cmdName, args)
 	if !ok || mountedBy(walkNames(RootCmd, row.To[:1]), row.Plugin) {
 		return false, nil
 	}
-	old := strings.Join(row.From, " ")
+	old := cmdName
+	if hasPrefix(append([]string{cmdName}, args...), row.From) {
+		old = strings.Join(row.From, " ")
+	}
 	if os.Getenv(envNoAutoAdd) == "1" {
 		return true, breakoutRefused(old, row.Plugin, errors.New("automatic install is switched off ("+envNoAutoAdd+"=1)"))
 	}
@@ -76,18 +79,19 @@ func relocateBreakout(cmdName string, args []string) (handled bool, err error) {
 		installed := readInstalledVersion(resolvePluginDir(), row.Plugin)
 		_, _ = fmt.Fprintf(relocateWarnOut, "warning: 'nself %s' now comes from the %s plugin; installed %s@%s\n", old, row.Plugin, row.Plugin, installed)
 	}
-	// The old spelling's tail goes to the binary behind the row's remaining
-	// words ("runner verify x" -> "nodes verify x"), minus the CLI's own flags.
-	pluginArgs := append(append([]string{}, row.To[1:]...), stripRootPersistentFlags(args[len(row.From)-1:])...)
 	if err := plugin.ProxyBinary(filepath.Base(bin), row.Plugin, pluginArgs); err != nil {
 		return true, reportProxyFailure(os.Stderr, err)
 	}
 	return true, nil
 }
 
-// breakoutRow returns the longest break-out row whose From starts with cmdName
-// and continues with the leading words of args.
-func breakoutRow(cmdName string, args []string) (best canonRowT, ok bool) {
+// breakoutRow finds the break-out row `nself <cmdName> <args...>` belongs to and
+// the arguments the plugin binary gets. Two spellings reach a row: the old one
+// (the longest From that starts with cmdName and continues with the leading
+// words of args; the binary gets the row's remaining To words, then the rest of
+// args, minus the CLI's own flags) and the plugin's own command (cmdName equals
+// the first word of To, as in `nself infra server list`; the binary gets args).
+func breakoutRow(cmdName string, args []string) (best canonRowT, pluginArgs []string, ok bool) {
 	words := []string{cmdName}
 	for _, a := range args {
 		if a == "" || a[0] == '-' {
@@ -100,7 +104,16 @@ func breakoutRow(cmdName string, args []string) (best canonRowT, ok bool) {
 			best, ok = r, true
 		}
 	}
-	return best, ok
+	if ok {
+		rest := stripRootPersistentFlags(args[len(best.From)-1:])
+		return best, append(append([]string{}, best.To[1:]...), rest...), true
+	}
+	for _, r := range canonTable.Breakouts {
+		if len(r.To) > 0 && r.To[0] == cmdName {
+			return r, stripRootPersistentFlags(args), true
+		}
+	}
+	return best, nil, false
 }
 
 // lockedPluginVersion is the version nself.lock.yaml pins for slug, or "" (the

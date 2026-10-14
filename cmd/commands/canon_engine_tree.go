@@ -80,12 +80,15 @@ func applyCanonWith(t *canonTableT, root *cobra.Command, v15 bool) func() {
 // rowKey names a table row inside the resolved-source map.
 func rowKey(kind string, r canonRowT) string { return kind + ":" + strings.Join(r.From, " ") }
 
-// resolveRows finds the node of every row's old path in the untouched tree.
+// resolveRows finds the node of every row's old path in the untouched tree. A
+// node mounted from an installed plugin is not an old path: a break-out whose
+// plugin command keeps the core name (ci, functions) would otherwise detach the
+// plugin on a second application of the canon (the registry build re-applies it).
 func resolveRows(t *canonTableT, root *cobra.Command) map[string]*cobra.Command {
 	m := map[string]*cobra.Command{}
 	for k, rows := range map[string][]canonRowT{"move": t.Moves, "shim": t.Shims, "retired": t.RetiredHubs, "breakout": t.Breakouts, "removed": t.Removed} {
 		for _, r := range rows {
-			if c := walkNames(root, r.From); c != nil && c != root {
+			if c := walkNames(root, r.From); c != nil && c != root && c.Annotations["nself.mount.source"] != sourceInstalled {
 				m[rowKey(k, r)] = c
 			}
 		}

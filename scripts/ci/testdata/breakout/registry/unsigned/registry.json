@@ -1,0 +1,17 @@
+{
+  "plugins": [
+    {
+      "name": "ci",
+      "version": "1.0.0",
+      "tier": "free",
+      "category": "development",
+      "description": "fixture unsigned release for breakout-smoke.sh (synthetic, not a real release)",
+      "license": "MIT",
+      "status": "stable",
+      "pluginType": "cli",
+      "binaryName": "nself-ci",
+      "repository": "@BASE@",
+      "checksum": "1111111111111111111111111111111111111111111111111111111111111111"
+    }
+  ]
+}
