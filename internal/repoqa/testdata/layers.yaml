@@ -20,8 +20,10 @@
 #              test-code edit and an escalation, never a quiet diff.
 #   forbidden  edges that must never exist, whatever else says.
 #
-# This file is hand-edited and never rewritten by -update. Adding an edge needs
-# the matching line in the overview section 4.2 in the same change. Never list
+# This file is hand-edited and never rewritten by -update. Complete edges must
+# equal acceptedBasis in layering_basis_test.go, including pending state.
+# Adding an edge needs architecture review and a matching overview 4.2 update.
+# See ../Architecture-Guardrails.md for coverage and maintenance. Never list
 # bundle -> reconcile: it closes the cycle build -> bundle -> reconcile -> build.
 # oplock and lock are not listed: they take the default layer (L1).
 version: 1
@@ -79,14 +81,14 @@ rules:
   - {match: "internal/exporter/**", layer: L2}
   - {match: "internal/cmd/ci/**", layer: L2}
 edges:
-  - {from: internal/exporter, to: internal/database} # P7-ADOPT-17; overview mirror is lead-owned
+  - {from: internal/exporter, to: internal/database} # P7-ADOPT-17
   - {from: internal/upgrade, to: internal/build}
   - {from: internal/upgrade, to: internal/backup}
   - {from: internal/upgrade, to: internal/database}
   - {from: internal/upgrade, to: internal/reconcile}
   - {from: internal/upgrade, to: internal/plugin}
   - {from: internal/importer, to: internal/database} # P7-ADOPT-10 additive bundle metadata
-  - {from: internal/backup, to: internal/controlplane}   # added after the forge basis (P7-PROD-06/07); needs the overview 4.2 line
+  - {from: internal/backup, to: internal/controlplane}   # P7-PROD-06/07: host inventory
   - {from: internal/build, to: internal/bundle}
   - {from: internal/build, to: internal/plugin}
   - {from: internal/bundle, to: internal/plugin}
@@ -95,17 +97,17 @@ edges:
   - {from: internal/deploy, to: internal/health}
   - {from: internal/doctor, to: internal/database}
   - {from: internal/doctor, to: internal/health}
-  - {from: internal/doctor, to: internal/plugin}           # added after the forge basis (P7-PLUG-59); needs the overview 4.2 line
+  - {from: internal/doctor, to: internal/plugin}           # P7-PLUG-59
   - {from: internal/hasura, to: internal/database}
   - {from: internal/runner, to: internal/deploy}
   - {from: internal/nginx, to: internal/ssl}
   - {from: internal/trust, to: internal/ssl}
-  - {from: internal/ssl, to: internal/compose}           # P7-LIVE-17: lego image read from the image lock; needs the overview 4.2 line
+  - {from: internal/ssl, to: internal/compose}           # P7-LIVE-17: lego image from the image lock
   - {from: internal/reconcile, to: internal/build}
   - {from: internal/builtin, to: internal/httpapi}
   - {from: internal/httpapi, to: internal/invoke}
-  - {from: internal/upgrade, to: internal/lock}          # P7-LIVE-10: the plan diffs the project lock; needs the overview 4.2 line
-  - {from: internal/upgrade, to: internal/bundle}        # P7-PLUG-31: update stack tracks plugin tables with appready.TrackedTables; needs the overview 4.2 line
+  - {from: internal/upgrade, to: internal/lock}          # P7-LIVE-10: plan diffs the project lock
+  - {from: internal/upgrade, to: internal/bundle}        # P7-PLUG-31: appready.TrackedTables
   - {from: internal/mcpgen, to: internal/invoke}
 ratchet:
   - {from: internal/health, to: internal/build}
