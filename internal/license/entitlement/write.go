@@ -1,5 +1,5 @@
 // Package entitlement writes the ping-issued token consumed by plugin runtimes.
-// Purpose: publish only the verified cached licence JWT as an atomic private file.
+// Purpose: publish only the verified cached licence JWT as a private file.
 // Inputs: context, project directory, and the existing licence cache.
 // Outputs: .nself/state/entitlement.jwt, or E125 with an empty fail-closed file.
 // Constraints: v1.4 never writes; no JWT is exposed in compose or diagnostics.
@@ -24,7 +24,7 @@ func Path(projectDir string) string {
 	return filepath.Join(projectDir, ".nself", "state", "entitlement.jwt")
 }
 
-// Refresh atomically publishes a verified cached licence JWT.
+// Refresh publishes a verified cached licence JWT while preserving mounted inodes.
 // Purpose: prepare the runtime token. Inputs: context and project root.
 // Outputs: a private JWT file, or an empty file and E125 if no verified token exists.
 // Constraints: trust server signatures, not cache copies; v1.4 is unchanged.
@@ -35,11 +35,11 @@ func Refresh(ctx context.Context, projectDir string) error {
 		return nil
 	}
 	if err := ctx.Err(); err != nil {
-		return err
+		return errs.Wrap("E125", "plugin entitlement refresh was canceled", err)
 	}
 	token, tokenErr := cachedToken()
 	if err := writeAtomic(Path(projectDir), []byte(token)); err != nil {
-		return errs.Wrap("E125", "could not write the plugin entitlement file", err)
+		return errs.Wrap("E125", fmt.Sprintf("could not write the plugin entitlement file: %v", err), err)
 	}
 	if tokenErr != nil {
 		return errs.Wrap("E125", "no verified plugin entitlement token is available", tokenErr)
@@ -66,25 +66,76 @@ func cachedToken() (string, error) {
 		return "", fmt.Errorf("licence token has no signed expiry")
 	}
 	keys := license.CollectLicenseKeys()
-	if len(keys) > 0 {
-		for _, key := range keys {
-			if license.HashKey(key) == claims.Sub {
-				return entry.JWT, nil
-			}
-		}
-		return "", fmt.Errorf("cached token does not belong to a configured licence")
+	if len(keys) == 0 {
+		return "", fmt.Errorf("no licence key is configured")
 	}
-	return entry.JWT, nil
+	for _, key := range keys {
+		if license.HashKey(key) == claims.Sub {
+			return entry.JWT, nil
+		}
+	}
+	return "", fmt.Errorf("cached token does not belong to a configured licence")
 }
 
-// writeAtomic replaces path with data through a private sibling temporary file.
-// Purpose: avoid torn or world-readable tokens. Inputs: path/data. Outputs: error.
-// Constraints: always 0600, including empty files. SPORT: private state publication.
+// writeAtomic creates new files atomically and refreshes existing mounted inodes.
+// Purpose: keep single-file bind mounts current. Inputs: path/data. Outputs: error.
+// Constraints: 0600; SDK retries torn reads. SPORT: private state publication.
 func writeAtomic(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
+	info, err := os.Lstat(path)
+	if err == nil {
+		if info.IsDir() {
+			if err := os.Remove(path); err != nil {
+				return fmt.Errorf("entitlement target directory is not empty or cannot be removed: %w", err)
+			}
+		} else {
+			return writeExisting(path, data, info)
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	return writeNew(path, data)
+}
+
+// writeExisting updates the inode a running container has mounted.
+// Purpose: preserve bind mount identity. Inputs: path/data/stat. Outputs: error.
+// Constraints: no symlinks or truncation before writing. SPORT: mounted refresh.
+func writeExisting(path string, data []byte, before os.FileInfo) error {
+	if !before.Mode().IsRegular() {
+		return fmt.Errorf("entitlement target must be a regular file, not a symlink or special file")
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|noFollowFlag, 0)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	after, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	if !after.Mode().IsRegular() || !os.SameFile(before, after) {
+		return fmt.Errorf("entitlement target changed during refresh")
+	}
+	if err := f.Chmod(0600); err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		return err
+	}
+	if err := f.Truncate(int64(len(data))); err != nil {
+		return err
+	}
+	return f.Sync()
+}
+
+// writeNew publishes the initial file and persists its directory entry.
+// Purpose: atomic first creation. Inputs: path/data. Outputs: error.
+// Constraints: private sibling file. SPORT: initial entitlement publication.
+func writeNew(path string, data []byte) error {
+	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, ".entitlement-*")
 	if err != nil {
 		return err
@@ -103,5 +154,13 @@ func writeAtomic(path string, data []byte) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), path)
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		return err
+	}
+	f, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return f.Sync()
 }

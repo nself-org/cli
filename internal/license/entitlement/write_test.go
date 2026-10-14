@@ -25,7 +25,7 @@ import (
 func seedVerifiedCache(t *testing.T) *license.CacheEntry {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "")
+	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "synthetic-license-key")
 	for i := 1; i <= 10; i++ {
 		t.Setenv("NSELF_LICENSE_KEY_"+strconv.Itoa(i), "")
 	}
@@ -40,7 +40,7 @@ func seedVerifiedCache(t *testing.T) *license.CacheEntry {
 	enc := base64.RawURLEncoding
 	hdr := enc.EncodeToString([]byte(`{"alg":"EdDSA","kid":"synthetic"}`))
 	claims, _ := json.Marshal(map[string]any{
-		"sub": "synthetic-key-hash", "tier": "plus", "plugins": []string{"*"},
+		"sub": license.HashKey("synthetic-license-key"), "tier": "plus", "plugins": []string{"*"},
 		"iss": "ping.nself.org", "aud": "nself-cli", "iat": time.Now().Unix(),
 		"exp": time.Now().Add(24 * time.Hour).Unix(),
 	})
@@ -50,7 +50,7 @@ func seedVerifiedCache(t *testing.T) *license.CacheEntry {
 		"valid": true, "tier": "plus", "plugins_allowed": []string{"*"}, "jwt": token,
 	})
 	entry := &license.CacheEntry{
-		KeyHash: "synthetic-key-hash", Tier: "plus", PluginsAllowed: []string{"*"},
+		KeyHash: license.HashKey("synthetic-license-key"), Tier: "plus", PluginsAllowed: []string{"*"},
 		RawBody: string(body), BodySig: hex.EncodeToString(ed25519.Sign(priv, body)), JWT: token,
 	}
 	if err := license.WriteCache(entry); err != nil {

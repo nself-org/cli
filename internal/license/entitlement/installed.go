@@ -2,9 +2,6 @@ package entitlement
 
 import (
 	"context"
-	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/nself-org/cli/internal/compat"
@@ -30,64 +27,42 @@ func RefreshInstalledForKey(ctx context.Context, projectDir, key string) error {
 	if !compat.V15() || DevKeyMode() {
 		return nil
 	}
-	dir := strings.TrimSpace(os.Getenv("NSELF_PLUGIN_DIR"))
-	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return err
-		}
-		dir = filepath.Join(home, ".nself", "plugins")
-	}
-	entries, err := os.ReadDir(dir)
-	if os.IsNotExist(err) {
-		return nil
-	}
+	installed, err := HasLicensedInstalled()
 	if err != nil {
 		return err
 	}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		if _, err := os.Stat(filepath.Join(dir, entry.Name(), ".disabled")); err == nil {
-			continue
-		}
-		if installedLicensed(filepath.Join(dir, entry.Name(), "plugin.json")) {
-			if key != "" {
-				result, err := license.Validate(ctx, key, nil)
-				if err != nil || !result.CanProceed {
-					if writeErr := writeAtomic(Path(projectDir), nil); writeErr != nil {
-						return errs.Wrap("E125", "could not clear the plugin entitlement file", writeErr)
-					}
-					return errs.New("E125", "the new licence could not obtain a verified entitlement")
-				}
-			}
-			return Refresh(ctx, projectDir)
+	if !installed {
+		return nil
+	}
+	if key != "" {
+		if err := validateNewKey(ctx, projectDir, key); err != nil {
+			return err
 		}
 	}
-	return nil
+	return Refresh(ctx, projectDir)
 }
 
-// installedLicensed reads the native manifest licence axis without runtime imports.
-// Purpose: keep L1 publication independent of L2 plugin orchestration.
-// Inputs: manifest path. Outputs: licensed status. Constraints: explicit free wins;
-// legacy tier fields are consulted only when free is not explicit.
-// SPORT: installed licence discovery.
-func installedLicensed(path string) bool {
-	data, err := os.ReadFile(path)
+// validateNewKey requires an online result before replacing runtime entitlement.
+// Purpose: preserve valid files offline. Inputs: context/project/key. Outputs: error.
+// Constraints: only explicit server refusal clears the file. SPORT: key validation.
+func validateNewKey(ctx context.Context, projectDir, key string) error {
+	result, err := license.Validate(ctx, key, nil)
 	if err != nil {
-		return false
+		return errs.Wrap("E125", "could not validate the new licence online; existing entitlement retained", err)
 	}
-	var m struct {
-		License         string `json:"license"`
-		Tier            string `json:"tier"`
-		RequiresLicense bool   `json:"requiresLicense"`
+	if result.FromCache || result.Status == license.StatusFailOpen {
+		return errs.New("E125", "could not validate the new licence online; existing entitlement retained")
 	}
-	if json.Unmarshal(data, &m) != nil {
-		return false
+	rejected := result.Status == license.StatusRevoked || result.Status == license.StatusExpired || strings.Contains(result.Reason, "license rejected by server")
+	if result.CanProceed && !rejected {
+		return nil
 	}
-	if m.License == "free" {
-		return false
+	// FromCache alone cannot distinguish an absent cache from an auth rejection.
+	if !rejected {
+		return errs.New("E125", "could not validate the new licence online; existing entitlement retained")
 	}
-	return m.License == "licensed" || m.Tier == "pro" || m.Tier == "paid" || m.Tier == "licensed" || m.RequiresLicense
+	if writeErr := writeAtomic(Path(projectDir), nil); writeErr != nil {
+		return errs.Wrap("E125", "could not clear the plugin entitlement file", writeErr)
+	}
+	return errs.New("E125", "the new licence was rejected and could not obtain a verified entitlement")
 }
