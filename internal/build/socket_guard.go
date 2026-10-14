@@ -140,7 +140,12 @@ func expandSocket(s string, env SocketEnv) (string, bool) {
 }
 
 // SocketUse is one way a service reaches the socket, and which input said so.
-type SocketUse struct{ Origin, Detail string }
+// Unproven marks an input the guard could not read through (an unresolved
+// value or backing, env_file, extends, volumes_from): no exception waives it.
+type SocketUse struct {
+	Origin, Detail string
+	Unproven       bool
+}
 
 // SocketReport is the merged view of every compose input.
 type SocketReport struct {
@@ -148,7 +153,6 @@ type SocketReport struct {
 	Owners  map[string][]string    // service -> plugin slugs that declare it
 	Core    map[string]bool        // services declared by the generated core stack
 	Volumes map[string]string      // named volume -> "" or why it is socket-backed
-	Mounted map[string]bool        // services whose inputs declare at least one volume
 }
 
 type socketDoc struct {
@@ -207,7 +211,7 @@ func AnalyzeSocket(workdir, pluginDir string, env SocketEnv, core []byte) (*Sock
 			return nil, err
 		}
 	}
-	rep := &SocketReport{Uses: map[string][]SocketUse{}, Owners: map[string][]string{}, Core: map[string]bool{}, Volumes: map[string]string{}, Mounted: map[string]bool{}}
+	rep := &SocketReport{Uses: map[string][]SocketUse{}, Owners: map[string][]string{}, Core: map[string]bool{}, Volumes: map[string]string{}}
 	for _, d := range docs { // named volumes first: any input may mount another's
 		vols, err := socketMap(d.top["volumes"], d.origin+" volumes")
 		if err != nil {
@@ -221,10 +225,10 @@ func AnalyzeSocket(workdir, pluginDir string, env SocketEnv, core []byte) (*Sock
 			r, rok := ResolveSocketPath(d.dir, x)
 			rep.Volumes[name] += "" // defined; stays "" unless socket-backed
 			if m["external"] != nil && m["external"] != false || m["name"] != nil {
-				rep.Volumes[name] = "is external or renamed, so its backing cannot be proven"
+				rep.Volumes[name] = "has a backing that cannot be proven (external or renamed)"
 			}
 			if dev != "" && (!ok || !rok) {
-				rep.Volumes[name] = fmt.Sprintf("is backed by %q, which cannot be resolved", dev)
+				rep.Volumes[name] = fmt.Sprintf("has a backing that cannot be proven (device %q cannot be resolved)", dev)
 			} else if dev != "" && (SocketPathExposed(x) || SocketPathExposed(r)) {
 				rep.Volumes[name] = "is backed by " + x
 			}
@@ -245,9 +249,6 @@ func AnalyzeSocket(workdir, pluginDir string, env SocketEnv, core []byte) (*Sock
 			} else if d.origin == "core stack" {
 				rep.Core[name] = true // not the override: a ghost plugin service is no core service
 			}
-			if v, _ := body["volumes"].([]any); len(v) > 0 {
-				rep.Mounted[name] = true
-			}
 			uses, err := scanSocketService(d, name, body, env, rep.Volumes)
 			if err != nil {
 				return nil, err
@@ -265,9 +266,9 @@ func (r *SocketReport) Refuse() error {
 		if len(uses) == 0 || (len(slugs) == 0 && !SocketProxyService(svc)) {
 			continue // clean, or core/custom: not judged
 		}
-		own := len(slugs) == 1 // every exposure comes from the declaring plugin itself
+		own := len(slugs) == 1 // every exposure is confirmed and comes from the declaring plugin itself
 		for _, u := range uses {
-			own = own && u.Origin == "plugin:"+slugs[0]
+			own = own && u.Origin == "plugin:"+slugs[0] && !u.Unproven
 		}
 		if ex, ok := ActiveSocketException(strings.Join(slugs, "")); ok && own && !SocketProxyService(svc) {
 			warnOnce(fmt.Sprintf("plugin %q holds the Docker socket; allowed until nself %s (%s), then the build refuses it (E130)", ex.Slug, ex.RemovalAt, ex.Ticket))

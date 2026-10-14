@@ -128,7 +128,15 @@ func TestSocketGuardFragments(t *testing.T) {
 		{"volumes as a string is refused", map[string]string{"sockbadvols": "malformed_volumes.yml"}, "", nil, []string{"sockbadvols"}},
 		{"numeric volume entry is refused", map[string]string{"sockbadentry": "malformed_volume_entry.yml"}, "", nil, []string{"sockbadentry"}},
 		{"services as a string is refused", map[string]string{"sockbadservices": "malformed_services.yml"}, "", nil, []string{"sockbadservices"}},
-		// exceptions never widen
+		// exceptions never widen: they waive a confirmed socket on the plugin's own service, not what the guard cannot prove
+		{"excepted plugin: unresolved mount source", map[string]string{"forgejo": "var_source_unset.yml"}, "", nil, []string{"forgejo", "sockvarunset", "cannot be resolved"}},
+		{"excepted plugin: unresolved DOCKER_HOST", map[string]string{"forgejo": "var_docker_host.yml"}, "", nil, []string{"forgejo", "sockvarhost"}},
+		{"excepted plugin: unresolved volume device", map[string]string{"forgejo": "var_device.yml"}, "", nil, []string{"forgejo", "sockvardev", "cannot be proven"}},
+		{"excepted plugin: external volume", map[string]string{"forgejo": "external_volume.yml"}, "", nil, []string{"forgejo", "sockext", "cannot be proven"}},
+		{"excepted plugin: renamed volume", map[string]string{"monitoring": "renamed_volume.yml"}, "", nil, []string{"monitoring", "sockrenamed", "cannot be proven"}},
+		{"excepted plugin: env_file", map[string]string{"forgejo": "env_file.yml"}, "", nil, []string{"forgejo", "sockenvfile", "env_file"}},
+		{"excepted plugin: extends", map[string]string{"forgejo": "extends_file.yml"}, "", nil, []string{"forgejo", "sockextends", "extends"}},
+		{"excepted plugin: volumes_from", map[string]string{"monitoring": "volumes_from.yml"}, "", nil, []string{"monitoring", "sockvolsfrom", "volumes_from"}},
 		{"an excepted plugin cannot hold the proxy service", map[string]string{"forgejo": "proxy_nginx.yml"}, "", nil, []string{"forgejo", "nginx"}},
 		{"ambiguous ownership grants no exception", map[string]string{"forgejo": "ambiguous_a.yml", "other": "ambiguous_b.yml"}, "", nil, []string{"sockdup"}},
 		{"override adds the socket to nginx", map[string]string{"sockclean": "clean.yml"}, "override_nginx.yml", nil, []string{"nginx", "override"}},
@@ -317,7 +325,7 @@ func TestSocketGuardFragments(t *testing.T) {
 		}
 	})
 
-	t.Run("override-only services are not core; declared volumes are recorded", func(t *testing.T) {
+	t.Run("override-only services are not core", func(t *testing.T) {
 		wd := t.TempDir()
 		writeFixtureFile(t, filepath.Join(wd, userComposeOverrideFile), socketFixture(t, used, "override_plugin.yml"), 0o644)
 		none := func(string) (string, bool) { return "", false }
@@ -325,8 +333,8 @@ func TestSocketGuardFragments(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !rep.Core["nginx"] || rep.Core["sockclean"] || !rep.Mounted["nginx"] || !rep.Mounted["sockclean"] {
-			t.Fatalf("core=%v mounted=%v", rep.Core, rep.Mounted)
+		if !rep.Core["nginx"] || rep.Core["sockclean"] {
+			t.Fatalf("core=%v", rep.Core)
 		}
 	})
 
@@ -420,11 +428,12 @@ func TestSocketGuardExceptionExpiry(t *testing.T) {
 
 	t.Run("a proxy or an ambiguous owner never inherits an exception", func(t *testing.T) {
 		setCLIVersion(t, "1.4.14")
-		use := []SocketUse{{"plugin:forgejo", "mounts the Docker socket"}}
+		use := []SocketUse{{Origin: "plugin:forgejo", Detail: "mounts the Docker socket"}}
 		for name, rep := range map[string]*SocketReport{
 			"proxy":     {Uses: map[string][]SocketUse{"nginx": use}, Owners: map[string][]string{"nginx": {"forgejo"}}},
 			"ambiguous": {Uses: map[string][]SocketUse{"svc": use}, Owners: map[string][]string{"svc": {"forgejo", "monitoring"}}},
-			"foreign":   {Uses: map[string][]SocketUse{"svc": {{"override", "mounts the Docker socket"}}}, Owners: map[string][]string{"svc": {"forgejo"}}},
+			"unproven":  {Uses: map[string][]SocketUse{"svc": {{Origin: "plugin:forgejo", Detail: "uses env_file", Unproven: true}}}, Owners: map[string][]string{"svc": {"forgejo"}}},
+			"foreign":   {Uses: map[string][]SocketUse{"svc": {{Origin: "override", Detail: "mounts the Docker socket"}}}, Owners: map[string][]string{"svc": {"forgejo"}}},
 		} {
 			if err := rep.Refuse(); err == nil {
 				t.Errorf("%s: an exception was inherited", name)

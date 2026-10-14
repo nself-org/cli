@@ -19,9 +19,13 @@ import (
 )
 
 type fakeSocketInspector struct {
-	containers []docker.ContainerInfo
-	err        error
+	containers  []docker.ContainerInfo
+	err         error
+	uncertified bool // behaves like the production inspector: empty typed fields prove nothing
 }
+
+// evidenceComplete: the fake certifies its containers' Env and Mounts unless uncertified.
+func (f fakeSocketInspector) evidenceComplete() bool { return !f.uncertified }
 
 func (f fakeSocketInspector) RunningContainers(context.Context) ([]docker.ContainerInfo, error) {
 	return f.containers, f.err
@@ -29,11 +33,7 @@ func (f fakeSocketInspector) RunningContainers(context.Context) ([]docker.Contai
 
 // sockCtr is a live container; state defaults to running.
 func sockCtr(name, service string, mounts []docker.Mount, env map[string]string, labels map[string]string) docker.ContainerInfo {
-	e := map[string]string{"PATH": "/usr/bin"} // every real container has PATH: the proof Config.Env was present
-	for k, v := range env {
-		e[k] = v
-	}
-	return docker.ContainerInfo{Name: name, Service: service, State: "running", Mounts: mounts, Env: e, Labels: labels}
+	return docker.ContainerInfo{Name: name, Service: service, State: "running", Mounts: mounts, Env: env, Labels: labels}
 }
 
 var (
@@ -52,7 +52,6 @@ func socketReport() *build.SocketReport {
 			"nginx": {"forgejo"}, "dupsvc": {"forgejo", "monitoring"}, "sockdata": {"sockdata"},
 		},
 		Core:    map[string]bool{"nself-admin": true, "ping-api": true, "postgres": true, "nginx": true},
-		Mounted: map[string]bool{"nginx": true},
 		Volumes: map[string]string{"sockvol": "is backed by /var/run", "plainvol": ""},
 	}
 }
@@ -111,11 +110,11 @@ func TestDockerSocketDoctor(t *testing.T) {
 		{"bind source this host cannot see is unknown", []docker.ContainerInfo{sockCtr("p_nginx", "nginx", bind("/nonexistent-sockguard/x"), nil, nil)}, nil, "", "unknown", []string{"/nonexistent-sockguard/x"}},
 		{"a genuine core service outside the proxies is not judged", []docker.ContainerInfo{sockCtr("p_c", catalogOnly, bindSock, unixHost, nil)}, nil, "", "pass", nil},
 		{"unrecognized service with no exposure passes", []docker.ContainerInfo{sockCtr("p_g", "ghost", bindData, nil, nil)}, nil, "", "pass", nil},
-		{"inspect output without Config.Env is unknown", []docker.ContainerInfo{{Name: "p_n", Service: "nginx", State: "running", Mounts: bindData}}, nil, "", "unknown", []string{"Config.Env"}},
-		{"declared volumes but no mounts is unknown", []docker.ContainerInfo{sockCtr("p_n", "nginx", nil, nil, nil)}, nil, "", "unknown", []string{"no mounts"}},
-		{"undeclared volumes and no mounts passes", []docker.ContainerInfo{sockCtr("p_s", "sockshort", nil, nil, nil)}, nil, "", "pass", nil},
+		{"certified inspector: empty Env and Mounts mean empty, so pass", []docker.ContainerInfo{sockCtr("p_s", "sockshort", nil, nil, nil)}, nil, "", "pass", nil},
 		{"mount without a destination is unknown", []docker.ContainerInfo{sockCtr("p_n", "nginx", []docker.Mount{{Source: dir, Type: "bind"}}, nil, nil)}, nil, "", "unknown", []string{"destination"}},
 		{"bind mount without a source is unknown", []docker.ContainerInfo{sockCtr("p_n", "nginx", []docker.Mount{{Destination: "/d", Type: "bind"}}, nil, nil)}, nil, "", "unknown", []string{"without a source"}},
+		{"unproven volume evidence outranks an exception: unknown, not warn", []docker.ContainerInfo{sockCtr("p_f", "forgejo", append(append([]docker.Mount{}, bindSock...), volumeOf("proj_plainvol")...), nil, nil)}, nil, "", "unknown", []string{"proj_plainvol", "forgejo"}},
+		{"a confirmed exposure outranks unproven volume evidence", []docker.ContainerInfo{sockCtr("p_n", "nginx", append(append([]docker.Mount{}, bindSock...), volumeOf("proj_plainvol")...), nil, nil)}, nil, "", "fail", []string{"proxy service nginx", "proj_plainvol"}},
 		{"plugin without an exception fails naming plugin and service", []docker.ContainerInfo{sockCtr("p_s", "sockshort", bindSock, nil, nil)}, nil, "", "fail", []string{"plugin sockshort", "service sockshort"}},
 		{"plugin with unix DOCKER_HOST fails", []docker.ContainerInfo{sockCtr("p_e", "evil", nil, unixHost, nil)}, nil, "", "fail", []string{"plugin evil"}},
 		{"excepted plugin warns", []docker.ContainerInfo{sockCtr("p_f", "forgejo", bindSock, nil, nil)}, nil, "", "warn", []string{"plugin forgejo", "P7-TRUST-21", "1.5.0"}},
@@ -148,7 +147,7 @@ func TestDockerSocketDoctor(t *testing.T) {
 			if tc.version != "" {
 				version.Version = tc.version
 			}
-			got := CheckProxyDockerSocket(context.Background(), fakeSocketInspector{tc.ctrs, tc.err}, socketReport())
+			got := CheckProxyDockerSocket(context.Background(), fakeSocketInspector{containers: tc.ctrs, err: tc.err}, socketReport())
 			if got.Status != tc.wantStatus || got.Name != "proxy-docker-socket" {
 				t.Fatalf("status %q name %q, want %q: %s", got.Status, got.Name, tc.wantStatus, got.Message)
 			}
@@ -159,6 +158,34 @@ func TestDockerSocketDoctor(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("the production inspector cannot certify empty typed fields", func(t *testing.T) {
+		if _, ok := any(composeInspector{}).(evidenceCertifier); ok {
+			t.Fatal("composeInspector must not certify: internal/docker loses field presence")
+		}
+		run := func(c docker.ContainerInfo) CheckResult {
+			return CheckProxyDockerSocket(context.Background(), fakeSocketInspector{containers: []docker.ContainerInfo{c}, uncertified: true}, socketReport())
+		}
+		env := map[string]string{"PATH": "/usr/bin"}
+		for name, tc := range map[string]struct {
+			c    docker.ContainerInfo
+			want string
+		}{
+			// valid identity, but Config.Env and Mounts were omitted from the JSON: typed values are empty, never nil
+			"identity only, Env and Mounts omitted": {docker.ContainerInfo{ID: "abc", Name: "p_n", Service: "nginx", State: "running", Env: map[string]string{}, Mounts: []docker.Mount{}}, "unknown"},
+			"nil typed values":                      {docker.ContainerInfo{ID: "abc", Name: "p_n", Service: "nginx", State: "running"}, "unknown"},
+			"Env present, Mounts empty":             {sockCtr("p_n", "nginx", nil, env, nil), "unknown"},
+			"Mounts present, Env empty":             {sockCtr("p_n", "nginx", bindData, nil, nil), "unknown"},
+			"both positive, safe bind":              {sockCtr("p_n", "nginx", bindData, env, nil), "pass"},
+			"both positive, socket":                 {sockCtr("p_n", "nginx", bindSock, env, nil), "fail"},
+			"both positive, excepted plugin":        {sockCtr("p_f", "forgejo", bindSock, env, nil), "warn"},
+			"excepted plugin, Env unproven":         {sockCtr("p_f", "forgejo", bindSock, nil, nil), "unknown"},
+		} {
+			if got := run(tc.c); got.Status != tc.want {
+				t.Errorf("%s: status %q, want %q: %s", name, got.Status, tc.want, got.Message)
+			}
+		}
+	})
 
 	t.Run("a ghost plugin kept alive by an override is still judged", func(t *testing.T) {
 		wd := t.TempDir()

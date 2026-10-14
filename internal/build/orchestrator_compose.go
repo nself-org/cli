@@ -228,11 +228,11 @@ func buildOllamaSnippet(keepAlive string, enableGPU bool) string {
 // scanSocketService lists how one service reaches the Docker socket; env_file, extends, volumes_from and unresolvable values count.
 func scanSocketService(d socketDoc, name string, body map[string]any, lookup SocketEnv, vols map[string]string) ([]SocketUse, error) {
 	var uses []SocketUse
-	use := func(f string, a ...any) { uses = append(uses, SocketUse{d.origin, fmt.Sprintf(f, a...)}) }
+	use := func(u bool, f string, a ...any) { uses = append(uses, SocketUse{d.origin, fmt.Sprintf(f, a...), u}) }
 	bad := func(w string) error { return fmt.Errorf("%s service %q has an unsupported %s", d.origin, name, w) }
 	for _, k := range []string{"env_file", "extends", "volumes_from"} {
 		if body[k] != nil {
-			use("uses %s, which is not inspected", k)
+			use(true, "uses %s, which is not inspected", k)
 		}
 	}
 	entries, isList := body["volumes"].([]any)
@@ -261,11 +261,11 @@ func scanSocketService(d socketDoc, name string, body map[string]any, lookup Soc
 		}
 		switch {
 		case !ok || !rok:
-			use("mounts a volume that cannot be resolved (%v)", e)
+			use(true, "mounts a volume that cannot be resolved (%v)", e)
 		case SocketPathExposed(src), SocketPathExposed(res), path.Base(dst) == "docker.sock":
-			use("mounts the Docker socket (volume %q)", src+":"+dst)
+			use(false, "mounts the Docker socket (volume %q)", src+":"+dst)
 		case vols[src] != "":
-			use("mounts named volume %q, which %s", src, vols[src])
+			use(strings.HasPrefix(vols[src], "has a backing"), "mounts named volume %q, which %s", src, vols[src])
 		}
 	}
 	env := map[string]any{}
@@ -293,7 +293,7 @@ func scanSocketService(d socketDoc, name string, body map[string]any, lookup Soc
 			val = fmt.Sprint(v)
 		}
 		if x, ok := expandSocket(val, lookup); !ok || strings.Contains(strings.ToLower(x), "unix:") {
-			use("sets DOCKER_HOST to %q (a unix socket, or not resolvable)", val)
+			use(!ok, "sets DOCKER_HOST to %q (a unix socket, or not resolvable)", val)
 		}
 	}
 	return uses, nil

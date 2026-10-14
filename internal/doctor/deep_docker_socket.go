@@ -8,7 +8,8 @@ package doctor
 //          compose ps and inspect (behind SocketInspector, faked in tests);
 //          build.AnalyzeSocket's view of the compose inputs.
 // Outputs: one CheckResult: fail > unknown > warn > pass (skip: no project).
-// Constraints: read-only. Plugin containers are every non-proxy service neither
+// Constraints: read-only. Unproven evidence outranks an exception (unknown, not
+//          warn); a known exposure outranks both (fail). Plugin containers are every non-proxy service neither
 //          the generated stack nor the service catalog declares (an override
 //          alone does not make a name core), so a deleted or disabled
 //          fragment cannot hide one; the exception table is build's own, applies to a
@@ -37,6 +38,12 @@ const dockerSocketCheckName = "proxy-docker-socket"
 type SocketInspector interface {
 	RunningContainers(ctx context.Context) ([]docker.ContainerInfo, error)
 }
+
+// evidenceCertifier is implemented (inside this package only) by an inspector
+// that certifies every container it returns carries its full Config.Env and
+// Mounts, so empty values mean empty. composeInspector cannot: see the
+// check below.
+type evidenceCertifier interface{ evidenceComplete() bool }
 
 // composeInspector lists through `docker compose ps`, then inspects each one.
 type composeInspector struct {
@@ -107,6 +114,8 @@ func CheckProxyDockerSocket(ctx context.Context, ins SocketInspector, rep *build
 	if err != nil {
 		return socketResult("unknown", "cannot inspect containers, so the Docker socket exposure is unknown: "+err.Error(), "docker ps")
 	}
+	certifier, _ := ins.(evidenceCertifier)
+	certified := certifier != nil && certifier.evidenceComplete()
 	var failed, unknown, allowed []string
 	for _, c := range containers {
 		service := c.Service
@@ -134,15 +143,11 @@ func CheckProxyDockerSocket(ctx context.Context, ins SocketInspector, rep *build
 			who = "plugin (no fragment names it) " + who
 		}
 		found, unk := containerSocketExposure(c, rep)
-		// The docker package decodes inspect JSON into non-nil empty values, so a
-		// missing Config.Env or Mounts looks like an empty one. Two cross-checks
-		// prove presence: every container has PATH, and a service whose inputs
-		// declare volumes has mounts. Anything else cannot be told apart.
-		if _, ok := c.Env["PATH"]; !ok {
-			unk = append(unk, "has no Config.Env in its inspect output, so DOCKER_HOST is unknown")
-		}
-		if rep.Mounted[service] && len(c.Mounts) == 0 {
-			unk = append(unk, "is declared with volumes but its inspect output lists no mounts")
+		// internal/docker decodes inspect JSON into empty (not nil) values, so an
+		// omitted Config.Env or Mounts looks like an empty one. Only non-empty
+		// values prove a field was present; otherwise the inspector must certify.
+		if !certified && (len(c.Env) == 0 || len(c.Mounts) == 0) {
+			unk = append(unk, "has an empty Config.Env or Mounts in its inspect output, which cannot prove the field was present")
 		}
 		for _, u := range unk {
 			unknown = append(unknown, who+" "+u)
