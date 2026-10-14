@@ -117,8 +117,12 @@ func proxyComposeDiscoverable(workdir, pluginDir, provider string) error {
 	if err != nil {
 		return err
 	}
+	overlay, pathErr := filepath.Abs(filepath.Join(workdir, ".nself", "plugins", "traefik", pluginComposeFilename))
+	if pathErr != nil {
+		return pathErr
+	}
 	for _, file := range files {
-		if provider == ProviderTraefik && file == expected {
+		if provider == ProviderTraefik && file == overlay {
 			return nil
 		}
 	}

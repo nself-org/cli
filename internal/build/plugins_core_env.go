@@ -14,8 +14,8 @@ package build
 // Inputs: a plugin compose fragment's bytes + its name/port, or the vars map
 // ComputePluginEnvVars builds for .nself/compose.env / .env.computed.
 // Outputs: the (possibly rewritten) fragment bytes, or vars mutated in place.
-// Constraints: fragments live in the GLOBAL plugin dir (~/.nself/plugins) and
-// are shared across every project with the plugin installed, so
+// Constraints: installed fragments in the GLOBAL plugin dir (~/.nself/plugins)
+// stay read-only; discovery writes normalized copies into each project. Thus
 // project-specific values are injected as ${VAR} interpolation references —
 // exactly like the pre-existing ${DOCKER_NETWORK}/${DATABASE_URL} refs — not
 // literals; docker compose resolves them per-project from
