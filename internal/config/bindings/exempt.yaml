@@ -11,7 +11,6 @@ exempt:
   - {command: stop, flag: no-monorepo, reason: "NSELF_NO_MONOREPO is listed as a known key but no code reads it; the flag is the only control"}
   - {command: logs, flag: no-color, reason: "boolean inverse of NO_COLOR, which is presence based and read by internal/ui and internal/output; the flag does not set it"}
   - {command: start, flag: debug, reason: "shows debug output for this run only; it does not set DEBUG (build --debug does)"}
-  - {command: config plugins dev, flag: debug, reason: "attaches the dlv debugger; unrelated to the DEBUG key"}
   - {command: db import firebase, flag: project-name, reason: "names generated SQL files; it is not the PROJECT_NAME of the project"}
   - {command: backup list, flag: env, reason: "filters backup rows by environment label; it does not select the local ENV cascade"}
   - {command: db drift, flag: env, reason: "selects a deploy inventory target (NSELF_DEPLOY_HOST_<ENV> or control-plane.yaml); an existing project directory is still accepted for back-compat; not the local ENV cascade"}
@@ -28,4 +27,3 @@ exempt:
   - {command: deploy access revoke, flag: env, reason: "selects hosts in a deploy inventory environment, not the local ENV cascade"}
   - {command: deploy status, flag: env, reason: "selects the deploy inventory environment to check, not the local ENV cascade"}
   - {command: exec, flag: env, reason: "repeatable KEY=VALUE pairs for the child process, not the ENV key"}
-  - {command: functions deploy, flag: env, reason: "repeatable KEY=VALUE pairs for the function, not the ENV key"}

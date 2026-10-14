@@ -25,6 +25,32 @@ Use `--no-deprecation-warnings` only in scripted environments where the warning 
 
 No CLI commands or flags are deprecated at v1.0.9.
 
+## Break-outs and removed commands (v1.5)
+
+In v1.5 mode these core commands left the binary for plugins. The old spelling still works: the first time you
+type it without the plugin installed, nSelf installs the plugin through the verified installer (free tier,
+checksum and release signature checked, configured registry only), prints one line on stderr and runs it.
+
+| Old command | Now | Plugin |
+|-------------|-----|--------|
+| `nself ci` | `nself ci` | `ci` |
+| `nself runner` | `nself ci nodes` | `ci` |
+| `nself functions` | `nself functions` | `functions` |
+| `nself server` | `nself infra server` | `infra` |
+| `nself plugin init`, `new`, `dev`, `debug`, `link`, `unlink`, `test` | `nself plugin-dev <same>` | `plugin-dev` |
+| `nself plugin marketplace`, `nself plugin submit` | removed (E410): see https://nself.org/plugins | none |
+
+The line printed once per process: `warning: 'nself <old>' now comes from the <slug> plugin; installed <slug>@<version>`.
+`--quiet` and `--no-deprecation-warnings` silence it.
+
+- **Version.** The version in `nself.lock.yaml` (`plugins.<slug>.version`) when the project pins one, else the catalogue's current release.
+- **When it cannot install.** Offline, refused, unsigned or tampered releases, and `NSELF_NO_AUTO_ADD=1`, exit 1 with
+  `[E404]` and the fix `nself add <slug>`. With `--json`, stdout carries `.error.code == "E404"` and the same remediation.
+  Set `NSELF_NO_AUTO_ADD=1` in an environment that must never download code (a gate on a locked-down runner), and
+  run `nself add ci` there once.
+- **A plugin you disabled** (`.disabled` in its plugin directory) is never reinstalled: the command fails with `[E407]`.
+- **v1.4 mode is unchanged**: the commands stay in core, and nothing is installed.
+
 ## Deprecation Cycle
 
 ɳSelf uses a 3-phase deprecation cycle across all surfaces:

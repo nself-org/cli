@@ -12,8 +12,10 @@ Where every old command spelling went in the v1.5 canon (ADR 0016). The change a
 | `nself account` | `nself license account` | move | v1.5.0 | v1.6.0 |
 | `nself bundle` | `nself config bundles` | move | v1.5.0 | v1.6.0 |
 | `nself bundle remove` | `nself remove` | shim | v1.5.0 | v1.6.0 |
+| `nself ci` | `nself ci` (plugin ci) | breakout | v1.5.0 | — |
 | `nself dev` | `nself start dev` | move | v1.5.0 | v1.6.0 |
 | `nself env` | `nself config env` | move | v1.5.0 | v1.6.0 |
+| `nself functions` | `nself functions` (plugin functions) | breakout | v1.5.0 | — |
 | `nself generate` | `nself db generate` | move | v1.5.0 | v1.6.0 |
 | `nself health` | `nself status health` | move | v1.5.0 | v1.6.0 |
 | `nself help-topics` | `nself help topics` | move | v1.5.0 | v1.6.0 |
@@ -39,15 +41,26 @@ Where every old command spelling went in the v1.5 canon (ADR 0016). The change a
 | `nself ops` | `nself deploy ops` | retired-hub | v1.5.0 | v1.6.0 |
 | `nself ops deploy` | `nself deploy ops` | move | v1.5.0 | v1.6.0 |
 | `nself plugin` | `nself config plugins` | move | v1.5.0 | v1.6.0 |
+| `nself plugin debug` | `nself plugin-dev debug` (plugin plugin-dev) | breakout | v1.5.0 | — |
+| `nself plugin dev` | `nself plugin-dev dev` (plugin plugin-dev) | breakout | v1.5.0 | — |
+| `nself plugin init` | `nself plugin-dev init` (plugin plugin-dev) | breakout | v1.5.0 | — |
 | `nself plugin install` | `nself add` | shim | v1.5.0 | v1.6.0 |
+| `nself plugin link` | `nself plugin-dev link` (plugin plugin-dev) | breakout | v1.5.0 | — |
+| `nself plugin marketplace` | — | removed | v1.5.0 | — |
+| `nself plugin new` | `nself plugin-dev new` (plugin plugin-dev) | breakout | v1.5.0 | — |
 | `nself plugin remove` | `nself remove` | shim | v1.5.0 | v1.6.0 |
+| `nself plugin submit` | — | removed | v1.5.0 | — |
+| `nself plugin test` | `nself plugin-dev test` (plugin plugin-dev) | breakout | v1.5.0 | — |
+| `nself plugin unlink` | `nself plugin-dev unlink` (plugin plugin-dev) | breakout | v1.5.0 | — |
 | `nself promote` | `nself deploy promote-env` | move | v1.5.0 | v1.6.0 |
+| `nself runner` | `nself ci nodes` (plugin ci) | breakout | v1.5.0 | — |
 | `nself secrets` | `nself config secrets` | move | v1.5.0 | v1.6.0 |
 | `nself security` | `nself doctor security` | retired-hub | v1.5.0 | v1.6.0 |
 | `nself security audit` | `nself doctor security audit` | move | v1.5.0 | v1.6.0 |
 | `nself security setup` | `nself deploy security setup` | move | v1.5.0 | v1.6.0 |
 | `nself security status` | `nself doctor security status` | move | v1.5.0 | v1.6.0 |
 | `nself self-heal` | `nself doctor heal` | move | v1.5.0 | v1.6.0 |
+| `nself server` | `nself infra server` (plugin infra) | breakout | v1.5.0 | — |
 | `nself service` | `nself config services` | move | v1.5.0 | v1.6.0 |
 | `nself telemetry` | `nself config telemetry` | move | v1.5.0 | v1.6.0 |
 | `nself template` | `nself init template` | move | v1.5.0 | v1.6.0 |
@@ -55,7 +68,7 @@ Where every old command spelling went in the v1.5 canon (ADR 0016). The change a
 | `nself urls` | `nself status urls` | move | v1.5.0 | v1.6.0 |
 | `nself verify-sbom` | `nself update verify-sbom` | move | v1.5.0 | v1.6.0 |
 
-Total rows: 46
+Total rows: 59
 
 <!-- END GENERATED:canon-table -->
 

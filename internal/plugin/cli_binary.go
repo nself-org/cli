@@ -26,6 +26,10 @@ import (
 // Outputs: ~/.nself/plugins/bin/nself-<name>, and the same path removed on
 // uninstall.
 //
+// Plugin command binaries are cross-compiled by the plugins release pipeline
+// (A-32), never built by the CLI: the v1.5 break-out auto-add (cmd/commands/relocate.go,
+// P7-CANON-13) installs the signed release asset and links the binary here.
+//
 // Constraints: the bin directory is the ONLY place ProxyCommand searches, and
 // deliberately so — resolving plugin binaries through $PATH would let anything
 // earlier on the path impersonate a plugin (S-002). Nothing here widens that.

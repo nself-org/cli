@@ -3,47 +3,63 @@
 schema_version: 1
 commands:
   # cmd/commands/ci.go:64 posts a GitHub commit status unless --no-status
-  ci: {canon: pending, side_effect: remote}
+  ci: {canon: pending, side_effect: remote, mode: v1.4}
   # cmd/commands/ci_build.go:62 builds locally; --upload pushes the artifact to the remote
-  ci build: {side_effect: write, flags: {upload: {side_effect: remote}}}
-  ci eval: {side_effect: write, exit_codes: {"0": "suite passed (pass_rate and suite_score >= configured threshold)", "1": "suite ran but is below threshold", "2": "validation error (bad YAML or invalid eval-set schema)", "3": "precondition not met (BGE-M3 or AI gateway unavailable)"}}
+  ci build: {side_effect: write, flags: {upload: {side_effect: remote}}, mode: v1.4}
+  ci eval: {side_effect: write, exit_codes: {"0": "suite passed (pass_rate and suite_score >= configured threshold)", "1": "suite ran but is below threshold", "2": "validation error (bad YAML or invalid eval-set schema)", "3": "precondition not met (BGE-M3 or AI gateway unavailable)"}, mode: v1.4}
   # cmd/commands/eval_gate.go:62 RunE path changes no persistent state (prints/reads only)
-  ci eval gate: {side_effect: read, exit_codes: {"0": "tier is cleared (all required suites pass thresholds)", "1": "tier is blocked (one or more suites are below threshold or have no runs)", "2": "invalid tier name provided", "3": "precondition not met (BGE-M3 or AI gateway unavailable; NOT a regression)"}}
+  ci eval gate: {side_effect: read, exit_codes: {"0": "tier is cleared (all required suites pass thresholds)", "1": "tier is blocked (one or more suites are below threshold or have no runs)", "2": "invalid tier name provided", "3": "precondition not met (BGE-M3 or AI gateway unavailable; NOT a regression)"}, mode: v1.4}
   # cmd/commands/ci_forgejo.go:56 RunE path changes no persistent state (prints/reads only)
-  ci forgejo: {side_effect: read}
+  ci forgejo: {side_effect: read, mode: v1.4}
   # cmd/commands/ci_serve.go:23 receives webhooks, runs attacker-influenced repo content in Docker and posts GitHub commit statuses (ci_serve.go:25-39), like `ci`; --allow-unsandboxed runs the gate on the host (ci_serve.go:115, "DANGEROUS")
-  ci serve: {side_effect: remote, output: stream, flags: {allow-unsandboxed: {side_effect: destructive}}}
-  config plugins debug: {side_effect: write}
-  config plugins dev: {side_effect: write, output: stream}
-  config plugins init: {side_effect: write}
-  config plugins link: {side_effect: write}
-  # cmd/commands/plugin_marketplace_cmds.go:39 RunE path changes no persistent state (prints/reads only)
-  config plugins marketplace: {side_effect: read}
-  config plugins marketplace info: {side_effect: read, json: legacy}
-  config plugins marketplace list: {side_effect: read, json: legacy}
-  config plugins marketplace search: {side_effect: read, json: legacy}
-  # cmd/commands/plugin_new.go:91 cobra Deprecated: use plugin init
-  config plugins new: {canon: deprecated-shim, target: config plugins init, side_effect: write}
-  # cmd/commands/plugin_submit.go:42 RunE path changes no persistent state (prints/reads only)
-  config plugins submit: {side_effect: read}
-  config plugins test: {side_effect: write}
-  config plugins unlink: {side_effect: write}
+  ci serve: {side_effect: remote, output: stream, flags: {allow-unsandboxed: {side_effect: destructive}}, mode: v1.4}
   # cmd/commands/functions.go:28 RunE path changes no persistent state (prints/reads only)
-  functions: {canon: pending, side_effect: read}
-  functions delete: {side_effect: destructive}
+  functions: {canon: pending, side_effect: read, mode: v1.4}
+  functions delete: {side_effect: destructive, mode: v1.4}
   # cmd/commands/functions_deploy.go:55 copies files into functions/<name> and reloads the functions container; a re-deploy restores it (write)
-  functions deploy: {side_effect: write}
-  functions invoke: {side_effect: write}
-  functions list: {side_effect: read, json: legacy}
-  functions logs: {side_effect: read, output: stream}
+  functions deploy: {side_effect: write, mode: v1.4}
+  functions invoke: {side_effect: write, mode: v1.4}
+  functions list: {side_effect: read, json: legacy, mode: v1.4}
+  functions logs: {side_effect: read, output: stream, mode: v1.4}
+  plugin debug: {side_effect: write, mode: v1.4}
+  plugin dev: {side_effect: write, output: stream, mode: v1.4}
+  plugin init: {side_effect: write, mode: v1.4}
+  plugin link: {side_effect: write, mode: v1.4}
+  # cmd/commands/plugin_marketplace_cmds.go:39 RunE path changes no persistent state (prints/reads only)
+  plugin marketplace: {side_effect: read, mode: v1.4}
+  plugin marketplace info: {side_effect: read, json: legacy, mode: v1.4}
+  plugin marketplace list: {side_effect: read, json: legacy, mode: v1.4}
+  plugin marketplace search: {side_effect: read, json: legacy, mode: v1.4}
+  # cmd/commands/plugin_new.go:91 cobra Deprecated: use plugin init
+  plugin new: {canon: deprecated-shim, target: plugin init, side_effect: write, mode: v1.4}
+  # cmd/commands/plugin_submit.go:42 RunE path changes no persistent state (prints/reads only)
+  plugin submit: {side_effect: read, mode: v1.4}
+  plugin test: {side_effect: write, mode: v1.4}
+  plugin unlink: {side_effect: write, mode: v1.4}
   # cmd/commands/runner.go:42 RunE path changes no persistent state (prints/reads only)
-  runner: {canon: pending, side_effect: read}
-  runner provision: {side_effect: remote}
-  runner verify: {side_effect: read, json: legacy}
+  runner: {canon: pending, side_effect: read, mode: v1.4}
+  runner provision: {side_effect: remote, mode: v1.4}
+  runner verify: {side_effect: read, json: legacy, mode: v1.4}
   # cmd/commands/server.go:42 RunE path changes no persistent state (prints/reads only)
-  server: {canon: pending, side_effect: read}
-  server destroy: {side_effect: destructive, json: legacy}
-  server list: {side_effect: read, json: legacy}
-  server provision: {side_effect: remote, json: legacy}
+  server: {canon: pending, side_effect: read, mode: v1.4}
+  server destroy: {side_effect: destructive, json: legacy, mode: v1.4}
+  server list: {side_effect: read, json: legacy, mode: v1.4}
+  server provision: {side_effect: remote, json: legacy, mode: v1.4}
   # cmd/commands/server_resize.go:44 changes the server type on Hetzner; --upgrade-disk is permanent
-  server resize: {side_effect: remote, json: legacy, flags: {upgrade-disk: {side_effect: destructive}}}
+  server resize: {side_effect: remote, json: legacy, flags: {upgrade-disk: {side_effect: destructive}}, mode: v1.4}
+
+breakouts:
+  - {from: ci, plugin: ci, to: ci, since: v1.5.0}
+  - {from: runner, plugin: ci, to: ci nodes, since: v1.5.0}
+  - {from: functions, plugin: functions, to: functions, since: v1.5.0}
+  - {from: server, plugin: infra, to: infra server, since: v1.5.0}
+  - {from: plugin init, plugin: plugin-dev, to: plugin-dev init, since: v1.5.0}
+  - {from: plugin new, plugin: plugin-dev, to: plugin-dev new, since: v1.5.0}
+  - {from: plugin dev, plugin: plugin-dev, to: plugin-dev dev, since: v1.5.0}
+  - {from: plugin debug, plugin: plugin-dev, to: plugin-dev debug, since: v1.5.0}
+  - {from: plugin link, plugin: plugin-dev, to: plugin-dev link, since: v1.5.0}
+  - {from: plugin unlink, plugin: plugin-dev, to: plugin-dev unlink, since: v1.5.0}
+  - {from: plugin test, plugin: plugin-dev, to: plugin-dev test, since: v1.5.0}
+removed:
+  - {from: plugin marketplace, since: v1.5.0, message: "nself has no plugin marketplace; see https://nself.org/plugins"}
+  - {from: plugin submit, since: v1.5.0, message: "nself has no plugin marketplace; see https://nself.org/plugins"}

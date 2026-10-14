@@ -1,0 +1,43 @@
+{
+  "binaryName": "nself-plugin-dev",
+  "category": "infrastructure",
+  "commands": {
+    "binary": "nself-plugin-dev",
+    "command": "plugin-dev",
+    "subcommands": [
+      {
+        "name": "init",
+        "side_effect": "read",
+        "summary": "fixture init"
+      },
+      {
+        "name": "new",
+        "side_effect": "read",
+        "summary": "fixture new"
+      },
+      {
+        "name": "test",
+        "side_effect": "read",
+        "summary": "fixture test"
+      }
+    ],
+    "summary": "fixture plugin-dev commands"
+  },
+  "description": "fixture plugin-dev plugin for breakout-smoke.sh (synthetic)",
+  "license": "free",
+  "licenseType": "free",
+  "manifest_version": 2,
+  "maturity": "implemented",
+  "minNselfVersion": "1.5.0",
+  "name": "plugin-dev",
+  "pluginType": "cli",
+  "requires": {
+    "nself": ">=1.5.0"
+  },
+  "service": {
+    "kind": "cli"
+  },
+  "status": "stable",
+  "tier": "free",
+  "version": "1.0.0"
+}

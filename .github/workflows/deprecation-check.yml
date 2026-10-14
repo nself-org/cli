@@ -72,10 +72,26 @@ jobs:
                                 and c['path'].count(' ') == 1)))
           ")
 
+          # A break-out (internal/canon/domains, `breakouts:` rows) leaves the core
+          # tree but stays reachable: the v1.5 binary installs its plugin on first
+          # use and runs it, and fails with E404 when it cannot (P7-CANON-13).
+          BREAKOUT_KEPT=$(python3 -c "
+          import glob, re
+          out = set()
+          for f in glob.glob('internal/canon/domains/*.yaml'):
+              for m in re.finditer(r'^\s*- \{from: ([a-z][a-z0-9-]*), plugin: ', open(f).read(), re.M):
+                  out.add(m.group(1))
+          print(' '.join(sorted(out)))
+          ")
+
           FAIL=0
           for CMD in $REMOVED; do
             if [[ " $CANON_KEPT " == *" $CMD "* ]]; then
               echo "OK: '$CMD' remains in the command canon registry"
+              continue
+            fi
+            if [[ " $BREAKOUT_KEPT " == *" $CMD "* ]]; then
+              echo "OK: '$CMD' is a break-out: its plugin is auto-added on first use"
               continue
             fi
             if ! grep -q "name:.*nself $CMD" "$REGISTRY" 2>/dev/null; then
