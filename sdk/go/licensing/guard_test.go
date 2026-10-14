@@ -1,4 +1,4 @@
-package license
+package licensing
 
 import (
 	"bytes"
@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nself-org/cli/sdk/go/v2/license/licensetest"
+	"github.com/nself-org/cli/sdk/go/v2/licensing/licensetest"
 )
 
 func serve(g http.Handler, path string) *httptest.ResponseRecorder {
@@ -47,7 +47,7 @@ func TestGuardAbsenceRule(t *testing.T) {
 	c := claimsAt(now)
 	c["plugins"] = []string{"other"}
 	other := tokenFor(t, priv, header(), c)
-	c = claimsAt(now.Add(-DefaultGracePeriod - time.Minute))
+	c = claimsAt(now.Add(-EntitlementGracePeriod - time.Minute))
 	for name, token := range map[string]string{"missing": "", "forged": "bad.token.signature", "other": other, "expired": tokenFor(t, priv, header(), c)} {
 		t.Run(name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "token")
@@ -133,7 +133,7 @@ func TestGuardRereads24h(t *testing.T) {
 	clock.advance(24 * time.Hour)
 	waitStatus(t, g, 200)
 	clock.mu.Lock()
-	clock.now = now.Add(DefaultGracePeriod + time.Second)
+	clock.now = now.Add(EntitlementGracePeriod + time.Second)
 	clock.mu.Unlock()
 	if serve(g, "/app").Code != 503 {
 		t.Fatal("cached token bypassed signed expiry")

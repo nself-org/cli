@@ -3,7 +3,7 @@ package licensetest
 
 import (
 	"crypto/ed25519"
-	"github.com/nself-org/cli/sdk/go/v2/license/internal/keyset"
+	"github.com/nself-org/cli/sdk/go/v2/licensing/internal/keyset"
 	"testing"
 )
 

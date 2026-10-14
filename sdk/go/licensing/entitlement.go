@@ -1,4 +1,4 @@
-package license
+package licensing
 
 import (
 	"crypto/ed25519"
@@ -12,7 +12,9 @@ import (
 )
 
 const FileEnv = "NSELF_ENTITLEMENT_FILE"
-const DefaultGracePeriod = 30 * 24 * time.Hour
+
+// EntitlementGracePeriod is how long past the signed exp a licence JWT still grants a plugin (D8; distinct from DefaultGracePeriod, the CLI offline ladder).
+const EntitlementGracePeriod = 30 * 24 * time.Hour
 const maxTokenBytes = 1024 * 1024
 
 var ErrEntitlementExpired = errors.New("entitlement_expired")
@@ -101,10 +103,10 @@ func verifyClaims(payload []byte, slug string, now time.Time) error {
 	if json.Unmarshal(payload, &claims) != nil || claims.Iss != "ping.nself.org" || !audienceOK(claims.Aud) {
 		return ErrEntitlementExpired
 	}
-	if claims.Exp <= 0 || claims.Exp > (1<<63-1)-int64(DefaultGracePeriod/time.Second) {
+	if claims.Exp <= 0 || claims.Exp > (1<<63-1)-int64(EntitlementGracePeriod/time.Second) {
 		return ErrEntitlementExpired
 	}
-	deadline := claims.Exp + int64(DefaultGracePeriod/time.Second)
+	deadline := claims.Exp + int64(EntitlementGracePeriod/time.Second)
 	if now.Unix() > deadline || (now.Unix() == deadline && now.Nanosecond() > 0) {
 		return ErrEntitlementExpired
 	}

@@ -1,4 +1,4 @@
-package license
+package licensing
 
 import (
 	"crypto/ed25519"
@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nself-org/cli/sdk/go/v2/license/licensetest"
+	"github.com/nself-org/cli/sdk/go/v2/licensing/licensetest"
 )
 
 func syntheticKey(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
@@ -123,12 +123,12 @@ func TestVerifyEntitlementGrace(t *testing.T) {
 	licensetest.UseKey(t, pub)
 	exp := time.Unix(1800000000, 0)
 	setToken(t, tokenFor(t, priv, header(), claimsAt(exp)))
-	for _, now := range []time.Time{exp.Add(-time.Second), exp, exp.Add(DefaultGracePeriod - time.Second), exp.Add(DefaultGracePeriod)} {
+	for _, now := range []time.Time{exp.Add(-time.Second), exp, exp.Add(EntitlementGracePeriod - time.Second), exp.Add(EntitlementGracePeriod)} {
 		if VerifyEntitlement("paid", now) != nil {
 			t.Fatalf("rejected within grace at %s", now)
 		}
 	}
-	if VerifyEntitlement("paid", exp.Add(DefaultGracePeriod+time.Nanosecond)) == nil {
+	if VerifyEntitlement("paid", exp.Add(EntitlementGracePeriod+time.Nanosecond)) == nil {
 		t.Fatal("accepted beyond grace")
 	}
 }
@@ -207,7 +207,7 @@ func TestVerifyEntitlementExpiryBoundaries(t *testing.T) {
 	pub, priv := syntheticKey(t)
 	licensetest.UseKey(t, pub)
 	const graceSeconds = int64(2592000)
-	if DefaultGracePeriod != time.Duration(graceSeconds)*time.Second {
+	if EntitlementGracePeriod != time.Duration(graceSeconds)*time.Second {
 		t.Fatal("grace must be exactly 30 days")
 	}
 	const upper = int64(1<<63-1) - graceSeconds

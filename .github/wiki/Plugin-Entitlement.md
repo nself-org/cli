@@ -4,7 +4,7 @@ In v1.5 mode (`NSELF_V15=1`), build, start, and `nself license set` refresh the 
 
 If no verified JWT is obtainable, the CLI writes an empty file and reports E125 (exit 3). Default builds always retain the mount, including when `LICENSE_PUBLIC_KEY_OVERRIDE` is set. Only a development build tagged `nself_devkeys` with that override set can skip the mount, with a warning. v1.4 mode leaves generated compose unchanged.
 
-The `github.com/nself-org/cli/sdk/go/v2/license` package verifies compact EdDSA JWTs against committed ping public keys and the header's `kid`. It fails closed for unknown keys, invalid signatures, unsupported algorithms, wrong issuer (`ping.nself.org`), wrong audience (`nself-cli`), or a plugin slug absent from `plugins` (unless `"*"` is present). Runtime environment overrides and key files cannot change the production verifier's trusted keys.
+The `github.com/nself-org/cli/sdk/go/v2/licensing` package verifies compact EdDSA JWTs against committed ping public keys and the header's `kid`. It fails closed for unknown keys, invalid signatures, unsupported algorithms, wrong issuer (`ping.nself.org`), wrong audience (`nself-cli`), or a plugin slug absent from `plugins` (unless `"*"` is present). Runtime environment overrides and key files cannot change the production verifier's trusted keys.
 
 The grace period ends thirty days after the signed `exp`, including the endpoint. Local file timestamps and refresh times do not extend grace. Doctor reports E126 (exit class 1) when the verified file's `exp` is more than seven days old. Unattended refresh scheduling is a separate feature.
 

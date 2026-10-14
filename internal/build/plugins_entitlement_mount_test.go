@@ -137,9 +137,9 @@ func TestMountPlanDoesNotPublish(t *testing.T) {
 
 // TestKeysEqual compares committed source data across the independent module boundary.
 func TestKeysEqual(t *testing.T) {
-	source, err := os.ReadFile("../../sdk/go/license/internal/keyset/keys.go")
+	source, err := os.ReadFile("../../sdk/go/licensing/internal/keyset/keys.go")
 	if os.IsNotExist(err) {
-		source, err = os.ReadFile("../../sdk/go/license/keys.go")
+		source, err = os.ReadFile("../../sdk/go/licensing/keys.go")
 	}
 	if err != nil {
 		t.Fatal(err)

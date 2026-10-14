@@ -1,6 +1,6 @@
 //go:build nself_testkeys
 
-package license
+package licensing
 
 import (
 	"crypto/ed25519"

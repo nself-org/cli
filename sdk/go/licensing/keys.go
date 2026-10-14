@@ -1,9 +1,9 @@
 // Package license verifies the ping-issued runtime entitlement contract.
-package license
+package licensing
 
 import (
 	"crypto/ed25519"
-	"github.com/nself-org/cli/sdk/go/v2/license/internal/keyset"
+	"github.com/nself-org/cli/sdk/go/v2/licensing/internal/keyset"
 )
 
 // PingKey identifies a ping Ed25519 verification key.
