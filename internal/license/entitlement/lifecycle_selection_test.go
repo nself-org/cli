@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -132,11 +133,26 @@ func TestRefreshHardLinkRepairMessage(t *testing.T) {
 	compattest.Set(t, true)
 	entry, _ := signedFixture(t, "valid-key", []string{"chat"}, time.Now().Add(time.Hour))
 	dir := t.TempDir()
-	putRuntimeToken(t, dir, entry.JWT)
+	putRuntimeToken(t, dir, "stale-token")
 	if err := os.Link(entitlement.Path(dir), filepath.Join(dir, "alias")); err != nil {
 		t.Skip(err)
 	}
-	err := entitlement.Refresh(context.Background(), dir)
+	before, err := os.Stat(entitlement.Path(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = entitlement.Refresh(context.Background(), dir)
+	if runtime.GOOS == "windows" {
+		if err != nil {
+			t.Fatalf("Windows refresh must support existing regular files: %v", err)
+		}
+		after, statErr := os.Stat(entitlement.Path(dir))
+		data, readErr := os.ReadFile(filepath.Join(dir, "alias"))
+		if statErr != nil || readErr != nil || !os.SameFile(before, after) || string(data) != entry.JWT {
+			t.Fatalf("Windows refresh lost inode or alias token: stat=%v read=%v", statErr, readErr)
+		}
+		return
+	}
 	if err == nil || !strings.Contains(err.Error(), "remove the entitlement file") {
 		t.Fatalf("missing repair instruction: %v", err)
 	}

@@ -165,6 +165,19 @@ func writeExisting(path string, data []byte, before os.FileInfo) error {
 	if err := f.Chmod(0600); err != nil {
 		return err
 	}
+	return writeContents(f, data)
+}
+
+type contentWriter interface {
+	Write([]byte) (int, error)
+	Truncate(int64) error
+	Sync() error
+}
+
+// writeContents persists replacement bytes before reporting successful refresh.
+// Purpose: preserve ordered durable writes. Inputs: writer/token. Outputs: error.
+// Constraints: stop on write or truncate failure. SPORT: mounted refresh.
+func writeContents(f contentWriter, data []byte) error {
 	if _, err := f.Write(data); err != nil {
 		return err
 	}

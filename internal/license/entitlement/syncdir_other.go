@@ -12,6 +12,18 @@ func syncDirectory(dir string) error {
 	if err != nil {
 		return err
 	}
+	return syncAndClose(f)
+}
+
+type directorySyncer interface {
+	Sync() error
+	Close() error
+}
+
+// syncAndClose closes the directory even when persisting its entry fails.
+// Purpose: persist and release the directory. Inputs: handle. Outputs: error.
+// Constraints: preserve sync errors before close errors. SPORT: entitlement durability.
+func syncAndClose(f directorySyncer) error {
 	if err := f.Sync(); err != nil {
 		_ = f.Close()
 		return err
