@@ -15,7 +15,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -158,14 +157,11 @@ func discoverPluginComposeFilesFx(fx Effects, sink Sink, workdir, pluginDir stri
 			if !bytes.Equal(normalized, content) {
 				// Write the corrected file back so the manifest references a valid compose.
 				// The bytes go through the Sink in both modes (P7-LIVE-03) so a plan
-				// carries and binds them; a real write error stays tolerated as
-				// before, a deviation from a confirmed render does not.
+				// carries and binds them; write failures must fail the build so
+				// licensed services cannot run without their entitlement guard.
 				_ = fx.Do(EffectPluginFragment, absPath, "normalise plugin compose fragment in place", nil)
 				if werr := sink.WriteFile(absPath, normalized, 0644); werr != nil {
-					var dev *deviationError
-					if errors.As(werr, &dev) {
-						return nil, werr
-					}
+					return nil, werr
 				}
 			}
 		}
