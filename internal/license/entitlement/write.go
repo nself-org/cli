@@ -157,10 +157,5 @@ func writeNew(path string, data []byte) error {
 	if err := os.Rename(tmp.Name(), path); err != nil {
 		return err
 	}
-	f, err := os.Open(dir)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = f.Close() }()
-	return f.Sync()
+	return syncDirectory(dir)
 }

@@ -5,7 +5,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/nself-org/cli/internal/compat/compattest"
@@ -45,8 +47,11 @@ func TestRefreshPreservesExistingInode(t *testing.T) {
 	}
 	data := make([]byte, len(entry.JWT)+1)
 	n, _ := pinned.Read(data)
-	if string(data[:n]) != entry.JWT || after.Mode().Perm() != 0600 {
+	if string(data[:n]) != entry.JWT {
 		t.Fatal("pinned inode must contain the complete private replacement token")
+	}
+	if runtime.GOOS != "windows" && after.Mode().Perm() != 0600 {
+		t.Fatal("refreshed inode must have Unix permissions 0600")
 	}
 }
 
@@ -114,6 +119,9 @@ func TestRefreshRefusesSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(target, path); err != nil {
+		if runtime.GOOS == "windows" && errors.Is(err, syscall.Errno(1314)) {
+			t.Skip("Windows account lacks the symlink creation privilege")
+		}
 		t.Fatal(err)
 	}
 	if err := entitlement.Refresh(context.Background(), dir); errs.ExitCodeFor(err) != 3 {

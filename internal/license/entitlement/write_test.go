@@ -10,6 +10,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"testing"
 	"time"
@@ -78,7 +79,10 @@ func TestEntitlementRefreshWrites(t *testing.T) {
 			t.Fatalf("runtime file must equal cached JWT: %v", err)
 		}
 		st, err := os.Stat(path)
-		if err != nil || st.Mode().Perm() != 0600 {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if runtime.GOOS != "windows" && st.Mode().Perm() != 0600 {
 			t.Fatalf("runtime file mode must be 0600: %v", err)
 		}
 		entry.RawBody += "tampered"
