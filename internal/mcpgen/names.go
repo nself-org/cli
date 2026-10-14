@@ -24,6 +24,7 @@ import (
 
 	"github.com/nself-org/cli/internal/canon"
 	"github.com/nself-org/cli/internal/cmdregistry"
+	"github.com/nself-org/cli/internal/invoke"
 )
 
 const (
@@ -39,6 +40,9 @@ const (
 var (
 	toolNameRe      = regexp.MustCompile(`^[a-z0-9_]{1,64}$`)
 	pluginSegmentRe = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+	// flagNameRe bounds a plugin flag name, which becomes a property key of
+	// the input schema and so reaches the client unescaped by cleanSchema.
+	flagNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
 )
 
 // ValidToolName reports whether name may be a tool name.
@@ -68,8 +72,21 @@ func nameProblem(cmd *cmdregistry.Command, name string) string {
 		return "tool name is not made of a-z, 0-9 and _"
 	case cmd.Canon == canon.CanonPlugin && !PluginPathOK(cmd.Path):
 		return "a word of the command path is not a valid plugin command name"
+	case cmd.Canon == canon.CanonPlugin && !flagNamesOK(cmd):
+		return "a flag name is not plain text of at most 64 characters"
 	}
 	return ""
+}
+
+// flagNamesOK reports whether every flag the MCP transport exposes for cmd has
+// a plain name.
+func flagNamesOK(cmd *cmdregistry.Command) bool {
+	for _, f := range invoke.ExposedFlags(cmd, invoke.TransportMCP) {
+		if !flagNameRe.MatchString(f.Name) {
+			return false
+		}
+	}
+	return true
 }
 
 // claimOrder lists the registry indexes with core and subcommand entries

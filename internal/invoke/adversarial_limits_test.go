@@ -218,6 +218,7 @@ func advMembers(t *testing.T) {
 		"flags as string":              `{"flags":"x"}`,
 		"args as object":               `{"args":{}}`,
 		"args with null element":       `{"args":[null]}`,
+		"argv with null element":       `{"argv":[null]}`,
 		"argv with number":             `{"argv":[1]}`,
 		"confirm as number":            `{"confirm":1}`,
 		"confirm not lower hex":        `{"confirm":"` + strings.ToUpper(h) + `"}`,

@@ -13,6 +13,7 @@ import (
 
 	"github.com/nself-org/cli/internal/cmdregistry"
 	"github.com/nself-org/cli/internal/mcpgen"
+	"github.com/nself-org/cli/schemas"
 )
 
 // mcpNameRe is the MCP tool name pattern.
@@ -49,6 +50,7 @@ func FuzzToolName(f *testing.F) {
 				t.Fatalf("a valid plugin path %q gave %q", p.path, p.name)
 			}
 		}
+		fuzzTools(t, a, b)
 		if mcpgen.ValidToolName(na) && na == nb && strings.Join(strings.Fields(a), " ") != strings.Join(strings.Fields(b), " ") {
 			reg := &cmdregistry.Registry{Commands: []cmdregistry.Command{{Path: a}, {Path: b}}}
 			if err := cmdregistry.ValidateToolNames(reg); err == nil {
@@ -56,4 +58,30 @@ func FuzzToolName(f *testing.F) {
 			}
 		}
 	})
+}
+
+// fuzzTools generates the tool list of a registry holding two plugin commands
+// named from a and b next to the core fixture. Whatever the names, the list
+// builds, every name matches the pattern, none repeats and the core
+// nself_foo_bar tool stays.
+func fuzzTools(t *testing.T, a, b string) {
+	reg, err := fixtureBuild(t, false, false, advNode(a, "fuzz a", "read", ""), advNode(b, "fuzz b", "read", ""))
+	if err != nil {
+		return // the mount refused the name: nothing reaches the generator
+	}
+	list, err := mcpgen.Tools(mcpgen.Options{Registry: reg, Invoke: noInvoke, Schema: schemas.Lookup, V15: true, Warn: func(string) {}})
+	if err != nil {
+		t.Fatalf("paths %q and %q stopped the tool list: %v", a, b, err)
+	}
+	seen := map[string]bool{}
+	for _, st := range list {
+		n := st.Tool.Name
+		if !toolNameRe.MatchString(n) || seen[n] {
+			t.Fatalf("paths %q and %q gave the bad or repeated tool name %q", a, b, n)
+		}
+		seen[n] = true
+	}
+	if !seen["nself_foo_bar"] {
+		t.Fatalf("paths %q and %q removed the core tool nself_foo_bar", a, b)
+	}
 }

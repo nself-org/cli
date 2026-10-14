@@ -92,10 +92,14 @@ func Tools(o Options) ([]server.ServerTool, error) {
 			return nil, fmt.Errorf("mcpgen: tool name %q for %q: %s", name, cmd.Path, why)
 		}
 		row, legacy := table.Lookup(name)
+		if legacy && row.Shortcut && skipPlugin(o, cmd, "its tool name is a reserved shortcut name") {
+			continue // the shortcut row registers the name later, in both modes
+		}
 		legacy = legacy && !row.Shortcut
 		switch {
 		case legacy && !o.V15:
-			continue // a hand tool owns the name in v1.4 mode
+			skipPlugin(o, cmd, "its tool name is a legacy alias name") // warns for a plugin only
+			continue                                                   // a hand tool owns the name in v1.4 mode
 		case legacy && row.Kind != KindMerged:
 			if skipPlugin(o, cmd, "its tool name is a legacy alias name") {
 				continue
