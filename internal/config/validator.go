@@ -162,6 +162,13 @@ func validatePasswords(cfg *Config, checkPatterns bool) error {
 			}
 		}
 
+		// TYPESENSE_API_KEY — only if Search enabled with typesense engine, min 16
+		if cfg.Search.Enabled && strings.EqualFold(cfg.Search.Engine, "typesense") {
+			if err := checkPassword(cfg.Search.Typesense.APIKey, "TYPESENSE_API_KEY", 16, checkPatterns); err != nil {
+				return err
+			}
+		}
+
 		// GRAFANA_ADMIN_PASSWORD — only if Monitoring enabled, min 16
 		if cfg.Monitoring.Enabled {
 			if err := checkPassword(cfg.Monitoring.GrafanaAdminPassword, "GRAFANA_ADMIN_PASSWORD", 16, checkPatterns); err != nil {
