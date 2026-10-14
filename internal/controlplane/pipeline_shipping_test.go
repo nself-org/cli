@@ -116,3 +116,23 @@ func TestRunWithEnvProbeCannotSeedTrust(t *testing.T) {
 		}
 	})
 }
+
+// TestMarkShippingOverlappingRuns: two shipping runs on one prober; the first to
+// finish must not clear the mode of the one still running. A nil ctx is safe.
+func TestMarkShippingOverlappingRuns(t *testing.T) {
+	sp := NewSSHProber(t.TempDir(), false)
+	endA := markShipping(sp)
+	endB := markShipping(sp)
+	endA()
+	if !sp.shipping.on() {
+		t.Fatal("run A ending cleared run B's shipping mode")
+	}
+	endB()
+	if sp.shipping.on() {
+		t.Fatal("shipping mode stayed on after every run ended")
+	}
+	markShipping(struct{}{})()                                      // a non-SSHProber is a no-op
+	if !isShippingRun(WithShippingRun(nil)) || isShippingRun(nil) { //nolint:staticcheck // callers do pass nil
+		t.Fatal("nil ctx handling")
+	}
+}

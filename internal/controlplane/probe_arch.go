@@ -53,7 +53,7 @@ func (sp *SSHProber) Architecture(ctx context.Context, s Server) (string, error)
 		key = home + "/.ssh/id_ed25519"
 	}
 	tier, envName := probeTier(sp.projectRoot, s)
-	policy, err := HostKeyOptions(ctx, envName, s.Name, tier, s.Host, sp.shipping.Load())
+	policy, err := HostKeyOptions(ctx, envName, s.Name, tier, s.Host, sp.shipping.on())
 	if err != nil {
 		return "", err
 	}

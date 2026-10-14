@@ -399,9 +399,11 @@ Outside a shipping run, v1.4 keeps `accept-new` byte for byte, and ssh records a
 In v1.5 nself never seeds your `~/.ssh/known_hosts`. An `accept-new` connection reads
 `~/.ssh/known_hosts` as a read-only global file (a changed key there still fails) and records
 first-seen keys in nself's own file `~/.config/nself/deploy_tofu_hosts`. The strict check never
-reads that file, so a key seen once by a read-only command is never trusted for secrets. If your home
-path holds a space, the two options are skipped with a one-line warning and plain `accept-new` is
-used; such a home already fails every strict path.
+reads that file, so a key seen once by a read-only command is never trusted for secrets. If nself's
+file cannot be created (an unwritable `~/.config`), the connection records nothing
+(`UserKnownHostsFile=/dev/null`) and warns once. If your home path holds a space, the two options are
+skipped with a one-line warning and plain `accept-new` is used, which can record a first-seen key in
+`~/.ssh/known_hosts`; such a home already fails every strict path, so no secret ships on that key.
 
 **First contact with a new host.** A strict deploy to a host you have never connected to
 fails with `E487` and prints the live fingerprint:

@@ -47,16 +47,17 @@ func acceptNewPolicy() []string {
 	for _, o := range opts {
 		if err := checkTransportToken(o); err != nil {
 			tofuWarnOnce.Do(func() {
-				fmt.Fprintf(tofuWarn, "warning: home path %q cannot go into an ssh option; host keys of this connection are not kept in nself's own file\n", home)
+				_, _ = fmt.Fprintf(tofuWarn, "warning: home path %q cannot go into an ssh option; host keys of this connection are not kept in nself's own file\n", home)
 			})
 			return plain
 		}
 	}
 	if err := ensureTofuFile(DeployTofuHostsPath()); err != nil {
 		tofuWarnOnce.Do(func() {
-			fmt.Fprintf(tofuWarn, "warning: cannot create %s: %v; host keys of this connection are not kept in nself's own file\n", DeployTofuHostsPath(), err)
+			_, _ = fmt.Fprintf(tofuWarn, "warning: cannot create %s: %v; first-seen host keys of this connection are not recorded\n", DeployTofuHostsPath(), err)
 		})
-		return plain
+		// Never fall back to ssh's default file (the operator's ~/.ssh/known_hosts): record nothing.
+		return append(plain, "-o", "UserKnownHostsFile="+filepath.ToSlash(os.DevNull), "-o", opts[1])
 	}
 	return append(plain, "-o", opts[0], "-o", opts[1])
 }

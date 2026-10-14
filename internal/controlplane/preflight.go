@@ -39,7 +39,7 @@ func PreflightShipping(ctx context.Context, inv *Inventory, env string, composeF
 		root = filepath.Dir(composeFiles[0])
 	}
 	prober := NewSSHProber(root, false)
-	prober.shipping.Store(true)
+	prober.shipping.Add(1)
 	return preflightWith(WithShippingRun(ctx), inv, env, composeFiles, prober, archguard.RegistryLookup)
 }
 

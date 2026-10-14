@@ -130,7 +130,7 @@ func (sp *SSHProber) SSHReachable(s Server) (bool, int, error) {
 	}
 	tier, envName := probeTier(sp.projectRoot, s)
 	keyCtx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
-	policy, err := HostKeyOptions(keyCtx, envName, s.Name, tier, s.Host, sp.shipping.Load())
+	policy, err := HostKeyOptions(keyCtx, envName, s.Name, tier, s.Host, sp.shipping.on())
 	cancel()
 	if err != nil {
 		return false, 0, err
@@ -178,7 +178,7 @@ func (sp *SSHProber) DockerOK(s Server) (bool, error) {
 	}
 	tier, envName := probeTier(sp.projectRoot, s)
 	keyCtx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
-	policy, err := HostKeyOptions(keyCtx, envName, s.Name, tier, s.Host, sp.shipping.Load())
+	policy, err := HostKeyOptions(keyCtx, envName, s.Name, tier, s.Host, sp.shipping.on())
 	cancel()
 	if err != nil {
 		return false, err

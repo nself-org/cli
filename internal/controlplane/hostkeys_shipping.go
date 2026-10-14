@@ -16,6 +16,9 @@ type shippingRunKey struct{}
 // WithShippingRun marks ctx as a run that ships secrets. HostKeyOptions then
 // treats every connection made with it as shipping (strict in v1.4 and v1.5).
 func WithShippingRun(ctx context.Context) context.Context {
+	if ctx == nil { // some callers pass a nil ctx
+		ctx = context.Background()
+	}
 	return context.WithValue(ctx, shippingRunKey{}, true)
 }
 

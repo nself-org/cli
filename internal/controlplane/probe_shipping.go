@@ -10,16 +10,20 @@ package controlplane
 
 import "sync/atomic"
 
-// shippingMode is an atomic flag: probes run concurrently.
-type shippingMode struct{ atomic.Bool }
+// shippingMode counts the shipping runs using one prober: runs may overlap, and
+// a bool restored by the first run to finish would clear the second run's mode.
+type shippingMode struct{ atomic.Int32 }
+
+// on reports whether any shipping run is using the prober.
+func (m *shippingMode) on() bool { return m.Load() > 0 }
 
 // markShipping switches v to shipping mode when it is a *SSHProber and returns
-// a function that restores the previous mode. Any other value is a no-op.
+// a function that leaves the mode again. Any other value is a no-op.
 func markShipping(v any) (restore func()) {
 	sp, ok := v.(*SSHProber)
 	if !ok || sp == nil {
 		return func() {}
 	}
-	prev := sp.shipping.Swap(true)
-	return func() { sp.shipping.Store(prev) }
+	sp.shipping.Add(1)
+	return func() { sp.shipping.Add(-1) }
 }
