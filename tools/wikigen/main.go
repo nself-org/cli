@@ -20,7 +20,9 @@
 // Inputs: -dir (wiki commands directory), -check (verify, write nothing),
 // -report (list pages still carrying placeholder prose).
 //
-// Outputs: cmd-<name>.md per command; exit 1 under -check when stale.
+// Outputs: cmd-<name>.md per command, the machine pages MCP-Tools.md,
+// HTTP-API-Reference.md and Agent-Guide.md (mcptools.go, httpapi.go,
+// agentguide.go); exit 1 under -check when stale.
 //
 // Constraints: never discards human prose. A page's PROSE blocks are read back
 // and re-emitted verbatim; pages predating the markers have their Description,
@@ -149,6 +151,19 @@ func main() {
 			auxWritten++
 		}
 	}
+
+	machineReg, err := commands.BuildRegistry(true)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "build machine registry: %v\n", err)
+		os.Exit(1)
+	}
+	machineStale, machineWritten, err := writeMachinePages(*dir, machineReg, repoSources, *check)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+	stale = append(stale, machineStale...)
+	auxWritten += machineWritten
 
 	sidebarChanged, err := writeSidebar(*sidebar, cmds, *check)
 	if err != nil {
