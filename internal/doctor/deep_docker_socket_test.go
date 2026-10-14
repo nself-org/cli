@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -117,6 +118,9 @@ func socketReport() *socketInventory {
 }
 
 func TestDockerSocketDoctor(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix socket paths and symlinks: the guard inspects /var/run/docker.sock binds on Unix hosts")
+	}
 	old := version.Version
 	t.Cleanup(func() { version.Version = old })
 	t.Setenv("DOCKER_HOST", "")

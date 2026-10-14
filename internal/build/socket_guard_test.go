@@ -11,6 +11,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -82,6 +83,9 @@ func buildSocketCase(t *testing.T, used map[string]bool, tc socketCase) error {
 }
 
 func TestSocketGuardFragments(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix socket paths and symlinks: the guard inspects /var/run/docker.sock binds on Unix hosts")
+	}
 	setCLIVersion(t, "1.4.14")
 	used := map[string]bool{}
 	const (
