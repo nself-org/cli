@@ -97,14 +97,80 @@ func certbotHooks(dir string, sslDirs ...string) ([]string, error) {
 			return nil, err
 		}
 		isConf := slices.Contains(confs, p)
-		for i, line := range strings.Split(string(data), "\n") {
+		lines := strings.Split(string(data), "\n")
+		for i := 0; i < len(lines); i++ {
+			line, start, quoted := lines[i], i, false
+			if isConf {
+				line, i, quoted = certbotConfigEntry(lines, i)
+			}
 			code, ok := hookCode(line, isConf)
+			if quoted {
+				code = line // '#' inside a config-quoted value is literal config text.
+			}
 			if ok && slices.ContainsFunc(needles, func(n string) bool { return mentionsPath(code, n) }) {
-				hits = append(hits, fmt.Sprintf("%s:%d", p, i+1))
+				hits = append(hits, fmt.Sprintf("%s:%d", p, start+1))
 			}
 		}
 	}
 	return hits, nil
+}
+
+// Purpose: joins config-quoted values before filtering hook keys.
+// Inputs: physical config lines and an entry's opening index.
+// Outputs: an unwrapped entry, its final physical index, and whether quoted.
+// Constraints: all keys consume continuations; shell quotes within unquoted
+// values stay untouched. Unclosed values are retained conservatively.
+func certbotConfigEntry(lines []string, start int) (string, int, bool) {
+	t := strings.TrimSpace(lines[start])
+	if t == "" || t[0] == '#' || t[0] == ';' {
+		return lines[start], start, false
+	}
+	k := strings.IndexFunc(t, func(c rune) bool { return strings.ContainsRune("=: \t", c) })
+	if k < 0 {
+		return lines[start], start, false
+	}
+	v := strings.TrimLeft(t[k:], "=: \t")
+	if v == "" || (v[0] != '\'' && v[0] != '"') {
+		return lines[start], start, false
+	}
+	delim := v[:1]
+	if strings.HasPrefix(v, strings.Repeat(delim, 3)) {
+		delim = strings.Repeat(delim, 3)
+	}
+	parts := []string{v[len(delim):]}
+	for end := start; ; end++ {
+		part := parts[len(parts)-1]
+		if close := certbotConfigClose(part, delim); close >= 0 {
+			// A quote followed by shell syntax belongs to an unquoted command.
+			tail := strings.TrimSpace(part[close+len(delim):])
+			if len(delim) == 1 && tail != "" && tail[0] != '#' {
+				return lines[start], start, false
+			}
+			parts[len(parts)-1] = part[:close]
+			return t[:k] + " = " + strings.Join(parts, " "), end, true
+		}
+		if end+1 == len(lines) {
+			return t[:k] + " = " + strings.Join(parts, " "), end, true
+		}
+		parts = append(parts, lines[end+1])
+	}
+}
+
+// Purpose: locates a config value's closing delimiter.
+// Inputs: value text and a single or triple quote delimiter.
+// Outputs: its byte offset, or -1 while the value continues.
+// Constraints: an escaped quote does not end a single-quoted value.
+func certbotConfigClose(value, delim string) int {
+	for i := 0; i < len(value); i++ {
+		if len(delim) == 1 && value[i] == '\\' {
+			i++
+			continue
+		}
+		if strings.HasPrefix(value[i:], delim) {
+			return i
+		}
+	}
+	return -1
 }
 
 // hookCode returns the part of line certbot or the shell acts on: for a conf,
