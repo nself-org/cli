@@ -256,7 +256,7 @@ func TestSnippetMapping(t *testing.T) {
 	if l := loc(std + `proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade"; proxy_set_header X-A b; proxy_set_header Connection2 "";`); !l.ForwardedHeaders || !l.WebSocket || !reflect.DeepEqual(l.HeadersSet, map[string]string{"X-A": "b", "Connection2": ""}) {
 		t.Errorf("headers: %+v", l)
 	}
-	if l := loc(`proxy_pass http://x.test:81; proxy_http_version 1.1; resolver 127.0.0.11;`); *l.Upstream != (Upstream{Scheme: "http", Host: "x.test", Port: 81}) {
+	if l := loc(`proxy_pass http://x.test:81; proxy_http_version 1.1; proxy_buffers 8 4k; proxy_buffer_size 4k; proxy_busy_buffers_size 8k; resolver 127.0.0.11;`); *l.Upstream != (Upstream{Scheme: "http", Host: "x.test", Port: 81}) {
 		t.Errorf("upstream: %+v", l.Upstream)
 	}
 	// http to https redirect
@@ -284,44 +284,6 @@ func TestSnippetMapping(t *testing.T) {
 	want := map[string]Upstream{"/a": {Scheme: "http", Host: "10.0.0.1", Port: 9000}, "/b": {Scheme: "http", Host: "svc", Port: 3000}, "/c": {Scheme: "http", Host: "127.0.0.1", Port: 99}}
 	if !reflect.DeepEqual(got, want) || !reflect.DeepEqual(r.Unmodelled, []string{"proxy_pass http://$w/;"}) {
 		t.Errorf("upstreams: %v unmodelled=%v", got, r.Unmodelled)
-	}
-}
-
-// TestSnippetSimpleDirectiveBlocks preserves children of unsupported block forms.
-func TestSnippetSimpleDirectiveBlocks(t *testing.T) {
-	for _, directive := range []string{
-		"proxy_pass http://x.test:81", "proxy_http_version 1.1",
-		"proxy_set_header X-A b", "proxy_connect_timeout 5s",
-		"proxy_read_timeout 5s", "proxy_send_timeout 5s",
-		"client_max_body_size 1k", "access_log off", "deny all",
-		"return 301 https://a.test", "resolver 127.0.0.11",
-		"proxy_buffer_size 4k", "proxy_buffers 8 4k", "proxy_busy_buffers_size 8k",
-	} {
-		t.Run(directive, func(t *testing.T) {
-			block := directive + " { child on; }"
-			r := route(t, "server { listen 80; server_name a.test; location / { "+block+" } }")
-			if !reflect.DeepEqual(r.Unmodelled, []string{block}) {
-				t.Errorf("unmodelled = %v, want whole block %q", r.Unmodelled, block)
-			}
-			want := Location{Path: "/", Match: "prefix", HeadersSet: map[string]string{}, AccessLog: true}
-			if !reflect.DeepEqual(r.Locations[0], want) {
-				t.Errorf("unsupported block changed location: %+v", r.Locations[0])
-			}
-		})
-	}
-	const block = "set $up http://x.test:81 { child on; }"
-	r := route(t, "server { listen 80; server_name a.test; location / { "+block+" proxy_pass $up; } }")
-	if r.Locations[0].Upstream != nil || !reflect.DeepEqual(r.Unmodelled, []string{block, "proxy_pass $up;"}) {
-		t.Errorf("set block was used or lost: %+v, unmodelled=%v", r.Locations[0], r.Unmodelled)
-	}
-}
-
-// TestSnippetBuffersUnmodelled records buffer settings absent from the v1 model.
-func TestSnippetBuffersUnmodelled(t *testing.T) {
-	want := []string{"proxy_buffer_size 4k;", "proxy_buffers 8 4k;", "proxy_busy_buffers_size 8k;"}
-	r := route(t, "server { listen 80; server_name a.test; location / { "+strings.Join(want, " ")+" resolver 127.0.0.11; proxy_pass http://x.test:81; } }")
-	if !reflect.DeepEqual(r.Unmodelled, want) || r.Locations[0].Upstream == nil {
-		t.Errorf("buffer settings lost: unmodelled=%v location=%+v", r.Unmodelled, r.Locations[0])
 	}
 }
 

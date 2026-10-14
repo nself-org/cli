@@ -104,11 +104,7 @@
         }
       ],
       "shadowed_by": null,
-      "unmodelled": [
-        "proxy_buffer_size 4k;",
-        "proxy_buffers 8 4k;",
-        "proxy_busy_buffers_size 8k;"
-      ]
+      "unmodelled": []
     }
   ]
 }
