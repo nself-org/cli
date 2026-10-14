@@ -8,8 +8,8 @@ package admin
 // Outputs: one envelope on the real stdout, in v1.5 JSON mode only (the
 // invocation decorator has already moved human output to stderr then).
 // Constraints: no new behaviour and no secrets: URLs are the local admin URL,
-// project records carry no credentials. `admin connect` and `admin serve` are streams
-// and do not use this file.
+// project records carry no credentials. `admin connect` (interactive) and `admin serve`
+// (stream) do not use this file.
 // SPORT: P7-SURF-13, contract:cli.json-envelope
 
 import (

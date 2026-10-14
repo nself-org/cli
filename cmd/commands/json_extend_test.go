@@ -67,7 +67,7 @@ func TestEnvelopeCoverageExtend(t *testing.T) {
 // TestEnvelopeCoverageAdmin: the admin family is a builtin plugin (canon
 // plugin), which the generic coverage helper skips, so every row is checked
 // here too: documents are envelopes, `admin logs --follow` carries the stream
-// flag override, `admin connect` is a stream with a reason comment.
+// flag override, `admin connect` is interactive with a reason comment.
 func TestEnvelopeCoverageAdmin(t *testing.T) {
 	assertFragmentEnvelopeCoverage(t, "admin")
 	rows := registryRows(t, true)
@@ -93,8 +93,8 @@ func TestEnvelopeCoverageAdmin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r := rows["nself admin connect"]; r.Output != canon.OutputStream || !rowHasReason(string(raw), "admin connect") {
-		t.Fatalf("admin connect = output %s, want stream with a reason comment", r.Output)
+	if r := rows["nself admin connect"]; r.Output != canon.OutputInteractive || !rowHasReason(string(raw), "admin connect") {
+		t.Fatalf("admin connect = output %s, want interactive with a reason comment", r.Output)
 	}
 }
 
@@ -129,6 +129,17 @@ func TestEnvelopeCoverageBundleRemove(t *testing.T) {
 	}
 	if oldRow.SideEffect != canon.SideEffectDestructive || !oldDelete || oldRow.Confirm == nil || !hasString(oldRow.Confirm.Flags, "yes") {
 		t.Fatalf("v1.4 bundle remove = %+v, want destructive with --delete-data and a confirm block naming --yes", oldRow)
+	}
+}
+
+// The bare form of `config plugins list --available` (NSELF_JSON_LEGACY=1) keeps
+// the pre-contract rows byte for byte: the v1.5 licence word, keys in map order.
+func TestAvailableListLegacyBytes(t *testing.T) {
+	rows := []map[string]interface{}{{"name": "notify", "version": "1.0.0", "category": "comms", "tier_pair": true, "is_default": false, "license": "licensed"}}
+	want, _ := json.Marshal(rows)
+	got, _ := json.Marshal(pluginListData{{Category: "comms", IsDefault: boolPtr(false), License: "licensed", Name: "notify", TierPair: boolPtr(true), Version: "1.0.0"}})
+	if string(got) != string(want) {
+		t.Fatalf("bare --available rows differ\n got %s\nwant %s", got, want)
 	}
 }
 
