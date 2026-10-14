@@ -380,7 +380,7 @@ holding whitespace or a quote (rsync re-splits its `-e` string on spaces).
 
 Strict means the CLI scans the host's live key and continues only when that key is already trusted,
 either in your `~/.ssh/known_hosts` or in the deploy pin file `~/.config/nself/deploy_known_hosts`.
-ssh then runs with `StrictHostKeyChecking=yes`. Nothing is copied before the check. The scan asks
+ssh then runs with `StrictHostKeyChecking=yes`, `ControlMaster=no` and `ControlPath=none` (a client that joins an existing connection-sharing master skips the host-key check, so a strict connection never does). Nothing is copied before the check. The scan asks
 for an ED25519 key first and falls back to ECDSA, then RSA, one `ssh-keyscan` connection per try
 (an ED25519 host needs one call). A host that offers only an RSA or ECDSA key can be pinned with
 `--trust-host-key` and then passes the strict check. A host whose entry in `~/.ssh/known_hosts`
@@ -396,7 +396,7 @@ Outside a shipping run, v1.4 keeps `accept-new` byte for byte, and ssh records a
 `~/.ssh/known_hosts`. Verify a new host's fingerprint before its first deploy (or pin it with
 `--trust-host-key`), or run with `NSELF_V15=1`.
 
-In v1.5 nself never seeds your `~/.ssh/known_hosts`. An `accept-new` connection reads
+In v1.5 the deploy connections never seed your `~/.ssh/known_hosts` (`nself runner` still does). An `accept-new` connection reads
 `~/.ssh/known_hosts` as a read-only global file (a changed key there still fails) and records
 first-seen keys in nself's own file `~/.config/nself/deploy_tofu_hosts`. The strict check never
 reads that file, so a key seen once by a read-only command is never trusted for secrets. If nself's

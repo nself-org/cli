@@ -98,6 +98,7 @@ func assertCalls(t *testing.T, got, want []recordedCall) {
 }
 
 func TestGoldenArgv_RunRemoteCommand(t *testing.T) {
+	t.Setenv("NSELF_V15", "")
 	read := installFakeSSHTools(t)
 	rt := RemoteTarget{SSHTarget: "deploy@203.0.113.7", KeyPath: "/k/id"}
 	if _, err := RunRemoteCommand(context.Background(), rt, "docker exec 'c' ls"); err != nil {
@@ -112,6 +113,7 @@ func TestGoldenArgv_RunRemoteCommand(t *testing.T) {
 }
 
 func TestGoldenArgv_DeployViaSsh(t *testing.T) {
+	t.Setenv("NSELF_V15", "")
 	read := installFakeSSHTools(t)
 	cfg := SSHConfig{Host: "deploy@203.0.113.7:/opt/app", KeyPath: "/k/id", Follow: true}
 	if err := DeployViaSsh(context.Background(), cfg, "/work/compose.yml"); err != nil {
@@ -134,6 +136,7 @@ func TestGoldenArgv_DeployViaSsh(t *testing.T) {
 }
 
 func TestGoldenArgv_DeployViaSshDefaultRemotePath(t *testing.T) {
+	t.Setenv("NSELF_V15", "")
 	read := installFakeSSHTools(t)
 	cfg := SSHConfig{Host: "deploy@203.0.113.7", KeyPath: "/k/id"}
 	if err := DeployViaSsh(context.Background(), cfg, "/work/compose.yml"); err != nil {
@@ -151,6 +154,8 @@ func TestGoldenArgv_DeployViaSshDefaultRemotePath(t *testing.T) {
 // TestGoldenArgv_PushSecrets changes ON PURPOSE (P7-DEPL-28, D-0248): secret
 // shipping is strict in v1.4 too, so the argv now carries the pinned host-key
 // policy, a HostKeyAlias for the IP host, and an absolute local operand.
+// P7-DEPL-29 adds ControlMaster=no/ControlPath=none: a strict connection never
+// joins a connection-sharing master that an accept-new connection opened.
 func TestGoldenArgv_PushSecrets(t *testing.T) {
 	requireKeygen(t)
 	t.Setenv("HOME", pinHome(t))
@@ -177,6 +182,7 @@ func TestGoldenArgv_PushSecrets(t *testing.T) {
 			"-i", "/k/id",
 			"-o", "StrictHostKeyChecking=yes",
 			"-o", "GlobalKnownHostsFile=" + DeployKnownHostsPath(),
+			"-o", "ControlMaster=no", "-o", "ControlPath=none",
 			"-o", "HostKeyAlias=nself-203.0.113.7-22",
 			"-o", "ForwardAgent=no",
 			"--", envFile, "deploy@203.0.113.7:/opt/app/.env",

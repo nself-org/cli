@@ -320,3 +320,31 @@ func TestAcceptNewTofuFileUnavailableRecordsNothingV15(t *testing.T) {
 		t.Errorf("warning = %q, want one line", warn.String())
 	}
 }
+
+// TestStrictPolicyNeverSharesConnections: every strict policy carries
+// ControlMaster=no and ControlPath=none, in v1.4 and v1.5. A client that joins an
+// existing master socket does no host-key check, and an accept-new connection
+// (a probe) may have opened that master.
+func TestStrictPolicyNeverSharesConnections(t *testing.T) {
+	requireKeygen(t)
+	for _, v15 := range []string{"", "1"} {
+		t.Run("v15="+v15, func(t *testing.T) {
+			t.Setenv("NSELF_V15", v15)
+			t.Setenv("HOME", pinHome(t))
+			installFakeKeyscan(t)
+			if err := (remote.PinnedHostKeys{Path: DeployKnownHostsPath()}).Add("nself-203.0.113.7-22", "ssh-ed25519 AQID"); err != nil {
+				t.Fatal(err)
+			}
+			opts, err := HostKeyPolicy(context.Background(), "u@203.0.113.7", "qa", "web", true, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			joined := " " + strings.Join(opts, " ") + " "
+			for _, want := range []string{" StrictHostKeyChecking=yes ", " ControlMaster=no ", " ControlPath=none "} {
+				if !strings.Contains(joined, want) {
+					t.Errorf("strict policy lacks%s: %q", want, opts)
+				}
+			}
+		})
+	}
+}

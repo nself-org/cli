@@ -126,7 +126,10 @@ func HostKeyPolicy(ctx context.Context, host, env, server string, strict, shipsS
 	}
 	for _, k := range keys {
 		if operator[k.Fingerprint] || pinned[k.Fingerprint] {
-			opts := []string{"-o", "StrictHostKeyChecking=yes", "-o", knownHostsOption()}
+			// A client that joins an existing ControlMaster socket does no host-key
+			// check, so a strict connection never shares one (an accept-new probe
+			// could have opened it): ControlMaster=no, ControlPath=none.
+			opts := []string{"-o", "StrictHostKeyChecking=yes", "-o", knownHostsOption(), "-o", "ControlMaster=no", "-o", "ControlPath=none"}
 			if alias != spec.Host && !operator[k.Fingerprint] {
 				opts = append(opts, "-o", "HostKeyAlias="+alias)
 			}
