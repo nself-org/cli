@@ -184,6 +184,31 @@ One compact JSON object per line, keys in this order:
 
 Before any command that is not a read runs, the server checks that the audit file can be opened for append (a regular file, never a symlink); when it cannot (or the server has no audit log), the run is refused with `E421` and nothing changes. A writer waits at most 5 seconds for another process's lock on the file. A write that fails after the run (a full disk) prints one line with the operating-system error on the server's standard error (never the request) and does not stop the server. An existing log directory that group or others can read (other nself commands create `~/.nself/logs` at `0755`) is narrowed to `0700`.
 
+## Security model
+
+What the gate is: a consent step. A remote or destructive call first gets a confirmation back, then runs only when the same call is repeated with the nonce. That proves the caller saw the confirmation. It does not prove a person agreed, and it is not authorization: whoever holds the token (or runs the stdio process) can run every exposed command, and an agent told to confirm will confirm. Treat the token like a shell on the project.
+
+What protects the server:
+
+- **Token.** `sse` and `http` need the bearer token on every request (see [Machine token](#machine-token)). `stdio` has no network surface and no token. The token is never printed, never put in a tool result or the audit log, and removed from the environment of every command the invoker runs.
+- **Loopback only by default.** A non-loopback `--host` is refused unless `--allowed-host` and a configured token are given.
+- **Host and Origin.** `nself mcp` answers a Host it does not know with `421` (v1.5) and sends no CORS headers; the HTTP API also checks Origin. See [Transports and --host](#transports-and---host).
+- **Request validation.** Every request value is exactly one argv element, after `--` for positional values. Unknown members, flags and tools are refused. A flag name, the consent flags and the root flags cannot be smuggled in as values.
+- **Single-use nonces.** A nonce is bound to one request, lives 10 minutes, dies with the process and is spent by a confirmed call that reaches the nonce check, right or wrong. A request that fails validation first (for example a wrong argument count, `E420`) does not reach the check and does not spend it. A nonce of one tool never confirms another.
+- **One operation per project.** Write, remote and destructive commands take the project operation lock in the child. When two confirmed calls reach one project, one runs and the other is refused with `E460` (HTTP `409`). The lock is taken by the child process, so it holds across servers and clients.
+- **Audit log.** Every mutation and refusal is recorded (see [Audit log](#audit-log)); a run is refused when the log cannot be written.
+- **Tool names and text.** A tool name is `nself_` plus the command path, and only `a-z`, `0-9` and `_`, at most 64 characters. A plugin command whose name is invalid, too long, taken by an earlier tool or a shortcut tool, or that has a flag name which is not plain text (at most 64 characters of `A-Za-z0-9_.-`) is skipped with a warning on standard error and never stops the server; core commands claim names first. Summaries and flag descriptions from a plugin manifest are cleaned before they reach a tool description: controls, bidirectional and zero-width characters are removed, white space is collapsed and the text is cut at 500 characters. The side-effect sentence is always kept.
+
+Known limits:
+
+- Injection text in a plugin summary stays text. The generator bounds and cleans it; it cannot tell a hostile sentence from an honest one, and look-alike letters survive. Install plugins you trust.
+- `nself://registry` returns the registry as the plugins declared it (JSON, not cleaned).
+- The live nonce store holds 1024 entries, first in first out (see the round trip above).
+- `nself mcp` does not check Origin. The Host check and the token are its defence against DNS rebinding.
+- The lock covers commands that take it. A read never does.
+
+The adversarial suite runs with `go test`: `TestMCPGenAdversarial` (`internal/mcpgen`: hostile names, descriptions, schemas, arguments), `TestMCPAdversarial` (`cmd/commands`: concurrent destructive calls, nonce reuse, token leaks, hostile plugins, smuggling), and the invoker, HTTP and machine-auth suites in their packages. The `Fuzz Nightly` workflow fuzzes `FuzzBuildArgv` and `FuzzDecodeRequest` (`internal/invoke`), `FuzzRoutePath` and `FuzzHostHeader` (`internal/httpapi`) and `FuzzToolName` (`internal/mcpgen`) for five minutes each on hosted runners. A crasher fails the job and its input is uploaded as an artifact; commit it as a seed with the fix.
+
 ## Generated tools
 
 `internal/mcpgen` turns the machine registry into MCP tools. There is no hand-registered tool in v1.5 mode: every tool is a generated tool or a row of the legacy table.

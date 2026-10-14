@@ -22,13 +22,13 @@ func headerValue(h http.Header, key string) string {
 
 func (s *Server) authorized(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.hosts[strings.ToLower(r.Host)] {
+		if !s.hosts[lowerASCII(r.Host)] {
 			s.unauthenticatedFailure(w, "E428", 421)
 			return
 		}
 		origin := headerValue(r.Header, "Origin")
 		_, originPresent := r.Header["Origin"]
-		if len(r.Header.Values("Origin")) > 1 || originPresent && (!strings.HasPrefix(origin, "http://") || !s.hosts[strings.ToLower(strings.TrimPrefix(origin, "http://"))]) {
+		if len(r.Header.Values("Origin")) > 1 || originPresent && (!strings.HasPrefix(origin, "http://") || !s.hosts[lowerASCII(strings.TrimPrefix(origin, "http://"))]) {
 			s.unauthenticatedFailure(w, "E429", 403)
 			return
 		}

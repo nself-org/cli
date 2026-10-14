@@ -1,0 +1,2 @@
+go test fuzz v1
+string("127.0.0.1.evil.com:3857")

@@ -2120,7 +2120,7 @@
               },
               "profile": {
                 "default": "",
-                "description": "Service profile: curated subset of services to include in docker-compose.yml.\n  app (default) — full service set, identical to pre-profile behaviour.\n  ops           — observability + CI server: postgres, hasura, auth, nginx,\n                  monitoring stack; excludes minio, mailpit, admin, functions, search.\nOverrides NSELF_PROFILE env var. Valid values: app, ops.",
+                "description": "Service profile: curated subset of services to include in docker-compose.yml. app (default) — full service set, identical to pre-profile behaviour. ops — observability + CI server: postgres, hasura, auth, nginx, monitoring stack; excludes minio, mailpit, admin, functions, search. Overrides NSELF_PROFILE env var. Valid values: app, ops.",
                 "type": "string"
               },
               "quiet": {

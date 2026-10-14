@@ -1,0 +1,2 @@
+go test fuzz v1
+string("localhost:3857\x00")

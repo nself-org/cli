@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"flags\":{\"tags\":[\"a\",\"b\"],\"on\":true,\"count\":1,\"ratio\":1.5e3}}")

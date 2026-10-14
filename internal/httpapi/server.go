@@ -45,13 +45,15 @@ func (f authFunc) Authenticate(r *http.Request) (Principal, error) { return f(r)
 type Invoker func(context.Context, *cmdregistry.Registry, string, invoke.Request, invoke.Options) (invoke.Result, error)
 
 // BearerAuth checks a case-sensitive Bearer token using constant-time comparison
-// of SHA-256 digests. An empty configured token rejects every request.
+// of SHA-256 digests. An empty configured token rejects every request, and so
+// does a request with more than one Authorization header (the winner would be
+// ambiguous between this server and any proxy in front of it).
 func BearerAuth(tok string) AuthHook {
 	want := sha256.Sum256([]byte(tok))
 	return authFunc(func(r *http.Request) (Principal, error) {
 		value, ok := strings.CutPrefix(headerValue(r.Header, "Authorization"), "Bearer ")
 		got := sha256.Sum256([]byte(value))
-		if !ok || tok == "" || subtle.ConstantTimeCompare(got[:], want[:]) != 1 {
+		if !ok || tok == "" || len(r.Header.Values("Authorization")) != 1 || subtle.ConstantTimeCompare(got[:], want[:]) != 1 {
 			return Principal{}, errs.New("E426", "Bearer authentication required")
 		}
 		return Principal{Subject: "bearer"}, nil
@@ -155,7 +157,7 @@ func New(o Options) (*Server, error) {
 		s.routes[cmdregistry.RoutePath(c.Path)] = strings.TrimPrefix(c.Path, "nself ")
 	}
 	for _, host := range append([]string{"localhost", "127.0.0.1", "[::1]"}, o.AllowedHosts...) {
-		s.hosts[strings.ToLower(fmt.Sprintf("%s:%d", host, o.Port))] = true
+		s.hosts[lowerASCII(fmt.Sprintf("%s:%d", host, o.Port))] = true
 	}
 	s.mux.HandleFunc("/", s.route)
 	return s, nil

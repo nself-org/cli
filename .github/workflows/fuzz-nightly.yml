@@ -1,0 +1,79 @@
+name: Fuzz Nightly
+
+# P7-SURF-21: nightly fuzzing of the machine surfaces (invoker, HTTP API, MCP
+# generator). Hosted runners only (this repo is public, so they are free); no
+# secrets, no owned servers. One job per fuzz target, five minutes each. A target
+# that finds a crasher fails its job (never continue-on-error): the new
+# testdata/fuzz/<Name>/ files go up as an artifact. Commit them as regression
+# seeds with the fix.
+
+on:
+  schedule:
+    - cron: '23 2 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: fuzz-nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: fuzz ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: FuzzBuildArgv
+            pkg: ./internal/invoke
+          - target: FuzzDecodeRequest
+            pkg: ./internal/invoke
+          - target: FuzzRoutePath
+            pkg: ./internal/httpapi
+          - target: FuzzHostHeader
+            pkg: ./internal/httpapi
+          - target: FuzzToolName
+            pkg: ./internal/mcpgen
+    env:
+      CGO_ENABLED: '0'
+      FUZZ_TARGET: ${{ matrix.target }}
+      FUZZ_PKG: ${{ matrix.pkg }}
+      FUZZ_TIME: 5m
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Fuzz
+        run: go test -mod=vendor -run '^$' -fuzz "^${FUZZ_TARGET}$" -fuzztime "${FUZZ_TIME}" "${FUZZ_PKG}"
+
+      - name: Collect new crashers
+        if: failure()
+        run: |
+          mkdir -p "${RUNNER_TEMP}/crashers"
+          git ls-files --others --exclude-standard -- "${FUZZ_PKG#./}/testdata/fuzz/${FUZZ_TARGET}" \
+            | while IFS= read -r f; do
+                mkdir -p "${RUNNER_TEMP}/crashers/$(dirname "$f")"
+                cp "$f" "${RUNNER_TEMP}/crashers/$f"
+              done
+          find "${RUNNER_TEMP}/crashers" -type f
+
+      - name: Upload new crashers
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-crashers-${{ matrix.target }}
+          path: ${{ runner.temp }}/crashers
+          if-no-files-found: warn
+          retention-days: 30
