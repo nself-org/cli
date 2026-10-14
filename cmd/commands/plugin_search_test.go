@@ -203,7 +203,7 @@ func TestPluginSearchEnvelopeV15(t *testing.T) {
 	if err := json.Unmarshal(doc.Bytes(), &env); err != nil {
 		t.Fatalf("one envelope expected: %v\n%s", err, doc.String())
 	}
-	if env.SchemaVersion != "1" || env.Command != "plugin search" || env.Data.Count != 1 || len(env.Data.Plugins) != 1 {
+	if env.SchemaVersion != "1" || env.Command != "config plugins search" || env.Data.Count != 1 || len(env.Data.Plugins) != 1 {
 		t.Fatalf("envelope: %s", doc.String())
 	}
 	if p := env.Data.Plugins[0]; p.Slug != "chat" || p.Tier != "free" || p.Description != "Team chat service" || len(p.Bundles) != 1 || p.Bundles[0] != "chat" {

@@ -208,6 +208,7 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 	}
 
 	recordExplicitInstalls(os.Stderr, pluginDir, installed) // P7-PLUG-19: explicit in the bundle ledger
+	recordInstall(cmd, installed, nil)                      // P7-SURF-13: the envelope lists what this run installed
 	// S20: Upsell prompt after 3rd successful free-plugin install.
 	if installedCount > 0 {
 		maybeShowFreeUpsell(installedCount)

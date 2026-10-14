@@ -79,6 +79,10 @@ func runPluginInfo(cmd *cobra.Command, args []string) error {
 
 	// compat.V15(P7-PLUG-17): --json is ignored by plugin info -> prints the info with its tier and why as JSON
 	if asJSON, _ := cmd.Flags().GetBool("json"); asJSON && compat.V15() {
+		if tierErr != nil && jsonEnvelopeOn(cmd) {
+			// One document: the error envelope (P7-SURF-13); the cause is its message.
+			return fmt.Errorf("plugin %q: tier unresolved: %w", name, tierErr)
+		}
 		if err := writePluginInfoJSON(cmd, name, manifest, tier, tierReason, tierErr); err != nil {
 			return err
 		}
@@ -230,22 +234,9 @@ func pluginInfoTier(ctx context.Context, reg *plugin.Registry, name, pluginDir s
 // the reported tier (free or licensed) and why. An unresolved tier (m nil)
 // prints only the name, tier_reason "unresolved" and the cause in tier_error.
 func writePluginInfoJSON(cmd *cobra.Command, name string, m *plugin.PluginManifest, tier, reason string, cause error) error {
-	out := struct {
-		Name        string `json:"name"`
-		Version     string `json:"version,omitempty"`
-		Description string `json:"description,omitempty"`
-		Category    string `json:"category,omitempty"`
-		License     string `json:"license,omitempty"`
-		Tier        string `json:"tier"`
-		TierReason  string `json:"tier_reason"`
-		TierError   string `json:"tier_error,omitempty"`
-		Port        int    `json:"port,omitempty"`
-	}{Name: name, Tier: tier, TierReason: reason}
-	if m != nil {
-		out.Name, out.Version, out.Description, out.Category, out.License, out.Port = m.Name, m.Version, m.Description, m.Category, m.License, m.Port
-	}
-	if cause != nil {
-		out.TierError = cause.Error()
+	out := newPluginInfoData(name, m, tier, reason, cause)
+	if jsonEnvelopeOn(cmd) {
+		return emitEnv(cmd, out, true) // P7-SURF-13
 	}
 	data, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {

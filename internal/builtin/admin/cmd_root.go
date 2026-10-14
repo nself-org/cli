@@ -55,6 +55,14 @@ Subcommands:
 	}
 }
 
+// openedEnvelope answers `admin --json` once the dashboard URL is settled.
+func openedEnvelope(cmd *cobra.Command, url string, opened bool) error {
+	if !jsonOn(cmd) {
+		return nil
+	}
+	return emit(cmd, OpenData{URL: url, Opened: opened}, false)
+}
+
 // runAdmin opens the Admin UI in the default browser (default action, no subcommand).
 func (r runner) runAdmin(cmd *cobra.Command, args []string) error {
 	port := adminPort()
@@ -65,21 +73,21 @@ func (r runner) runAdmin(cmd *cobra.Command, args []string) error {
 	// that pushed the macos-14 CI job past its 10-minute timeout.
 	if !r.d.ShouldOpenBrowser() {
 		fmt.Printf("Admin UI: %s\n", adminURL)
-		return nil
+		return openedEnvelope(cmd, adminURL, false)
 	}
 
 	openCmd := r.d.OpenBrowserCmd(cmd.Context(), adminURL)
 	if openCmd == nil {
 		fmt.Printf("Admin UI: %s\n", adminURL)
-		return nil
+		return openedEnvelope(cmd, adminURL, false)
 	}
 
 	if err := openCmd.Start(); err != nil {
 		// Graceful fallback — headless server or command not found.
 		fmt.Printf("Admin UI: %s\n", adminURL)
-		return nil
+		return openedEnvelope(cmd, adminURL, false)
 	}
 
 	fmt.Printf("Opening %s in your browser...\n", adminURL)
-	return nil
+	return openedEnvelope(cmd, adminURL, true)
 }

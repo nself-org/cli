@@ -66,7 +66,11 @@ func runPluginAuditTables(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("audit-tables: %w", err)
 	}
 
-	if asJSON {
+	if jsonEnvelopeOn(cmd) {
+		if err := emitEnv(cmd, report, true); err != nil { // P7-SURF-13
+			return err
+		}
+	} else if asJSON {
 		out, err := json.MarshalIndent(report, "", "  ")
 		if err != nil {
 			return fmt.Errorf("marshal audit report: %w", err)

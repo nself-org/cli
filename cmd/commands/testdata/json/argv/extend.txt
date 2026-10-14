@@ -1,0 +1,26 @@
+# Services, extend and admin conversion fixture (P7-SURF-13). See README.md for tags.
+# Rows that write state non-idempotently, need the network, a database, a catalog or a running Admin
+# (service enable/disable/add/upgrade/configure, add <plugin>, bundle rows, plugin info/search/updates/
+# compat-check/audit-tables, admin health/start/projects add|remove) are covered by the Go tests in
+# cmd/commands/json_extend_test.go. Moved spellings: the v1.4 row compares the pre-contract --json
+# bytes with the base; the canonical-path row below it validates the v1.5 envelope.
+config services
+service list #| legacy-json no-json=envelope-checked-by-config-services-list
+config services list
+config services list --core
+config services ps
+config services add myapi --dry-run
+remove admin
+add admin
+config plugins inventory
+config plugins status
+config plugins list --installed
+plugin count #| legacy-json no-json=envelope-checked-by-config-plugins-count
+config plugins count
+plugin outdated #| legacy-json no-json=envelope-checked-by-config-plugins-outdated
+config plugins outdated
+admin
+admin projects
+admin projects list #| legacy-json
+admin logs
+admin stop

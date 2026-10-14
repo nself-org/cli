@@ -95,6 +95,9 @@ func runBundleInfo(cmd *cobra.Command, args []string) error {
 			LicenseStatus: licenseStatus,
 			InstallHint:   installHint,
 		}
+		if jsonEnvelopeOn(cmd) {
+			return emitEnv(cmd, row, true) // P7-SURF-13
+		}
 		enc := json.NewEncoder(cmd.OutOrStdout())
 		enc.SetIndent("", "  ")
 		return enc.Encode(row)

@@ -8,7 +8,7 @@ import (
 )
 
 func stopCommand(r runner) *cobra.Command {
-	cmd := &cobra.Command{Use: "stop", Short: "Stop the Admin container", RunE: r.runAdminStop}
+	cmd := &cobra.Command{Use: "stop", Short: "Stop the Admin container", RunE: withEnvelope(r.runAdminStop, r.stopFacts)}
 	cmd.Flags().Bool("force", false, "Skip graceful drain and force-stop")
 	return cmd
 }
@@ -34,4 +34,10 @@ func (r runner) runAdminStop(cmd *cobra.Command, args []string) error {
 
 	fmt.Println("Admin stopped.")
 	return nil
+}
+
+// stopFacts names the container that was stopped and how.
+func (r runner) stopFacts(cmd *cobra.Command, _ []string) any {
+	force, _ := cmd.Flags().GetBool("force")
+	return StopData{Container: r.adminContainerID(), Force: force}
 }

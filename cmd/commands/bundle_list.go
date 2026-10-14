@@ -115,6 +115,12 @@ func runBundleList(cmd *cobra.Command, _ []string) error {
 		})
 	}
 
+	if jsonEnvelopeOn(cmd) {
+		if rows == nil {
+			rows = []bundleListRow{}
+		}
+		return emitEnv(cmd, rows, true) // P7-SURF-13
+	}
 	if asJSON {
 		enc := json.NewEncoder(cmd.OutOrStdout())
 		enc.SetIndent("", "  ")

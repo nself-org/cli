@@ -87,6 +87,7 @@ func runBundleInstall(cmd *cobra.Command, args []string) error {
 		opts.Hooks = newBundleAppReadyHooks(cmd, args[0])
 	}
 	result, err := bundleInstall(plugin.WithCallerReconciles(context.Background()), args[0], opts)
+	recordBundleInstall(cmd, result) // P7-SURF-13: the envelope reports the ledger-backed result
 	// Reconcile exactly once: Install ran it through the hook unless it never got
 	// that far (a member failed and was rolled back, or no hooks ran).
 	if result != nil && result.Changed && !result.Reconciled {
@@ -114,6 +115,7 @@ func runBundleRemove(cmd *cobra.Command, args []string) error {
 		Confirm:    interactiveConfirm(cmd),
 	}
 	result, err := bundle.Remove(context.Background(), args[0], opts)
+	recordBundleRemove(cmd, result) // P7-SURF-13
 	if result != nil && result.Changed {
 		// compat.V15(P7-LIVE-06): bundle subprocess build -> cmd-layer reconcile in both modes
 		return errors.Join(err, reconcileAfterExtension(cmd, reconcile.Trigger{Kind: reconcile.TriggerBundle, Subject: args[0]}))

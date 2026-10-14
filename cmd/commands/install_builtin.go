@@ -49,18 +49,26 @@ func printAddedCommandHints(names []string) {
 		return
 	}
 	for _, name := range names {
-		// names are raw install arguments, including third-party URLs and paths: only a
-		// plain plugin name may be joined to the plugin directory (P7-PLUG-20).
-		if plugin.ValidateName(name) != nil {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(resolvePluginDir(), name, "plugin.json"))
-		if err != nil {
-			continue
-		}
-		manifest, err := manifestv2.ParseQuiet(data)
-		if err == nil && manifest.Commands != nil && manifest.Commands.Command != "" {
-			fmt.Printf("Next: nself %s --help\n", manifest.Commands.Command)
+		if command := pluginCommandName(name); command != "" {
+			fmt.Printf("Next: nself %s --help\n", command)
 		}
 	}
+}
+
+// pluginCommandName returns the command an installed plugin adds, "" when it
+// adds none. name is a raw install argument, including third-party URLs and
+// paths: only a plain plugin name may be joined to the plugin directory (P7-PLUG-20).
+func pluginCommandName(name string) string {
+	if plugin.ValidateName(name) != nil {
+		return ""
+	}
+	data, err := os.ReadFile(filepath.Join(resolvePluginDir(), name, "plugin.json"))
+	if err != nil {
+		return ""
+	}
+	manifest, err := manifestv2.ParseQuiet(data)
+	if err != nil || manifest.Commands == nil {
+		return ""
+	}
+	return manifest.Commands.Command
 }

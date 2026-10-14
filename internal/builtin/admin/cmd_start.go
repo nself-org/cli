@@ -26,7 +26,7 @@ reachable from other hosts on your network.
 WARNING: --expose-network must only be used behind a TLS-terminating reverse
 proxy with authentication enabled. Never expose the Admin UI to the public
 internet without additional protection.`,
-		RunE: r.runAdminStart,
+		RunE: withEnvelope(r.runAdminStart, startFacts),
 	}
 
 	cmd.Flags().Bool("expose-network", false, "Bind to 0.0.0.0 instead of 127.0.0.1 (WARNING: only use behind a TLS reverse proxy)")
@@ -123,4 +123,14 @@ func (r runner) runAdminStart(cmd *cobra.Command, args []string) error {
 	listenAddr := adminBindHost + ":" + port
 	fmt.Printf("Admin started. Listening on %s\n", listenAddr)
 	return nil
+}
+
+// startFacts reports where Admin listens: loopback unless --expose-network.
+func startFacts(cmd *cobra.Command, _ []string) any {
+	expose, _ := cmd.Flags().GetBool("expose-network")
+	host := "127.0.0.1"
+	if expose {
+		host = "0.0.0.0"
+	}
+	return StartData{Listen: host + ":" + adminPort(), ExposeNetwork: expose}
 }

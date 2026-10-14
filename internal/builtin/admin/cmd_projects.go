@@ -18,9 +18,9 @@ func projectsCommand() *cobra.Command {
 	adminProjectsCmd := &cobra.Command{
 		Use:   "projects",
 		Short: "Manage multi-project admin configuration",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: withEnvelope(func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
-		},
+		}, func(cmd *cobra.Command, _ []string) any { return hubOf(cmd) }),
 	}
 
 	adminProjectsListCmd := &cobra.Command{
@@ -34,6 +34,12 @@ func projectsCommand() *cobra.Command {
 				return fmt.Errorf("load projects: %w", err)
 			}
 
+			if jsonOn(cmd) {
+				if projects == nil {
+					projects = []AdminProject{}
+				}
+				return emit(cmd, ProjectList(projects), true)
+			}
 			if jsonOut {
 				data, _ := json.MarshalIndent(projects, "", "  ")
 				fmt.Println(string(data))
@@ -56,7 +62,7 @@ func projectsCommand() *cobra.Command {
 	adminProjectsAddCmd := &cobra.Command{
 		Use:   "add",
 		Short: "Add a project to the admin multi-project config",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: withEnvelope(func(cmd *cobra.Command, args []string) error {
 			name, _ := cmd.Flags().GetString("name")
 			host, _ := cmd.Flags().GetString("host")
 			sshUser, _ := cmd.Flags().GetString("ssh-user")
@@ -88,14 +94,17 @@ func projectsCommand() *cobra.Command {
 
 			ui.Success(fmt.Sprintf("Added project %q (host: %s)", project.Name, project.Host))
 			return nil
-		},
+		}, func(cmd *cobra.Command, _ []string) any {
+			name, _ := cmd.Flags().GetString("name")
+			return ProjectChange{ID: name, Action: "added"}
+		}),
 	}
 
 	adminProjectsRemoveCmd := &cobra.Command{
 		Use:   "remove <id>",
 		Short: "Remove a project from admin config",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: withEnvelope(func(cmd *cobra.Command, args []string) error {
 			projects, err := loadAdminProjects()
 			if err != nil {
 				return err
@@ -121,7 +130,7 @@ func projectsCommand() *cobra.Command {
 
 			ui.Success(fmt.Sprintf("Removed project %q", args[0]))
 			return nil
-		},
+		}, func(_ *cobra.Command, args []string) any { return ProjectChange{ID: args[0], Action: "removed"} }),
 	}
 
 	adminProjectsListCmd.Flags().Bool("json", false, "JSON output")
