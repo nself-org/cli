@@ -1,0 +1,13 @@
+{
+  "schema_version": "1",
+  "command": "stop",
+  "data": {
+    "stopped": [
+      "postgres",
+      "hasura",
+      "auth",
+      "nginx"
+    ],
+    "volumes_removed": false
+  }
+}

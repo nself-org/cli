@@ -1,0 +1,20 @@
+{
+  "schema_version": "1",
+  "command": "init",
+  "data": {
+    "project_dir": "/work/demo",
+    "env": "dev",
+    "files_written": [
+      ".env",
+      ".env.example",
+      ".gitignore",
+      "AGENTS.md"
+    ],
+    "next": [
+      "nself doctor",
+      "nself start",
+      "nself status",
+      "nself plugin list"
+    ]
+  }
+}
