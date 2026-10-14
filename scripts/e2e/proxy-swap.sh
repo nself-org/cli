@@ -477,20 +477,20 @@ p=pathlib.Path(sys.argv[1]); p.write_text(p.read_text().replace('ENV=dev','ENV=p
 PY
 manifest "$W/a" prod-before.manifest
 rc=0
-# Production forbids the dev bypass (checkSigBypassAllowed), and the fixture registry's traefik entry is unsigned, so an
-# `add` here would stop at E107 (P7-PLUG-23) before the plan gate. The signature policy stays untouched: unpack the
-# fixture archive as an installed plugin and drive the same v1.5 reconcile gate through build, which installs nothing.
-mkdir -p "$W/a/.nself/plugins/traefik"
-tar -xzf "$W/registry/plugins/traefik/tarball" -C "$W/a/.nself/plugins/traefik"
-NSELF_V15=1 NSELF_LICENSE_SKIP_VERIFY=0 NSELF_LICENSE_SKIP_VERIFY_FORCE=0 nself "$W/a" build --remove-orphans </dev/null >"$W/evidence/prod-plan.stdout" 2>"$W/evidence/prod-plan.stderr" || rc=$?
+# Production forbids the dev bypass. A fake free-account key suppresses registration;
+# the local registry still verifies its archive checksum, without a paid licence.
+NSELF_V15=1 NSELF_LICENSE_SKIP_VERIFY=0 NSELF_LICENSE_SKIP_VERIFY_FORCE=0 NSELF_PLUGIN_LICENSE_KEY=fixture-fake-free-account nself "$W/a" add traefik --force </dev/null >"$W/evidence/prod-plan.stdout" 2>"$W/evidence/prod-plan.stderr" || rc=$?
 if [[ $rc != 4 ]] || ! grep -q E403 "$W/evidence/prod-plan.stderr"; then
-  echo "FAIL: prod build expected exit 4 E403, got exit $rc" >&2
+  echo "FAIL: prod add expected exit 4 E403, got exit $rc" >&2
   cat "$W/evidence/prod-plan.stderr" >&2
   exit 1
 fi
 cat "$W/evidence/prod-plan.stdout" "$W/evidence/prod-plan.stderr" > "$W/evidence/plan-sample.txt"
 # RenderHuman currently omits added services and orphan removals from add's plan.
 # Preserve that sample and supplement it with the supported read-only diff verb.
+# A refused add removes its plugin again, so unpack the fixture archive to plan against it.
+mkdir -p "$W/a/.nself/plugins/traefik"
+tar -xzf "$W/registry/plugins/traefik/tarball" -C "$W/a/.nself/plugins/traefik"
 nself "$W/a" build --plan --diff --remove-orphans > "$W/evidence/plan-diff.txt" 2>&1
 grep -Eq '^-[[:space:]]+nginx:' "$W/evidence/plan-diff.txt"
 grep -Eq '^\+.*[/]traefik/docker-compose[.]plugin[.]yml' "$W/evidence/plan-diff.txt"
