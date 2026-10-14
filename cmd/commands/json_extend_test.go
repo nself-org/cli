@@ -47,12 +47,16 @@ func TestEnvelopeCoverageExtend(t *testing.T) {
 		t.Fatalf("add = %+v, want remote with a confirm block naming --yes", r)
 	}
 	old := registryRows(t, false)
-	for _, p := range []string{"config plugins list", "config plugins info", "config plugins search", "config plugins count", "config bundles list", "config bundles info"} {
-		if old["nself "+p].JSON != canon.JSONLegacy {
-			t.Errorf("v1.4 %s json = %s, want legacy (it printed JSON before the contract)", p, old["nself "+p].JSON)
+	// The v1.4 view has the v1.4 spellings (plugin, bundle); v1.5 moved them.
+	for v14, v15 := range map[string]string{
+		"plugin list": "config plugins list", "plugin info": "config plugins info", "plugin search": "config plugins search",
+		"plugin count": "config plugins count", "bundle list": "config bundles list", "bundle info": "config bundles info",
+	} {
+		if old["nself "+v14].JSON != canon.JSONLegacy {
+			t.Errorf("v1.4 %s json = %q, want legacy (it printed JSON before the contract)", v14, old["nself "+v14].JSON)
 		}
-		if rows["nself "+p].JSON != canon.JSONEnvelope {
-			t.Errorf("v1.5 %s json = %s, want envelope", p, rows["nself "+p].JSON)
+		if rows["nself "+v15].JSON != canon.JSONEnvelope {
+			t.Errorf("v1.5 %s json = %q, want envelope", v15, rows["nself "+v15].JSON)
 		}
 	}
 }
@@ -111,17 +115,17 @@ func TestEnvelopeCoverageBundleRemove(t *testing.T) {
 		t.Fatal("remove has no --delete-data flag")
 	}
 	br := rows["nself bundle remove"]
-	if br.SideEffect != canon.SideEffectDestructive || br.Target == nil || *br.Target != "remove" {
-		t.Fatalf("bundle remove = side_effect %s target %v, want destructive shim of remove", br.SideEffect, br.Target)
+	if br.SideEffect != canon.SideEffectDestructive || br.Target == nil || *br.Target != "nself remove" {
+		t.Fatalf("bundle remove = side_effect %s target %v, want destructive shim of nself remove", br.SideEffect, br.Target) // Target is a *string; the pointer prints as an address on failure only
 	}
 	// The v1.4 row is the command itself: destructive, with the consent flag and --delete-data.
-	old := registryRows(t, false)["nself bundle remove"]
+	oldRow := registryRows(t, false)["nself bundle remove"]
 	oldDelete := false
-	for _, f := range old.Flags {
+	for _, f := range oldRow.Flags {
 		oldDelete = oldDelete || f.Name == "delete-data"
 	}
-	if old.SideEffect != canon.SideEffectDestructive || !oldDelete || old.Confirm == nil || !hasString(old.Confirm.Flags, "yes") {
-		t.Fatalf("v1.4 bundle remove = %+v, want destructive with --delete-data and a confirm block naming --yes", old)
+	if oldRow.SideEffect != canon.SideEffectDestructive || !oldDelete || oldRow.Confirm == nil || !hasString(oldRow.Confirm.Flags, "yes") {
+		t.Fatalf("v1.4 bundle remove = %+v, want destructive with --delete-data and a confirm block naming --yes", oldRow)
 	}
 }
 
