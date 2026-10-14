@@ -1,0 +1,9 @@
+{
+  "schema_version": "1",
+  "command": "config services enable",
+  "data": {
+    "service": "email",
+    "env_var": "MAILPIT_ENABLED",
+    "enabled": true
+  }
+}

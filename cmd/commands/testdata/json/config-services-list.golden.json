@@ -1,0 +1,20 @@
+{
+  "schema_version": "1",
+  "command": "config services list",
+  "data": [
+    {
+      "service": "redis",
+      "enabled": false,
+      "status": "disabled",
+      "port": "6379",
+      "env_var": "REDIS_ENABLED"
+    },
+    {
+      "service": "admin",
+      "enabled": true,
+      "status": "enabled",
+      "port": "3021",
+      "env_var": "NSELF_ADMIN_ENABLED"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "schema_version": "1",
+  "command": "admin projects",
+  "data": {
+    "subcommands": [
+      {
+        "name": "add",
+        "summary": "Add a project to the admin multi-project config"
+      },
+      {
+        "name": "list",
+        "summary": "List configured admin projects"
+      }
+    ]
+  }
+}

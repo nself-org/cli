@@ -1,0 +1,11 @@
+{
+  "schema_version": "1",
+  "command": "config plugins outdated",
+  "data": [
+    {
+      "name": "waf",
+      "installed": "1.0.0",
+      "latest": "1.1.0"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "schema_version": "1",
+  "command": "add",
+  "data": {
+    "installed": [
+      "waf"
+    ],
+    "skipped": [],
+    "next": "nself waf --help",
+    "dry_run": false
+  }
+}

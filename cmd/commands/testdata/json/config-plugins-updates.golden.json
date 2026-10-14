@@ -1,0 +1,13 @@
+{
+  "schema_version": "1",
+  "command": "config plugins updates",
+  "data": {
+    "updates": [
+      {
+        "name": "waf",
+        "installed": "1.0.0",
+        "latest": "1.1.0"
+      }
+    ]
+  }
+}

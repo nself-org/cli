@@ -1,0 +1,17 @@
+{
+  "schema_version": "1",
+  "command": "config plugins compat-check",
+  "data": {
+    "cliVersion": "1.5.0",
+    "plugins": [
+      {
+        "name": "waf",
+        "version": "1.0.0",
+        "status": "installed",
+        "compatible": true,
+        "reason": "",
+        "hint": ""
+      }
+    ]
+  }
+}

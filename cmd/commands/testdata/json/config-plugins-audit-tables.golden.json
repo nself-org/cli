@@ -1,0 +1,18 @@
+{
+  "schema_version": "1",
+  "command": "config plugins audit-tables",
+  "data": {
+    "audit_at": "2026-01-02T03:04:05Z",
+    "tables": [
+      {
+        "table": "np_chat_conversations",
+        "has_source_account_id": true,
+        "has_hasura_filter": "present",
+        "total_rows": 3,
+        "accounts": {
+          "primary": 3
+        }
+      }
+    ]
+  }
+}

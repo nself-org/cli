@@ -14,6 +14,50 @@
       "id": "urn:nself:cli:schema:command-registry:v1"
     },
     {
+      "path": "commands/add.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:add:v1"
+    },
+    {
+      "path": "commands/admin-health.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:admin-health:v1"
+    },
+    {
+      "path": "commands/admin-logs-record.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:admin-logs-record:v1"
+    },
+    {
+      "path": "commands/admin-logs.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:admin-logs:v1"
+    },
+    {
+      "path": "commands/admin-projects-add.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:admin-projects-add:v1"
+    },
+    {
+      "path": "commands/admin-projects-list.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:admin-projects-list:v1"
+    },
+    {
+      "path": "commands/admin-projects-remove.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:admin-projects-remove:v1"
+    },
+    {
+      "path": "commands/admin-projects.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:admin-projects:v1"
+    },
+    {
+      "path": "commands/admin-start.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:admin-start:v1"
+    },
+    {
+      "path": "commands/admin-stop.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:admin-stop:v1"
+    },
+    {
+      "path": "commands/admin.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:admin:v1"
+    },
+    {
       "path": "commands/backup-config.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:backup-config:v1"
     },
@@ -96,6 +140,22 @@
     {
       "path": "commands/clean.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:clean:v1"
+    },
+    {
+      "path": "commands/config-bundles-info.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-bundles-info:v1"
+    },
+    {
+      "path": "commands/config-bundles-install.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-bundles-install:v1"
+    },
+    {
+      "path": "commands/config-bundles-list.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-bundles-list:v1"
+    },
+    {
+      "path": "commands/config-bundles.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-bundles:v1"
     },
     {
       "path": "commands/config-env-copy.v1.schema.json",
@@ -198,6 +258,74 @@
       "id": "urn:nself:cli:schema:commands:config-oauth:v1"
     },
     {
+      "path": "commands/config-plugins-audit-tables.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-plugins-audit-tables:v1"
+    },
+    {
+      "path": "commands/config-plugins-compat-check.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-plugins-compat-check:v1"
+    },
+    {
+      "path": "commands/config-plugins-count.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-plugins-count:v1"
+    },
+    {
+      "path": "commands/config-plugins-disable.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-plugins-disable:v1"
+    },
+    {
+      "path": "commands/config-plugins-enable.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-plugins-enable:v1"
+    },
+    {
+      "path": "commands/config-plugins-info.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-plugins-info:v1"
+    },
+    {
+      "path": "commands/config-plugins-inventory.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-plugins-inventory:v1"
+    },
+    {
+      "path": "commands/config-plugins-list.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-plugins-list:v1"
+    },
+    {
+      "path": "commands/config-plugins-outdated.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-plugins-outdated:v1"
+    },
+    {
+      "path": "commands/config-plugins-refresh.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-plugins-refresh:v1"
+    },
+    {
+      "path": "commands/config-plugins-search.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-plugins-search:v1"
+    },
+    {
+      "path": "commands/config-plugins-start.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-plugins-start:v1"
+    },
+    {
+      "path": "commands/config-plugins-status.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-plugins-status:v1"
+    },
+    {
+      "path": "commands/config-plugins-stop.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-plugins-stop:v1"
+    },
+    {
+      "path": "commands/config-plugins-update.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-plugins-update:v1"
+    },
+    {
+      "path": "commands/config-plugins-updates.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-plugins-updates:v1"
+    },
+    {
+      "path": "commands/config-plugins.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-plugins:v1"
+    },
+    {
       "path": "commands/config-secrets-audit.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:config-secrets-audit:v1"
     },
@@ -276,6 +404,58 @@
     {
       "path": "commands/config-secrets.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:config-secrets:v1"
+    },
+    {
+      "path": "commands/config-services-add.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-services-add:v1"
+    },
+    {
+      "path": "commands/config-services-configure.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-services-configure:v1"
+    },
+    {
+      "path": "commands/config-services-disable.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-services-disable:v1"
+    },
+    {
+      "path": "commands/config-services-enable.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-services-enable:v1"
+    },
+    {
+      "path": "commands/config-services-list.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-services-list:v1"
+    },
+    {
+      "path": "commands/config-services-ps.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-services-ps:v1"
+    },
+    {
+      "path": "commands/config-services-restart.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-services-restart:v1"
+    },
+    {
+      "path": "commands/config-services-scale.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-services-scale:v1"
+    },
+    {
+      "path": "commands/config-services-start.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-services-start:v1"
+    },
+    {
+      "path": "commands/config-services-stop.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-services-stop:v1"
+    },
+    {
+      "path": "commands/config-services-update.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-services-update:v1"
+    },
+    {
+      "path": "commands/config-services-upgrade.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-services-upgrade:v1"
+    },
+    {
+      "path": "commands/config-services.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-services:v1"
     },
     {
       "path": "commands/config-set.v1.schema.json",
@@ -828,6 +1008,10 @@
     {
       "path": "commands/mcp-setup.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:mcp-setup:v1"
+    },
+    {
+      "path": "commands/remove.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:remove:v1"
     },
     {
       "path": "commands/reset.v1.schema.json",

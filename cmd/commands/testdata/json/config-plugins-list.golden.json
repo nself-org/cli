@@ -1,0 +1,14 @@
+{
+  "schema_version": "1",
+  "command": "config plugins list",
+  "data": [
+    {
+      "category": "security",
+      "installed": true,
+      "name": "waf",
+      "publish_status": "stable",
+      "running": false,
+      "version": "1.0.0"
+    }
+  ]
+}

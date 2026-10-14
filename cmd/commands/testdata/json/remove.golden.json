@@ -1,0 +1,13 @@
+{
+  "schema_version": "1",
+  "command": "remove",
+  "data": {
+    "removed": [
+      "waf"
+    ],
+    "kept": [],
+    "planned": [],
+    "next": "nself start",
+    "dry_run": false
+  }
+}

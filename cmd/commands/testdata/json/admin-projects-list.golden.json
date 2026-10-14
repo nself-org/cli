@@ -1,0 +1,14 @@
+{
+  "schema_version": "1",
+  "command": "admin projects list",
+  "data": [
+    {
+      "id": "demo",
+      "name": "demo",
+      "path": "",
+      "host": "demo.example.test",
+      "ssh_user": "ops",
+      "url": ""
+    }
+  ]
+}

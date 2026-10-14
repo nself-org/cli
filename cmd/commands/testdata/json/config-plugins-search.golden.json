@@ -1,0 +1,17 @@
+{
+  "schema_version": "1",
+  "command": "config plugins search",
+  "data": {
+    "query": "waf",
+    "count": 1,
+    "plugins": [
+      {
+        "slug": "waf",
+        "tier": "free",
+        "bundles": [],
+        "description": "Web application firewall",
+        "category": "security"
+      }
+    ]
+  }
+}

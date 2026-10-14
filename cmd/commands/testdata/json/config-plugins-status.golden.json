@@ -1,0 +1,13 @@
+{
+  "schema_version": "1",
+  "command": "config plugins status",
+  "data": {
+    "plugins": [
+      {
+        "name": "waf",
+        "state": "stopped",
+        "pid": 0
+      }
+    ]
+  }
+}

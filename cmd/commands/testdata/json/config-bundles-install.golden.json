@@ -1,0 +1,13 @@
+{
+  "schema_version": "1",
+  "command": "config bundles install",
+  "data": {
+    "installed": [
+      "chat",
+      "notify"
+    ],
+    "skipped": [],
+    "next": "nself start",
+    "dry_run": false
+  }
+}
