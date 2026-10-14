@@ -26,7 +26,9 @@ type FunctionsConfig struct {
 	Port    int    `env:"FUNCTIONS_PORT"`    // 3008
 	Route   string `env:"FUNCTIONS_ROUTE"`   // functions.{BD}
 
-	// Runtime selects the container image: node (default), deno, python.
+	// Runtime reads FUNCTIONS_RUNTIME from the .env cascade and selects the
+	// container image: node (default when empty), deno, or python. Load rejects
+	// any other value; runtime names are case sensitive.
 	Runtime string `env:"FUNCTIONS_RUNTIME"` // node|deno|python
 
 	// Resource limits for the functions container.

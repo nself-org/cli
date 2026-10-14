@@ -154,6 +154,7 @@ FUNCTIONS_ENABLED                             (default: false)               def
 FUNCTIONS_VERSION                             (default: latest)              default
 FUNCTIONS_PORT                                (default: 3008)                default
 FUNCTIONS_ROUTE                               (default: functions)           default
+FUNCTIONS_RUNTIME                             (default: node)                default
 MLFLOW_ENABLED                                (default: false)               default
 MLFLOW_VERSION                                (default: 2.9.2)               default
 MLFLOW_PORT                                   (default: 5000)                default
