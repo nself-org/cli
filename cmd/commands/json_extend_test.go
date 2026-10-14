@@ -253,13 +253,14 @@ func extendData(t *testing.T, out, command string, into any) {
 	}
 }
 
-func fakeProject(t *testing.T, env string) {
+func fakeProject(t *testing.T, env string) string {
 	t.Helper()
 	proj := t.TempDir()
 	if err := os.WriteFile(filepath.Join(proj, ".env"), []byte(env), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Chdir(proj)
+	return proj
 }
 
 // The union row of `config services list` prints the same bytes as the
@@ -306,11 +307,12 @@ func TestServicesBodies(t *testing.T) {
 		}
 	})
 	t.Run("enable and disable report the state after", func(t *testing.T) {
-		fakeProject(t, "PROJECT_NAME=smoke\n")
+		proj := fakeProject(t, "PROJECT_NAME=smoke\n")
 		for _, tc := range []struct {
 			verb string
 			want bool
 		}{{"enable", true}, {"disable", false}} {
+			t.Chdir(proj) // extendData below moves to the package dir for the schema loader
 			out, err := runExt(t, extendCmd(t, "config", "services", tc.verb), []string{"mailpit"}, map[string]string{})
 			if err != nil {
 				t.Fatal(err)
