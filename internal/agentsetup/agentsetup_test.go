@@ -80,6 +80,22 @@ func TestMerge(t *testing.T) {
 		{"invalid", `{"a":`, false, true, nil},
 		{"servers not object", `{"mcpServers":[]}`, false, true, nil},
 		{"trailing data", `{"a":1} {"b":2}`, false, true, nil},
+		{"trailing bracket", `{"keep":1}]`, false, true, nil},
+		{"trailing brace", `{"keep":1}}`, false, true, nil},
+		{"trailing whitespace", "{\"keep\":1}\n\n", true, false, nil},
+		{"duplicate mcpServers merges into the last", `{"mcpServers":{},"mcpServers":{"other":{"command":"o"}}}`, true, false, func(t *testing.T, out string) {
+			first := strings.Index(out, `"mcpServers"`)
+			last := strings.LastIndex(out, `"mcpServers"`)
+			if first == last || strings.Contains(out[first:last], serverName) || !strings.Contains(out[last:], `"`+serverName+`"`) {
+				t.Errorf("nself must land in the last mcpServers only:\n%s", out)
+			}
+		}},
+		{"nself only in the shadowed duplicate", `{"mcpServers":{"nself":{"command":"old"}},"mcpServers":{}}`, true, false, func(t *testing.T, out string) {
+			last := strings.LastIndex(out, `"mcpServers"`)
+			if !strings.Contains(out[last:], `"`+serverName+`"`) {
+				t.Errorf("nself missing from the effective (last) mcpServers:\n%s", out)
+			}
+		}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
