@@ -295,6 +295,36 @@ func TestServicesBodies(t *testing.T) {
 			}
 		}
 	})
+	t.Run("ps lists the stack containers", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("the docker double is a POSIX shell script")
+		}
+		fakeProject(t, "PROJECT_NAME=smoke\n")
+		if err := os.WriteFile("docker-compose.yml", []byte("services: {}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		bin := t.TempDir()
+		script := "#!/bin/sh\ncase \" $* \" in\n  ' compose version '*) printf '2.30.0\\n' ;;\n  *' ps '*) printf '%s\\n' '[{\"Name\":\"smoke_postgres\",\"Service\":\"postgres\",\"State\":\"running\",\"Health\":\"healthy\"}]' ;;\nesac\nexit 0\n"
+		if err := os.WriteFile(filepath.Join(bin, "docker"), []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		prependPath(t, bin)
+		out, err := runExt(t, extendCmd(t, "config", "services", "ps"), nil, map[string]string{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var d servicePsData
+		extendData(t, out, "config services ps", &d)
+		if len(d.Services) != 1 || d.Services[0].Service != "postgres" || d.Services[0].Name != "smoke_postgres" {
+			t.Fatalf("ps: %+v", d)
+		}
+	})
+	t.Run("ps without a compose file is an error, not an empty document", func(t *testing.T) {
+		fakeProject(t, "PROJECT_NAME=smoke\n")
+		if _, err := runExt(t, extendCmd(t, "config", "services", "ps"), nil, map[string]string{}); err == nil {
+			t.Fatal("ps without docker-compose.yml succeeded")
+		}
+	})
 	t.Run("group answers with its subcommands", func(t *testing.T) {
 		out, err := runExt(t, extendCmd(t, "config", "services"), nil, map[string]string{})
 		if err != nil {

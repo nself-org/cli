@@ -8,9 +8,10 @@ config services
 service list #| legacy-json no-json=envelope-checked-by-config-services-list
 config services list
 config services list --core
-config services ps
+config services ps #| no-json=needs-a-docker-compose.yml-in-the-project-envelope-checked-by-TestServicesBodies
 config services add myapi --dry-run
-remove admin
+remove waf --dry-run
+remove admin #| no-json=disabling-admin-breaks-registry-resolution-for-the-next-json-run-envelope-checked-by-TestExtendBodies
 add admin
 config plugins inventory
 config plugins status
