@@ -82,6 +82,41 @@ func TestRefreshRepairsEmptyDirectoryAndRejectsNonempty(t *testing.T) {
 	}
 }
 
+func TestRefreshRepairsReadOnlyPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix permission bits are required")
+	}
+	compattest.Set(t, true)
+	entry := seedVerifiedCache(t)
+	for name, mode := range map[string]os.FileMode{"owner-read": 0400, "world-read": 0444, "owner-write": 0200} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := entitlement.Path(dir)
+			if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte("old"), mode); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := entitlement.Refresh(context.Background(), dir); err != nil {
+				t.Fatal(err)
+			}
+			after, err := os.Stat(path)
+			if err != nil || !os.SameFile(before, after) || after.Mode().Perm() != 0600 {
+				t.Fatalf("read-only refresh must preserve inode and normalize permissions: %v", err)
+			}
+			data, err := os.ReadFile(path)
+			if err != nil || string(data) != entry.JWT {
+				t.Fatalf("read-only refresh must publish the verified token: %v", err)
+			}
+		})
+	}
+}
+
 func TestRefreshWithoutConfiguredKey(t *testing.T) {
 	compattest.Set(t, true)
 	seedVerifiedCache(t)

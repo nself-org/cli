@@ -107,6 +107,11 @@ func writeExisting(path string, data []byte, before os.FileInfo) error {
 	if !before.Mode().IsRegular() {
 		return fmt.Errorf("entitlement target must be a regular file, not a symlink or special file")
 	}
+	if before.Mode().Perm()&0200 == 0 {
+		if err := normalizePermissions(path, before); err != nil {
+			return err
+		}
+	}
 	f, err := os.OpenFile(path, os.O_WRONLY|noFollowFlag, 0)
 	if err != nil {
 		return err
@@ -129,6 +134,25 @@ func writeExisting(path string, data []byte, before os.FileInfo) error {
 		return err
 	}
 	return f.Sync()
+}
+
+// normalizePermissions repairs read-only files through a verified descriptor.
+// Purpose: safely restore private writes. Inputs: path/stat. Outputs: error.
+// Constraints: no pathname chmod or symlink traversal. SPORT: mounted refresh.
+func normalizePermissions(path string, before os.FileInfo) error {
+	f, err := os.OpenFile(path, os.O_RDONLY|noFollowFlag, 0)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+	after, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	if !after.Mode().IsRegular() || !os.SameFile(before, after) {
+		return fmt.Errorf("entitlement target changed during refresh")
+	}
+	return f.Chmod(0600)
 }
 
 // writeNew publishes the initial file and persists its directory entry.

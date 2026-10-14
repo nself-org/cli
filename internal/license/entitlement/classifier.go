@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/nself-org/cli/internal/errs"
@@ -23,24 +24,45 @@ func IsLicensedPlugin(dir string) (bool, error) {
 		return false, errs.Wrap("E125", "cannot read plugin manifest in "+dir, err)
 	}
 	var m struct {
-		Version         int    `json:"manifest_version"`
-		License         string `json:"license"`
-		Tier            string `json:"tier"`
-		RequiresLicense bool   `json:"requires_license"`
-		IsCommercial    bool   `json:"isCommercial"`
-		Category        string `json:"category"`
+		Version         json.RawMessage `json:"manifest_version"`
+		License         string          `json:"license"`
+		Tier            string          `json:"tier"`
+		RequiresLicense bool            `json:"requires_license"`
+		IsCommercial    bool            `json:"isCommercial"`
+		Category        json.RawMessage `json:"category"`
 	}
 	if err := json.Unmarshal(data, &m); err != nil {
 		return false, errs.Wrap("E125", "invalid plugin manifest in "+dir, err)
 	}
 	licensed := m.License == "licensed"
-	if m.Version != 2 {
+	if isV1ManifestVersion(m.Version) {
 		licensed = licensed || m.RequiresLicense || m.IsCommercial || (m.Tier != "" && m.Tier != "free")
+	} else if strings.TrimSpace(string(m.Version)) != "2" {
+		return false, errs.New("E125", "unsupported plugin manifest version in "+dir)
 	}
-	if licensed && m.Category == "security" {
+	var category string
+	_ = json.Unmarshal(m.Category, &category)
+	if licensed && category == "security" {
 		return false, errs.New("E125", "security plugin in "+dir+" cannot require a licence (ADR 0005)")
 	}
 	return licensed, nil
+}
+
+// isV1ManifestVersion mirrors manifestv2.IsV1Version without an L1 -> L2 import.
+// Purpose: preserve the real loader's v1 version spellings in licence policy.
+// Inputs: raw version. Outputs: v1 status. Constraints: quoted numbers other than "1" are not v1.
+// SPORT: contract:plugin.entitlement-token.
+func isV1ManifestVersion(v json.RawMessage) bool {
+	t := strings.TrimSpace(string(v))
+	switch t {
+	case "", "null", `"1"`:
+		return true
+	}
+	if strings.HasPrefix(t, `"`) {
+		return false
+	}
+	f, err := strconv.ParseFloat(t, 64)
+	return err == nil && (f == 0 || f == 1)
 }
 
 // HasLicensedInstalled reports whether an enabled installed plugin is licensed.

@@ -115,10 +115,12 @@ func injectEntitlementVolume(svc *yaml.Node) error {
 	for _, v := range volumes.Content {
 		if v.Kind == yaml.ScalarNode {
 			parts := bytes.Split([]byte(v.Value), []byte(":"))
-			if len(parts) == 1 && path.Clean(string(parts[0])) == entitlementContainerFile {
-				continue
+			// Read the target from the right so source interpolation may contain colons.
+			target := parts[len(parts)-1]
+			if len(parts) >= 2 && !bytes.HasPrefix(target, []byte("/")) {
+				target = parts[len(parts)-2]
 			}
-			if len(parts) >= 2 && path.Clean(string(parts[1])) == entitlementContainerFile {
+			if path.Clean(string(target)) == entitlementContainerFile {
 				continue
 			}
 		} else if v.Kind == yaml.MappingNode {

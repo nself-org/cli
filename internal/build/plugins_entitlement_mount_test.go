@@ -196,7 +196,7 @@ func TestMountRejectsInheritedService(t *testing.T) {
 func TestMountCleansVolumeTargets(t *testing.T) {
 	compattest.Set(t, true)
 	dir, _ := entitlementFixture(t, "licensed")
-	for _, volume := range []string{"fake:/run/nself//entitlement.jwt:rw", "fake:/run/nself/../nself/entitlement.jwt:rw", "type: bind\n        source: fake\n        target: /run/nself//entitlement.jwt"} {
+	for _, volume := range []string{"fake:/run/nself//entitlement.jwt:rw", "fake:/run/nself/../nself/entitlement.jwt:rw", "${A:-fake}:/run/nself/entitlement.jwt", "${A:-fake}:/run/nself/entitlement.jwt:rw", "type: bind\n        source: fake\n        target: /run/nself//entitlement.jwt"} {
 		out, err := normalizeComposeEntitlement([]byte("services:\n  fixture:\n    volumes:\n      - "+volume+"\n"), dir, "fixture")
 		if err != nil || bytes.Contains(out, []byte("fake")) {
 			t.Fatalf("conflict survives: %s %v", out, err)

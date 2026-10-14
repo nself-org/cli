@@ -140,7 +140,13 @@ func TestGuardRereads24h(t *testing.T) {
 		t.Fatal("cached authorization lost before refresh")
 	}
 	clock.advance(24 * time.Hour)
-	waitStatus(t, g, 503)
+	waitStatus(t, g, 200)
+	clock.mu.Lock()
+	clock.now = now.Add(EntitlementGracePeriod + time.Nanosecond)
+	clock.mu.Unlock()
+	if serve(g, "/app").Code != 503 {
+		t.Fatal("deleted file extended signed grace")
+	}
 	cancel()
 	g.Close()
 	g.Close()
@@ -283,4 +289,152 @@ func TestGuardCachedSignedExpiryBoundary(t *testing.T) {
 			t.Fatalf("at %s got %d, want %d", tc.at, got, tc.status)
 		}
 	}
+}
+
+func TestGuardTransientReloadKeepsSignedSnapshot(t *testing.T) {
+	for _, failure := range []string{"header", "payload", "signature", "signature-tail", "missing", "unreadable"} {
+		t.Run(failure, func(t *testing.T) {
+			pub, priv := syntheticKey(t)
+			licensetest.UseKey(t, pub)
+			now := time.Unix(1800000000, 0)
+			clock := &fakeClock{now: now, ticker: &fakeTicker{ticks: make(chan time.Time), stopped: make(chan struct{})}}
+			token := tokenFor(t, priv, header(), claimsAt(now))
+			path := setToken(t, token)
+			g := Guard(context.Background(), "paid", handler(), WithClock(clock))
+			defer g.Close()
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+			parts := strings.Split(token, ".")
+			switch failure {
+			case "header":
+				parts[0] = parts[0][:len(parts[0])/2]
+			case "payload":
+				parts[1] = parts[1][:len(parts[1])/2]
+			case "signature":
+				parts[2] = parts[2][:len(parts[2])/2]
+			case "signature-tail":
+				parts[2] += "AA"
+			case "unreadable":
+				if err := os.Mkdir(path, 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if failure != "missing" && failure != "unreadable" {
+				if err := os.WriteFile(path, []byte(strings.Join(parts, ".")), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			clock.advance(24 * time.Hour)
+			waitReloadAt(t, g, now.Add(24*time.Hour))
+			if got := serve(g, "/app").Code; got != 200 {
+				t.Fatalf("transient reload dropped good snapshot: %d", got)
+			}
+			if failure == "unreadable" {
+				if err := os.Remove(path); err != nil {
+					t.Fatal(err)
+				}
+			}
+			fresh := now.Add(24 * time.Hour)
+			if err := os.WriteFile(path, []byte(tokenFor(t, priv, header(), claimsAt(fresh))), 0600); err != nil {
+				t.Fatal(err)
+			}
+			setClockNow(clock, fresh.Add(4*time.Second))
+			if serve(g, "/app").Code != 200 || cachedDeadline(g) != now.Add(EntitlementGracePeriod).Unix() {
+				t.Fatal("retry was not rate limited to five seconds")
+			}
+			setClockNow(clock, fresh.Add(5*time.Second))
+			if serve(g, "/app").Code != 200 || cachedDeadline(g) != fresh.Add(EntitlementGracePeriod).Unix() {
+				t.Fatal("valid replacement did not recover at five seconds")
+			}
+		})
+	}
+}
+
+func TestGuardReloadRejectsDefinitelyInvalidTokens(t *testing.T) {
+	for _, failure := range []string{"forged", "other-plugin", "expired", "empty", "oversized"} {
+		t.Run(failure, func(t *testing.T) {
+			pub, priv := syntheticKey(t)
+			licensetest.UseKey(t, pub)
+			now := time.Unix(1800000000, 0)
+			clock := &fakeClock{now: now, ticker: &fakeTicker{ticks: make(chan time.Time), stopped: make(chan struct{})}}
+			path := setToken(t, tokenFor(t, priv, header(), claimsAt(now)))
+			g := Guard(context.Background(), "paid", handler(), WithClock(clock))
+			defer g.Close()
+			claims := claimsAt(now)
+			switch failure {
+			case "forged":
+				_, priv = syntheticKey(t)
+			case "other-plugin":
+				claims["plugins"] = []string{"other"}
+			case "expired":
+				claims = claimsAt(now.Add(-EntitlementGracePeriod - time.Second))
+			}
+			token := tokenFor(t, priv, header(), claims)
+			if failure == "empty" {
+				token = ""
+			}
+			if failure == "oversized" {
+				token = strings.Repeat("a", maxTokenBytes+1)
+			}
+			if err := os.WriteFile(path, []byte(token), 0600); err != nil {
+				t.Fatal(err)
+			}
+			clock.advance(24 * time.Hour)
+			waitReloadAt(t, g, now.Add(24*time.Hour))
+			if serve(g, "/app").Code != 503 {
+				t.Fatal("definitely invalid replacement retained authorization")
+			}
+		})
+	}
+}
+
+func TestGuardTransientReloadCannotExtendSignedGrace(t *testing.T) {
+	pub, priv := syntheticKey(t)
+	licensetest.UseKey(t, pub)
+	now := time.Unix(1800000000, 0)
+	clock := &fakeClock{now: now, ticker: &fakeTicker{ticks: make(chan time.Time), stopped: make(chan struct{})}}
+	path := setToken(t, tokenFor(t, priv, header(), claimsAt(now)))
+	g := Guard(context.Background(), "paid", handler(), WithClock(clock))
+	defer g.Close()
+	if err := os.WriteFile(path, []byte("incomplete"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	clock.advance(24 * time.Hour)
+	waitReloadAt(t, g, now.Add(24*time.Hour))
+	setClockNow(clock, now.Add(EntitlementGracePeriod))
+	if serve(g, "/app").Code != 200 {
+		t.Fatal("transient reload denied original grace endpoint")
+	}
+	setClockNow(clock, now.Add(EntitlementGracePeriod+time.Nanosecond))
+	if serve(g, "/app").Code != 503 {
+		t.Fatal("transient reload extended original signed grace")
+	}
+}
+
+func setClockNow(clock *fakeClock, at time.Time) {
+	clock.mu.Lock()
+	defer clock.mu.Unlock()
+	clock.now = at
+}
+
+func cachedDeadline(g *Middleware) int64 {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.deadline
+}
+
+func waitReloadAt(t *testing.T, g *Middleware, at time.Time) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		g.mu.RLock()
+		got := g.lastReload
+		g.mu.RUnlock()
+		if got.Equal(at) {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("ticker did not reload token")
 }

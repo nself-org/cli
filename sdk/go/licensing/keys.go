@@ -1,4 +1,4 @@
-// Package license verifies the ping-issued runtime entitlement contract.
+// Package licensing verifies the ping-issued runtime entitlement contract.
 package licensing
 
 import (

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/errs"
@@ -37,12 +38,19 @@ func TestLicenseSetOfflinePreservesAndRejectionClears(t *testing.T) {
 		name   string
 		status int
 		body   string
+		clear  bool
 	}{
-		{"unavailable", http.StatusServiceUnavailable, ""},
-		{"transport", 0, ""},
-		{"invalid", http.StatusUnauthorized, ""},
-		{"revoked", http.StatusOK, `{"valid":false,"reason":"revoked"}`},
-		{"expired", http.StatusOK, `{"valid":false,"reason":"expired"}`},
+		{"unavailable", http.StatusServiceUnavailable, "", false},
+		{"server-error", http.StatusInternalServerError, "", false},
+		{"rate-limited", http.StatusTooManyRequests, "", false},
+		{"bad-request", http.StatusBadRequest, "", false},
+		{"not-found", http.StatusNotFound, "", false},
+		{"transport", 0, "", false},
+		{"timeout", -1, "", false},
+		{"invalid", http.StatusUnauthorized, "", true},
+		{"forbidden", http.StatusForbidden, "", true},
+		{"revoked", http.StatusOK, `{"valid":false,"reason":"revoked"}`, true},
+		{"expired", http.StatusOK, `{"valid":false,"reason":"expired"}`, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			seedVerifiedCache(t)
@@ -67,7 +75,14 @@ func TestLicenseSetOfflinePreservesAndRejectionClears(t *testing.T) {
 				t.Fatal(err)
 			}
 			license.PingKeys = append(license.PingKeys, license.PingKey{ID: "rejection", Public: pub})
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if tc.status == -1 {
+					select {
+					case <-r.Context().Done():
+					case <-time.After(100 * time.Millisecond):
+					}
+					return
+				}
 				if tc.status == 0 {
 					return
 				}
@@ -80,7 +95,13 @@ func TestLicenseSetOfflinePreservesAndRejectionClears(t *testing.T) {
 				server.Close()
 			}
 			t.Setenv("NSELF_PING_API_URL", server.URL)
-			err = entitlement.RefreshInstalledForKey(context.Background(), dir, "synthetic-license-key")
+			ctx := context.Background()
+			if tc.status == -1 {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, 50*time.Millisecond)
+				defer cancel()
+			}
+			err = entitlement.RefreshInstalledForKey(ctx, dir, "synthetic-license-key")
 			if errs.ExitCodeFor(err) != 3 {
 				t.Fatalf("validation failure requires E125: %v", err)
 			}
@@ -88,10 +109,10 @@ func TestLicenseSetOfflinePreservesAndRejectionClears(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if (tc.status == http.StatusServiceUnavailable || tc.status == 0) && string(after) != string(before) {
+			if !tc.clear && string(after) != string(before) {
 				t.Fatal("offline validation destroyed cached runtime entitlement")
 			}
-			if tc.status != http.StatusServiceUnavailable && tc.status != 0 && len(after) != 0 {
+			if tc.clear && len(after) != 0 {
 				t.Fatal("explicit invalid-key rejection retained runtime entitlement")
 			}
 		})

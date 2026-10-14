@@ -18,6 +18,7 @@ const EntitlementGracePeriod time.Duration = 2592000000000000
 const maxTokenBytes = 1048576
 
 var ErrEntitlementExpired = errors.New("entitlement_expired")
+var errTokenTooLarge = errors.New("entitlement token exceeds size limit")
 
 // Purpose: verify the configured file. Inputs: plugin slug and trusted clock.
 // Outputs: nil only for an authorized signed token. Constraints: absent files fail closed;
@@ -48,7 +49,10 @@ func readTokenFile(path string) ([]byte, error) {
 	}
 	defer func() { _ = f.Close() }()
 	data, err := io.ReadAll(io.LimitReader(f, maxTokenBytes+1))
-	if err != nil || len(data) > maxTokenBytes {
+	if len(data) > maxTokenBytes {
+		return nil, errTokenTooLarge
+	}
+	if err != nil {
 		return nil, ErrEntitlementExpired
 	}
 	return data, nil

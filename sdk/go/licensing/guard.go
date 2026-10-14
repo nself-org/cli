@@ -2,6 +2,10 @@ package licensing
 
 import (
 	"context"
+	"crypto/ed25519"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -70,6 +74,7 @@ type Middleware struct {
 	deadline   int64
 	valid      bool
 	lastReload time.Time
+	retryRead  bool
 	cancel     context.CancelFunc
 	done       chan struct{}
 }
@@ -111,7 +116,7 @@ func (g *Middleware) refresh(ctx context.Context, ticker Ticker) {
 }
 
 // Purpose: replace cached token. Inputs: configured path. Outputs: snapshot.
-// Constraints: read failures erase authorization. SPORT: plugin.entitlement-token.
+// Constraints: transient reads cannot extend signed grace. SPORT: plugin.entitlement-token.
 func (g *Middleware) reload() {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -119,15 +124,47 @@ func (g *Middleware) reload() {
 }
 
 // Purpose: verify a new snapshot once. Inputs: current time. Outputs: cached decision.
-// Constraints: caller holds mu; failures erase authorization. SPORT: plugin.entitlement-token.
+// Constraints: caller holds mu; complete invalid tokens revoke authorization.
+// SPORT: plugin.entitlement-token.
 func (g *Middleware) reloadLocked(now time.Time) {
 	g.lastReload = now
-	g.valid = false
 	data, err := readTokenFile(g.path)
-	if err == nil {
-		g.deadline, err = verifiedDeadline(strings.TrimSpace(string(data)), g.slug)
-		g.valid = err == nil
+	if errors.Is(err, errTokenTooLarge) {
+		g.valid, g.retryRead = false, false
+		return
 	}
+	token := strings.TrimSpace(string(data))
+	if err != nil || incompleteToken(token) {
+		g.retryRead = g.authorized(now)
+		if !g.retryRead {
+			g.valid = false
+		}
+		return
+	}
+	g.retryRead = false
+	g.deadline, err = verifiedDeadline(token, g.slug)
+	g.valid = err == nil
+}
+
+// Purpose: identify potentially torn reads before cryptographic verification.
+// Inputs: compact JWT. Outputs: incomplete structure. Constraints: complete
+// signature and claim failures remain fail closed. SPORT: plugin.entitlement-token.
+func incompleteToken(token string) bool {
+	if token == "" {
+		return false // An explicit empty-file revocation cannot be a write-before-truncate tear.
+	}
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return true
+	}
+	for _, part := range parts[:2] {
+		data, err := base64.RawURLEncoding.DecodeString(part)
+		if err != nil || !json.Valid(data) {
+			return true
+		}
+	}
+	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
+	return err != nil || len(sig) != ed25519.SignatureSize
 }
 
 // Purpose: enforce route authorization. Inputs: HTTP request. Outputs: downstream or 503.
@@ -139,7 +176,11 @@ func (g *Middleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	g.mu.Lock()
 	now := g.clock.Now()
-	if !g.authorized(now) && now.Sub(g.lastReload) >= time.Minute {
+	retryAfter := time.Minute
+	if g.retryRead {
+		retryAfter = 5 * time.Second
+	}
+	if (g.retryRead || !g.authorized(now)) && now.Sub(g.lastReload) >= retryAfter {
 		g.reloadLocked(now)
 	}
 	authorized := g.authorized(now)
