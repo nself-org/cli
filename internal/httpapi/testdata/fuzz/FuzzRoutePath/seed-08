@@ -1,0 +1,2 @@
+go test fuzz v1
+string("/v1/commands/config/get%2f..%2fdestroy")

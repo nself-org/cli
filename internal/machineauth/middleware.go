@@ -8,7 +8,9 @@ package machineauth
 // Constraints: header parsing is the v1.4 one (TrimPrefix of "Bearer "), so
 //   behaviour with a token set is unchanged. Both sides are hashed before the
 //   constant-time compare, so the check does not depend on the token length.
-//   Nothing from the request is logged.
+//   More than one Authorization header is refused: which one wins would differ
+//   between this server and any proxy in front of it. Nothing from the request
+//   is logged.
 
 import (
 	"crypto/sha256"
@@ -21,7 +23,8 @@ import (
 // Middleware returns a wrapper that serves the next handler only when the
 // request presents "Authorization: Bearer <tok>". Otherwise it answers 401
 // with the body "unauthorized" and a WWW-Authenticate: Bearer realm header. An
-// empty tok rejects every request (fail closed).
+// empty tok rejects every request (fail closed), and so does a request that
+// carries more than one Authorization header.
 func Middleware(tok, realm string) func(http.Handler) http.Handler {
 	want := sha256.Sum256([]byte(tok))
 	challenge := fmt.Sprintf("Bearer realm=%q", realm)
@@ -29,7 +32,7 @@ func Middleware(tok, realm string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 			sum := sha256.Sum256([]byte(got))
-			if got == "" || tok == "" || subtle.ConstantTimeCompare(sum[:], want[:]) != 1 {
+			if got == "" || tok == "" || len(r.Header.Values("Authorization")) != 1 || subtle.ConstantTimeCompare(sum[:], want[:]) != 1 {
 				w.Header().Set("WWW-Authenticate", challenge)
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return

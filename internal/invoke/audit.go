@@ -137,7 +137,7 @@ func (g *Guard) audit(o Options, tr *trace, req Request, res Result, runErr erro
 		_, _ = fmt.Fprintln(auditErrOut, "nself: machine audit line could not be encoded")
 		return
 	}
-	if err := g.appendLine(line.Bytes()); err != nil {
+	if err := g.appendLine(escapeNextLine(line.Bytes())); err != nil {
 		_, _ = fmt.Fprintf(auditErrOut, "nself: machine audit write failed: %v\n", err)
 	}
 }

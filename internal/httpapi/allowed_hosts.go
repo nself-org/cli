@@ -56,3 +56,21 @@ func validDNSLabel(label string) bool {
 	}
 	return true
 }
+
+// lowerASCII lowercases A-Z only. Host and Origin comparison must not use the
+// Unicode-aware strings.ToLower: it folds U+212A (Kelvin sign) to "k" and
+// U+0130 to "i", so a non-ASCII Host could equal an allowed ASCII name.
+func lowerASCII(s string) string {
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; c >= 'A' && c <= 'Z' {
+			b := []byte(s)
+			for j := i; j < len(b); j++ {
+				if b[j] >= 'A' && b[j] <= 'Z' {
+					b[j] += 'a' - 'A'
+				}
+			}
+			return string(b)
+		}
+	}
+	return s
+}

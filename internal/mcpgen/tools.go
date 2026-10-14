@@ -79,17 +79,17 @@ func Tools(o Options) ([]server.ServerTool, error) {
 		return nil
 	}
 	merged := map[string]bool{}
-	for i := range o.Registry.Commands {
+	for _, i := range claimOrder(o.Registry) { // core first: a plugin never shadows a core command
 		cmd := &o.Registry.Commands[i]
 		if ok, _ := invoke.Exposure(cmd, invoke.TransportMCP, nil); !ok {
 			continue
 		}
 		name := cmdregistry.ToolName(cmd.Path)
-		if len(name) > 64 {
-			if skipPlugin(o, cmd, "tool name is longer than 64 characters") {
+		if why := nameProblem(cmd, name); why != "" {
+			if skipPlugin(o, cmd, why) {
 				continue
 			}
-			return nil, fmt.Errorf("mcpgen: tool name %q for %q is longer than 64 characters", name, cmd.Path)
+			return nil, fmt.Errorf("mcpgen: tool name %q for %q: %s", name, cmd.Path, why)
 		}
 		row, legacy := table.Lookup(name)
 		legacy = legacy && !row.Shortcut
@@ -112,6 +112,9 @@ func Tools(o Options) ([]server.ServerTool, error) {
 		}
 		t, err := g.generated(cmd, name, row)
 		if err != nil {
+			if skipPlugin(o, cmd, err.Error()) {
+				continue
+			}
 			return nil, err
 		}
 		if err := add(name, cmd.Path, t); err != nil {
@@ -169,6 +172,7 @@ func toolName(path string) string { return cmdregistry.ToolName(path) }
 // merged legacy row of the same name.
 func (g *gen) generated(cmd *cmdregistry.Command, name string, row *Row) (server.ServerTool, error) {
 	in := invoke.ParamsSchemaIn(g.Registry, cmd)
+	cleanSchema(in)
 	if row != nil {
 		if err := addLegacyProps(in, row, cmd.Confirm != nil); err != nil {
 			return server.ServerTool{}, err
@@ -237,7 +241,7 @@ func (g *gen) aliasDescription(row *Row, cmd *cmdregistry.Command) string {
 }
 
 func sentence(s string) string {
-	s = strings.TrimSpace(s)
+	s = cleanText(s, maxSummaryRunes)
 	if s != "" && !strings.HasSuffix(s, ".") {
 		s += "."
 	}

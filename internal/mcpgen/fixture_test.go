@@ -26,12 +26,13 @@ import (
 
 const fixtureCanon = `
 schema_version: 1
-verbs: [status, logs, config, doctor, build, db, backup, deploy, stop, start, restart, add]
+verbs: [status, logs, config, doctor, build, db, backup, deploy, stop, start, restart, add, foo-bar]
 commands:
   help: {canon: builtin, side_effect: read}
   help capabilities: {side_effect: read}
   status: {canon: core, side_effect: read}
   status urls: {side_effect: read}
+  foo-bar: {canon: core, side_effect: read}
   logs: {canon: core, side_effect: read, flags: {follow: {output: stream}}}
   config: {canon: core}
   config get: {side_effect: read}
@@ -103,6 +104,17 @@ func pluginNode(slug, side string, args, flags string, kids ...*cobra.Command) *
 // commands; withFixturePlugin mounts the plugin with the undeclared command.
 func fixtureRegistry(t testing.TB, withSentry, withFixturePlugin bool) *cmdregistry.Registry {
 	t.Helper()
+	reg, err := fixtureBuild(t, withSentry, withFixturePlugin)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	return reg
+}
+
+// fixtureBuild is fixtureRegistry with extra top-level nodes, returning the
+// builder's error (the adversarial suite feeds it hostile plugin nodes).
+func fixtureBuild(t testing.TB, withSentry, withFixturePlugin bool, extra ...*cobra.Command) (*cmdregistry.Registry, error) {
+	t.Helper()
 	file, err := canon.Parse([]byte(fixtureCanon))
 	if err != nil {
 		t.Fatalf("fixture canon: %v", err)
@@ -112,7 +124,7 @@ func fixtureRegistry(t testing.TB, withSentry, withFixturePlugin bool) *cmdregis
 	root.PersistentFlags().Bool("no-monorepo", false, "no monorepo")
 	yes := func(c *cobra.Command) { c.Flags().Bool("yes", false, "consent") }
 	root.AddCommand(
-		leaf("status", nil), leaf("doctor", nil), leaf("stop", nil), leaf("start", nil), leaf("restart", nil), leaf("add [name]", nil),
+		leaf("status", nil), leaf("foo-bar", nil), leaf("doctor", nil), leaf("stop", nil), leaf("start", nil), leaf("restart", nil), leaf("add [name]", nil),
 		leaf("logs [service]", func(c *cobra.Command) {
 			c.Flags().Int("tail", 10, "lines")
 			c.Flags().Bool("follow", false, "follow")
@@ -146,20 +158,17 @@ func fixtureRegistry(t testing.TB, withSentry, withFixturePlugin bool) *cmdregis
 		long := pluginNode(strings.Repeat("verylongcommand", 5), "read", "", "") // nself_fixp_ + 75 characters
 		root.AddCommand(pluginNode("fixp", "read", "", "", pluginNode("reader", "read", `[{"name":"x"}]`, ""), undeclared, long))
 	}
+	root.AddCommand(extra...)
 	root.InitDefaultHelpCmd()
 	if h, _, err := root.Find([]string{"help"}); err == nil && h != nil && h.Name() == "help" {
 		h.AddCommand(leaf("capabilities <query>...", func(c *cobra.Command) { c.Flags().Int("limit", 5, "maximum hits") }))
 	}
 	types := map[string]any{}
-	for _, p := range []string{"help capabilities", "status", "status urls", "logs", "config get", "config show", "config set", "config env list",
+	for _, p := range []string{"help capabilities", "foo-bar", "status", "status urls", "logs", "config get", "config show", "config set", "config env list",
 		"doctor", "build", "db migrate status", "db hasura schema", "db hasura permissions", "backup list", "deploy status"} {
 		types[p] = struct{}{}
 	}
-	reg, err := cmdregistry.Build(root, file, types, cmdregistry.BuildOptions{V15: true})
-	if err != nil {
-		t.Fatalf("Build: %v", err)
-	}
-	return reg
+	return cmdregistry.Build(root, file, types, cmdregistry.BuildOptions{V15: true})
 }
 
 // harness runs generated tools against the stub child.

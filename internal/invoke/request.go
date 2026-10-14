@@ -112,8 +112,13 @@ func checkMembers(data []byte) error {
 		if err := dec.Decode(&raw); err != nil {
 			return badRequest("request is not valid: %v", err)
 		}
-		if name == "flags" {
+		switch name {
+		case "flags":
 			if err := checkFlagNames(raw); err != nil {
+				return err
+			}
+		case "args", "argv":
+			if err := checkNoNullItems(raw, name); err != nil {
 				return err
 			}
 		}

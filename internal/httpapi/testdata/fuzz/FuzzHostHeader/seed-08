@@ -1,0 +1,2 @@
+go test fuzz v1
+string("localhost:\uff13\uff18\uff15\uff17")
