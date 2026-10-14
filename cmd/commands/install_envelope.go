@@ -71,6 +71,15 @@ func recordInstall(cmd *cobra.Command, installed, skipped []string) {
 	o.skipped = append(o.skipped, skipped...)
 }
 
+// installSourceIdentities maps installSourceIdentity over sources.
+func installSourceIdentities(sources []string) []string {
+	out := make([]string, len(sources))
+	for i, s := range sources {
+		out[i] = installSourceIdentity(s)
+	}
+	return out
+}
+
 // installSourceIdentity is how the envelope names an installed source. A plugin
 // name is reported as typed. A third-party URL is reported without userinfo,
 // query and fragment (they can carry a token): scheme, host and path only. A

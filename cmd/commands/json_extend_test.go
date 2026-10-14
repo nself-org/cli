@@ -137,6 +137,18 @@ func TestInstallSourceIdentity(t *testing.T) {
 	}
 }
 
+func TestInstallSourceIdentitiesNeverCarryCredentials(t *testing.T) {
+	raw := "https://user" + ":" + "synthetic@example.test/p/plugin.tgz?token=abc#frag"
+	got := installSourceIdentities([]string{"waf", raw})
+	if strings.Join(got, ",") != "waf,https://example.test/p/plugin.tgz" {
+		t.Fatalf("identities = %v", got)
+	}
+	err := finishPluginInstall(true, nil, got[1:], func() error { return nil })
+	if err == nil || strings.Contains(err.Error(), "synthetic") || strings.Contains(err.Error(), "token=") {
+		t.Fatalf("failure message = %v, want no credential", err)
+	}
+}
+
 func TestConfigPluginsHubAndProxyRefusal(t *testing.T) {
 	cmd := extendCmd(t, "config", "plugins")
 	out, err := runExt(t, cmd, nil, map[string]string{})
