@@ -200,7 +200,8 @@ func scanSocketService(d socketDoc, name string, body map[string]any, lookup Soc
 		return nil, bad("volumes shape")
 	}
 	for _, e := range entries {
-		src, dst, ok, bind := "", "", true, false
+		var src, dst string
+		var ok, bind bool
 		switch v := e.(type) {
 		case string:
 			x, xok := expandSocket(v, lookup)
@@ -282,7 +283,6 @@ func (st *buildState) futureComposeEnv() map[string]string {
 	}
 	return m
 }
-
 func (st *buildState) guardDockerSocket(g *compose.Generator) error {
 	stack, err := g.Generate()
 	if err != nil {
