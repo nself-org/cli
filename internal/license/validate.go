@@ -14,6 +14,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/nself-org/cli/internal/compat"
 )
 
 // DefaultPingURL is the production license validation endpoint.
@@ -187,7 +189,7 @@ func ExportCache() ([]byte, error) {
 }
 
 // ImportCache reads a previously exported cache file and writes it to the
-// local cache location. It verifies the Ed25519 signature before accepting.
+// local cache location. v1.5 requires an Ed25519 signature even with skip flags.
 func ImportCache(data []byte) error {
 	var entry CacheEntry
 	if err := json.Unmarshal(data, &entry); err != nil {
@@ -197,12 +199,11 @@ func ImportCache(data []byte) error {
 		return fmt.Errorf("cache file is missing required fields")
 	}
 	if !entry.VerifySignature() {
-		// NSELF_LICENSE_SKIP_VERIFY=1 allows importing unsigned cache entries for offline/dev use,
-		// but requires explicit --force acknowledgment (signalled by NSELF_LICENSE_SKIP_VERIFY_FORCE=1
-		// set by the caller after flag parsing). Standalone skip without --force is rejected.
-		if os.Getenv("NSELF_LICENSE_SKIP_VERIFY") != "1" {
+		// compat.V15(D-0227): forced unsigned imports accepted -> reject caches v1.5 cannot use
+		if compat.V15() || os.Getenv("NSELF_LICENSE_SKIP_VERIFY") != "1" {
 			return fmt.Errorf("cache file signature verification failed")
 		}
+		// Legacy skip imports require explicit --force acknowledgment from the caller.
 		if os.Getenv("NSELF_LICENSE_SKIP_VERIFY_FORCE") != "1" {
 			return fmt.Errorf("NSELF_LICENSE_SKIP_VERIFY requires --force flag; standalone skip is not permitted")
 		}
