@@ -1,0 +1,6 @@
+# synthetic fixture: unix DOCKER_HOST, list form
+services:
+  sockenvlist:
+    image: example.invalid/sockenvlist:1
+    environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock

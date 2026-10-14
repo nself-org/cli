@@ -1,0 +1,6 @@
+# synthetic fixture: mount source from a variable the project env sets
+services:
+  sockvarenv:
+    image: example.invalid/sockvarenv:1
+    volumes:
+      - ${SOCKGUARD_SOURCE}:/s

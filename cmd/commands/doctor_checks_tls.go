@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -105,8 +106,14 @@ func checkServedCertificatesWith(ctx context.Context, projectDir string, verbose
 		}
 		return tlsSkip(verbose, "no TLS server_name found in %s", filepath.Join(root, "nginx"))
 	}
-	env, err := doctor.ServedTLSAddressEnv(root, projectDir, cfg)
-	if err != nil {
+	var env map[string]string
+	if filepath.Clean(root) == filepath.Clean(projectDir) {
+		// Own stack: compose publishes the full cascade's port and bind IP.
+		env = map[string]string{"NGINX_BIND_IP": cfg.Nginx.BindIP}
+		if cfg.Nginx.SSLPort > 0 {
+			env["NGINX_HTTPS_PORT"] = strconv.Itoa(cfg.Nginx.SSLPort)
+		}
+	} else if env, err = ssl.ServedEnv(root, cfg.Env); err != nil {
 		return tlsSkip(verbose, "cannot read the served stack's env: %v", err)
 	}
 	pr := &tlsProber{d: d, verbose: verbose, container: container, addr: ssl.ServedAddr(env),

@@ -14,6 +14,8 @@ func DeepChecks(ctx context.Context, projectDir string, verbose bool) []CheckRes
 
 	results = append(results, HostChecks(ctx, verbose)...)
 	results = append(results, DockerDeepChecks(ctx, verbose)...)
+	// P7-DEPL-21: no proxy or plugin container holds the Docker socket (ADR 0027).
+	results = append(results, DockerSocketChecks(ctx, projectDir)...)
 	results = append(results, PostgresChecks(ctx, projectDir, verbose)...)
 	results = append(results, HasuraChecks(ctx, verbose)...)
 	results = append(results, NginxChecks(ctx, projectDir, verbose)...)

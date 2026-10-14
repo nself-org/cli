@@ -1,0 +1,5 @@
+# synthetic fixture: volumes as a plain string
+services:
+  sockbadvols:
+    image: example.invalid/sockbadvols:1
+    volumes: /var/run/docker.sock:/s

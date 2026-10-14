@@ -1,0 +1,6 @@
+# synthetic fixture: relative bind through ./run, a symlink the test plants
+services:
+  socklink:
+    image: example.invalid/socklink:1
+    volumes:
+      - ./run:/h

@@ -1,0 +1,13 @@
+# synthetic fixture: named volume whose device comes from a variable
+services:
+  sockvardev:
+    image: example.invalid/sockvardev:1
+    volumes:
+      - devvol:/d
+volumes:
+  devvol:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${SOCKGUARD_DEVICE}

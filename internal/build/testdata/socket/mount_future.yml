@@ -1,0 +1,6 @@
+# synthetic fixture: mount source from a name the build rewrites in compose.env
+services:
+  sockfuturemount:
+    image: example.invalid/sockfuturemount:1
+    volumes:
+      - ${DOCKER_NETWORK}:/h

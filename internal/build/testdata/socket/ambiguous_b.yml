@@ -1,0 +1,4 @@
+# synthetic fixture: second declarer of the same service name, clean
+services:
+  sockdup:
+    image: example.invalid/sockdup:1

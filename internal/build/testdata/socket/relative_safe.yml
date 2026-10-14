@@ -1,0 +1,6 @@
+# synthetic fixture: a relative config mount inside the project stays allowed
+services:
+  sockrelsafe:
+    image: example.invalid/sockrelsafe:1
+    volumes:
+      - ./nginx/conf.d:/etc/x:ro

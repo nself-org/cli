@@ -1,0 +1,6 @@
+# synthetic fixture: socket under the home directory
+services:
+  sockhome:
+    image: example.invalid/sockhome:1
+    volumes:
+      - ~/.docker/run/docker.sock:/s

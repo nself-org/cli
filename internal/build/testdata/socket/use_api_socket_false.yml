@@ -1,0 +1,5 @@
+# synthetic fixture: use_api_socket explicitly off
+services:
+  sockapifalse:
+    image: example.invalid/sockapifalse:1
+    use_api_socket: false

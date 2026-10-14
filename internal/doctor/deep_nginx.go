@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -91,7 +90,7 @@ func servedCertChecks(ctx context.Context, projectDir string) []CheckResult {
 	if len(hosts) == 0 {
 		return skip("no TLS server_name readable in %s", filepath.Join(root, "nginx"))
 	}
-	env, err := ServedTLSAddressEnv(root, projectDir, cfg)
+	env, err := ssl.ServedEnv(root, cfg.Env)
 	if err != nil {
 		return skip("cannot read the served stack's env: %v", err)
 	}
@@ -137,25 +136,11 @@ func servedCertChecks(ctx context.Context, projectDir string) []CheckResult {
 }
 
 // DeadAddr reports whether a probe error means the address itself is down (a
-// failed dial), so every other host on it would fail the same way. A handshake
-// timeout can be specific to one SNI and must not suppress the remaining hosts.
+// failed dial or a timeout), so every other host on it would fail the same way.
 func DeadAddr(err error) bool {
+	var ne net.Error
 	var oe *net.OpError
-	return errors.As(err, &oe) && oe.Op == "dial"
-}
-
-// ServedTLSAddressEnv resolves the serving stack's bind IP and TLS port.
-// Own stacks use the loaded config's full env cascade; fronted stacks read
-// their own env without changing the process environment.
-func ServedTLSAddressEnv(root, projectDir string, cfg *config.Config) (map[string]string, error) {
-	if filepath.Clean(root) != filepath.Clean(projectDir) {
-		return ssl.ServedEnv(root, cfg.Env)
-	}
-	env := map[string]string{"NGINX_BIND_IP": cfg.Nginx.BindIP}
-	if cfg.Nginx.SSLPort > 0 {
-		env["NGINX_HTTPS_PORT"] = strconv.Itoa(cfg.Nginx.SSLPort)
-	}
-	return env, nil
+	return err != nil && ((errors.As(err, &ne) && ne.Timeout()) || (errors.As(err, &oe) && oe.Op == "dial"))
 }
 
 // LoadConfigIsolated is config.Load for the project with the process

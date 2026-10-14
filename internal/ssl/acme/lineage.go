@@ -64,19 +64,14 @@ func EnsureState(sslDir string) error {
 	return nil
 }
 
-// Load reads lineages.json; a missing file is an empty File. Corrupt JSON is
-// refused with E151 and its path so callers cannot overwrite lineage history.
+// Load reads lineages.json; a missing file is an empty File.
 func Load(sslDir string) (f File, err error) {
-	file := filepath.Join(StateDir(sslDir), "lineages.json")
-	data, err := os.ReadFile(file)
+	data, err := os.ReadFile(filepath.Join(StateDir(sslDir), "lineages.json"))
 	if errors.Is(err, fs.ErrNotExist) {
 		return File{SchemaVersion: SchemaVersion}, nil
 	}
-	if err != nil {
-		return File{}, err
-	}
-	if err := json.Unmarshal(data, &f); err != nil {
-		return File{}, Refuse("repair the lineage file before issuing or adopting certificates", "cannot parse %s: %v", file, err)
+	if err == nil {
+		err = json.Unmarshal(data, &f)
 	}
 	for _, l := range f.Lineages {
 		for _, t := range l.Targets {

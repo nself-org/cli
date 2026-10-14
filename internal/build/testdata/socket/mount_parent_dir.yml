@@ -1,0 +1,6 @@
+# synthetic fixture: the socket's parent directory
+services:
+  sockdir:
+    image: example.invalid/sockdir:1
+    volumes:
+      - /var/run:/host-run

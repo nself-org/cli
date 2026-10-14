@@ -1,0 +1,5 @@
+# synthetic fixture: environment as a plain string
+services:
+  sockbadenv:
+    image: example.invalid/sockbadenv:1
+    environment: DOCKER_HOST=unix:///var/run/docker.sock

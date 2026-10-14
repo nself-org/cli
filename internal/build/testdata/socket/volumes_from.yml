@@ -1,0 +1,6 @@
+# synthetic fixture: inherits the admin service's volumes
+services:
+  sockvolsfrom:
+    image: example.invalid/sockvolsfrom:1
+    volumes_from:
+      - nself-admin

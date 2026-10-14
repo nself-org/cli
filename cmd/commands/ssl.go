@@ -3,6 +3,7 @@ package commands
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -75,17 +76,23 @@ func init() {
 	trustCmd.AddCommand(sslCmd)
 }
 
-// checkDomainTLS inspects host:443 with the shared served probe. Status keeps
-// rejecting unverified chains, as its original verifying handshake did.
+// checkDomainTLS connects to host:443 with TLS and returns the leaf certificate.
 func checkDomainTLS(domain string, timeout time.Duration) (*x509.Certificate, error) {
-	cert, err := ssl.ProbeServed(context.Background(), net.JoinHostPort(domain, "443"), domain, timeout)
-	if err == nil && cert.ChainErr != "" {
-		err = errors.New(cert.ChainErr)
-	}
+	conn, err := tls.DialWithDialer(
+		&net.Dialer{Timeout: timeout},
+		"tcp",
+		domain+":443",
+		&tls.Config{InsecureSkipVerify: false},
+	)
 	if err != nil {
 		return nil, err
 	}
-	return cert.Certificate, nil
+	defer func() { _ = conn.Close() }()
+	certs := conn.ConnectionState().PeerCertificates
+	if len(certs) == 0 {
+		return nil, fmt.Errorf("no certificates returned")
+	}
+	return certs[0], nil
 }
 
 // isLocalDomain returns true if the domain resolves to localhost or is a local name.

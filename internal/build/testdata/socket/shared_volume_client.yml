@@ -1,0 +1,6 @@
+# synthetic fixture: mounts a volume another fragment defined
+services:
+  sockvolclient:
+    image: example.invalid/sockvolclient:1
+    volumes:
+      - sharedsock:/s
