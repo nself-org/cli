@@ -5,7 +5,7 @@ package commands
 //
 // Purpose: P7-SURF-25 (EPIC SURF D4) and debt D-0327. Decide, before the
 //   listener opens, whether the requested bind is allowed, which bearer token
-//   (if any) guards it, and (v1.5) which Host headers are served. The token
+//   (if any) guards it, and which Host headers are served. The token
 //   rules live in internal/machineauth; this file only wires them to
 //   `nself mcp`. The Host check closes DNS rebinding: a page on another origin
 //   whose name resolves to 127.0.0.1 sends its own name as Host.
@@ -17,11 +17,12 @@ package commands
 //   warnings to print on stderr (one cleartext warning for an accepted
 //   non-loopback bind, one open-server warning in v1.4 mode with no token),
 //   an E426 refusal, an E430 refusal for a malformed --allowed-host (v1.5),
-//   or per request an E428 421 answer for a Host that is not allowed (v1.5).
+//   or per request an E428 421 answer for a Host that is not allowed.
 // Constraints: stdio never calls this. A refused start creates no token file:
 //   only the v1.5 loopback path with no configured token generates one. The
 //   v1.4 behaviour with a token set is byte-identical (same 401 body and
-//   header), and v1.4 has no Host check. The Host refusal never echoes the
+//   header). Token-less v1.4 accepts only loopback Hosts with the listener
+//   port, ignoring --allowed-host. The Host refusal never echoes the
 //   request Host, reads no body and sets no CORS header; with no local
 //   address on the request it refuses (fail closed). No token value is ever
 //   printed or logged.
@@ -131,6 +132,11 @@ func mcpAuthPolicy(host string, allowed []string, notice io.Writer) (func(http.H
 			return nil, nil, err
 		}
 		hostGate = mcpHostCheck(allowed)
+	} else if tok == "" {
+		// D-0739: security exception to ADR 0021 (T0 ruling 2026-10-14).
+		// No token means no remote names, even with --allowed-host. These
+		// fixed loopback names match only ASCII case variants.
+		hostGate = mcpHostCheck(nil)
 	}
 	var warns []string
 	if !machineauth.IsLoopback(host) {
