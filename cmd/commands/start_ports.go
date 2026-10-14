@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/build"
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/ports"
 	"github.com/nself-org/cli/internal/ui"
@@ -45,7 +46,13 @@ func checkStartPorts(ctx context.Context, opts startOpts, projectDir string, com
 		// queries below fail the moment any plugin is installed.
 		envFiles := build.ComposeEnvFiles(projectDir)
 
-		checkPorts, portServiceMap, derr := docker.DeclaredHostPorts(ctx, projectDir, envFiles, composeFiles...)
+		var checkPorts []int
+		var portServiceMap map[int]string
+		derr := config.WithComposeEnvironment(func() error {
+			var queryErr error
+			checkPorts, portServiceMap, queryErr = docker.DeclaredHostPorts(ctx, projectDir, envFiles, composeFiles...)
+			return queryErr
+		})
 		if derr != nil || len(checkPorts) == 0 {
 			// Fall back to the default list rather than check nothing. Checking
 			// an empty list would be a port check that cannot fail, which is
@@ -57,7 +64,12 @@ func checkStartPorts(ctx context.Context, opts startOpts, projectDir string, com
 			portServiceMap = docker.DefaultPortServiceNames()
 		}
 
-		conflicts, err := docker.CheckAllPortsFiltered(ctx, checkPorts, projectDir, envFiles, composeFiles...)
+		var conflicts []docker.PortConflict
+		err := config.WithComposeEnvironment(func() error {
+			var queryErr error
+			conflicts, queryErr = docker.CheckAllPortsFiltered(ctx, checkPorts, projectDir, envFiles, composeFiles...)
+			return queryErr
+		})
 		if err != nil {
 			// We could not establish which ports this project already owns.
 			// Reporting conflicts anyway would block a legitimate start over

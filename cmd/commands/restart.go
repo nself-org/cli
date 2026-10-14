@@ -242,7 +242,12 @@ func snapshotRestart(ctx context.Context, comp *docker.Compose, workdir, project
 	for _, c := range containers {
 		have[c.Service] = true
 	}
-	configured, _ := comp.ComposeServiceNames(ctx, workdir)
+	var configured []string
+	_ = config.WithComposeEnvironment(func() error {
+		var queryErr error
+		configured, queryErr = comp.ComposeServiceNames(ctx, workdir)
+		return queryErr
+	})
 	for _, name := range configured {
 		if have[name] {
 			before.existing = append(before.existing, name)
@@ -258,7 +263,13 @@ func snapshotRestart(ctx context.Context, comp *docker.Compose, workdir, project
 // services that had a container, the only ones compose restart touches.
 func restartedServices(ctx context.Context, comp *docker.Compose, workdir, mode string, services []string, before restartBefore) []string {
 	if mode == "all" || (mode != "services" && composeStamp(workdir) != before.compose) {
-		if names, err := comp.ComposeServiceNames(ctx, workdir); err == nil && len(names) > 0 {
+		var names []string
+		err := config.WithComposeEnvironment(func() error {
+			var queryErr error
+			names, queryErr = comp.ComposeServiceNames(ctx, workdir)
+			return queryErr
+		})
+		if err == nil && len(names) > 0 {
 			return names
 		}
 	}

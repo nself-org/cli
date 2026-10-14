@@ -17,6 +17,7 @@ import (
 	"context"
 
 	"github.com/nself-org/cli/internal/build"
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/health"
 )
@@ -31,7 +32,12 @@ func composeDeclaredServices(ctx context.Context, workdir string) map[string]boo
 	}
 	comp := docker.NewCompose(files...)
 	comp.EnvFiles = build.ComposeEnvFiles(workdir)
-	names, err := comp.ComposeServiceNames(ctx, workdir)
+	var names []string
+	err = config.WithComposeEnvironment(func() error {
+		var queryErr error
+		names, queryErr = comp.ComposeServiceNames(ctx, workdir)
+		return queryErr
+	})
 	if err != nil || len(names) == 0 {
 		return nil
 	}

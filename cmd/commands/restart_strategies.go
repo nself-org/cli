@@ -50,7 +50,9 @@ func restartFull(ctx context.Context, comp *docker.Compose, workdir string, cfg 
 
 	ui.Step(stepNum, totalSteps, "Stopping all services")
 	stepNum++
-	if err := comp.ComposeDown(ctx, workdir, docker.DownOptions{RemoveOrphans: true}); err != nil {
+	if err := config.WithComposeEnvironment(func() error {
+		return comp.ComposeDown(ctx, workdir, docker.DownOptions{RemoveOrphans: true})
+	}); err != nil {
 		ui.Error(fmt.Sprintf("Failed to stop services: %v", err))
 		return fmt.Errorf("stopping services: %w", err)
 	}
@@ -62,7 +64,7 @@ func restartFull(ctx context.Context, comp *docker.Compose, workdir string, cfg 
 
 	ui.Step(stepNum, totalSteps, "Starting all services")
 
-	if err := comp.ComposeUp(ctx, workdir); err != nil {
+	if err := config.WithComposeEnvironment(func() error { return comp.ComposeUp(ctx, workdir) }); err != nil {
 		ui.Error(fmt.Sprintf("Failed to start services: %v", err))
 		return fmt.Errorf("starting services: %w", err)
 	}
@@ -84,14 +86,14 @@ func restartServices(ctx context.Context, comp *docker.Compose, workdir string, 
 	// had to recreate the container by hand — reported by the ntask clean-fork
 	// self-host drill, 2026-08-24. `up -d --no-deps` recreates only what
 	// actually changed and is a no-op otherwise.
-	if err := comp.ComposeUpNoDeps(ctx, workdir, services...); err != nil {
+	if err := config.WithComposeEnvironment(func() error { return comp.ComposeUpNoDeps(ctx, workdir, services...) }); err != nil {
 		ui.Error(fmt.Sprintf("Failed to apply compose configuration: %v", err))
 		return fmt.Errorf("applying compose configuration: %w", err)
 	}
 
 	// Then restart, so the command does what it says even when nothing in the
 	// compose file changed and `up` left the containers untouched.
-	if err := comp.ComposeRestart(ctx, workdir, services...); err != nil {
+	if err := config.WithComposeEnvironment(func() error { return comp.ComposeRestart(ctx, workdir, services...) }); err != nil {
 		ui.Error(fmt.Sprintf("Failed to restart services: %v", err))
 		return fmt.Errorf("restarting services: %w", err)
 	}
@@ -129,7 +131,12 @@ func restartSmart(ctx context.Context, comp *docker.Compose, workdir string, cfg
 	}
 
 	// Get container start times
-	containers, err := comp.ComposePs(ctx, workdir)
+	var containers []docker.ContainerInfo
+	err = config.WithComposeEnvironment(func() error {
+		var queryErr error
+		containers, queryErr = comp.ComposePs(ctx, workdir)
+		return queryErr
+	})
 	if err != nil {
 		if verbose {
 			ui.Warn(fmt.Sprintf("Could not query containers: %v", err))
@@ -174,7 +181,7 @@ func restartSmart(ctx context.Context, comp *docker.Compose, workdir string, cfg
 
 		// Bring up with rebuilt config (--remove-orphans to clean up removed services)
 		ui.Info("Applying updated configuration...")
-		if err := comp.ComposeUp(ctx, workdir); err != nil {
+		if err := config.WithComposeEnvironment(func() error { return comp.ComposeUp(ctx, workdir) }); err != nil {
 			ui.Error(fmt.Sprintf("Failed to apply updated config: %v", err))
 			return fmt.Errorf("applying updated config: %w", err)
 		}
@@ -197,7 +204,7 @@ func restartQuick(ctx context.Context, comp *docker.Compose, workdir string, ver
 		ui.Info("Performing quick restart (no rebuild)")
 	}
 	ui.Info("Restarting services...")
-	if err := comp.ComposeRestart(ctx, workdir); err != nil {
+	if err := config.WithComposeEnvironment(func() error { return comp.ComposeRestart(ctx, workdir) }); err != nil {
 		ui.Error(fmt.Sprintf("Failed to restart: %v", err))
 		return fmt.Errorf("restarting: %w", err)
 	}
