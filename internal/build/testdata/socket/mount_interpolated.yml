@@ -1,0 +1,6 @@
+# synthetic fixture: socket path hidden behind interpolation
+services:
+  sockvar:
+    image: example.invalid/sockvar:1
+    volumes:
+      - ${SOCK_PATH:-/var/run/docker.sock}:/sock

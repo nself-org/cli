@@ -1,0 +1,6 @@
+# synthetic fixture: unix DOCKER_HOST, map form
+services:
+  sockenvmap:
+    image: example.invalid/sockenvmap:1
+    environment:
+      DOCKER_HOST: unix:///var/run/docker.sock

@@ -1,0 +1,8 @@
+# synthetic fixture: long-syntax socket bind
+services:
+  socklong:
+    image: example.invalid/socklong:1
+    volumes:
+      - type: bind
+        source: /run/docker.sock
+        target: /var/run/docker.sock

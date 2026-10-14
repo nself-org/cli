@@ -1,0 +1,8 @@
+# synthetic fixture: only the second service exposes the socket
+services:
+  sockfirst:
+    image: example.invalid/sockfirst:1
+  socksecond:
+    image: example.invalid/socksecond:1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

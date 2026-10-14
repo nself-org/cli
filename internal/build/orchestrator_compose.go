@@ -54,10 +54,14 @@ func (st *buildState) applyProxyProvider(g *compose.Generator) error {
 		if err := proxyFrontingStack(st.cfg, st.workdir); err != nil {
 			return err
 		}
+		// P7-DEPL-21 (ADR 0027): refuse before any provider output is touched.
+		if err := st.guardDockerSocket(g); err != nil {
+			return err
+		}
 		// P7-DEPL-04: nginx serves again, so the traefik renderer's output goes.
 		return cleanupProviderOutput(st.sink, st.workdir, provider)
 	}
-	return nil
+	return st.guardDockerSocket(g)
 }
 
 // proxyFrontingStack verifies that the served nginx tree still has a consumer.

@@ -105,7 +105,7 @@ Because a warning or failure here is a normal doctor result, `nself doctor` exit
 | Section | What is Checked |
 |---------|----------------|
 | `host` | Disk free, swap usage, CPU load, clock sync, kernel tainted flag |
-| `docker` | Storage driver, dangling images, container health |
+| `docker` | Storage driver, dangling images, container health, **proxy-docker-socket** (see below) |
 | `postgres` | `pg_isready`, longest running query, dead tuples, last vacuum |
 | `hasura` | `/healthz` endpoint, metadata consistency |
 | `nginx` | Config syntax test, served certificate expiry per domain (a TLS handshake against the served nginx, not a file probe inside the container) |
@@ -119,6 +119,20 @@ Because a warning or failure here is a normal doctor result, `nself doctor` exit
 | `ai-safety` | AI plugin moderation wire-up gap (see below) |
 | `performance` | **PERF-POOL-01**: pgxpool connection cap vs postgres_max_connections |
 | `security` | **PERM-RLS-01**: RLS enforcement for np_* tables (see below) |
+
+### proxy-docker-socket: Docker Socket Held by a Proxy or Plugin (P7-DEPL-21, ADR 0027)
+
+Fires during `nself doctor --deep` in the `docker` section. No generated stack mounts the Docker socket into a proxy or plugin container, because the socket is root-equivalent on the host. The check inspects the running nginx or traefik container and every running plugin container, and looks for a bind of `docker.sock` (or its parent directory) and for a `DOCKER_HOST` that points at a unix socket. The core admin service and your own `CS_N` custom services are not checked.
+
+| Result | Meaning |
+|--------|---------|
+| `pass` | No proxy or plugin container holds the socket |
+| `warn` | Only plugins in the build guard's exception table hold it; the message names the plugin, the nself version where the exception ends, and the ticket that removes it |
+| `fail` | A proxy, or a plugin without a live exception, holds it; the message names the plugin, service and container |
+| `unknown` | Docker could not be inspected, so the exposure is not known (never reported as pass) |
+| `skip` | The project has no `docker-compose.yml` |
+
+`nself build` enforces the same rule before it writes anything: a plugin fragment (or the generated stack) that exposes the socket stops the build with `E130`, naming the plugin and service. The exception table is shared with the doctor check, so a plugin that builds with a warning shows `warn` here, and both turn into a refusal at the version the exception ends. Fix: remove the socket volume and the unix `DOCKER_HOST` from the plugin's `docker-compose.plugin.yml`, or remove the plugin, then run `nself build`.
 
 ### AI-SAFETY-01: ai+moderation Wire-Up Gap (S69-T05)
 

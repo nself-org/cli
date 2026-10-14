@@ -1,0 +1,13 @@
+# synthetic fixture: a named volume backed by the socket
+services:
+  socknamed:
+    image: example.invalid/socknamed:1
+    volumes:
+      - sockbacked:/sock
+volumes:
+  sockbacked:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /var/run/docker.sock
