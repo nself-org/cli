@@ -15,6 +15,7 @@ func v15Verify(pin, alias string) []string {
 	args := []string{
 		"-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=30",
 		"-o", "StrictHostKeyChecking=yes",
+		"-o", "ControlMaster=no", "-o", "ControlPath=none",
 		"-o", `GlobalKnownHostsFile="` + pin + `"`,
 	}
 	if alias != "" {
