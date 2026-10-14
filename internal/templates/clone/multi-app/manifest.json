@@ -1,0 +1,12 @@
+{
+  "name": "multi-app",
+  "version": "1.0.0",
+  "description": "Multi-app isolation reference: apps share one backend, each sees only its own rows",
+  "required_plugins": [],
+  "next_steps": [
+    "nself build",
+    "nself start",
+    "nself db migrate --migration-dir migrations",
+    "nself db reconcile"
+  ]
+}
