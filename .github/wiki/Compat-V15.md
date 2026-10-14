@@ -193,6 +193,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-REG-09 | status exits 2 (unhealthy) or 1 (starting), 0 with --json | 10 (unhealthy) or 11 (starting) in both modes | `cmd/commands/status_print.go` |
 | P7-SURF-03 | 26 hand tools primary | generated tools, merged same-name tools, deprecated aliases | `cmd/commands/mcp.go` |
 | P7-SURF-07 | nself.yaml type errors and unknown keys warn | fail (E435/E436) | `internal/build/manifest_validate.go` |
+| P7-SURF-10 | daemon-unreachable stop/restart failure, unclassified | E002 envelope with infra exit 2 | `cmd/commands/registry_types_lifecycle.go` |
 | P7-SURF-11 | health history --json with no history prints a text line | the v1 envelope with an empty entries list | `cmd/commands/health_handlers.go` |
 | P7-SURF-12 | an empty list is the JSON array [] (v1.4 and NSELF_JSON_LEGACY=1 print null) | v1 envelope with an array | `cmd/commands/config_envelope.go` |
 | P7-SURF-14 | --json on the data commands is ignored or the pre-contract form (NSELF_JSON_LEGACY=1 then prints an empty list as bare []) | v1 envelope | `cmd/commands/db_envelope.go` |

@@ -20,10 +20,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// startCmd, its flags, and the RootCmd registration were extracted to
-// start_cmd.go (T-P6-E2-W1-S1-T3) for 300-line compliance.
-
-func runStart(cmd *cobra.Command, _ []string) error {
+// startCmd, its flags, runStart (the JSON wrapper) and the RootCmd registration
+// live in start_cmd.go (T-P6-E2-W1-S1-T3). out carries the run to `start --json`.
+func runStartFlow(cmd *cobra.Command, _ []string, out *startOutcome) error {
 	opts, err := resolveStartOpts(cmd)
 	if err != nil {
 		return err
@@ -231,8 +230,7 @@ func runStart(cmd *cobra.Command, _ []string) error {
 			requiredPct = cfg.HealthCheckRequired
 		}
 
-		report := runHealthCheckLoop(ctx, cfg, projectDir, opts.timeout, requiredPct, opts.verbose)
-		_ = report // Final report used inline by the loop for display.
+		out.report = runHealthCheckLoop(ctx, cfg, projectDir, opts.timeout, requiredPct, opts.verbose)
 	}
 
 	// ── Hasura metadata apply (FIX-CLI-3) ─────────────────────────────
@@ -270,6 +268,7 @@ func runStart(cmd *cobra.Command, _ []string) error {
 
 	// ── Display URLs ─────────────────────────────────────────────────
 	ui.Separator()
+	out.cfg, out.dir = cfg, projectDir
 
 	// URL list: localhost:<port> endpoints for default local domains
 	// (local.nself.org needs DNS/hosts setup and 502s on a fresh machine),

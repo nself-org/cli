@@ -360,8 +360,14 @@ func TestInvocationRealRegistryBuildsAndGuardDecides(t *testing.T) {
 		// The mode's dispatch resolves spellings on the prepared tree after
 		// the canon rewrite, so the subtest does the same.
 		defer prepareTreeWith(&canonTable, RootCmd, compat.V15(), false)()
-		// restart: root --json flag, none: E402 in both modes.
-		wantE402(t, refuseUnsupportedJSON(parseReal(t, "restart")))
+		// dev (start dev in v1.5) is a stream, json none, with the root --json
+		// flag: E402 in both modes. (restart answered E402 here until P7-SURF-10
+		// made it an envelope.)
+		dev, _, devErr := rewriteCanonArgsWith(&canonTable, RootCmd, []string{"dev"}, compat.V15())
+		if devErr != nil {
+			t.Fatalf("rewrite dev: %v", devErr)
+		}
+		wantE402(t, refuseUnsupportedJSON(parseReal(t, dev...)))
 		// secrets edit is interactive (json none): E402 in both modes. It moves
 		// under config in v1.5, so the spelling is the mode's rewrite of the old
 		// one. (decrypt-on-deploy answered E402 here under D-0216; P7-SURF-12

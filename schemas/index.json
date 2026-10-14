@@ -818,6 +818,10 @@
       "id": "urn:nself:cli:schema:commands:init-template:v1"
     },
     {
+      "path": "commands/init.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:init:v1"
+    },
+    {
       "path": "commands/logs-record.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:logs-record:v1"
     },
@@ -832,6 +836,14 @@
     {
       "path": "commands/reset.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:reset:v1"
+    },
+    {
+      "path": "commands/restart.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:restart:v1"
+    },
+    {
+      "path": "commands/start.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:start:v1"
     },
     {
       "path": "commands/status-health-check.v1.schema.json",
@@ -864,6 +876,10 @@
     {
       "path": "commands/status.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:status:v1"
+    },
+    {
+      "path": "commands/stop.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:stop:v1"
     },
     {
       "path": "commands/uninstall.v1.schema.json",

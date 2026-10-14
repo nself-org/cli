@@ -88,7 +88,7 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 
 <!-- BEGIN GENERATED: operations (tools/sdkgen, DO NOT HAND EDIT) -->
 
-211 operations. Every method takes `{ args, flags }` (plus `confirm` where the operation declares it) and resolves to the typed `data` member.
+215 operations. Every method takes `{ args, flags }` (plus `confirm` where the operation declares it) and resolves to the typed `data` member.
 
 | Method | Route | Summary |
 | --- | --- | --- |
@@ -277,6 +277,7 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 | `doctorSecurityStatus` | `POST /v1/commands/doctor/security/status` | Show current security posture |
 | `helpCapabilities` | `POST /v1/commands/help/capabilities` | Search commands and plugins by what you want to do |
 | `helpTopics` | `POST /v1/commands/help/topics` | Browse help topics (quickstart, plugins, license, envs, doctor, errors) |
+| `init` | `POST /v1/commands/init` | Initialize a new nSelf project |
 | `initTemplate` | `POST /v1/commands/init/template` | Browse and publish full-stack app templates |
 | `initTemplateInfo` | `POST /v1/commands/init/template/info` | Show detail for a single template |
 | `initTemplateList` | `POST /v1/commands/init/template/list` | List available app templates |
@@ -285,6 +286,8 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 | `logs` | `POST /v1/commands/logs` | View and filter service logs |
 | `mcpSetup` | `POST /v1/commands/mcp/setup` | Print or write the MCP client config and AGENTS.md for this project |
 | `reset` | `POST /v1/commands/reset` | Stop containers, remove all data volumes, and clean generated files |
+| `restart` | `POST /v1/commands/restart` | Smart restart with config change detection |
+| `start` | `POST /v1/commands/start` | Boot your nSelf stack |
 | `status` | `POST /v1/commands/status` | Show health status of all services |
 | `statusHealth` | `POST /v1/commands/status/health` | Health check management with continuous monitoring |
 | `statusHealthCheck` | `POST /v1/commands/status/health/check` | Run all health checks |
@@ -293,6 +296,7 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 | `statusHealthHistory` | `POST /v1/commands/status/health/history` | Show last 20 health checks |
 | `statusHealthService` | `POST /v1/commands/status/health/service` | Check a single service |
 | `statusUrls` | `POST /v1/commands/status/urls` | Display all service URLs with route conflict detection |
+| `stop` | `POST /v1/commands/stop` | Gracefully shut down all services or specific services |
 | `update` | `POST /v1/commands/update` | Update the nSelf CLI and admin UI |
 | `updateImages` | `POST /v1/commands/update/images` | Refresh Docker image digests from registries |
 | `updateProjectDetect` | `POST /v1/commands/update/project/detect` | Detect v1 artifacts in the current project |

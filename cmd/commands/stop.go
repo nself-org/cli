@@ -39,7 +39,12 @@ func init() {
 	RootCmd.AddCommand(stopCmd)
 }
 
+// runStop stops the stack; a daemon-unreachable failure is E002 in v1.5 JSON.
 func runStop(cmd *cobra.Command, args []string) error {
+	return lifecycleFailure(cmd, "stop", runStopFlow(cmd, args))
+}
+
+func runStopFlow(cmd *cobra.Command, args []string) error {
 	volumes, _ := cmd.Flags().GetBool("volumes")
 	rmi, _ := cmd.Flags().GetBool("rmi")
 	removeImages, _ := cmd.Flags().GetBool("remove-images")
@@ -136,7 +141,7 @@ func runStop(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to stop services: %w", err)
 		}
 		fmt.Printf("Stopped %d service(s).\n", len(args))
-		return nil
+		return emitLifecycle(cmd, "stop", StopResult{Stopped: nonNilStrings(args), VolumesRemoved: false})
 	}
 
 	destructive := volumes || rmi
@@ -216,7 +221,7 @@ func runStop(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println()
 
-	return nil
+	return emitLifecycle(cmd, "stop", StopResult{Stopped: runningServices(containers), VolumesRemoved: volumes})
 }
 
 // composeBaseArgs builds the docker compose base arguments including -f flags

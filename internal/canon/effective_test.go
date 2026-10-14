@@ -203,6 +203,11 @@ func TestEffectivePresplitEquivalence(t *testing.T) {
 					// is json legacy, so `plugin info <n> --json` is not refused
 					// with E402; the frozen pre-split table says none.
 					want.JSON = JSONLegacy
+				case "stop":
+					// P7-SURF-10: `stop` declares confirm {flags: []} (--volumes is
+					// destructive and stop has no --yes flag, so a machine surface
+					// must confirm it); the pre-split table carries no confirm.
+					want.Confirm = &Confirm{Flags: []string{}}
 				case "self-heal":
 					// P7-SURF-11: `doctor heal` declares confirm {flags: []} (the
 					// request nonce is its whole confirmation); the v1.4 view of
