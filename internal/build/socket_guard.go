@@ -251,29 +251,14 @@ func socketFileEnv(d socketDoc, value any, lookup SocketEnv) (map[string]any, er
 		if err != nil {
 			return nil, fmt.Errorf("%s env_file: %w", d.origin, err)
 		}
-		vars := map[string]string{}
-		if !raw {
-			vars, err = config.ParseEnvBytes(p, data)
-			if err != nil {
-				return nil, fmt.Errorf("%s env_file: %w", d.origin, err)
-			}
-		}
-		for _, line := range strings.Split(string(data), "\n") {
-			k, v, has := strings.Cut(strings.TrimPrefix(strings.TrimSpace(line), "export "), "=")
-			if strings.TrimSpace(k) != "DOCKER_HOST" || !has {
-				continue
-			}
-			if raw {
-				vars["DOCKER_HOST"] = v
-			} else if strings.Contains(v, "$") {
-				x, resolved := expandSocket(strings.Trim(strings.TrimSpace(v), "\"'"), lookup)
+		if v, found := lastDockerHost(data, raw); found {
+			if !raw && strings.Contains(v, "$") {
+				x, resolved := expandSocket(v, lookup)
 				if !resolved {
 					x = "$"
 				}
-				vars["DOCKER_HOST"] = x
+				v = x
 			}
-		}
-		if v, present := vars["DOCKER_HOST"]; present {
 			out["DOCKER_HOST"] = v
 		}
 	}
