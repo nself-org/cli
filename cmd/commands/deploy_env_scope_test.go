@@ -19,6 +19,7 @@ import (
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/deploy"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/sdk/go/v2/remote"
 
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
@@ -26,6 +27,34 @@ import (
 
 	"github.com/nself-org/cli/internal/compat/compattest"
 )
+
+// pinFakeHostKeys gives the test a temp HOME whose deploy pin file holds the
+// key of each host, and puts fake ssh-keyscan and ssh-keygen in bin (which must
+// be on PATH). Env shipping is strict in v1.4 too (P7-DEPL-29): a test that
+// ships an env file to a host without a pin would pass vacuously through E487.
+func pinFakeHostKeys(t *testing.T, bin string, hosts ...string) {
+	t.Helper()
+	for name, body := range map[string]string{
+		"ssh-keyscan": "#!/bin/sh\nfor a; do h=$a; done\nprintf '%s ssh-ed25519 AQID\\n' \"$h\"\n",
+		"ssh-keygen":  "#!/bin/sh\nif [ -f \"$4\" ]; then /bin/cat \"$4\"; fi\n",
+	} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(body), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	fp, err := remote.Fingerprint("h ssh-ed25519 AQID")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, h := range hosts {
+		if err := controlplane.TrustHostKey(context.Background(), h, fp); err != nil {
+			t.Fatalf("pin %s: %v", h, err)
+		}
+	}
+}
 
 // TestLegacyPathArchRefusal keeps the old single-host push from shipping an
 // amd64-only image to an arm64 host.
@@ -50,6 +79,7 @@ func TestLegacyPathArchRefusal(t *testing.T) {
 		}
 	}
 	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
+	pinFakeHostKeys(t, bin, "u@arm.example.test")
 	t.Setenv("NSELF_DEPLOY_HOST_QA", "u@arm.example.test")
 	err := remoteDeployPush(context.Background(), dir, "u@arm.example.test", "qa", false)
 	if err == nil || !strings.Contains(err.Error(), "E491") || !strings.Contains(err.Error(), "example.test/amd64-only:1") {
@@ -697,6 +727,7 @@ func TestPipelineFailedServerExitsNonZero(t *testing.T) {
 	}
 	t.Setenv("PATH", bin)
 	t.Setenv("NSELF_SSH_KEY_X", key)
+	pinFakeHostKeys(t, bin, "u@qa.example.test")
 	if err := os.WriteFile(filepath.Join(dir, "docker-compose.yml"), []byte("services: {}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -981,9 +1012,9 @@ func TestPipelineBuildsRemoteAndShipsSnapshot(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("needs fake rsync/ssh shell scripts on PATH, which Windows cannot execute")
 	}
-	// The v1.4 shipping path: v1.5 deploys require a pinned host key
-	// (ADR 0021, P7-DEPL-13), covered by TestComposeOnlyDeployRequiresKnownHost
-	// and TestE487HintEnrollThenDeploy; the fake PATH here has no ssh-keyscan.
+	// The v1.4 shipping path: it ships an env snapshot, so the host key must be
+	// pinned (strict in v1.4 too, P7-DEPL-29); the unpinned case is
+	// TestRunWithEnvProbeCannotSeedTrust.
 	compattest.Set(t, false)
 	dir, _ := scopeFixture(t, false)
 	for n, b := range map[string]string{".env": "API_URL=base\n", ".env.qa": "API_URL=qa\n", ".env.local": "LAPTOP_ONLY=secret\n", ".env.dev": "DEV_ONLY=1\n", "docker-compose.yml": "services: {}\n"} {
@@ -992,6 +1023,7 @@ func TestPipelineBuildsRemoteAndShipsSnapshot(t *testing.T) {
 		}
 	}
 	log, bin := fakeShipBin(t)
+	pinFakeHostKeys(t, bin, "u@qa.example.test")
 	if err := runDeployArgs(t, nil, "qa"); err != nil {
 		t.Fatalf("deploy qa: %v", err)
 	}

@@ -25,15 +25,18 @@ func TrustHostKey(ctx context.Context, host, offered string) error {
 	return deploy.TrustHostKey(ctx, host, offered)
 }
 
-// HostKeyOptions selects the strict policy for secret shipping and prod hosts.
+// HostKeyOptions selects the strict policy for secret shipping (a shipping flag
+// or a ctx marked by WithShippingRun) and prod hosts.
 func HostKeyOptions(ctx context.Context, env, server string, tier Tier, host string, shipping bool) ([]string, error) {
+	shipping = shipping || isShippingRun(ctx)
 	env, server = hostKeyIdentity(env, server, host)
 	prodClass := IsProdClass(&Inventory{Environments: map[string]Environment{env: {Name: env, Tier: tier}}}, env)
 	// compat.V15(P7-DEPL-13): quiet read-only first contact -> print the observed fingerprint once.
 	if compat.V15() && !shipping && !prodClass {
 		printFirstContact(ctx, host)
 	}
-	return deploy.HostKeyOptions(ctx, host, env, server, shipping || prodClass)
+	// shipping also forces strict in v1.4 (EPIC D28, D-0248): secrets never go to an unverified key.
+	return deploy.HostKeyPolicy(ctx, host, env, server, shipping || prodClass, shipping)
 }
 
 // hostKeyIdentity maps callers with generic labels to the inventory entry so

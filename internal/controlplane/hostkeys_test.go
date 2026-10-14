@@ -31,9 +31,13 @@ func TestHostKeyPolicy(t *testing.T) {
 	}
 	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
 	t.Setenv("NSELF_V15", "0")
-	opts, err := HostKeyOptions(context.Background(), "qa", "web", TierLocalServers, "u@host.example", true)
+	// v1.4: a read-only connection keeps accept-new; shipping secrets is strict too (D-0248).
+	opts, err := HostKeyOptions(context.Background(), "qa", "web", TierLocalServers, "u@host.example", false)
 	if err != nil || !strings.Contains(strings.Join(opts, " "), "accept-new") {
 		t.Fatalf("v1.4: %v %q", err, opts)
+	}
+	if _, err = HostKeyOptions(context.Background(), "qa", "web", TierLocalServers, "u@host.example", true); err == nil || !strings.Contains(err.Error(), "E487") {
+		t.Fatalf("v1.4 shipping: %v", err)
 	}
 	t.Setenv("NSELF_V15", "1")
 	_, err = HostKeyOptions(context.Background(), "qa", "web", TierLocalServers, "u@host.example", true)
@@ -197,6 +201,7 @@ func TestDockerOKHostSpecPort(t *testing.T) {
 func TestHostSpecArgvSites(t *testing.T) {
 	// Discover direct exec sites from the source tree; these exceptions have separate owners.
 	// db_remote_exec.go receives argv already built by db_remote.go.
+	// deploy_remote_transport.go runs argv built by deploy.Transport from the HostSpec parsed in deploy_remote.go.
 	// internal/admin/connect.go is owned by P7-CANON-19 / DEPL-14.
 	// db_remote_dryrun.go's raw probe destination is deferred to DEPL-14.
 	root := filepath.Join("..", "..")
@@ -205,7 +210,7 @@ func TestHostSpecArgvSites(t *testing.T) {
 		t.Fatal("no ssh/scp/rsync exec sites discovered")
 	}
 	for _, file := range files {
-		if file == "cmd/commands/db_remote_exec.go" || file == "internal/admin/connect.go" || strings.HasSuffix(file, "_test.go") {
+		if file == "cmd/commands/db_remote_exec.go" || file == "cmd/commands/deploy_remote_transport.go" || file == "internal/admin/connect.go" || strings.HasSuffix(file, "_test.go") {
 			continue
 		}
 		b, err := os.ReadFile(filepath.Join("..", "..", file))

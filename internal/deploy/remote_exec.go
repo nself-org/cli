@@ -26,27 +26,47 @@ import (
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
-// ScanDeployKeys asks for one algorithm, avoiding multi-connection keyscan
-// throttling on small sshd simulation hosts while still scanning the live key.
+// deployKeyScanTypes is the keyscan order: ed25519 first, then ecdsa, then rsa.
+var deployKeyScanTypes = []string{"ed25519", "ecdsa", "rsa"}
+
+// ScanDeployKeys reads the live host keys. It makes one ssh-keyscan call per
+// algorithm (several algorithms per call trip connection throttling on small
+// sshd hosts), ed25519 first, and tries the next algorithm only when the
+// previous call returned no key. A connect error stops at once: a second
+// attempt cannot succeed. HostKey.Type comes from the scanned line.
 func ScanDeployKeys(ctx context.Context, spec remote.HostSpec) ([]remote.HostKey, error) {
-	cmd, err := remote.Command(ctx, "ssh-keyscan", "-T", "5", "-t", "ed25519", "-p", strconv.Itoa(deployHostPort(spec)), "--", spec.Host)
-	if err != nil {
-		return nil, err
-	}
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("ssh-keyscan %s: %w", spec.Host, err)
-	}
-	var keys []remote.HostKey
-	for _, line := range strings.Split(string(out), "\n") {
-		if fp, err := remote.Fingerprint(line); err == nil {
-			keys = append(keys, remote.HostKey{Line: line, Type: "ssh-ed25519", Fingerprint: fp})
+	for _, typ := range deployKeyScanTypes {
+		cmd, err := remote.Command(ctx, "ssh-keyscan", "-T", "5", "-t", typ, "-p", strconv.Itoa(deployHostPort(spec)), "--", spec.Host)
+		if err != nil {
+			return nil, err
+		}
+		out, err := cmd.Output()
+		if err != nil {
+			return nil, fmt.Errorf("ssh-keyscan %s: %w", spec.Host, err)
+		}
+		if keys := parseScannedKeys(string(out)); len(keys) > 0 {
+			return keys, nil
 		}
 	}
-	if len(keys) == 0 {
-		return nil, fmt.Errorf("ssh-keyscan %s returned no ED25519 key", spec.Host)
+	return nil, fmt.Errorf("ssh-keyscan %s returned no ed25519, ecdsa or rsa key", spec.Host)
+}
+
+// parseScannedKeys reads "host type base64" lines; comment and blank lines
+// and lines remote.Fingerprint refuses are dropped.
+func parseScannedKeys(out string) []remote.HostKey {
+	var keys []remote.HostKey
+	for _, line := range strings.Split(out, "\n") {
+		fp, err := remote.Fingerprint(line)
+		if err != nil {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+		keys = append(keys, remote.HostKey{Line: line, Type: fields[1], Fingerprint: fp})
 	}
-	return keys, nil
+	return keys
 }
 
 func deployTrustedFingerprints(ctx context.Context, alias, path string) map[string]bool {

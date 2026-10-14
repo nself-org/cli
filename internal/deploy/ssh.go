@@ -136,9 +136,9 @@ func DeployViaSsh(ctx context.Context, cfg SSHConfig, composePath string) error 
 	if identityEnv == "" {
 		identityEnv = cfg.EnvName
 	}
-	// v1.4 env shipping stays accept-new until P7-DEPL-29 (the pipeline's
-	// accept-new probe would seed ~/.ssh/known_hosts first). PushSecrets is strict.
-	policy, err := hostKeyPolicy(ctx, spec.String(), identityEnv, serverName, true, false)
+	// Shipping an env file sends secrets: strict in v1.4 and v1.5 (E487 before
+	// any rsync). A compose-only deploy keeps the v1.4 accept-new policy.
+	policy, err := HostKeyPolicy(ctx, spec.String(), identityEnv, serverName, true, cfg.EnvFile != "")
 	if err != nil {
 		return err
 	}
