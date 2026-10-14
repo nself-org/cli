@@ -1,0 +1,6 @@
+# synthetic fixture: a volume entry that is a number
+services:
+  sockbadentry:
+    image: example.invalid/sockbadentry:1
+    volumes:
+      - 5

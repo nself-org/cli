@@ -1,0 +1,8 @@
+# synthetic fixture: valid Compose !reset / !override tags
+services:
+  sockreset:
+    image: example.invalid/sockreset:1
+    ports: !reset []
+    environment: !override
+      FOO: bar
+    volumes: !reset []

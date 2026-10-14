@@ -122,17 +122,19 @@ Because a warning or failure here is a normal doctor result, `nself doctor` exit
 
 ### proxy-docker-socket: Docker Socket Held by a Proxy or Plugin (P7-DEPL-21, ADR 0027)
 
-Fires during `nself doctor --deep` in the `docker` section. No generated stack mounts the Docker socket into a proxy or plugin container, because the socket is root-equivalent on the host. The check inspects the running nginx or traefik container and every running plugin container, and looks for a bind of `docker.sock` (or its parent directory) and for a `DOCKER_HOST` that points at a unix socket. The core admin service and your own `CS_N` custom services are not checked.
+Fires during `nself doctor --deep` in the `docker` section. No generated stack mounts the Docker socket into a proxy or plugin container, because the socket is root-equivalent on the host. The check inspects the live containers of the project (running, restarting and paused ones) and fails when a proxy (nginx, traefik) or a plugin container holds the socket: a bind of `docker.sock` or of a directory that holds it (`/var/run`, `/run`, `/`, and the `/private` alias on macOS), a named volume backed by the socket or such a directory, or a `DOCKER_HOST` that points at a unix socket.
+
+A plugin container is every service the core stack does not declare, so a plugin whose fragment was disabled or deleted is still checked. The core admin service and your own `CS_N` custom services are not judged. Other daemon sockets (podman) and Docker data directories are not part of this check.
 
 | Result | Meaning |
 |--------|---------|
 | `pass` | No proxy or plugin container holds the socket |
-| `warn` | Only plugins in the build guard's exception table hold it; the message names the plugin, the nself version where the exception ends, and the ticket that removes it |
-| `fail` | A proxy, or a plugin without a live exception, holds it; the message names the plugin, service and container |
-| `unknown` | Docker could not be inspected, so the exposure is not known (never reported as pass) |
+| `warn` | Only plugins in the build guard's exception table hold it; the message names the plugin, the nself version where the exception ends (v1.5.0 for forgejo and monitoring) and the ticket that removes it |
+| `fail` | A proxy, or a plugin without a live exception, holds it; the message names the plugin, service and container. A proxy never gets an exception, and neither does a service that two plugins declare |
+| `unknown` | Docker could not be inspected, a container field was missing, or a volume's backing could not be established. Never reported as pass |
 | `skip` | The project has no `docker-compose.yml` |
 
-`nself build` enforces the same rule before it writes anything: a plugin fragment (or the generated stack) that exposes the socket stops the build with `E130`, naming the plugin and service. The exception table is shared with the doctor check, so a plugin that builds with a warning shows `warn` here, and both turn into a refusal at the version the exception ends. Fix: remove the socket volume and the unix `DOCKER_HOST` from the plugin's `docker-compose.plugin.yml`, or remove the plugin, then run `nself build`.
+`nself build` enforces the same rule before it writes anything. It reads the generated stack, every enabled plugin fragment and `docker-compose.override.yml` together, resolves YAML anchors and merge keys, and expands `${VAR}` from the process environment, the project `.env` files and the computed plugin variables. A plugin fragment, override or stack that gives the socket to nginx, traefik or a plugin service stops the build with `E130`, naming the plugin and service. A variable that cannot be resolved, `env_file`, `extends`, `volumes_from`, `include` and a malformed `volumes` or `environment` block also stop the build, because the build cannot show they are safe. The exception table is shared with the doctor check, so a plugin that builds with one warning shows `warn` here, and both turn into a refusal at the version the exception ends. Fix: remove the socket volume and the unix `DOCKER_HOST` from the plugin's `docker-compose.plugin.yml`, or remove the plugin, then run `nself build`.
 
 ### AI-SAFETY-01: ai+moderation Wire-Up Gap (S69-T05)
 

@@ -1,48 +1,41 @@
 package build
 
-// socket_guard.go — P7-DEPL-21 (ADR 0027 §3): no generated stack mounts the
-// Docker socket into a proxy or plugin container.
-// Inputs:  the plugin directory (every enabled docker-compose.plugin.yml) and
-//          the final generated compose YAML of the core stack.
-// Outputs: an E130 error naming the plugin (or the core stack) and the service,
-//          or nil. An excepted plugin is allowed with one warning until its
-//          removal_at version; the exception table is exported so
-//          `nself doctor --deep` (proxy-docker-socket) applies the same rule.
-// Constraints: ungated by compat.V15 (ADR 0021): no shipped plugin outside the
-//          exception table mounts the socket. The core admin service and
-//          CS_N custom services (E502 owns those) are not checked. A
-//          fragment that cannot be parsed is refused, never passed.
+// socket_guard.go — P7-DEPL-21 (ADR 0027 §3): no proxy or plugin container
+// gets the Docker socket. One merged view of the generated stack, plugin
+// fragments and override file; only nginx/traefik and plugin-declared services
+// are judged (core admin, CS_N are not). Podman sockets and Docker data
+// directories are out of scope. Refuse() is E130 naming plugin and service; an
+// excepted plugin warns once until removal_at; a proxy never inherits one.
+// Ungated by compat.V15 (ADR 0021). Unresolved values, env_file, extends,
+// volumes_from, include and bad shapes fail closed. SocketReport is shared
+// with `nself doctor --deep`; scanSocketService is in orchestrator_compose.go.
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
-	"sort"
-	"strconv"
+	"slices"
 	"strings"
 
 	"github.com/nself-org/cli/internal/compose"
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/version"
 	"gopkg.in/yaml.v3"
 )
 
 // SocketException allows one plugin to keep a socket mount until RemovalAt.
-type SocketException struct {
-	Slug      string // plugin directory name
-	RemovalAt string // first CLI version (X.Y.Z) at which the exception stops applying
-	Ticket    string // ticket that removes the mount
-}
+type SocketException struct{ Slug, Ticket, RemovalAt string } // RemovalAt: first CLI version (X.Y.Z) that refuses it
 
-// socketExceptions is keyed by plugin slug; an unparsable RemovalAt is expired.
+// socketExceptions is keyed by plugin slug; an unparsable version is expired.
 var socketExceptions = map[string]SocketException{
 	"forgejo":    {Slug: "forgejo", RemovalAt: "1.5.0", Ticket: "P7-TRUST-21"},
 	"monitoring": {Slug: "monitoring", RemovalAt: "1.5.0", Ticket: "P7-PLUG-58"},
 }
 
-// ActiveSocketException returns the exception for slug while it has not
-// expired at the running CLI version.
+// ActiveSocketException returns slug's exception until it expires.
 func ActiveSocketException(slug string) (SocketException, bool) {
 	ex, ok := socketExceptions[slug]
 	if !ok || versionAtLeast(version.GetVersion(), ex.RemovalAt) {
@@ -51,250 +44,257 @@ func ActiveSocketException(slug string) (SocketException, bool) {
 	return ex, true
 }
 
-// versionAtLeast reports cur >= threshold on X.Y.Z, ignoring any -pre/+build
-// suffix. A version that does not parse counts as at-least (fail closed).
+// versionAtLeast reports cur >= threshold on X.Y.Z (any -pre/+build ignored);
+// a version that does not parse counts as at-least (fail closed).
 func versionAtLeast(cur, threshold string) bool {
 	c, okC := parseXYZ(cur)
 	t, okT := parseXYZ(threshold)
-	if !okC || !okT {
+	return !okC || !okT || c >= t
+}
+
+func parseXYZ(v string) (packed int, ok bool) {
+	var a, b, c int
+	n, _ := fmt.Sscanf(strings.TrimPrefix(strings.TrimSpace(v), "v"), "%d.%d.%d", &a, &b, &c)
+	return a*1e8 + b*1e4 + c, n == 3 && min(a, b, c) >= 0 && max(b, c) < 1e4
+}
+
+// SocketProxyService reports the services no exception can ever cover.
+func SocketProxyService(name string) bool { return name == "nginx" || name == "traefik" }
+
+// SocketPathExposed reports whether a host path is the Docker socket or a
+// directory that holds it (including the macOS /private alias).
+func SocketPathExposed(p string) bool {
+	c := path.Clean(strings.ToLower(strings.TrimSpace(p)))
+	if rest, ok := strings.CutPrefix(c, "/private"); ok && (rest == "" || rest[0] == '/') {
+		c = path.Clean("/" + rest)
+	}
+	switch c {
+	case "/", "/var", "/var/run", "/run":
 		return true
 	}
-	for i := range c {
-		if c[i] != t[i] {
-			return c[i] > t[i]
-		}
-	}
-	return true
+	return path.Base(c) == "docker.sock"
 }
 
-func parseXYZ(v string) (out [3]int, ok bool) {
-	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
-	if i := strings.IndexAny(v, "-+"); i >= 0 {
-		v = v[:i]
-	}
-	parts := strings.Split(v, ".")
-	if len(parts) != 3 {
-		return out, false
-	}
-	for i, p := range parts {
-		n, err := strconv.Atoi(p)
-		if err != nil || n < 0 {
-			return out, false
+// SocketEnv resolves a ${VAR} name.
+type SocketEnv func(string) (string, bool)
+
+// NewSocketEnv resolves from the process env, then the project's .env files,
+// then the computed plugin variables (NSELF_PLUGIN_DIR and friends). cfg may be nil.
+func NewSocketEnv(workdir, pluginDir string, cfg *config.Config) SocketEnv {
+	vars := ComputePluginEnvVars(workdir, pluginDir, cfg)
+	for _, f := range []string{".env", composeEnvFile} {
+		data, _ := os.ReadFile(filepath.Join(workdir, f))
+		for _, line := range strings.Split(string(data), "\n") {
+			k, v, ok := strings.Cut(strings.TrimPrefix(strings.TrimSpace(line), "export "), "=")
+			if k = strings.TrimSpace(k); ok && k != "" && !strings.HasPrefix(k, "#") {
+				vars[k] = strings.Trim(strings.TrimSpace(v), `"'`)
+			}
 		}
-		out[i] = n
 	}
-	return out, true
+	return func(k string) (string, bool) {
+		if v, ok := os.LookupEnv(k); ok {
+			return v, true
+		}
+		v, ok := vars[k]
+		return v, ok
+	}
 }
 
-// SocketFinding is one socket exposure in one compose service.
-type SocketFinding struct {
-	Service string
-	Detail  string
+// expandSocket expands ${VAR}, ${VAR:-d} and ${VAR-d}; an unset variable without
+// a default, a bare $VAR and any other form are not ok.
+func expandSocket(s string, env SocketEnv) (string, bool) {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] != '$' {
+			b.WriteByte(s[i])
+			continue
+		}
+		if i+1 < len(s) && s[i+1] == '$' {
+			b.WriteByte('$')
+			i++
+			continue
+		}
+		j, name, rest := i+1, "", ""
+		if j >= len(s) || s[j] != '{' { // bare $VAR is not followed
+			return "", false
+		}
+		if j = strings.IndexByte(s[i:], '}'); j < 0 {
+			return "", false
+		}
+		j += i
+		name = s[i+2 : j]
+		if k := strings.IndexAny(name, ":-?+="); k >= 0 {
+			name, rest = name[:k], name[k:]
+		}
+		i = j
+		v, set := env(name)
+		def, hasDef := strings.CutPrefix(strings.TrimPrefix(rest, ":"), "-")
+		d, dok := "", true
+		if hasDef {
+			d, dok = expandSocket(def, env)
+		}
+		switch {
+		case name == "" || (rest != "" && !hasDef):
+			return "", false
+		case set && (v != "" || !strings.HasPrefix(rest, ":")):
+			b.WriteString(v)
+		case hasDef && dok:
+			b.WriteString(d)
+		default:
+			return "", false
+		}
+	}
+	return b.String(), true
+}
+
+// SocketUse is one way a service reaches the socket, and which input said so.
+type SocketUse struct{ Origin, Detail string }
+
+// SocketReport is the merged view of every compose input.
+type SocketReport struct {
+	Uses    map[string][]SocketUse // service -> exposures
+	Owners  map[string][]string    // service -> plugin slugs that declare it
+	Core    map[string]bool        // services declared by the core stack or the override
+	Volumes map[string]string      // named volume -> "" or why it is socket-backed
 }
 
 type socketDoc struct {
-	Services map[string]struct {
-		Volumes     []yaml.Node `yaml:"volumes"`
-		Environment yaml.Node   `yaml:"environment"`
-	} `yaml:"services"`
-	Volumes map[string]struct {
-		DriverOpts map[string]any `yaml:"driver_opts"`
-	} `yaml:"volumes"`
+	origin string
+	top    map[string]any
 }
 
-// SocketFindings parses one compose document and lists every service that
-// mounts the Docker socket (or its parent directory) or points DOCKER_HOST at
-// a unix socket. Services in skip are not inspected. Output is sorted.
-func SocketFindings(doc []byte, skip map[string]bool) ([]SocketFinding, error) {
-	var d socketDoc
-	if err := yaml.Unmarshal(doc, &d); err != nil {
+// socketMap reads a mapping that may be absent or an empty `!reset []`.
+func socketMap(v any, what string) (map[string]any, error) {
+	switch m := v.(type) {
+	case nil:
+		return nil, nil
+	case map[string]any:
+		return m, nil
+	case []any:
+		if len(m) == 0 {
+			return nil, nil
+		}
+	}
+	return nil, fmt.Errorf("%s has an unsupported shape", what)
+}
+
+// AnalyzeSocket scans the generated stack (core), every enabled plugin
+// fragment and docker-compose.override.yml. The YAML decoder resolves anchors,
+// merge keys and tags.
+func AnalyzeSocket(workdir, pluginDir string, env SocketEnv, core []byte) (*SocketReport, error) {
+	var docs []socketDoc
+	add := func(origin string, data []byte) error {
+		var top map[string]any
+		if err := yaml.Unmarshal(data, &top); err != nil {
+			return fmt.Errorf("%s: %w", origin, err)
+		}
+		if top["include"] != nil {
+			return fmt.Errorf("%s uses include, which is not inspected", origin)
+		}
+		docs = append(docs, socketDoc{origin, top})
+		return nil
+	}
+	if err := add("core stack", core); err != nil {
 		return nil, err
 	}
-	sockVol := map[string]bool{} // named volumes backed by the socket
-	for name, v := range d.Volumes {
-		if strings.Contains(strings.ToLower(fmt.Sprint(v.DriverOpts["device"])), "docker.sock") {
-			sockVol[name] = true
-		}
-	}
-	var out []SocketFinding
-	for svc, s := range d.Services {
-		if skip[svc] {
+	entries, _ := os.ReadDir(pluginDir)
+	for _, e := range entries { // enabled plugins only, in name order
+		if _, off := os.Stat(filepath.Join(pluginDir, e.Name(), ".disabled")); !e.IsDir() || off == nil {
 			continue
 		}
-		for i := range s.Volumes {
-			if raw, bad := socketVolume(&s.Volumes[i], sockVol); bad {
-				out = append(out, SocketFinding{svc, fmt.Sprintf("mounts the Docker socket (volume %q)", raw)})
-			}
-		}
-		for _, kv := range envPairs(&s.Environment) {
-			if kv[0] == "DOCKER_HOST" && strings.Contains(strings.ToLower(kv[1]), "unix:") {
-				out = append(out, SocketFinding{svc, fmt.Sprintf("sets DOCKER_HOST to %q", kv[1])})
+		if data, err := os.ReadFile(filepath.Join(pluginDir, e.Name(), pluginComposeFilename)); err == nil {
+			if err := add("plugin:"+e.Name(), data); err != nil {
+				return nil, err
 			}
 		}
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Service != out[j].Service {
-			return out[i].Service < out[j].Service
+	if data, err := os.ReadFile(filepath.Join(workdir, userComposeOverrideFile)); err == nil {
+		if err := add("override", data); err != nil {
+			return nil, err
 		}
-		return out[i].Detail < out[j].Detail
-	})
-	return out, nil
-}
-
-func deref(n *yaml.Node) *yaml.Node {
-	for n != nil && n.Kind == yaml.AliasNode {
-		n = n.Alias
+	} else if !os.IsNotExist(err) {
+		return nil, err
 	}
-	return n
-}
-
-// socketVolume reports whether one volumes: entry (short or long syntax)
-// exposes the Docker socket, and returns the entry as written.
-func socketVolume(n *yaml.Node, sockVol map[string]bool) (string, bool) {
-	n = deref(n)
-	var raw, src string
-	switch n.Kind {
-	case yaml.ScalarNode:
-		raw = n.Value
-		if !strings.HasPrefix(raw, "$") {
-			src = strings.SplitN(raw, ":", 2)[0]
-		}
-	case yaml.MappingNode:
-		var tgt string
-		for i := 0; i+1 < len(n.Content); i += 2 {
-			switch n.Content[i].Value {
-			case "source":
-				src = deref(n.Content[i+1]).Value
-			case "target":
-				tgt = deref(n.Content[i+1]).Value
-			}
-		}
-		raw = src + ":" + tgt
-	default:
-		return "", false
-	}
-	if strings.Contains(strings.ToLower(raw), "docker.sock") || sockVol[src] {
-		return raw, true
-	}
-	switch path.Clean(src) {
-	case "/", "/var", "/var/run", "/run":
-		return raw, true
-	}
-	return raw, false
-}
-
-// envPairs reads an environment: block in map or list form.
-func envPairs(n *yaml.Node) [][2]string {
-	n = deref(n)
-	var out [][2]string
-	switch n.Kind {
-	case yaml.MappingNode:
-		for i := 0; i+1 < len(n.Content); i += 2 {
-			out = append(out, [2]string{n.Content[i].Value, deref(n.Content[i+1]).Value})
-		}
-	case yaml.SequenceNode:
-		for _, c := range n.Content {
-			k, v, _ := strings.Cut(deref(c).Value, "=")
-			out = append(out, [2]string{k, v})
-		}
-	}
-	return out
-}
-
-func socketRefusal(owner, service, detail string) error {
-	return errs.Newf("E130", "%s service %q %s", owner, service, detail).
-		WithWhy("ADR 0027: the Docker socket is root-equivalent on the host; no generated stack hands it to a proxy or plugin container.").
-		WithFix("Remove the socket volume and the unix DOCKER_HOST from the service, or remove the plugin.")
-}
-
-// PluginFragmentServices maps each service in an enabled plugin fragment to its plugin slug.
-func PluginFragmentServices(pluginDir string) map[string]string {
-	out := map[string]string{}
-	for _, slug := range fragmentSlugs(pluginDir) {
-		data, err := os.ReadFile(filepath.Join(pluginDir, slug, pluginComposeFilename))
+	rep := &SocketReport{Uses: map[string][]SocketUse{}, Owners: map[string][]string{}, Core: map[string]bool{}, Volumes: map[string]string{}}
+	for _, d := range docs { // named volumes first: any input may mount another's
+		vols, err := socketMap(d.top["volumes"], d.origin+" volumes")
 		if err != nil {
-			continue
+			return nil, err
 		}
-		var d socketDoc
-		if yaml.Unmarshal(data, &d) == nil {
-			for svc := range d.Services {
-				out[svc] = slug
+		for name, v := range vols {
+			m, _ := v.(map[string]any)
+			opts, _ := m["driver_opts"].(map[string]any)
+			dev, _ := opts["device"].(string)
+			x, ok := expandSocket(dev, env)
+			rep.Volumes[name] += "" // defined; stays "" unless socket-backed
+			if dev != "" && !ok {
+				rep.Volumes[name] = fmt.Sprintf("is backed by %q, which cannot be resolved", dev)
+			} else if dev != "" && SocketPathExposed(x) {
+				rep.Volumes[name] = "is backed by " + x
 			}
 		}
 	}
-	return out
-}
-
-// fragmentSlugs lists the enabled plugin directories, sorted.
-func fragmentSlugs(pluginDir string) []string {
-	entries, err := os.ReadDir(pluginDir)
-	if err != nil {
-		return nil
-	}
-	var slugs []string
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		if _, err := os.Stat(filepath.Join(pluginDir, e.Name(), ".disabled")); err == nil {
-			continue
-		}
-		slugs = append(slugs, e.Name())
-	}
-	sort.Strings(slugs)
-	return slugs
-}
-
-// guardPluginFragments refuses a non-excepted plugin fragment that exposes
-// the socket; an excepted one warns once per process.
-func guardPluginFragments(pluginDir string) error {
-	for _, slug := range fragmentSlugs(pluginDir) {
-		data, err := os.ReadFile(filepath.Join(pluginDir, slug, pluginComposeFilename))
+	for _, d := range docs {
+		svcs, err := socketMap(d.top["services"], d.origin+" services")
 		if err != nil {
-			continue // no fragment: nothing to check (E128 owns a missing one)
+			return nil, err
 		}
-		found, err := SocketFindings(data, nil)
-		if err != nil {
-			return errs.Newf("E130", "plugin %q fragment cannot be checked for the Docker socket: %v", slug, err).
-				WithFix("Fix the YAML in the plugin's docker-compose.plugin.yml, or remove the plugin.")
-		}
-		for _, f := range found {
-			if ex, ok := ActiveSocketException(slug); ok {
-				warnOnce(fmt.Sprintf("plugin %q service %q %s; allowed until nself %s (%s), then the build refuses it (E130)", slug, f.Service, f.Detail, ex.RemovalAt, ex.Ticket))
-				continue
+		for name, raw := range svcs {
+			body, ok := raw.(map[string]any)
+			if !ok && raw != nil {
+				return nil, fmt.Errorf("%s service %q has an unsupported shape", d.origin, name)
 			}
-			return socketRefusal(fmt.Sprintf("plugin %q", slug), f.Service, f.Detail)
+			if slug, isPlugin := strings.CutPrefix(d.origin, "plugin:"); isPlugin {
+				rep.Owners[name] = append(rep.Owners[name], slug)
+			} else {
+				rep.Core[name] = true
+			}
+			uses, err := scanSocketService(d, name, body, env, rep.Volumes)
+			if err != nil {
+				return nil, err
+			}
+			rep.Uses[name] = append(rep.Uses[name], uses...)
 		}
+	}
+	return rep, nil
+}
+
+// Refuse returns E130 for the first judged service that holds the socket.
+func (r *SocketReport) Refuse() error {
+	for _, svc := range slices.Sorted(maps.Keys(r.Uses)) {
+		slugs, uses := r.Owners[svc], r.Uses[svc]
+		if len(uses) == 0 || (len(slugs) == 0 && !SocketProxyService(svc)) {
+			continue // clean, or core/custom: not judged
+		}
+		own := true // every exposure comes from the declaring plugin itself
+		for _, u := range uses {
+			own = own && len(slugs) == 1 && u.Origin == "plugin:"+slugs[0]
+		}
+		if ex, ok := ActiveSocketException(strings.Join(slugs, "")); ok && own && !SocketProxyService(svc) {
+			warnOnce(fmt.Sprintf("plugin %q holds the Docker socket; allowed until nself %s (%s), then the build refuses it (E130)", ex.Slug, ex.RemovalAt, ex.Ticket))
+			continue
+		}
+		owner := uses[0].Origin
+		if slug, ok := strings.CutPrefix(owner, "plugin:"); ok {
+			owner = fmt.Sprintf("plugin %q", slug)
+		} else if len(slugs) > 0 {
+			owner = fmt.Sprintf("plugin %q via %s", strings.Join(slugs, `", "`), owner)
+		}
+		return errs.Newf("E130", "%s service %q %s", owner, svc, uses[0].Detail)
 	}
 	return nil
 }
 
-// guardGeneratedStack refuses a socket exposure in the core stack's YAML.
-func guardGeneratedStack(stack []byte, skip map[string]bool) error {
-	found, err := SocketFindings(stack, skip)
-	if err != nil {
-		return errs.Newf("E130", "generated stack cannot be checked for the Docker socket: %v", err)
-	}
-	if len(found) > 0 {
-		return socketRefusal("core stack", found[0].Service, found[0].Detail)
-	}
-	return nil
-}
-
-// guardDockerSocket checks every plugin fragment, then the stack the generator
-// would write (rendered here so the guard runs before provider output is
-// cleaned up; a generator error is left for the real render to report).
+// guardDockerSocket scans the stack the generator would write, every plugin
+// fragment and the override file, before provider output moves.
 func (st *buildState) guardDockerSocket(g *compose.Generator) error {
-	if err := guardPluginFragments(st.pluginDir); err != nil {
-		return err
-	}
 	stack, err := g.Generate()
 	if err != nil {
-		return nil
+		return nil // the real render reports it
 	}
-	skip := map[string]bool{compose.AdminServiceName: true}
-	for _, cs := range st.cfg.CustomServices {
-		skip[cs.Name] = true
+	rep, err := AnalyzeSocket(st.workdir, st.pluginDir, NewSocketEnv(st.workdir, st.pluginDir, st.cfg), stack)
+	if err != nil {
+		return errs.Newf("E130", "compose inputs cannot be checked for the Docker socket: %v", err)
 	}
-	return guardGeneratedStack(stack, skip)
+	return rep.Refuse()
 }

@@ -1,0 +1,13 @@
+# synthetic fixture: named volume backed by the socket's parent directory
+services:
+  sockdevparent:
+    image: example.invalid/sockdevparent:1
+    volumes:
+      - parentvol:/h
+volumes:
+  parentvol:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /var/run

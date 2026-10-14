@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -228,4 +229,71 @@ func buildOllamaSnippet(keepAlive string, enableGPU bool) string {
 	sb.WriteString("\nvolumes:\n")
 	sb.WriteString("  ollama_models:\n")
 	return sb.String()
+}
+
+// scanSocketService lists how one service reaches the Docker socket: volumes
+// (paths, parent dirs, socket-backed named volumes) and DOCKER_HOST. env_file,
+// extends, volumes_from and unresolvable values count; bad shapes are errors.
+func scanSocketService(d socketDoc, name string, body map[string]any, lookup SocketEnv, vols map[string]string) ([]SocketUse, error) {
+	var uses []SocketUse
+	use := func(f string, a ...any) { uses = append(uses, SocketUse{d.origin, fmt.Sprintf(f, a...)}) }
+	bad := func(w string) error { return fmt.Errorf("%s service %q has an unsupported %s", d.origin, name, w) }
+	for _, k := range []string{"env_file", "extends", "volumes_from"} {
+		if body[k] != nil {
+			use("uses %s, which is not inspected", k)
+		}
+	}
+	entries, isList := body["volumes"].([]any)
+	if body["volumes"] != nil && !isList {
+		return nil, bad("volumes shape")
+	}
+	for _, e := range entries {
+		var src, dst string
+		ok := true
+		switch v := e.(type) {
+		case string:
+			x, xok := expandSocket(v, lookup)
+			p := append(strings.Split(x, ":"), "")
+			src, dst, ok = p[0], p[1], xok
+		case map[string]any:
+			s, _ := v["source"].(string)
+			t, _ := v["target"].(string)
+			xs, ok1 := expandSocket(s, lookup)
+			xt, ok2 := expandSocket(t, lookup)
+			src, dst, ok = xs, xt, ok1 && ok2
+		default:
+			return nil, bad("volume entry")
+		}
+		switch {
+		case !ok:
+			use("mounts a volume that cannot be resolved (%v)", e)
+		case SocketPathExposed(src), path.Base(dst) == "docker.sock":
+			use("mounts the Docker socket (volume %q)", src+":"+dst)
+		case vols[src] != "":
+			use("mounts named volume %q, which %s", src, vols[src])
+		}
+	}
+	env := map[string]any{}
+	switch e := body["environment"].(type) {
+	case nil:
+	case map[string]any:
+		env = e
+	case []any:
+		for _, x := range e {
+			str, ok := x.(string)
+			if !ok {
+				return nil, bad("environment entry")
+			}
+			k, v, _ := strings.Cut(str, "=")
+			env[k] = v
+		}
+	default:
+		return nil, bad("environment shape")
+	}
+	if v := env["DOCKER_HOST"]; v != nil {
+		if x, ok := expandSocket(fmt.Sprint(v), lookup); !ok || strings.Contains(strings.ToLower(x), "unix:") {
+			use("sets DOCKER_HOST to %q (a unix socket, or not resolvable)", v)
+		}
+	}
+	return uses, nil
 }

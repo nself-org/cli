@@ -1,15 +1,18 @@
 package doctor
 
 // deep_docker_socket_test.go — P7-DEPL-21: proxy-docker-socket verdicts from a
-// fake inspector. Containers are synthetic; the exception table is the build
-// guard's own.
+// fake inspector and a synthetic build.SocketReport. The exception table is
+// the build guard's own.
 
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/version"
 )
@@ -23,53 +26,75 @@ func (f fakeSocketInspector) RunningContainers(context.Context) ([]docker.Contai
 	return f.containers, f.err
 }
 
-func sockCtr(name, service string, mounts []docker.Mount, env map[string]string) docker.ContainerInfo {
-	return docker.ContainerInfo{Name: name, Service: service, State: "running", Mounts: mounts, Env: env}
+// sockCtr is a live container; state defaults to running.
+func sockCtr(name, service string, mounts []docker.Mount, env map[string]string, labels map[string]string) docker.ContainerInfo {
+	return docker.ContainerInfo{Name: name, Service: service, State: "running", Mounts: mounts, Env: env, Labels: labels}
 }
 
 var (
-	sockMount = []docker.Mount{{Source: "/var/run/docker.sock", Destination: "/var/run/docker.sock", Type: "bind"}}
-	plainMnt  = []docker.Mount{{Source: "/srv/data", Destination: "/data", Type: "bind"}}
-	owners    = map[string]string{"forgejo": "forgejo", "monitoring": "monitoring", "sockshort": "sockshort", "sockhost": "sockhost"}
+	bindSock = []docker.Mount{{Source: "/var/run/docker.sock", Destination: "/var/run/docker.sock", Type: "bind"}}
+	bindData = []docker.Mount{{Source: "/srv/data", Destination: "/data", Type: "bind"}}
+	unixHost = map[string]string{"DOCKER_HOST": "unix:///var/run/docker.sock"}
+	volumeOf = func(name string) []docker.Mount {
+		return []docker.Mount{{Source: "/var/lib/docker/volumes/" + name + "/_data", Destination: "/v", Type: "volume"}}
+	}
+	anonymous = strings.Repeat("ab12", 16)
 )
+
+func socketReport() *build.SocketReport {
+	return &build.SocketReport{
+		Owners: map[string][]string{
+			"forgejo": {"forgejo"}, "monitoring": {"monitoring"}, "sockshort": {"sockshort"}, "evil": {"evil"},
+			"nginx": {"forgejo"}, "dupsvc": {"forgejo", "monitoring"}, "sockdata": {"sockdata"},
+		},
+		Core:    map[string]bool{"nself-admin": true, "ping-api": true, "postgres": true, "nginx": true},
+		Volumes: map[string]string{"sockvol": "is backed by /var/run", "plainvol": ""},
+	}
+}
 
 func TestDockerSocketDoctor(t *testing.T) {
 	old := version.Version
 	t.Cleanup(func() { version.Version = old })
-	version.Version = "1.4.14"
 
 	cases := []struct {
 		name       string
-		ins        fakeSocketInspector
+		ctrs       []docker.ContainerInfo
+		err        error
 		version    string
 		wantStatus string
 		wantIn     []string
 	}{
-		{"no containers", fakeSocketInspector{}, "", "pass", nil},
-		{"clean proxy and plugin", fakeSocketInspector{containers: []docker.ContainerInfo{
-			sockCtr("p_nginx", "nginx", plainMnt, nil), sockCtr("p_sockshort", "sockshort", nil, map[string]string{"DOCKER_HOST": "tcp://x:2375"})}}, "", "pass", nil},
-		{"proxy with the socket fails", fakeSocketInspector{containers: []docker.ContainerInfo{
-			sockCtr("p_nginx", "nginx", sockMount, nil)}}, "", "fail", []string{"proxy nginx", "p_nginx"}},
-		{"traefik with unix DOCKER_HOST fails", fakeSocketInspector{containers: []docker.ContainerInfo{
-			sockCtr("p_traefik", "traefik", nil, map[string]string{"DOCKER_HOST": "unix:///var/run/docker.sock"})}}, "", "fail", []string{"traefik", "DOCKER_HOST"}},
-		{"parent dir mount fails", fakeSocketInspector{containers: []docker.ContainerInfo{
-			sockCtr("p_nginx", "nginx", []docker.Mount{{Source: "/var/run", Destination: "/r"}}, nil)}}, "", "fail", []string{"nginx"}},
-		{"non-excepted plugin fails naming plugin and service", fakeSocketInspector{containers: []docker.ContainerInfo{
-			sockCtr("p_sockshort", "sockshort", sockMount, nil)}}, "", "fail", []string{"plugin sockshort", "service sockshort"}},
-		{"plugin with unix DOCKER_HOST fails", fakeSocketInspector{containers: []docker.ContainerInfo{
-			sockCtr("p_sockhost", "sockhost", nil, map[string]string{"DOCKER_HOST": "unix:///run/docker.sock"})}}, "", "fail", []string{"plugin sockhost"}},
-		{"excepted plugin warns", fakeSocketInspector{containers: []docker.ContainerInfo{
-			sockCtr("p_forgejo", "forgejo", sockMount, nil)}}, "", "warn", []string{"plugin forgejo", "P7-TRUST-21"}},
-		{"expired exception fails", fakeSocketInspector{containers: []docker.ContainerInfo{
-			sockCtr("p_monitoring", "monitoring", sockMount, nil)}}, "1.5.0", "fail", []string{"plugin monitoring"}},
-		{"one failure outranks an exception", fakeSocketInspector{containers: []docker.ContainerInfo{
-			sockCtr("p_forgejo", "forgejo", sockMount, nil), sockCtr("p_nginx", "nginx", sockMount, nil)}}, "", "fail", []string{"proxy nginx", "plugin forgejo"}},
-		{"core admin and unrelated services are not checked", fakeSocketInspector{containers: []docker.ContainerInfo{
-			sockCtr("p_admin", "nself-admin", sockMount, map[string]string{"DOCKER_HOST": "unix:///var/run/docker.sock"}),
-			sockCtr("p_ping", "ping-api", sockMount, nil)}}, "", "pass", nil},
-		{"service falls back to the compose label", fakeSocketInspector{containers: []docker.ContainerInfo{
-			{Name: "p_nginx", State: "running", Mounts: sockMount, Labels: map[string]string{"com.docker.compose.service": "nginx"}}}}, "", "fail", []string{"proxy nginx"}},
-		{"inspector error is unknown, never pass", fakeSocketInspector{err: errors.New("daemon down")}, "", "unknown", []string{"daemon down"}},
+		{"no containers", nil, nil, "", "pass", nil},
+		{"clean proxy and plugin", []docker.ContainerInfo{sockCtr("p_nginx", "nginx", bindData, nil, nil), sockCtr("p_s", "sockshort", nil, map[string]string{"DOCKER_HOST": "tcp://x:2375"}, nil)}, nil, "", "pass", nil},
+		{"proxy with the socket fails", []docker.ContainerInfo{sockCtr("p_nginx", "nginx", bindSock, nil, nil)}, nil, "", "fail", []string{"proxy service nginx", "p_nginx"}},
+		{"traefik with unix DOCKER_HOST fails", []docker.ContainerInfo{sockCtr("p_traefik", "traefik", nil, unixHost, nil)}, nil, "", "fail", []string{"traefik", "DOCKER_HOST"}},
+		{"parent dir bind fails", []docker.ContainerInfo{sockCtr("p_nginx", "nginx", []docker.Mount{{Source: "/var/run", Destination: "/r", Type: "bind"}}, nil, nil)}, nil, "", "fail", []string{"nginx"}},
+		{"/private alias bind fails", []docker.ContainerInfo{sockCtr("p_nginx", "nginx", []docker.Mount{{Source: "/private/var/run", Destination: "/r", Type: "bind"}}, nil, nil)}, nil, "", "fail", []string{"nginx"}},
+		{"socket at the container path fails", []docker.ContainerInfo{sockCtr("p_nginx", "nginx", []docker.Mount{{Source: "/x", Destination: "/run/docker.sock", Type: "bind"}}, nil, nil)}, nil, "", "fail", []string{"nginx"}},
+		{"plugin without an exception fails naming plugin and service", []docker.ContainerInfo{sockCtr("p_s", "sockshort", bindSock, nil, nil)}, nil, "", "fail", []string{"plugin sockshort", "service sockshort"}},
+		{"plugin with unix DOCKER_HOST fails", []docker.ContainerInfo{sockCtr("p_e", "evil", nil, unixHost, nil)}, nil, "", "fail", []string{"plugin evil"}},
+		{"excepted plugin warns", []docker.ContainerInfo{sockCtr("p_f", "forgejo", bindSock, nil, nil)}, nil, "", "warn", []string{"plugin forgejo", "P7-TRUST-21", "1.5.0"}},
+		{"expired exception fails", []docker.ContainerInfo{sockCtr("p_m", "monitoring", bindSock, nil, nil)}, nil, "1.5.0", "fail", []string{"plugin monitoring"}},
+		{"unknown version fails closed", []docker.ContainerInfo{sockCtr("p_m", "monitoring", bindSock, nil, nil)}, nil, "dev", "fail", []string{"plugin monitoring"}},
+		{"a fragment declaring nginx grants the proxy no exception", []docker.ContainerInfo{sockCtr("p_nginx", "nginx", bindSock, nil, nil)}, nil, "", "fail", []string{"proxy service nginx"}},
+		{"ambiguous ownership grants no exception", []docker.ContainerInfo{sockCtr("p_d", "dupsvc", bindSock, nil, nil)}, nil, "", "fail", []string{"forgejo, monitoring"}},
+		{"a label cannot claim another plugin's exception", []docker.ContainerInfo{sockCtr("p_e", "evil", bindSock, nil, map[string]string{"nself.plugin": "forgejo"})}, nil, "", "fail", []string{"plugin forgejo"}},
+		{"deleted fragment: a service the core stack lacks is still a plugin", []docker.ContainerInfo{sockCtr("p_g", "ghost", bindSock, nil, nil)}, nil, "", "fail", []string{"no fragment names it", "ghost"}},
+		{"label alone cannot earn the exception", []docker.ContainerInfo{sockCtr("p_l", "labeled", bindSock, nil, map[string]string{"nself.plugin": "forgejo"})}, nil, "", "fail", []string{"plugin forgejo"}},
+		{"restarting container is inspected", []docker.ContainerInfo{{Name: "p_n", Service: "nginx", State: "restarting", Mounts: bindSock}}, nil, "", "fail", []string{"nginx"}},
+		{"paused container is inspected", []docker.ContainerInfo{{Name: "p_s", Service: "sockshort", State: "paused", Mounts: bindSock}}, nil, "", "fail", []string{"sockshort"}},
+		{"core admin and custom services are not judged", []docker.ContainerInfo{sockCtr("p_a", "nself-admin", bindSock, unixHost, nil), sockCtr("p_p", "ping-api", bindSock, nil, nil)}, nil, "", "pass", nil},
+		{"service falls back to the compose label", []docker.ContainerInfo{{Name: "p_n", State: "running", Mounts: bindSock, Labels: map[string]string{"com.docker.compose.service": "nginx"}}}, nil, "", "fail", []string{"proxy service nginx"}},
+		{"volume backed by the socket fails", []docker.ContainerInfo{sockCtr("p_s", "sockdata", volumeOf("proj_sockvol"), nil, nil)}, nil, "", "fail", []string{"proj_sockvol", "/var/run"}},
+		{"ordinary named volume passes", []docker.ContainerInfo{sockCtr("p_s", "sockdata", volumeOf("proj_plainvol"), nil, nil)}, nil, "", "pass", nil},
+		{"anonymous volume passes", []docker.ContainerInfo{sockCtr("p_s", "sockdata", volumeOf(anonymous), nil, nil)}, nil, "", "pass", nil},
+		{"volume no compose input defines is unknown", []docker.ContainerInfo{sockCtr("p_s", "sockdata", volumeOf("proj_mystery"), nil, nil)}, nil, "", "unknown", []string{"proj_mystery"}},
+		{"volume whose path cannot be identified is unknown", []docker.ContainerInfo{sockCtr("p_s", "sockdata", []docker.Mount{{Source: "/mnt/odd", Destination: "/v", Type: "volume"}}, nil, nil)}, nil, "", "unknown", []string{"/mnt/odd"}},
+		{"mount of unknown type is unknown", []docker.ContainerInfo{sockCtr("p_s", "sockdata", []docker.Mount{{Source: "/x", Destination: "/v"}}, nil, nil)}, nil, "", "unknown", []string{"unknown type"}},
+		{"container without a state is unknown, not pass", []docker.ContainerInfo{{Name: "p_n", Service: "nginx"}}, nil, "", "unknown", []string{"p_n"}},
+		{"container without a service is unknown, not pass", []docker.ContainerInfo{{Name: "p_x", State: "running"}}, nil, "", "unknown", []string{"p_x"}},
+		{"a failure outranks an unknown", []docker.ContainerInfo{sockCtr("p_n", "nginx", bindSock, nil, nil), {Name: "p_x", State: "running"}}, nil, "", "fail", []string{"proxy service nginx"}},
+		{"inspector error is unknown, never pass", nil, errors.New("daemon down"), "", "unknown", []string{"daemon down"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -77,7 +102,7 @@ func TestDockerSocketDoctor(t *testing.T) {
 			if tc.version != "" {
 				version.Version = tc.version
 			}
-			got := CheckProxyDockerSocket(context.Background(), tc.ins, owners)
+			got := CheckProxyDockerSocket(context.Background(), fakeSocketInspector{tc.ctrs, tc.err}, socketReport())
 			if got.Status != tc.wantStatus || got.Name != "proxy-docker-socket" {
 				t.Fatalf("status %q name %q, want %q: %s", got.Status, got.Name, tc.wantStatus, got.Message)
 			}
@@ -92,6 +117,17 @@ func TestDockerSocketDoctor(t *testing.T) {
 	t.Run("no compose file skips, never passes", func(t *testing.T) {
 		got := DockerSocketChecks(context.Background(), t.TempDir())
 		if len(got) != 1 || got[0].Status != "skip" || got[0].Name != "proxy-docker-socket" {
+			t.Fatalf("got %+v", got)
+		}
+	})
+
+	t.Run("unreadable compose inputs are unknown, never pass", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "docker-compose.yml"), []byte("services: [unclosed"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		got := DockerSocketChecks(context.Background(), dir)
+		if len(got) != 1 || got[0].Status != "unknown" {
 			t.Fatalf("got %+v", got)
 		}
 	})

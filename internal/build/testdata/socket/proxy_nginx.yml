@@ -1,0 +1,6 @@
+# synthetic fixture: an excepted plugin declares the proxy service
+services:
+  nginx:
+    image: example.invalid/nginx:1
+    volumes:
+      - /var/run/docker.sock:/s

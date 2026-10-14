@@ -1,0 +1,6 @@
+# synthetic fixture: environment arrives from a file
+services:
+  sockenvfile:
+    image: example.invalid/sockenvfile:1
+    env_file:
+      - ./sock.env

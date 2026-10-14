@@ -1,0 +1,13 @@
+# synthetic fixture: named volume backed by the macOS /private alias
+services:
+  sockdevprivate:
+    image: example.invalid/sockdevprivate:1
+    volumes:
+      - privvol:/h
+volumes:
+  privvol:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /private/var/run

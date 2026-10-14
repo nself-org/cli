@@ -1,0 +1,6 @@
+# synthetic fixture: a fragment that includes another file
+include:
+  - ./other.yml
+services:
+  sockinclude:
+    image: example.invalid/sockinclude:1
