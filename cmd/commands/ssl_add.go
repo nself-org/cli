@@ -198,7 +198,7 @@ func httpProbeAddr(env map[string]string) string {
 func runSSLAddACME(cmd *cobra.Command, args []string) error {
 	domain := strings.ToLower(strings.TrimSuffix(args[0], "."))
 	if !acmeHostRE.MatchString(domain) {
-		return e151(acmeRefuse("give one plain DNS name; a wildcard needs DNS-01 (`nself trust ssl setup --acme --wildcard`)",
+		return e151(acmeRefuse("give one plain DNS name; a wildcard needs DNS-01 (`"+acmeCommand("setup")+" --wildcard`)",
 			"%q cannot be issued over HTTP-01", args[0]))
 	}
 	r, err := prepareACME(cmd, false)
@@ -219,11 +219,11 @@ func runSSLAddACME(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 	hosts, _ := ssl.ServedHosts(r.res.NginxDir)
 	if c := hosts[domain]; c != "" && !strings.Contains(c, "/"+name+"/") {
-		return e151(acmeRefuse("use `nself trust ssl renew --acme` for the lineage that serves it", "%s is already served over HTTPS with %s", domain, c))
+		return e151(acmeRefuse("use `"+acmeCommand("renew")+"` for the lineage that serves it", "%s is already served over HTTPS with %s", domain, c))
 	}
 	for _, x := range r.file.Lineages {
 		if x.Name == name {
-			return e151(acmeRefuse("renew it with `nself trust ssl renew --acme --force`", "lineage %s is already managed", name))
+			return e151(acmeRefuse("renew it with `"+acmeCommand("renew")+" --force`", "lineage %s is already managed", name))
 		}
 	}
 	if err := r.probeHTTP(ctx, domain); err != nil {

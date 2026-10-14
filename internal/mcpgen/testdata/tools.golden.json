@@ -6774,7 +6774,7 @@
         "idempotentHint": false,
         "openWorldHint": true
       },
-      "description": "Reload nginx and optionally renew certificates. Contacts or changes something outside this project. A call that needs confirmation returns confirmation_required with a confirm value; repeat the identical call with confirm set to run it.",
+      "description": "Renew SSL certificates and reload the serving proxy. Contacts or changes something outside this project. A call that needs confirmation returns confirmation_required with a confirm value; repeat the identical call with confirm set to run it.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -6801,37 +6801,37 @@
             "properties": {
               "acme": {
                 "default": false,
-                "description": "Use the CLI's own ACME client (DNS-01, lego one-shot container) instead of certbot",
+                "description": "Use the CLI's own ACME client (DNS-01, lego one-shot container; default in v1.5 mode)",
                 "type": "boolean"
               },
               "dry-run": {
                 "default": false,
-                "description": "With --acme: print the resolved stack, lineages and targets; write nothing",
+                "description": "ACME client: print the resolved stack, lineages and targets; write nothing",
                 "type": "boolean"
               },
               "email": {
                 "default": "",
-                "description": "With --acme: ACME contact (default: stored contact, ACME_EMAIL, ADMIN_EMAIL)",
+                "description": "ACME client: ACME contact (default: stored contact, ACME_EMAIL, ADMIN_EMAIL)",
                 "type": "string"
               },
               "force": {
                 "default": false,
-                "description": "With --acme: renew every lineage, not only those with 30 days or fewer left",
+                "description": "ACME client: renew every lineage, not only those with 30 days or fewer left",
                 "type": "boolean"
               },
               "nginx-container": {
                 "default": "",
-                "description": "With --acme: nginx container to reload (default: found by compose labels)",
+                "description": "ACME client: nginx container to reload (default: found by compose labels)",
                 "type": "string"
               },
               "quiet": {
                 "default": false,
-                "description": "With --acme: suppress non-error output (for the renewal timer)",
+                "description": "ACME client: suppress non-error output (for the renewal timer)",
                 "type": "boolean"
               },
               "staging": {
                 "default": false,
-                "description": "With --acme: issue from the staging CA into .acme/staging; installs nothing",
+                "description": "ACME client: issue from the staging CA into .acme/staging; installs nothing",
                 "type": "boolean"
               }
             },
@@ -6948,12 +6948,12 @@
             "properties": {
               "acme": {
                 "default": false,
-                "description": "Use the CLI's own ACME client (DNS-01, lego one-shot container) instead of certbot",
+                "description": "Use the CLI's own ACME client (DNS-01, lego one-shot container; default in v1.5 mode)",
                 "type": "boolean"
               },
               "adopt-certbot": {
                 "default": "",
-                "description": "With --acme: adopt certbot lineages from [dir] (default /etc/letsencrypt); never issues",
+                "description": "ACME client: adopt certbot lineages from [dir] (default /etc/letsencrypt); never issues",
                 "type": "string"
               },
               "challenge": {
@@ -6968,7 +6968,7 @@
               },
               "dry-run": {
                 "default": false,
-                "description": "With --acme: print the resolved stack, lineages and targets; write nothing",
+                "description": "ACME client: print the resolved stack, lineages and targets; write nothing",
                 "type": "boolean"
               },
               "email": {
@@ -6988,7 +6988,7 @@
               },
               "nginx-container": {
                 "default": "",
-                "description": "With --acme: nginx container to reload (default: found by compose labels)",
+                "description": "ACME client: nginx container to reload (default: found by compose labels)",
                 "type": "string"
               },
               "provider": {

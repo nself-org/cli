@@ -29,10 +29,10 @@ func runSSLSetupACME(cmd *cobra.Command, args []string) error {
 	case len(r.file.Lineages) > 0 && cron:
 		return r.timer()
 	case len(r.file.Lineages) > 0:
-		return e151(acmeRefuse("renew with `nself trust ssl renew --acme --force`, or add lineages with --adopt-certbot",
+		return e151(acmeRefuse("renew with `"+acmeCommand("renew")+" --force`, or add lineages with --adopt-certbot",
 			"lineages are already managed in %s", acme.StateDir(r.res.SSLDir)))
 	case !known:
-		return e151(acmeRefuse("use cloudflare, route53 or digitalocean", "DNS provider %q is not supported by --acme", provider))
+		return e151(acmeRefuse("use cloudflare, route53 or digitalocean", "DNS provider %q is not supported by the ACME client", provider))
 	case base == "" || base == "localhost":
 		return e151(acmeRefuse("set BASE_DOMAIN to a real domain", "BASE_DOMAIN must be a real domain"))
 	default:
@@ -94,6 +94,6 @@ func (r *acmeRun) issueNew(ctx context.Context, l acme.Lineage, cron bool) error
 	if cron {
 		return r.timerAfter(retired)
 	}
-	r.say("renew with `nself trust ssl renew --acme`; add --install-cron for the timer")
+	r.say("renew with `%s`; add --install-cron for the timer", acmeCommand("renew"))
 	return nil
 }

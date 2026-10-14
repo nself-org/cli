@@ -128,14 +128,15 @@ When `--force` is used, the file is overwritten with the newly generated content
 
 ## Mutations
 
-A command that changes a setting, a plugin or a bundle used to leave the generated files stale until you ran `nself build`. In v1.5 mode these commands plan the regeneration they cause and apply it, through the same engine as `nself build` (`reconcile.Apply`). No container is restarted. The next `nself start` picks up the new files.
+A command that changes a setting, a plugin or a bundle used to leave the generated files stale until you ran `nself build`. In v1.5 mode these commands plan the regeneration they cause and apply it, through the same engine as `nself build` (`reconcile.Apply`). Regeneration itself does not restart containers; the next `nself start` picks up the new files. `nself bundle install` also starts the stack and waits for app-ready in v1.5 mode.
 
 | Command | v1.5 (`NSELF_V15=1`) | v1.4 (default) |
 |---|---|---|
 | `nself config set KEY VALUE` | Plans, confirms when the env is prod-class, writes the line, regenerates nginx, compose and the rest. Prints `config: KEY → <n> artifacts changed (<kinds>)`. If the apply fails the env file is put back byte for byte. | Writes the line as before. Prints the same summary and `not applied in v1.4 mode` on stderr. Nothing is regenerated until you run `nself build`. |
 | `nself plugin install` | Installs, then reconciles once after the last install, so the plugin's nginx route and compose service exist with no separate build. | Installs and prints the `nself build` hint. The route appears after `nself build`. |
 | `nself plugin remove` | Removes, then reconciles once. | Removes. The generated files change on the next `nself build`. |
-| `nself bundle install`, `nself bundle remove` | Reconciles once after the change (both modes). | Reconciles once after the change. |
+| `nself bundle install` | Installs, reconciles, starts the stack and waits for app-ready. | Installs, then reconciles once. Does not start the stack. |
+| `nself bundle remove` | Removes, then reconciles once. | Removes, then reconciles once. |
 | `nself doctor --fix` | Repairs generated-file drift through the same engine. A second `--fix` changes nothing. | Same repair. A hand-edited file is overwritten with the v1.4 warning instead of the refusal. |
 
 ### Flags
@@ -149,7 +150,7 @@ A command that changes a setting, a plugin or a bundle used to leave the generat
 
 Both refuse with E403 and exit 4 in v1.5 mode. v1.4 prints the plan summary and a one-line notice on stderr, then proceeds as it always did.
 
-- **Prod-class.** A non-empty plan on a prod or staging env needs `--yes` or a terminal yes. A script with no terminal and no `--yes` is refused and nothing is written.
+- **Prod-class.** A non-empty plan on a prod or staging env needs `--yes` or a terminal yes. For `config set`, `build` and `doctor --fix`, a script with no terminal and no `--yes` is refused before the requested files are written. Plugin and bundle install/remove change extension files and membership before this regeneration gate runs. An E403 from that gate leaves those changes in place, with generated project files still awaiting regeneration. Removal can also delete data before regeneration: v1.4 plugin removal drops its schema/tables unless `--keep-data`; v1.5 keeps data by default, and `nself remove <plugin> --delete-data` requires separate confirmation before deleting it. After a regeneration refusal, review `nself build --plan` and apply the pending change with the required confirmation.
 - **Hand-edit.** A generated file changed since nself last wrote it is never overwritten without `--force`. The diff is printed first. A conf under `nginx/sites` that does not carry the generated marker is not nself's: it is never touched, with or without `--force`.
 
 ### Proof

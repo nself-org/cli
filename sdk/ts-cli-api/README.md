@@ -160,7 +160,7 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 | `configTelemetryStatus` | `POST /v1/commands/config/telemetry/status` | Show current telemetry state and anonymous install-ID |
 | `configTrustSsl` | `POST /v1/commands/config/trust/ssl` | Manage SSL certificates |
 | `configTrustSslAdd` | `POST /v1/commands/config/trust/ssl/add` | Provision an SSL certificate for a single domain |
-| `configTrustSslRenew` | `POST /v1/commands/config/trust/ssl/renew` | Reload nginx and optionally renew certificates |
+| `configTrustSslRenew` | `POST /v1/commands/config/trust/ssl/renew` | Renew SSL certificates and reload the serving proxy |
 | `configTrustSslSetup` | `POST /v1/commands/config/trust/ssl/setup` | Set up SSL certificates via DNS-01 challenge |
 | `configTrustSslStatus` | `POST /v1/commands/config/trust/ssl/status` | Show SSL certificate status |
 | `configTrustStatus` | `POST /v1/commands/config/trust/status` | Show trusted cert CAs, last rotation date, and expiry warnings |

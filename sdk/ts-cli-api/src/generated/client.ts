@@ -140,7 +140,7 @@ export interface Operations {
   configTrustSsl(request?: T.ConfigTrustSslRequest, options?: CallOptions): Promise<T.ConfigTrustSslData>;
   /** Provision an SSL certificate for a single domain (POST /v1/commands/config/trust/ssl/add) */
   configTrustSslAdd(request: T.ConfigTrustSslAddRequest, options?: CallOptions): Promise<T.ConfigTrustSslAddData>;
-  /** Reload nginx and optionally renew certificates (POST /v1/commands/config/trust/ssl/renew) */
+  /** Renew SSL certificates and reload the serving proxy (POST /v1/commands/config/trust/ssl/renew) */
   configTrustSslRenew(request?: T.ConfigTrustSslRenewRequest, options?: CallOptions): Promise<T.ConfigTrustSslRenewData>;
   /** Set up SSL certificates via DNS-01 challenge (POST /v1/commands/config/trust/ssl/setup) */
   configTrustSslSetup(request?: T.ConfigTrustSslSetupRequest, options?: CallOptions): Promise<T.ConfigTrustSslSetupData>;

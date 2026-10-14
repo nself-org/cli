@@ -15,6 +15,11 @@ nself ssl <subcommand> [flags]
 <!-- BEGIN PROSE:description -->
 `nself ssl` manages the SSL certificates used by nginx to serve HTTPS traffic for all ɳSelf services. Certificates are generated automatically during `nself build`, but you can use this command to check their status or force regeneration without a full rebuild.
 
+In v1.5 mode, the canonical command path is `nself config trust ssl`.
+The shorter spellings below remain compatibility aliases. The ACME client is
+the default for setup, add and renew; `--acme` is only needed to select it in
+v1.4 mode.
+
 Use `nself ssl setup` to provision wildcard certificates via DNS-01 challenge for the configured base domain. Use `nself ssl add` to provision a certificate for a single external custom domain and generate the corresponding nginx server block automatically.
 
 Certificates written by `ssl setup` and `ssl add` land in `ssl/certificates/{domain-safe}/` inside the project directory (dots and colons in the domain are replaced with dashes, e.g. `custom.example.com` -> `custom-example-com`), which nginx reads via its `./ssl:/etc/nginx/ssl:ro` volume mount.
@@ -65,10 +70,10 @@ nself ssl add <domain> [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--upstream` | (none) | Backend service to proxy to (`host:port`). When omitted, a 200 placeholder response is returned until an upstream is configured. |
-| `--acme` | off | Use the CLI's own ACME client over HTTP-01 (pinned `lego` container, challenge files in `ssl/.acme-webroot/`) instead of certbot. The flags below need it. No DNS credential, `age` or age key is needed. |
-| `--dry-run` | off | With `--acme`: print the resolved stack, lineage, target and webroot; write nothing. |
-| `--nginx-container <name>` | (auto) | With `--acme`: the nginx container to reload. Default: the running `nginx` service of the served stack. |
-| `--agree-tos` | off | With `--acme`: accept the ACME CA's terms of service when the account is first registered. Without it a terminal asks; a non-terminal run refuses. |
+| `--acme` | off | Select the CLI's own ACME client over HTTP-01 in v1.4 mode (already the default in v1.5). Uses a pinned `lego` container and challenge files in `ssl/.acme-webroot/`. No DNS credential, `age` or age key is needed. |
+| `--dry-run` | off | ACME client: print the resolved stack, lineage, target and webroot; write nothing. |
+| `--nginx-container <name>` | (auto) | ACME client: the nginx container to reload. Default: the running `nginx` service of the served stack. |
+| `--agree-tos` | off | ACME client: accept the ACME CA's terms of service when the account is first registered. Without it a terminal asks; a non-terminal run refuses. |
 
 ### Examples
 
@@ -93,15 +98,24 @@ The generated conf file (`nginx/conf.d/custom-custom-example-com.conf`) includes
 - Security headers: `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Strict-Transport-Security`
 - `proxy_pass` block (when `--upstream` is set) or placeholder `return 200`
 
-## nself ssl setup --acme and nself ssl renew --acme
+## ACME setup and renewal
 
 The CLI's own ACME client (DNS-01) issues, adopts and renews the certificates nginx serves, without host certbot. It runs a pinned `lego` container once per issuance through the docker funnel (no Docker socket). In v1.5 mode (`NSELF_V15=1`) `ssl setup`, `ssl add` and `ssl renew` use this client without `--acme`, and an ACME failure carries E470 (issuance), E471 (install or served-certificate check) or E472 (DNS credential missing) instead of E151. In v1.4 mode the certbot flows above are unchanged and `--acme` is additive.
 
+In v1.5 mode:
+
 ```
-nself ssl setup --acme [--provider cloudflare|route53|digitalocean] [--wildcard] [--email <addr>] [--agree-tos] [--dry-run] [--install-cron]
-nself ssl setup --acme --adopt-certbot[=<dir>] --dns-credential-file <file> [--challenge dns-01] [--lineage <name>] [--dry-run]
-nself ssl renew --acme [<lineage>] [--force] [--staging] [--quiet] [--dry-run]
+nself config trust ssl setup [--provider cloudflare|route53|digitalocean] [--wildcard] [--email <addr>] [--agree-tos] [--dry-run] [--install-cron]
+nself config trust ssl setup --adopt-certbot[=<dir>] --dns-credential-file <file> [--challenge dns-01] [--lineage <name>] [--dry-run]
+nself config trust ssl renew [<lineage>] [--force] [--staging] [--quiet] [--dry-run]
 ```
+
+In v1.4 mode, use `nself trust ssl` and add `--acme` to these commands.
+ACME renewal selects managed lineages with 30 days or fewer left, installs the
+renewed certificates, reloads the serving proxy and verifies the served
+certificate. An optional argument selects a lineage by name. With `--force`,
+renew regardless of expiry. In v1.4 certbot mode, renew reloads nginx; a domain
+argument also requests certbot renewal when certbot is installed.
 
 | Flag | Applies to | Description |
 |------|-----------|-------------|
@@ -137,7 +151,14 @@ dry run: nothing written
 
 `nself ssl status` prints a Lineages table (lineage, challenge, provider, expiry, days, status, targets) when `ssl/.acme/lineages.json` exists, and a warning when `/etc/letsencrypt/renewal` also manages one of a lineage's names. A second `--acme` run that starts while another holds `ssl/.acme/.lock` waits up to 10 seconds, then exits with `E151` naming the holder.
 
-Every refusal is error `E151` with a remediation: an nginx container that mounts single certificates instead of the whole ssl dir, a mount of `/etc/nginx/ssl/...` that shadows the whole-dir mount, a target that is not `certificates/<name>`, a non-ASCII name, a missing `age` or age key, no contact email, a missing DNS credential, a credential file with no provider, two providers or a Cloudflare global API key, or an unsupported DNS plugin.
+In v1.4 mode, ACME refusals use error `E151` with a remediation. In v1.5 mode,
+classified failures use `E470`, `E471` or `E472` as described above; unclassified
+failures and other preflight refusals retain `E151`. Refusals include an nginx
+container that mounts single certificates instead of the whole ssl dir, a mount
+of `/etc/nginx/ssl/...` that shadows the whole-dir mount, a target that is not
+`certificates/<name>`, a non-ASCII name, a missing `age` or age key, no contact
+email, a missing DNS credential, a credential file with no provider, two
+providers or a Cloudflare global API key, or an unsupported DNS plugin.
 <!-- END PROSE:description -->
 
 ## Flags
@@ -150,14 +171,10 @@ Every refusal is error `E151` with a remediation: an nginx container that mounts
 
 ## Subcommands
 
-<!-- BEGIN GENERATED:subcommands -->
-| Name | Description |
-|------|-------------|
-| `add` | Provision an SSL certificate for a single domain |
-| `renew` | Reload nginx and optionally renew certificates |
-| `setup` | Set up SSL certificates via DNS-01 challenge |
-| `status` | Show SSL certificate status |
-<!-- END GENERATED:subcommands -->
+Use `add` to issue a certificate for one domain, `setup` for DNS-01
+provisioning or adoption, `renew` for renewal, and `status` to inspect
+certificates. See [[Command-Registry]] for the generated command reference,
+or run `nself config trust ssl --help` for the current subcommand list.
 
 ## Examples
 
