@@ -361,6 +361,7 @@ One row per operation of the committed OpenAPI document. Side effect is the high
 | POST | `/v1/commands/doctor/security/status` | Show current security posture | `read` | no |
 | POST | `/v1/commands/help/capabilities` | Search commands and plugins by what you want to do | `read` | no |
 | POST | `/v1/commands/help/topics` | Browse help topics (quickstart, plugins, license, envs, doctor, errors) | `read` | no |
+| POST | `/v1/commands/init` | Initialize a new nSelf project | `write` | no |
 | POST | `/v1/commands/init/template` | Browse and publish full-stack app templates | `read` | no |
 | POST | `/v1/commands/init/template/info` | Show detail for a single template | `read` | no |
 | POST | `/v1/commands/init/template/list` | List available app templates | `read` | no |
@@ -369,6 +370,8 @@ One row per operation of the committed OpenAPI document. Side effect is the high
 | POST | `/v1/commands/logs` | View and filter service logs | `read` | with `follow` |
 | POST | `/v1/commands/mcp/setup` | Print or write the MCP client config and AGENTS.md for this project | `write` | no |
 | POST | `/v1/commands/reset` | Stop containers, remove all data volumes, and clean generated files | `destructive` | no |
+| POST | `/v1/commands/restart` | Smart restart with config change detection | `write` | no |
+| POST | `/v1/commands/start` | Boot your nSelf stack | `write` | no |
 | POST | `/v1/commands/status` | Show health status of all services | `read` | no |
 | POST | `/v1/commands/status/health` | Health check management with continuous monitoring | `read` | no |
 | POST | `/v1/commands/status/health/check` | Run all health checks | `read` | no |
@@ -377,6 +380,7 @@ One row per operation of the committed OpenAPI document. Side effect is the high
 | POST | `/v1/commands/status/health/history` | Show last 20 health checks | `read` | no |
 | POST | `/v1/commands/status/health/service` | Check a single service | `read` | no |
 | POST | `/v1/commands/status/urls` | Display all service URLs with route conflict detection | `read` | no |
+| POST | `/v1/commands/stop` | Gracefully shut down all services or specific services | `destructive` | no |
 | POST | `/v1/commands/update` | Update the nSelf CLI and admin UI | `write` | no |
 | POST | `/v1/commands/update/images` | Refresh Docker image digests from registries | `write` | no |
 | POST | `/v1/commands/update/project/detect` | Detect v1 artifacts in the current project | `read` | no |
