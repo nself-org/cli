@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/output"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/ui"
 
@@ -85,7 +86,7 @@ func runPluginInfo(cmd *cobra.Command, args []string) error {
 		if tierErr != nil && jsonEnvelopeOn(cmd) {
 			// The envelope on stdout carries tier_reason and tier_error (P7-SURF-13); the exit
 			// status stays the failure's, and a second (error) document is not printed.
-			fmt.Fprintf(os.Stderr, "plugin %q: tier unresolved: %v\n", name, tierErr)
+			output.RenderError(os.Stderr, fmt.Errorf("plugin %q: tier unresolved: %w", name, tierErr)) // the redacting renderer, as the unconverted path used
 			return &streamedError{err: tierErr}
 		}
 		return tierErr

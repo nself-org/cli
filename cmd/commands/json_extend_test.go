@@ -26,6 +26,7 @@ import (
 	"github.com/nself-org/cli/internal/bundle"
 	"github.com/nself-org/cli/internal/canon"
 	"github.com/nself-org/cli/internal/cmdregistry"
+	"github.com/nself-org/cli/internal/invoke"
 	"github.com/nself-org/cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -507,6 +508,44 @@ func adminTree(t *testing.T, words ...string) *cobra.Command {
 		t.Fatal(err)
 	}
 	return c
+}
+
+// TestAdminStartNetworkExposureIsNotAMachineRequest: --expose-network is
+// cli_only, so a machine request that sets it is refused before any process
+// runs (E420 from the argv builder, which the MCP tool, the HTTP route and the
+// request schema all use); a plain request still builds `admin start --json`.
+func TestAdminStartNetworkExposureIsNotAMachineRequest(t *testing.T) {
+	reg, err := machineRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd, ok := reg.Lookup("nself admin start")
+	if !ok {
+		t.Fatal("no admin start row")
+	}
+	var flag *cmdregistry.Flag
+	for i := range cmd.Flags {
+		if cmd.Flags[i].Name == "expose-network" {
+			flag = &cmd.Flags[i]
+		}
+	}
+	if flag == nil || !flag.CLIOnly {
+		t.Fatalf("expose-network = %+v, want a cli_only flag", flag)
+	}
+	for _, tr := range []string{invoke.TransportMCP, invoke.TransportHTTP, invoke.TransportHTTPStream} {
+		if _, err := invoke.BuildArgvFor(cmd, invoke.Request{Flags: map[string]any{"expose-network": true}}, tr); err == nil || !strings.Contains(err.Error(), "expose-network") {
+			t.Errorf("%s: err = %v, want a refusal naming expose-network", tr, err)
+		}
+		argv, err := invoke.BuildArgvFor(cmd, invoke.Request{}, tr)
+		if err != nil || strings.Join(argv, " ") != "admin start --json" {
+			t.Errorf("%s: plain request = %v, %v, want admin start --json", tr, argv, err)
+		}
+	}
+	for _, f := range invoke.ExposedFlags(cmd, invoke.TransportMCP) {
+		if f.Name == "expose-network" {
+			t.Fatal("expose-network is in the exposed flag set (it would reach the generated schemas)")
+		}
+	}
 }
 
 func TestAdminStartBinding(t *testing.T) {
