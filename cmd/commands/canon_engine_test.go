@@ -513,7 +513,17 @@ func TestHubUnknownSubcommand(t *testing.T) {
 	// 2. v1.5 gives each of them E401 on an unknown subcommand and leaves the other parents alone.
 	listed := map[string]bool{}
 	expected := len(helpOnlyParents)
+	leaves := map[string]bool{} // break-outs and removed commands leave core in v1.5 (P7-CANON-13)
+	for _, rows := range [][]canonRowT{canonTable.Breakouts, canonTable.Removed} {
+		for _, r := range rows {
+			leaves[strings.Join(r.From, " ")] = true
+		}
+	}
 	for _, p := range helpOnlyParents {
+		if leaves[p] {
+			expected--
+			continue
+		}
 		if to, ok := retired[p]; ok {
 			// A retired hub can target a runnable moved leaf. Its bare argv
 			// gets help from the rewrite, while the leaf keeps its own Args.
