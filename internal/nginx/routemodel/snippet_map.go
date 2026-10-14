@@ -16,7 +16,8 @@ package routemodel
 // A proxy_pass with a URI part keeps its upstream AND is recorded (v1 cannot
 // carry the path). Regex, named and ^~ locations, nested locations,
 // `if`, `client_max_body_size 0`, a `deny` other than `all`, a sub-second
-// timeout and any directive outside the table are recorded.
+// timeout, proxy buffers, blocks on simple directives and any directive
+// outside the table are recorded.
 
 import (
 	"net"
@@ -83,7 +84,7 @@ func (s *srv) location(l *Block) {
 	// so the location's own set lines are in scope wherever they sit.
 	seen := map[string]bool{}
 	for _, d := range l.Children {
-		if d.Name != "set" || len(d.Args) != 2 || !strings.HasPrefix(d.Arg(0), "$") {
+		if d.Block || d.Name != "set" || len(d.Args) != 2 || !strings.HasPrefix(d.Arg(0), "$") {
 			continue
 		}
 		name := strings.ToLower(d.Arg(0)[1:])
@@ -122,8 +123,14 @@ func (a *locAcc) take(d *Block, ok bool) bool {
 
 // apply handles one directive of the location (or one inherited from the server).
 func (a *locAcc) apply(d *Block) {
+	if d.Block && d.Name != "limit_except" {
+		a.s.unm(d)
+		return
+	}
 	switch d.Name {
-	case "proxy_buffer_size", "proxy_buffers", "proxy_busy_buffers_size", "resolver":
+	case "proxy_buffer_size", "proxy_buffers", "proxy_busy_buffers_size":
+		a.s.unm(d)
+	case "resolver":
 		a.s.sn.disp[d] = "ignored"
 	case "proxy_http_version":
 		if a.take(d, len(d.Args) == 1 && d.Arg(0) == "1.1") { // 1.0 (also nginx's default) cannot upgrade: recorded
