@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/version"
 )
@@ -404,6 +405,14 @@ func TestSocketGuardFragments(t *testing.T) {
 		check("computed plugin variable", NewSocketEnv(map[string]string{"NSELF_PLUGIN_DIR": "/p"}, write("f.env", "SOCKGUARD_Y=literal\n")), "NSELF_PLUGIN_DIR", "/p", true)
 		check("plain literal", NewSocketEnv(nil, write("g.env", "SOCKGUARD_Y=literal\n")), "SOCKGUARD_Y", "literal", true)
 
+		chain := write("j.env", "SOCKGUARD_H="+tcp+"\nSOCKGUARD_A=${SOCKGUARD_H}\nSOCKGUARD_HOST=${SOCKGUARD_A}\n")
+		t.Setenv("SOCKGUARD_H", unix)
+		check("transitive: process value differs two links down", NewSocketEnv(nil, chain), "SOCKGUARD_HOST", "", false)
+		check("transitive: the middle link", NewSocketEnv(nil, chain), "SOCKGUARD_A", "", false)
+		_ = os.Unsetenv("SOCKGUARD_H")
+		check("transitive chain is exact when the process holds nothing", NewSocketEnv(nil, chain), "SOCKGUARD_HOST", tcp, true)
+		check("a cycle is unprovable, not a loop", NewSocketEnv(nil, write("k.env", "SOCKGUARD_A=${SOCKGUARD_B}\nSOCKGUARD_B=${SOCKGUARD_A}\n")), "SOCKGUARD_A", "", false)
+
 		// End to end: the fragment's DOCKER_HOST=${SOCKGUARD_NESTED} against the process-H repro.
 		pluginDir := t.TempDir()
 		writeFixtureFile(t, filepath.Join(pluginDir, "socknested", pluginComposeFilename), socketFixture(t, used, "docker_host_nested.yml"), 0o644)
@@ -421,6 +430,48 @@ func TestSocketGuardFragments(t *testing.T) {
 		t.Setenv("SOCKGUARD_BASE", unix)
 		if err := refuse(NewSocketEnv(nil, write("i.env", "SOCKGUARD_BASE="+tcp+"\nSOCKGUARD_NESTED=${SOCKGUARD_BASE}\n"))); err == nil || !strings.Contains(err.Error(), "socknested") {
 			t.Fatalf("a process value that differs from the file must make the nested DOCKER_HOST unprovable: %v", err)
+		}
+	})
+
+	t.Run("the guard judges the compose.env this build will write, not stale .env fields", func(t *testing.T) {
+		f := newPlanFixture(t, "dev-minimal")
+		old, _ := os.ReadFile(filepath.Join(f.workdir, ".env"))
+		writeFixtureFile(t, filepath.Join(f.workdir, ".env"), string(old)+"DOCKER_NETWORK=tcp://stale.invalid:2375\n", 0o600)
+		defer SnapshotEnv()()
+		cfg, err := config.Load(f.workdir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = os.Unsetenv("DOCKER_NETWORK") // config.Load exported the stale field; the process holds nothing for compose.env to lose to
+		core := []byte("services:\n  nginx:\n    image: x\n")
+		for _, tc := range []struct {
+			fixture, slug, network string
+			refused                bool
+		}{
+			{"docker_host_future.yml", "sockfuturehost", "unix:///var/run/docker.sock", true}, // the .env field says tcp; the written value is unix
+			{"mount_future.yml", "sockfuturemount", "/var/run", true},                         // ... and a path that holds the socket
+			{"docker_host_future.yml", "sockfuturehost", "tcp://exact.invalid:2375", false},
+			{"mount_future.yml", "sockfuturemount", "golden_network", false}, // a plain named volume, exactly represented
+		} {
+			cfg.DockerNetwork = tc.network
+			st := &buildState{workdir: f.workdir, pluginDir: f.plugins, cfg: cfg}
+			if got := st.futureComposeEnv()["DOCKER_NETWORK"]; got != tc.network {
+				t.Fatalf("future compose.env DOCKER_NETWORK = %q, want %q", got, tc.network)
+			}
+			dir := t.TempDir()
+			writeFixtureFile(t, filepath.Join(dir, tc.slug, pluginComposeFilename), socketFixture(t, used, tc.fixture), 0o644)
+			rep, err := AnalyzeSocket(f.workdir, dir, NewSocketEnv(st.futureComposeEnv(), filepath.Join(f.workdir, ".env")), core)
+			if err == nil {
+				err = rep.Refuse()
+			}
+			if tc.refused != (err != nil) || tc.refused && !strings.Contains(err.Error(), tc.slug) {
+				t.Errorf("network %q: refused=%v, got %v", tc.network, tc.refused, err)
+			}
+		}
+		// the stale .env value alone would have passed the first two
+		stale := NewSocketEnv(nil, filepath.Join(f.workdir, ".env"))
+		if v, _ := stale("DOCKER_NETWORK"); v != "tcp://stale.invalid:2375" {
+			t.Errorf("fixture precondition: stale DOCKER_NETWORK = %q", v)
 		}
 	})
 

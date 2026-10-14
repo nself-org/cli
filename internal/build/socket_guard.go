@@ -1,14 +1,13 @@
 package build
 
-// socket_guard.go — P7-DEPL-21 (ADR 0027 §3): no proxy or plugin container
-// gets the Docker socket. One merged view of the generated stack, plugin
-// fragments and override file; only nginx/traefik and plugin-declared services
-// are judged (core admin, CS_N are not). Bind sources resolve against the
-// project dir (~ is home), symlinks followed. Fail closed: unresolved values,
-// external/renamed volumes, env_file, extends, volumes_from, include, bad
-// shapes. Podman sockets and Docker data dirs are out of scope. Refuse() is
-// E130; an excepted plugin warns once until removal_at; a proxy never inherits
-// one. Shared with doctor; scanSocketService is in orchestrator_compose.go.
+// socket_guard.go — P7-DEPL-21 (ADR 0027 §3): no proxy or plugin container gets
+// the Docker socket. One merged view of the generated stack, plugin fragments
+// and override file; only nginx/traefik and plugin-declared services are judged
+// (core admin, CS_N are not). Bind sources resolve against the project dir (~ is
+// home), symlinks followed. Fail closed: unresolved values, external/renamed
+// volumes, env_file, extends, volumes_from, include, bad shapes. Podman sockets
+// and Docker data dirs are out of scope. Refuse() is E130; an excepted plugin
+// warns once until removal_at; a proxy never inherits one. Shared with doctor.
 
 import (
 	"fmt"
@@ -34,8 +33,7 @@ var socketExceptions = map[string]SocketException{
 	"monitoring": {Slug: "monitoring", RemovalAt: "1.5.0", Ticket: "P7-PLUG-58"},
 }
 
-// ActiveSocketException returns slug's exception while the running version is
-// below its removal_at; a version that does not parse is past it (fail closed).
+// ActiveSocketException returns slug's exception below its removal_at; an unparsable version is past it.
 func ActiveSocketException(slug string) (SocketException, bool) {
 	ex, ok := socketExceptions[slug]
 	var c, t [3]int
@@ -90,11 +88,11 @@ type SocketEnv func(string) (string, bool)
 
 var envRefRE = regexp.MustCompile(`\$\{?([A-Za-z_][A-Za-z0-9_]*)`)
 
-// NewSocketEnv layers like Compose: process env, then base (computed values),
-// then the env files in order (later wins). godotenv expands each file alone, so
-// a `$`-bearing value is trusted only if every variable it names is defined
-// earlier in that file, nowhere else, and not contradicted by the process env;
-// any other resolves to the unresolvable marker "$" (E130 where the guard uses it).
+// NewSocketEnv layers like Compose: process env, then base (the compose.env this
+// build will write), then the env files in order (later wins). godotenv expands
+// each file alone, so a `$`-bearing value is trusted only if every variable it
+// names (transitively) is defined earlier in that file, nowhere else, and not
+// contradicted by the process env; any other is the unresolvable marker "$".
 func NewSocketEnv(base map[string]string, files ...string) SocketEnv {
 	vars, refs, count := map[string]string{}, map[string][]string{}, map[string]int{}
 	for _, f := range files {
@@ -121,9 +119,11 @@ func NewSocketEnv(base map[string]string, files ...string) SocketEnv {
 	for k, v := range base {
 		vars[k], count[k], refs[k] = v, count[k]+1, nil
 	}
-	opaque := func(k string) bool {
+	var opaque func(k string, depth int) bool // transitive: a value built on an unprovable one is unprovable
+	opaque = func(k string, depth int) bool {
 		for _, r := range refs[k] {
-			if pv, set := os.LookupEnv(r); count[r] != 1 || set && pv != vars[r] {
+			pv, set := os.LookupEnv(r)
+			if depth > 8 || count[r] != 1 || set && pv != vars[r] || !set && opaque(r, depth+1) {
 				return true
 			}
 		}
@@ -133,7 +133,7 @@ func NewSocketEnv(base map[string]string, files ...string) SocketEnv {
 		if v, ok = os.LookupEnv(k); ok {
 			return v, true
 		}
-		if opaque(k) {
+		if opaque(k, 0) {
 			return "$", true
 		}
 		v, ok = vars[k]

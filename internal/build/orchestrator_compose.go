@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/joho/godotenv"
 	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
@@ -186,28 +187,14 @@ func MergeOllamaSidecar(composeYAML []byte, ollamaEnv map[string]string) ([]byte
 // volume, ready to be appended to the services section of docker-compose.yml.
 func buildOllamaSnippet(keepAlive string, enableGPU bool) string {
 	var sb strings.Builder
-	sb.WriteString("  ollama:\n")
-	sb.WriteString("    image: ollama/ollama:0.1.38\n")
-	sb.WriteString("    container_name: nself_ollama\n")
-	sb.WriteString("    restart: unless-stopped\n")
-	sb.WriteString("    networks: [nself]\n")
-	sb.WriteString("    ports:\n")
-	sb.WriteString("      - \"127.0.0.1:11434:11434\"\n")
-	sb.WriteString("    volumes:\n")
-	sb.WriteString("      - ollama_models:/root/.ollama\n")
-	sb.WriteString("    environment:\n")
+	sb.WriteString("  ollama:\n    image: ollama/ollama:0.1.38\n    container_name: nself_ollama\n    restart: unless-stopped\n    networks: [nself]\n" +
+		"    ports:\n      - \"127.0.0.1:11434:11434\"\n    volumes:\n      - ollama_models:/root/.ollama\n    environment:\n")
 	sb.WriteString("      OLLAMA_KEEP_ALIVE: \"" + keepAlive + "\"\n")
 	if enableGPU {
-		sb.WriteString("    deploy:\n")
-		sb.WriteString("      resources:\n")
-		sb.WriteString("        reservations:\n")
-		sb.WriteString("          devices:\n")
-		sb.WriteString("            - driver: nvidia\n")
-		sb.WriteString("              count: all\n")
-		sb.WriteString("              capabilities: [gpu]\n")
+		sb.WriteString("    deploy:\n      resources:\n        reservations:\n          devices:\n" +
+			"            - driver: nvidia\n              count: all\n              capabilities: [gpu]\n")
 	}
-	sb.WriteString("\nvolumes:\n")
-	sb.WriteString("  ollama_models:\n")
+	sb.WriteString("\nvolumes:\n  ollama_models:\n")
 	return sb.String()
 }
 
@@ -285,13 +272,27 @@ func scanSocketService(d socketDoc, name string, body map[string]any, lookup Soc
 	return uses, nil
 }
 
+// futureComposeEnv is the .nself/compose.env this build is about to write (the real
+// writer, into memory), so the guard judges what Compose will see, not a stale .env field.
+func (st *buildState) futureComposeEnv() map[string]string {
+	vars := withHostOwner(ComputePluginEnvVars(st.workdir, st.pluginDir, st.cfg), proxyHostOwner(st.cfg, st.workdir, st.pluginDir))
+	sink := newMemSink(st.workdir, "")
+	_ = writeComposeEnvVia(sink, st.workdir, st.cfg, SecretEnvMap(st.cfg), vars)
+	data := []byte(nil)
+	for _, f := range sink.files { // the writer produced exactly one file
+		data = f.Data
+	}
+	m, _ := godotenv.Unmarshal(string(data))
+	return m
+}
+
 // guardDockerSocket scans the would-be stack, plugin fragments and override file.
 func (st *buildState) guardDockerSocket(g *compose.Generator) error {
 	stack, err := g.Generate()
 	if err != nil {
 		return nil // the real render reports it
 	}
-	rep, err := AnalyzeSocket(st.workdir, st.pluginDir, NewSocketEnv(ComputePluginEnvVars(st.workdir, st.pluginDir, st.cfg), filepath.Join(st.workdir, ".env")), stack)
+	rep, err := AnalyzeSocket(st.workdir, st.pluginDir, NewSocketEnv(st.futureComposeEnv(), filepath.Join(st.workdir, ".env")), stack)
 	if err != nil {
 		return errs.Newf("E130", "compose inputs cannot be checked for the Docker socket: %v", err)
 	}
