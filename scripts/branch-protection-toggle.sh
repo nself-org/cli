@@ -42,32 +42,19 @@
 #   cli/scripts/.policy/branch-protection.yaml   canonical baseline
 #   ~/.nself/branch-protection-audit.log         append-only audit trail
 #   ~/.nself/branch-protection-state.json        flap-guard timestamps
-
 set -euo pipefail
-
-# ── Constants ─────────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEFAULT_POLICY="${SCRIPT_DIR}/.policy/branch-protection.yaml"
 AUDIT_LOG="${HOME}/.nself/branch-protection-audit.log"
 STATE_FILE="${HOME}/.nself/branch-protection-state.json"
 FLAP_WINDOW_SECONDS=300  # 5 minutes
-
-# ── Arguments ─────────────────────────────────────────────────────────────────
-ACTION=""
+ACTION="" REPOS_FILE="" BRANCH="main" REASON=""
+DRY_RUN=0 FORCE=0 ROLLBACK=0 POLICY_FILE="${DEFAULT_POLICY}"
 REPOS=()
-REPOS_FILE=""
-BRANCH="main"
-DRY_RUN=0
-FORCE=0
-ROLLBACK=0
-POLICY_FILE="${DEFAULT_POLICY}"
-REASON=""
-
 usage() {
   sed -n '1,40p' "${BASH_SOURCE[0]}" | sed -n '/^# Usage:/,/^# Exit codes:/p'
   exit "${1:-0}"
 }
-
 while [ $# -gt 0 ]; do
   case "$1" in
     --on)         ACTION="on"; shift ;;
@@ -84,61 +71,42 @@ while [ $# -gt 0 ]; do
     *) printf 'Unknown flag: %s\n' "$1" >&2; usage 1 ;;
   esac
 done
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
 TS() { date -u +'%Y-%m-%dT%H:%M:%SZ'; }
 EPOCH() { date -u +'%s'; }
 info()  { printf '[info]  %s\n' "$*"; }
 warn()  { printf '[warn]  %s\n' "$*" >&2; }
 err()   { printf '[error] %s\n' "$*" >&2; }
 die()   { err "$*"; exit 2; }
-
 audit() {
   # ISO8601 | actor | repo | branch | action | dry_run | result | reason
-  local repo="$1" branch="$2" action="$3" result="$4" reason="$5"
-  local actor
+  local repo="$1" branch="$2" action="$3" result="$4" reason="$5" actor
   actor="$(gh api user --jq .login 2>/dev/null || printf 'unknown')"
   mkdir -p "$(dirname "${AUDIT_LOG}")"
   printf '%s | %s | %s | %s | %s | dry_run=%s | %s | %s\n' \
     "$(TS)" "${actor}" "${repo}" "${branch}" "${action}" "${DRY_RUN}" "${result}" "${reason}" \
     >> "${AUDIT_LOG}"
 }
-
-need_cmd() {
-  command -v "$1" >/dev/null 2>&1 || die "Required tool not found: $1"
-}
-
-# ── Validate args ─────────────────────────────────────────────────────────────
+need_cmd() { command -v "$1" >/dev/null 2>&1 || die "Required tool not found: $1"; }
 if [ "${ROLLBACK}" -eq 1 ]; then
   [ -n "${ACTION}" ] && { err "--rollback is mutually exclusive with --on/--off"; usage 1; }
 elif [ -z "${ACTION}" ]; then
   err "Must specify --on, --off, or --rollback"; usage 1
 fi
-
 if [ -n "${REPOS_FILE}" ]; then
   [ -r "${REPOS_FILE}" ] || die "Cannot read repos file: ${REPOS_FILE}"
   while IFS= read -r line; do
-    # strip comments + whitespace
     line="${line%%#*}"
     line="$(printf '%s' "${line}" | tr -d '[:space:]')"
     [ -n "${line}" ] && REPOS+=("${line}")
   done < "${REPOS_FILE}"
 fi
-
 [ "${#REPOS[@]}" -eq 0 ] && { err "Must specify at least one --repo or --repos-file"; usage 1; }
-
-need_cmd gh
-need_cmd jq
-
-# ── Policy loader ─────────────────────────────────────────────────────────────
-# Reads policy YAML and emits the JSON body for the protection PUT call.
-# Output: a single-line JSON object on stdout for the given repo.
+need_cmd gh; need_cmd jq
+# Load merged policy JSON for a repo.
 load_policy_for_repo() {
   local repo="$1"
   [ -r "${POLICY_FILE}" ] || die "Policy file not readable: ${POLICY_FILE}"
-
   if command -v yq >/dev/null 2>&1; then
-    # yq v4+ outputs JSON with `-o=json`
     yq -o=json '.' "${POLICY_FILE}" 2>/dev/null \
       | jq --arg r "${repo}" '
           def base: del(.repos, .pending_nself_ci);
@@ -169,20 +137,9 @@ print(json.dumps(out))
     die "Need yq or python3+PyYAML to read policy YAML"
   fi
 }
-
-# Translate policy JSON into a GitHub branch-protection PUT body.
-# GitHub schema requires exact field shape; we map our YAML 1:1, except that
-# status checks are sent as `checks` (context + app_id), never as bare
-# `contexts`: a contexts-only PUT drops the live app pins (P7-CI-60). The policy
-# lists context names only, so each context keeps the app_id it has on the live
-# branch ($2, GET JSON or {}); a context with no live pin is sent as -1 (any app).
-# A context pinned to two different apps live is refused (the body could carry
-# only one). The repo's `pending_nself_ci` entries are never applied here, but one
-# that is ALREADY live with the same app_id is carried over, so the next --on does
-# not silently strip a gate nself-ci-protect.sh --apply added. The status-check
-# object is exactly {strict, checks}: GitHub answers HTTP 422 to a PUT that
-# carries both `contexts` and `checks` (same body shape as PS_JQ_PUT in
-# scripts/lib/protection_snapshot.sh, which admin-merge.sh restores with).
+# Build a PUT body preserving live app pins; absent pins use -1 (any app).
+# Refuse ambiguous pins and retain only pending_nself_ci checks already live.
+# Send {strict, checks}: contexts alone unpins checks, both fields cause HTTP 422.
 build_protection_body() {
   local policy_json="$1" live_json="${2:-}"
   [ -n "${live_json}" ] || live_json='{}'
@@ -200,26 +157,36 @@ build_protection_body() {
       checks: ([$names[] | {context: ., app_id: ($pins[.] // -1)}] + $kept)
     } end),
     enforce_admins: .enforce_admins,
-    required_pull_request_reviews: .required_pull_request_reviews,
-    restrictions: .restrictions,
-    allow_force_pushes: (.allow_force_pushes // false),
-    allow_deletions: (.allow_deletions // false),
-    required_linear_history: (.required_linear_history // false),
-    required_conversation_resolution: (.required_conversation_resolution // false)
+    required_pull_request_reviews: .required_pull_request_reviews, restrictions: .restrictions,
+    allow_force_pushes: (.allow_force_pushes // false), allow_deletions: (.allow_deletions // false),
+    required_linear_history: (.required_linear_history // false), required_conversation_resolution: (.required_conversation_resolution // false)
   }'
 }
-
-# ── Flap-guard ────────────────────────────────────────────────────────────────
+# Compare writable fields; strip GitHub links recursively and sort check names.
+protection_matches_policy() {
+  local probe="$1" body="$2" nourl current_body want_body
+  nourl='def nourl: walk(if type == "object" then with_entries(select((.key == "url" or (.key | endswith("_url"))) | not)) else . end);'
+  current_body="$(printf '%s' "${probe}" | jq -S -c "${nourl}"'{
+    required_status_checks: ((.required_status_checks // {}) | {strict: .strict, checks: ((.checks // ((.contexts // []) | map({context: .}))) | map({context, app_id: (.app_id // -1)}) | sort_by(.context))}),
+    enforce_admins: (.enforce_admins.enabled // false),
+    required_pull_request_reviews: (.required_pull_request_reviews // null), restrictions: (.restrictions // null),
+    allow_force_pushes: (.allow_force_pushes.enabled // false), allow_deletions: (.allow_deletions.enabled // false)
+  } | nourl')"
+  want_body="$(printf '%s' "${body}" | jq -S -c "${nourl}"'{
+    required_status_checks: ((.required_status_checks // {}) | {strict: .strict, checks: ((.checks // []) | map({context, app_id: (.app_id // -1)}) | sort_by(.context))}),
+    enforce_admins: .enforce_admins,
+    required_pull_request_reviews: (.required_pull_request_reviews // null), restrictions: (.restrictions // null),
+    allow_force_pushes: .allow_force_pushes, allow_deletions: .allow_deletions
+  } | nourl')"
+  [ "${current_body}" = "${want_body}" ]
+}
 mkdir -p "$(dirname "${STATE_FILE}")"
 [ -f "${STATE_FILE}" ] || printf '{}' > "${STATE_FILE}"
-
 check_flap_guard() {
   local repo="$1" branch="$2" action="$3"
-  local key last_ts now diff
-  key="${repo}:${branch}"
+  local key="${repo}:${branch}" last_ts now diff
   last_ts=$(jq -r --arg k "${key}" '.[$k].last_ts // 0' "${STATE_FILE}")
-  now=$(EPOCH)
-  diff=$(( now - last_ts ))
+  now=$(EPOCH); diff=$(( now - last_ts ))
   if [ "${last_ts}" -gt 0 ] && [ "${diff}" -lt "${FLAP_WINDOW_SECONDS}" ]; then
     if [ "${FORCE}" -eq 0 ]; then
       err "Flap-guard tripped: ${repo}/${branch} toggled ${diff}s ago (<${FLAP_WINDOW_SECONDS}s). Use --force --reason '<text>' to override."
@@ -230,178 +197,101 @@ check_flap_guard() {
   fi
   return 0
 }
-
 record_state() {
   local repo="$1" branch="$2" action="$3"
-  local key tmp
-  key="${repo}:${branch}"
+  local key="${repo}:${branch}" tmp
   tmp="$(mktemp)"
   jq --arg k "${key}" --arg ts "$(EPOCH)" --arg act "${action}" \
     '.[$k] = {last_ts: ($ts|tonumber), last_action: $act}' \
     "${STATE_FILE}" > "${tmp}" && mv "${tmp}" "${STATE_FILE}"
 }
-
-# ── Per-repo toggle ───────────────────────────────────────────────────────────
-# Reads current state; computes target; no-ops if equal; otherwise applies.
-# Returns 0 on success/noop, non-zero on error.
+# Probe, build target, compare, then apply after the flap-guard.
 toggle_one() {
-  local repo="$1"
+  local repo="$1" current_exists target body
   local api_path="repos/${repo}/branches/${BRANCH}/protection"
-  local current_exists target body
   info "[${repo}/${BRANCH}] checking current protection state..."
-
-  # Probe current protection. 404 "Branch not protected" = none configured,
-  # 404 "Branch not found" = repo has no such branch (empty repo: n/a),
-  # any other API error is fatal for this repo.
+  # Only recognized 404s are safe to treat as absent.
   local probe probe_err probe_rc=0 errf
   errf="$(mktemp)"
   probe="$(gh api "${api_path}" 2>"${errf}")" || probe_rc=$?
   probe_err="$(cat "${errf}")"; rm -f "${errf}"
   if [ "${probe_rc}" -eq 0 ]; then
-    # A 200 must still be a protection document for this repo/branch: a `{}` or
-    # partial body would build a PUT that unpins every check (fail closed).
+    # Fail closed: a partial 200 response could unpin every check.
     if ! printf '%s' "${probe}" | jq -e --arg p "repos/${repo}/branches/${BRANCH}/protection" \
       'type == "object" and ((.url // "") | endswith($p)) and (.enforce_admins | type == "object")' >/dev/null 2>&1; then
       err "[${repo}/${BRANCH}] ${api_path} answered 200 but not with a branch-protection document; refusing, nothing sent"
-      audit "${repo}" "${BRANCH}" "${ACTION}" "error" "${REASON}"
-      return 2
+      audit "${repo}" "${BRANCH}" "${ACTION}" "error" "${REASON}"; return 2
     fi
     current_exists=1
   elif printf '%s %s' "${probe}" "${probe_err}" | grep -q 'Branch not found'; then
     info "[${repo}/${BRANCH}] n/a: no default branch"
-    audit "${repo}" "${BRANCH}" "${ACTION}" "n/a" "${REASON}"
-    return 0
+    audit "${repo}" "${BRANCH}" "${ACTION}" "n/a" "${REASON}"; return 0
   elif printf '%s %s' "${probe}" "${probe_err}" | grep -q 'Branch not protected'; then
     current_exists=0
   else
     err "[${repo}/${BRANCH}] gh API error reading protection: ${probe_err:-${probe}}"
-    audit "${repo}" "${BRANCH}" "${ACTION}" "error" "${REASON}"
-    return 2
+    audit "${repo}" "${BRANCH}" "${ACTION}" "error" "${REASON}"; return 2
   fi
-
-  case "${ACTION}" in
-    on)  target=1 ;;
-    off) target=0 ;;
-    *)   die "internal: bad action ${ACTION}" ;;
-  esac
-
-  # No-op short circuit (idempotent)
+  case "${ACTION}" in on) target=1 ;; off) target=0 ;; *) die "internal: bad action ${ACTION}" ;; esac
   if [ "${current_exists}" -eq "${target}" ] && [ "${ACTION}" = "off" ]; then
     info "[${repo}/${BRANCH}] already off — no-op"
-    audit "${repo}" "${BRANCH}" "${ACTION}" "noop" "${REASON}"
-    return 0
+    audit "${repo}" "${BRANCH}" "${ACTION}" "noop" "${REASON}"; return 0
   fi
-
-  # Flap-guard before any mutating action
   check_flap_guard "${repo}" "${BRANCH}" "${ACTION}" || return $?
-
   if [ "${ACTION}" = "on" ]; then
-    local policy_json
+    local policy_json live_json='{}'
     policy_json="$(load_policy_for_repo "${repo}")" || { err "[${repo}/${BRANCH}] cannot load policy"; return 2; }
-    local live_json='{}'
     if [ "${current_exists}" -eq 1 ]; then live_json="${probe}"; fi
     body="$(build_protection_body "${policy_json}" "${live_json}")" \
       || { err "[${repo}/${BRANCH}] cannot build the PUT body (see above); nothing sent"; audit "${repo}" "${BRANCH}" "${ACTION}" "error" "${REASON}"; return 2; }
-
-    if [ "${current_exists}" -eq 1 ]; then
-      # Check if existing state matches policy — true no-op
-      # Compare writable fields only: url / *_url keys are dropped at every
-      # depth (read-only links GitHub adds) and keys are sorted.
-      local nourl current_body want_body
-      nourl='def nourl: walk(if type == "object" then with_entries(select((.key == "url" or (.key | endswith("_url"))) | not)) else . end);'
-      current_body="$(printf '%s' "${probe}" | jq -S -c "${nourl}"'{
-        required_status_checks: ((.required_status_checks // {}) | {strict: .strict, checks: ((.checks // ((.contexts // []) | map({context: .}))) | map({context, app_id: (.app_id // -1)}) | sort_by(.context))}),
-        enforce_admins: (.enforce_admins.enabled // false),
-        required_pull_request_reviews: (.required_pull_request_reviews // null),
-        restrictions: (.restrictions // null),
-        allow_force_pushes: (.allow_force_pushes.enabled // false),
-        allow_deletions: (.allow_deletions.enabled // false)
-      } | nourl')"
-      want_body="$(printf '%s' "${body}" | jq -S -c "${nourl}"'{
-        required_status_checks: ((.required_status_checks // {}) | {strict: .strict, checks: ((.checks // []) | map({context, app_id: (.app_id // -1)}) | sort_by(.context))}),
-        enforce_admins: .enforce_admins,
-        required_pull_request_reviews: (.required_pull_request_reviews // null),
-        restrictions: (.restrictions // null),
-        allow_force_pushes: .allow_force_pushes,
-        allow_deletions: .allow_deletions
-      } | nourl')"
-      if [ "${current_body}" = "${want_body}" ]; then
-        info "[${repo}/${BRANCH}] already matches baseline — no-op"
-        audit "${repo}" "${BRANCH}" "${ACTION}" "noop" "${REASON}"
-        return 0
-      fi
-    fi
-
-    if [ "${DRY_RUN}" -eq 1 ]; then
-      info "[${repo}/${BRANCH}] DRY-RUN: would PUT ${api_path}"
-      printf '%s\n' "${body}" | jq .
-      audit "${repo}" "${BRANCH}" "${ACTION}" "dry_run" "${REASON}"
-      return 0
-    fi
-
-    if printf '%s' "${body}" | gh api -X PUT "${api_path}" --input - >/dev/null 2>&1; then
-      info "[${repo}/${BRANCH}] protection applied"
-      record_state "${repo}" "${BRANCH}" "${ACTION}"
-      audit "${repo}" "${BRANCH}" "${ACTION}" "success" "${REASON}"
-      return 0
-    else
-      err "[${repo}/${BRANCH}] gh API PUT failed"
-      audit "${repo}" "${BRANCH}" "${ACTION}" "error" "${REASON}"
-      return 2
-    fi
-
-  else  # ACTION=off
-    if [ "${DRY_RUN}" -eq 1 ]; then
-      info "[${repo}/${BRANCH}] DRY-RUN: would DELETE ${api_path}"
-      audit "${repo}" "${BRANCH}" "${ACTION}" "dry_run" "${REASON}"
-      return 0
-    fi
-
-    if gh api -X DELETE "${api_path}" >/dev/null 2>&1; then
-      info "[${repo}/${BRANCH}] protection removed"
-      record_state "${repo}" "${BRANCH}" "${ACTION}"
-      audit "${repo}" "${BRANCH}" "${ACTION}" "success" "${REASON}"
-      return 0
-    else
-      err "[${repo}/${BRANCH}] gh API DELETE failed"
-      audit "${repo}" "${BRANCH}" "${ACTION}" "error" "${REASON}"
-      return 2
+    if [ "${current_exists}" -eq 1 ] && protection_matches_policy "${probe}" "${body}"; then
+      info "[${repo}/${BRANCH}] already matches baseline — no-op"
+      audit "${repo}" "${BRANCH}" "${ACTION}" "noop" "${REASON}"; return 0
     fi
   fi
+  apply_protection "${repo}" "${api_path}" "${body:-}"
 }
-
-# ── Rollback: read state file, invert last action ─────────────────────────────
+# Apply only after probe, policy comparison, and flap-guard have succeeded.
+apply_protection() {
+  local repo="$1" api_path="$2" body="$3" method verb rc=0
+  if [ "${ACTION}" = "on" ]; then method=PUT; verb=applied; else method=DELETE; verb=removed; fi
+  if [ "${DRY_RUN}" -eq 1 ]; then
+    info "[${repo}/${BRANCH}] DRY-RUN: would ${method} ${api_path}"
+    if [ "${ACTION}" = "on" ]; then printf '%s\n' "${body}" | jq .; fi
+    audit "${repo}" "${BRANCH}" "${ACTION}" "dry_run" "${REASON}"; return 0
+  fi
+  if [ "${ACTION}" = "on" ]; then
+    printf '%s' "${body}" | gh api -X PUT "${api_path}" --input - >/dev/null 2>&1 || rc=$?
+  else
+    gh api -X DELETE "${api_path}" >/dev/null 2>&1 || rc=$?
+  fi
+  if [ "${rc}" -eq 0 ]; then
+    info "[${repo}/${BRANCH}] protection ${verb}"
+    record_state "${repo}" "${BRANCH}" "${ACTION}"
+    audit "${repo}" "${BRANCH}" "${ACTION}" "success" "${REASON}"; return 0
+  else
+    err "[${repo}/${BRANCH}] gh API ${method} failed"
+    audit "${repo}" "${BRANCH}" "${ACTION}" "error" "${REASON}"; return 2
+  fi
+}
 rollback_one() {
-  local repo="$1"
-  local key last_action invert
+  local repo="$1" key last_action invert
   key="${repo}:${BRANCH}"
   last_action="$(jq -r --arg k "${key}" '.[$k].last_action // ""' "${STATE_FILE}")"
   if [ -z "${last_action}" ]; then
     err "[${repo}/${BRANCH}] no previous state recorded — cannot rollback"
-    audit "${repo}" "${BRANCH}" "rollback" "no_state" "${REASON}"
-    return 1
+    audit "${repo}" "${BRANCH}" "rollback" "no_state" "${REASON}"; return 1
   fi
-  case "${last_action}" in
-    on)  invert="off" ;;
-    off) invert="on" ;;
-    *)   err "[${repo}] unknown last_action: ${last_action}"; return 1 ;;
-  esac
+  case "${last_action}" in on) invert="off" ;; off) invert="on" ;; *) err "[${repo}] unknown last_action: ${last_action}"; return 1 ;; esac
   info "[${repo}/${BRANCH}] rolling back last_action=${last_action} → applying ${invert}"
-  ACTION="${invert}"
-  FORCE=1  # rollback bypasses flap-guard by design
+  ACTION="${invert}" FORCE=1  # rollback bypasses flap-guard by design
   toggle_one "${repo}"
 }
-
-# ── Main loop ─────────────────────────────────────────────────────────────────
 FAILED=()
 for repo in "${REPOS[@]}"; do
-  if [ "${ROLLBACK}" -eq 1 ]; then
-    rollback_one "${repo}" || FAILED+=("${repo}")
-  else
-    toggle_one "${repo}" || FAILED+=("${repo}")
-  fi
+  if [ "${ROLLBACK}" -eq 1 ]; then rollback_one "${repo}" || FAILED+=("${repo}")
+  else toggle_one "${repo}" || FAILED+=("${repo}"); fi
 done
-
 if [ "${#FAILED[@]}" -gt 0 ]; then
   err "Batch failures: ${FAILED[*]}"
   exit 2
