@@ -116,8 +116,8 @@ func runBundleList(cmd *cobra.Command, _ []string) error {
 	}
 
 	if jsonEnvelopeOn(cmd) {
-		if rows == nil {
-			rows = []bundleListRow{}
+		if rows == nil && !legacyBare() {
+			rows = []bundleListRow{} // the envelope data is an array; the bare legacy form printed null
 		}
 		return emitEnv(cmd, rows, true) // P7-SURF-13
 	}

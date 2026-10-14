@@ -9,9 +9,10 @@ package commands
 // Inputs: the same plugin directory, registry and runtime state the human
 // commands read; nothing new is fetched.
 // Outputs: one envelope on the real stdout in v1.5 JSON mode only.
-// Constraints: no new behaviour; `config plugins` itself proxies unknown
-// subcommands to a plugin binary that owns stdout, so it is interactive and
-// has no envelope; `config plugins logs` is a stream of raw container lines.
+// Constraints: no new behaviour; bare `config plugins` lists its subcommands,
+// and `config plugins <plugin> ...` proxies to a plugin binary that owns stdout
+// (refused with E402 in JSON mode, as before); `config plugins logs` is a
+// stream of raw container lines.
 // SPORT: P7-SURF-13, contract:cli.json-envelope
 
 import (
@@ -19,6 +20,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/output"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/version"
 	"github.com/spf13/cobra"
@@ -264,7 +267,29 @@ func newPluginInfoData(name string, m *plugin.PluginManifest, tier, reason strin
 	return out
 }
 
+// pluginHubBody answers the bare `config plugins` hub with its subcommands.
+// With arguments the command proxies to a plugin binary that owns stdout: in
+// JSON mode that is refused (E402) exactly as it was before the contract, and
+// the plugin is run directly (`nself <plugin> --json`) for its own envelope.
+func pluginHubBody(run func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
+	hub := dataEnv(run)
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) > 0 && jsonEnvelopeOn(cmd) {
+			return errs.New("E402", "nself config plugins <plugin> does not support --json; run nself <plugin> --json")
+		}
+		return hub(cmd, args)
+	}
+}
+
+// legacyBare reports whether NSELF_JSON_LEGACY asks for the pre-contract bare
+// form: an empty list that printed `null` then must still print `null`.
+func legacyBare() bool {
+	v := os.Getenv(output.LegacyEnvVar)
+	return v == "1" || strings.EqualFold(v, "true")
+}
+
 func init() {
+	pluginCmd.RunE = pluginHubBody(pluginCmd.RunE)
 	for _, c := range []*cobra.Command{pluginUpdateCmd, pluginRefreshCmd, pluginStartCmd, pluginStopCmd, pluginDisableCmd, pluginEnableCmd} {
 		c.RunE = dataEnv(c.RunE)
 	}

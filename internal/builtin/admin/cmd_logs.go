@@ -42,20 +42,26 @@ func (r runner) runAdminLogs(cmd *cobra.Command, args []string) error {
 
 // runAdminLogsJSON prints the v1.5 JSON form of `admin logs`: one envelope, or
 // with --follow a stream (contract:cli.json-stream v1) of log records ending
-// in a result line. docker's stderr (its own diagnostics) stays on stderr.
+// in a result line. docker forwards the container's stderr on its own stderr,
+// so both streams share one pipe and the lines keep their order. When reading
+// or writing fails the producer is killed and the pipe drained before Wait, so
+// Wait cannot block on a process that is still writing.
 func runAdminLogsJSON(cmd *cobra.Command, logsCmd *exec.Cmd, cid string, follow bool) error {
-	logsCmd.Stderr = os.Stderr
-	pipe, err := logsCmd.StdoutPipe()
+	pr, pw, err := os.Pipe()
 	if err != nil {
 		return fmt.Errorf("admin logs: %w", err)
 	}
+	defer func() { _ = pr.Close() }()
+	logsCmd.Stdout, logsCmd.Stderr = pw, pw
 	if err := logsCmd.Start(); err != nil {
+		_ = pw.Close()
 		return fmt.Errorf("admin logs: %w", err)
 	}
+	_ = pw.Close() // the child holds the write end now; EOF arrives when it exits
 	w := output.Default()
 	data := LogsData{Container: cid, Lines: []string{}}
 	count := 0
-	werr := readLines(pipe, func(line string) error {
+	werr := readLines(pr, func(line string) error {
 		count++
 		if follow {
 			return output.StreamRecord(w.Out, commandKey(cmd), LogRecord{Type: "log", Message: line})
@@ -63,6 +69,10 @@ func runAdminLogsJSON(cmd *cobra.Command, logsCmd *exec.Cmd, cid string, follow 
 		data.Lines = append(data.Lines, line)
 		return nil
 	})
+	if werr != nil {
+		_ = logsCmd.Process.Kill()
+		_, _ = io.Copy(io.Discard, pr)
+	}
 	if rerr := logsCmd.Wait(); werr == nil {
 		werr = rerr
 	}
@@ -79,7 +89,8 @@ func runAdminLogsJSON(cmd *cobra.Command, logsCmd *exec.Cmd, cid string, follow 
 	return emit(cmd, data, false)
 }
 
-// readLines calls fn for each line of r until EOF or fn fails.
+// readLines calls fn for each line of r until EOF or fn fails. A line over
+// 1 MiB is an error, not a truncation.
 func readLines(r io.Reader, fn func(string) error) error {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)

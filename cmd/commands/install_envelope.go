@@ -12,13 +12,15 @@ package commands
 // succeeded; a failed body emits nothing (the top-level handler prints the
 // error envelope). Human output is untouched.
 // Constraints: no secrets (names only; a third-party URL install is reported
-// by the URL the user typed, never by a derived credential).
+// without userinfo, query or fragment, see installSourceIdentity).
 // SPORT: P7-SURF-13, contract:cli.json-envelope, contract:cli.bundle-ledger
 
 import (
+	"net/url"
 	"sync"
 
 	"github.com/nself-org/cli/internal/bundle"
+	"github.com/nself-org/cli/internal/plugin"
 	"github.com/spf13/cobra"
 )
 
@@ -63,8 +65,26 @@ func outcomeOf(cmd *cobra.Command) *installOutcome {
 // recordInstall adds plugins an install body installed or skipped.
 func recordInstall(cmd *cobra.Command, installed, skipped []string) {
 	o := outcomeOf(cmd)
-	o.installed = append(o.installed, installed...)
+	for _, n := range installed {
+		o.installed = append(o.installed, installSourceIdentity(n))
+	}
 	o.skipped = append(o.skipped, skipped...)
+}
+
+// installSourceIdentity is how the envelope names an installed source. A plugin
+// name is reported as typed. A third-party URL is reported without userinfo,
+// query and fragment (they can carry a token): scheme, host and path only. A
+// source that does not parse is reported as "[unparseable source]".
+func installSourceIdentity(source string) string {
+	if !plugin.IsThirdPartyInstallSource(source) {
+		return source
+	}
+	u, err := url.Parse(source)
+	if err != nil {
+		return "[unparseable source]"
+	}
+	u.User, u.RawQuery, u.Fragment = nil, "", ""
+	return u.String()
 }
 
 // recordBundleInstall records a bundle install result (nil when it never ran).

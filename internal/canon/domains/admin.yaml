@@ -5,7 +5,7 @@ commands:
   # cmd/commands/admin.go:126 RunE path changes no persistent state (prints/reads only)
   admin: {canon: plugin, side_effect: read}
   # cmd/commands/admin_connect.go:49 opens an SSH tunnel and bootstraps the admin session on the remote host
-  admin connect: {canon: plugin, side_effect: remote, output: stream} # holds an SSH tunnel open until Ctrl+C or the UI disconnects: it has no end to put an envelope on
+  admin connect: {canon: plugin, side_effect: remote, output: interactive} # holds an SSH tunnel open until Ctrl+C or the UI disconnects and prints no records: no envelope, not exposed on machine surfaces
   # cmd/commands/admin.go:245 RunE path changes no persistent state (prints/reads only)
   admin health: {canon: plugin, side_effect: read}
   admin logs: {canon: plugin, side_effect: read, flags: {follow: {output: stream}}} # P7-REG-03: --follow never ends by itself, so it is framed as NDJSON (contract:cli.json-stream v1)

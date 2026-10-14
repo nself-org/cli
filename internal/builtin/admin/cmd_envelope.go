@@ -8,11 +8,12 @@ package admin
 // Outputs: one envelope on the real stdout, in v1.5 JSON mode only (the
 // invocation decorator has already moved human output to stderr then).
 // Constraints: no new behaviour and no secrets: URLs are the local admin URL,
-// project records carry no credentials. `admin connect` and `admin serve` are
-// streams and do not use this file.
+// project records carry no credentials. `admin connect` (interactive) and `admin serve`
+// (stream) do not use this file.
 // SPORT: P7-SURF-13, contract:cli.json-envelope
 
 import (
+	"os"
 	"strings"
 
 	"github.com/nself-org/cli/internal/compat"
@@ -43,12 +44,16 @@ type OpenData struct {
 	Opened bool `json:"opened"`
 }
 
-// StartData is the data of `admin start`.
+// StartData is the data of `admin start`. The binding is read from the running
+// container (docker port), not from the flags of this run: an Admin that was
+// already running keeps the binding it was started with.
 type StartData struct {
-	// Listen is the host:port Admin is bound to.
+	// Listen is the host:port Admin is bound to, "" when it could not be observed.
 	Listen string `json:"listen"`
-	// ExposeNetwork is true when it is bound beyond loopback.
+	// ExposeNetwork is true when a binding is beyond loopback (false when unobserved).
 	ExposeNetwork bool `json:"expose_network"`
+	// Observed is true when Listen and ExposeNetwork were read from the container.
+	Observed bool `json:"observed"`
 }
 
 // StopData is the data of `admin stop`.
@@ -127,6 +132,13 @@ func emit(cmd *cobra.Command, data any, legacy bool) error {
 		return output.EmitLegacyCompatible(output.Default(), commandKey(cmd), data)
 	}
 	return output.EmitData(output.Default(), commandKey(cmd), data)
+}
+
+// legacyBare reports whether NSELF_JSON_LEGACY asks for the pre-contract bare
+// form, where an empty list printed `null`.
+func legacyBare() bool {
+	v := os.Getenv(output.LegacyEnvVar)
+	return v == "1" || strings.EqualFold(v, "true")
 }
 
 // hubOf lists the visible subcommands of a group.

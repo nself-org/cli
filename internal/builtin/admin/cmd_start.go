@@ -7,9 +7,12 @@ import (
 	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/httptimeout"
 	"github.com/spf13/cobra"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
+	"sort"
+	"strings"
 	"time"
 )
 
@@ -26,7 +29,7 @@ reachable from other hosts on your network.
 WARNING: --expose-network must only be used behind a TLS-terminating reverse
 proxy with authentication enabled. Never expose the Admin UI to the public
 internet without additional protection.`,
-		RunE: withEnvelope(r.runAdminStart, startFacts),
+		RunE: withEnvelope(r.runAdminStart, r.startFacts),
 	}
 
 	cmd.Flags().Bool("expose-network", false, "Bind to 0.0.0.0 instead of 127.0.0.1 (WARNING: only use behind a TLS reverse proxy)")
@@ -125,12 +128,45 @@ func (r runner) runAdminStart(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// startFacts reports where Admin listens: loopback unless --expose-network.
-func startFacts(cmd *cobra.Command, _ []string) any {
-	expose, _ := cmd.Flags().GetBool("expose-network")
-	host := "127.0.0.1"
-	if expose {
-		host = "0.0.0.0"
+// startFacts reports where Admin is bound, read from the container
+// (docker inspect through internal/docker): when Admin was already running the
+// start returns early and the flags of this run say nothing about its binding.
+// When docker cannot answer, Listen is empty and Observed false.
+func (r runner) startFacts(cmd *cobra.Command, _ []string) any {
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	return StartData{Listen: host + ":" + adminPort(), ExposeNetwork: expose}
+	info, err := docker.InspectContainer(ctx, r.adminContainerID())
+	if err != nil {
+		return StartData{}
+	}
+	return BindingOf(info.Ports)
+}
+
+// BindingOf reads the host bindings ("127.0.0.1:3021->3021/tcp") of a
+// container: the first, in sorted order, is Listen; any non-loopback host marks
+// the exposure.
+func BindingOf(ports []string) StartData {
+	var bound []string
+	for _, p := range ports {
+		if i := strings.Index(p, "->"); i > 0 {
+			bound = append(bound, p[:i])
+		}
+	}
+	sort.Strings(bound)
+	d := StartData{}
+	for _, addr := range bound {
+		host, _, err := net.SplitHostPort(addr)
+		if err != nil {
+			continue
+		}
+		if !d.Observed {
+			d.Listen, d.Observed = addr, true
+		}
+		if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
+			d.ExposeNetwork = true
+		}
+	}
+	return d
 }

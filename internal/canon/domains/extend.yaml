@@ -13,7 +13,8 @@ commands:
   config bundles install: {side_effect: write}
   config bundles list: {side_effect: read, json: legacy}
   # cmd/commands/plugin.go:21 proxies arbitrary args to a plugin binary (plugin.ProxyCommand): effect unbounded, worst case
-  config plugins: {side_effect: destructive, output: interactive} # proxies unknown subcommands to a plugin binary that owns stdout and may need a TTY: no envelope, not exposed on machine surfaces
+  # bare `config plugins` lists its subcommands (envelope); with arguments it proxies to a plugin binary: effect unbounded (worst case), refused with --json
+  config plugins: {side_effect: destructive}
   # cmd/commands/plugin_audit.go:59 only audits table metadata; no persistent state changes
   config plugins audit-tables: {side_effect: read, json: legacy, exit_codes: {"0": "all tables compliant", "1": "one or more tables missing source_account_id column", "2": "one or more tables missing Hasura select_permissions filter"}}
   # cmd/commands/plugin_compat_check.go:49 only reports installed-plugin compatibility

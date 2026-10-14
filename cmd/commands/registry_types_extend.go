@@ -10,9 +10,9 @@
 // (plugin_envelope.go); the writing commands with the shared dataResult.
 // Rows that printed JSON before the contract keep that output in v1.4 and say
 // so in the v1.4 registry view (`json: legacy` in extend.yaml, kept by the
-// cmdregistry mapping for V15-only rows). `config plugins` proxies to plugin
-// binaries (interactive) and `config plugins logs` is a stream: neither
-// registers anything. `plugin install`, `plugin remove` and `bundle remove`
+// cmdregistry mapping for V15-only rows). Bare `config plugins` answers with its subcommands (a plugin
+// proxy with arguments is refused in JSON mode). `config plugins logs` is a
+// stream and registers nothing. `plugin install`, `plugin remove` and `bundle remove`
 // are shims of `add` and `remove`.
 // Constraints: registers from init(); see registry_types.go for the rules.
 
@@ -27,6 +27,7 @@ import (
 var extendEnvelopeTypes = map[string]any{
 	"add":                         addData{},
 	"remove":                      removeData{},
+	"config plugins":              dataHub{},
 	"config bundles":              dataHub{},
 	"config bundles info":         bundleInfoJSON{},
 	"config bundles install":      addData{},

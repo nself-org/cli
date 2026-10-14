@@ -37,8 +37,8 @@ func TestEnvelopeCoverageServices(t *testing.T) {
 func TestEnvelopeCoverageExtend(t *testing.T) {
 	assertFragmentEnvelopeCoverage(t, "extend")
 	rows := registryRows(t, true)
-	if r := rows["nself config plugins"]; r.Output != canon.OutputInteractive || r.JSON != canon.JSONNone {
-		t.Fatalf("config plugins = output %s json %s, want interactive/none", r.Output, r.JSON)
+	if r := rows["nself config plugins"]; r.Output != canon.OutputDocument || r.JSON != canon.JSONEnvelope {
+		t.Fatalf("config plugins = output %s json %s, want a document envelope (the bare hub)", r.Output, r.JSON)
 	}
 	if r := rows["nself config plugins logs"]; r.Output != canon.OutputStream {
 		t.Fatalf("config plugins logs output = %s, want stream", r.Output)
@@ -86,8 +86,8 @@ func TestEnvelopeCoverageAdmin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r := rows["nself admin connect"]; r.Output != canon.OutputStream || !rowHasReason(string(raw), "admin connect") {
-		t.Fatalf("admin connect = output %s, want stream with a reason comment", r.Output)
+	if r := rows["nself admin connect"]; r.Output != canon.OutputInteractive || !rowHasReason(string(raw), "admin connect") {
+		t.Fatalf("admin connect = output %s, want interactive with a reason comment", r.Output)
 	}
 }
 
@@ -113,6 +113,43 @@ func TestEnvelopeCoverageBundleRemove(t *testing.T) {
 	br := rows["nself bundle remove"]
 	if br.SideEffect != canon.SideEffectDestructive || br.Target == nil || *br.Target != "remove" {
 		t.Fatalf("bundle remove = side_effect %s target %v, want destructive shim of remove", br.SideEffect, br.Target)
+	}
+	// The v1.4 row is the command itself: destructive, with the consent flag and --delete-data.
+	old := registryRows(t, false)["nself bundle remove"]
+	oldDelete := false
+	for _, f := range old.Flags {
+		oldDelete = oldDelete || f.Name == "delete-data"
+	}
+	if old.SideEffect != canon.SideEffectDestructive || !oldDelete || old.Confirm == nil || !hasString(old.Confirm.Flags, "yes") {
+		t.Fatalf("v1.4 bundle remove = %+v, want destructive with --delete-data and a confirm block naming --yes", old)
+	}
+}
+
+func TestInstallSourceIdentity(t *testing.T) {
+	for in, want := range map[string]string{
+		"waf": "waf",
+		"https://user" + ":" + "synthetic@example.test/p/plugin.tgz?token=abc#frag": "https://example.test/p/plugin.tgz",
+		"https://example.test/p/plugin.tgz":                           "https://example.test/p/plugin.tgz",
+	} {
+		if got := installSourceIdentity(in); got != want {
+			t.Errorf("installSourceIdentity(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestConfigPluginsHubAndProxyRefusal(t *testing.T) {
+	cmd := extendCmd(t, "config", "plugins")
+	out, err := runExt(t, cmd, nil, map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var d dataHub
+	extendData(t, out, "config plugins", &d)
+	if len(d.Subcommands) == 0 {
+		t.Fatalf("no subcommands: %s", out)
+	}
+	if _, err := runExt(t, cmd, []string{"someplugin", "status"}, map[string]string{}); err == nil || !strings.Contains(err.Error(), "does not support --json") {
+		t.Fatalf("proxy with --json: err = %v, want the E402 refusal", err)
 	}
 }
 
@@ -262,7 +299,7 @@ func fakeDockerLogs(t *testing.T) {
 		t.Skip("the docker double is a POSIX shell script")
 	}
 	bin := t.TempDir()
-	script := "#!/bin/sh\ncase \"$1\" in logs) printf 'admin up\\nadmin ready\\n' ;; esac\nexit 0\n"
+	script := "#!/bin/sh\ncase \"$1\" in logs) printf 'admin up\\n'; printf 'admin ready\\n' >&2 ;; esac\nexit 0\n"
 	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -410,6 +447,25 @@ func adminTree(t *testing.T, words ...string) *cobra.Command {
 		t.Fatal(err)
 	}
 	return c
+}
+
+func TestAdminStartBinding(t *testing.T) {
+	for _, tc := range []struct {
+		ports  []string
+		listen string
+		expose bool
+		seen   bool
+	}{
+		{[]string{"127.0.0.1:3021->3021/tcp"}, "127.0.0.1:3021", false, true},
+		{[]string{"0.0.0.0:3021->3021/tcp", "3000/tcp"}, "0.0.0.0:3021", true, true},
+		{[]string{"3021/tcp"}, "", false, false},
+		{nil, "", false, false},
+	} {
+		got := admin.BindingOf(tc.ports)
+		if got.Listen != tc.listen || got.ExposeNetwork != tc.expose || got.Observed != tc.seen {
+			t.Errorf("BindingOf(%v) = %+v", tc.ports, got)
+		}
+	}
 }
 
 func TestAdminBodies(t *testing.T) {

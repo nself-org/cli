@@ -105,8 +105,8 @@ func runPluginOutdated(cmd *cobra.Command, args []string) error {
 	}
 
 	if jsonEnvelopeOn(cmd) {
-		if rows == nil {
-			rows = []outdatedPluginRow{}
+		if rows == nil && !legacyBare() {
+			rows = []outdatedPluginRow{} // the envelope data is an array; the bare legacy form printed null
 		}
 		if err := emitEnv(cmd, rows, true); err != nil { // P7-SURF-13
 			return err

@@ -35,8 +35,8 @@ func projectsCommand() *cobra.Command {
 			}
 
 			if jsonOn(cmd) {
-				if projects == nil {
-					projects = []AdminProject{}
+				if projects == nil && !legacyBare() {
+					projects = []AdminProject{} // the envelope data is an array; the bare legacy form printed null
 				}
 				return emit(cmd, ProjectList(projects), true)
 			}
