@@ -5,8 +5,8 @@ package build
 // Inputs: the fragment bytes and the plugin's short name.
 // Outputs: the fragment bytes with missing networks attached and
 // ${DOCKER_NETWORK:-x} written as ${DOCKER_NETWORK}, or an E129 error.
-// Constraints: byte-splice edits at yaml.v3 node lines, so comments, quoting
-// and layout survive (same constraint as plugins_core_env_inject.go). v1.5
+// Constraints: block mappings use byte-splice edits so their layout survives;
+// flow mappings and service aliases use structural edits and YAML encoding. v1.5
 // only: v1.4 never rewrites a fragment and only warns about a foreign
 // external network. A service with network_mode keeps it untouched.
 
@@ -158,6 +158,16 @@ func normalizeComposeNetworks(content []byte, pluginName string) ([]byte, error)
 			}
 		}
 	}
+	if networkNodesNeedEncoding(top) {
+		out, why, err := encodeNetworkNodes(&doc, top, res, content)
+		if err != nil {
+			return content, err
+		}
+		if why != "" || legacyNetworkRemains(out, res.legacyKeys()) {
+			return content, policyError(fmt.Sprintf("plugin %q uses the %s in a form the build cannot rewrite to ${DOCKER_NETWORK} (%s)", pluginName, legacyNetworkLabel, why), legacyRewriteWhy, legacyRewriteFix)
+		}
+		return out, nil
+	}
 	legacy, keys, why := legacyNetworkEdits(content, top, res)
 	if why != "" {
 		return content, policyError(fmt.Sprintf("plugin %q uses the %s in a form the build cannot rewrite to ${DOCKER_NETWORK} (%s)", pluginName, legacyNetworkLabel, why), legacyRewriteWhy, legacyRewriteFix)
@@ -167,6 +177,24 @@ func normalizeComposeNetworks(content []byte, pluginName string) ([]byte, error)
 		return content, policyError(fmt.Sprintf("plugin %q uses the %s in a form the build cannot rewrite to ${DOCKER_NETWORK} (a definition or reference is supplied through an alias or merge key)", pluginName, legacyNetworkLabel), legacyRewriteWhy, legacyRewriteFix)
 	}
 	return out, nil
+}
+
+// networkNodesNeedEncoding identifies mappings whose entries may share a line,
+// and aliases which have no service body into which lines can be inserted.
+func networkNodesNeedEncoding(top *yaml.Node) bool {
+	for _, node := range []*yaml.Node{top, yamlGet(top, "networks"), yamlGet(top, "services")} {
+		if node != nil && node.Style&yaml.FlowStyle != 0 {
+			return true
+		}
+	}
+	if services := yamlGet(top, "services"); services != nil && services.Kind == yaml.MappingNode {
+		for i := 1; i < len(services.Content); i += 2 {
+			if svc := services.Content[i]; svc.Kind == yaml.AliasNode || svc.Style&yaml.FlowStyle != 0 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // applyLineEdits applies edits bottom-up so earlier line numbers stay valid.

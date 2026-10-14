@@ -6,7 +6,8 @@ package build
 // become ${DOCKER_NETWORK}.
 // Inputs: the fragment bytes, their parsed top-level mapping, the plugin name.
 // Outputs: line edits for normalizeComposeNetworks to apply.
-// Constraints: byte-splice edits only (comments, quoting and layout survive).
+// Constraints: block entries use byte-splice edits; shared flow entries and
+// service aliases use structural edits so neighboring entries survive.
 // Why not keep the definition and add `name: ${DOCKER_NETWORK}`: an external
 // network is never created by `docker compose up`, so the first start of a
 // fresh project fails with "declared as external, but could not be found".
