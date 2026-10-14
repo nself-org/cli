@@ -8,6 +8,7 @@ package invoke
 // benchmark.
 
 import (
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -67,6 +68,9 @@ func advSizeLimits(t *testing.T) {
 	})
 
 	t.Run("an element of exactly MaxElementBytes still runs", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("a Windows command line is capped at 32767 characters, below MaxElementBytes plus the rest of the argv")
+		}
 		e := advFixture(t)
 		got := echoedArgv(t, e.call("fx echo", doc(t, map[string]any{"args": []string{strings.Repeat("a", MaxElementBytes)}})))
 		if len(got) != 5 || len(got[4]) != MaxElementBytes {
