@@ -68,13 +68,14 @@ type hasuraPermission struct {
 }
 
 type hasuraTable struct {
-	Table               hasuraTableRef       `yaml:"table" json:"table"`
-	ObjectRelationships []hasuraRelationship `yaml:"object_relationships,omitempty" json:"object_relationships,omitempty"`
-	ArrayRelationships  []hasuraRelationship `yaml:"array_relationships,omitempty" json:"array_relationships,omitempty"`
-	InsertPermissions   []hasuraPermission   `yaml:"insert_permissions,omitempty" json:"insert_permissions,omitempty"`
-	SelectPermissions   []hasuraPermission   `yaml:"select_permissions,omitempty" json:"select_permissions,omitempty"`
-	UpdatePermissions   []hasuraPermission   `yaml:"update_permissions,omitempty" json:"update_permissions,omitempty"`
-	DeletePermissions   []hasuraPermission   `yaml:"delete_permissions,omitempty" json:"delete_permissions,omitempty"`
+	Table               hasuraTableRef        `yaml:"table" json:"table"`
+	ObjectRelationships []hasuraRelationship  `yaml:"object_relationships,omitempty" json:"object_relationships,omitempty"`
+	ArrayRelationships  []hasuraRelationship  `yaml:"array_relationships,omitempty" json:"array_relationships,omitempty"`
+	ComputedFields      []hasuraComputedField `yaml:"computed_fields,omitempty" json:"computed_fields,omitempty"`
+	InsertPermissions   []hasuraPermission    `yaml:"insert_permissions,omitempty" json:"insert_permissions,omitempty"`
+	SelectPermissions   []hasuraPermission    `yaml:"select_permissions,omitempty" json:"select_permissions,omitempty"`
+	UpdatePermissions   []hasuraPermission    `yaml:"update_permissions,omitempty" json:"update_permissions,omitempty"`
+	DeletePermissions   []hasuraPermission    `yaml:"delete_permissions,omitempty" json:"delete_permissions,omitempty"`
 }
 
 // tablePermissions returns the permission list for the given short kind
