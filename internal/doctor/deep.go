@@ -6,6 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/nself-org/cli/internal/docker"
+	"gopkg.in/yaml.v3"
 )
 
 // DeepChecks runs all 12 subsystem categories for --deep mode.
@@ -211,4 +214,85 @@ func FilterBySection(results []CheckResult, section string) []CheckResult {
 		}
 	}
 	return filtered
+}
+
+type composeInspector struct {
+	dir      string
+	files    []string
+	envFiles []string
+}
+
+func (c composeInspector) RunningContainers(ctx context.Context) ([]docker.ContainerInfo, error) {
+	cmp := docker.NewCompose(c.files...)
+	cmp.EnvFiles = c.envFiles
+	listed, err := cmp.ComposePs(ctx, c.dir)
+	if err != nil {
+		return nil, err
+	}
+	var out []docker.ContainerInfo
+	for _, l := range listed {
+		if l.Name == "" || l.Service == "" || l.State == "" {
+			return nil, fmt.Errorf("compose ps returned an entry without name, service or state: %+v", l)
+		}
+		if l.State == "exited" || l.State == "dead" || l.State == "removing" {
+			continue
+		}
+		info, err := docker.InspectContainer(ctx, l.Name)
+		if err != nil {
+			return nil, err
+		}
+		if info == nil || info.ID == "" || info.Name == "" {
+			return nil, fmt.Errorf("docker inspect %s returned no container", l.Name)
+		}
+		info.Service = l.Service
+		out = append(out, *info)
+	}
+	return out, nil
+}
+
+func readSocketInventory(dir, plugins string, core []byte) (*socketInventory, error) {
+	rep := &socketInventory{Owners: map[string][]string{}, Core: map[string]bool{}, Volumes: map[string]string{}}
+	files, err := filepath.Glob(filepath.Join(plugins, "*", "docker-compose.plugin.yml"))
+	if err != nil {
+		return nil, err
+	}
+	files = append([]string{""}, files...)
+	for _, file := range files {
+		data, slug := core, ""
+		if file != "" {
+			if _, err := os.Stat(filepath.Join(filepath.Dir(file), ".disabled")); err == nil {
+				continue
+			} else if !os.IsNotExist(err) {
+				return nil, err
+			}
+			data, err = os.ReadFile(file)
+			if err != nil {
+				return nil, err
+			}
+			slug = filepath.Base(filepath.Dir(file))
+		}
+		var document struct {
+			Services map[string]yaml.Node `yaml:"services"`
+			Volumes  map[string]struct {
+				Options map[string]string `yaml:"driver_opts"`
+			} `yaml:"volumes"`
+		}
+		if err := yaml.Unmarshal(data, &document); err != nil {
+			return nil, err
+		}
+		for name, volume := range document.Volumes {
+			recordSocketVolume(rep, dir, name, volume.Options["device"])
+		}
+		for name, body := range document.Services {
+			if body.Kind != yaml.MappingNode && body.Tag != "!!null" {
+				return nil, fmt.Errorf("service %s has an invalid shape", name)
+			}
+			if slug == "" {
+				rep.Core[name] = true
+			} else {
+				rep.Owners[name] = append(rep.Owners[name], slug)
+			}
+		}
+	}
+	return rep, nil
 }

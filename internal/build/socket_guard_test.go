@@ -141,7 +141,7 @@ func TestSocketGuardFragments(t *testing.T) {
 		{"variable DOCKER_HOST set to a unix socket", map[string]string{"sockvarhost": "var_docker_host.yml"}, "", map[string]string{"SOCKGUARD_HOST": "unix://" + sockDev}, []string{"sockvarhost"}},
 		{"variable device set to the parent dir", map[string]string{"sockvardev": "var_device.yml"}, "", map[string]string{"SOCKGUARD_DEVICE": sockRun}, []string{"sockvardev", "devvol"}},
 		{"variable device nobody sets", map[string]string{"sockvardev": "var_device.yml"}, "", nil, []string{"sockvardev", "cannot be resolved"}},
-		{"env_file is not followed", map[string]string{"sockenvfile": "env_file.yml"}, "", nil, []string{"sockenvfile", "env_file"}},
+		{"missing env_file cannot introduce a socket", map[string]string{"sockenvfile": "env_file.yml"}, "", nil, nil},
 		{"extends is not followed", map[string]string{"sockextends": "extends_file.yml"}, "", nil, []string{"sockextends", "extends"}},
 		{"volumes_from is not followed", map[string]string{"sockvolsfrom": "volumes_from.yml"}, "", nil, []string{"sockvolsfrom", "volumes_from"}},
 		{"include is not followed", map[string]string{"sockinclude": "include.yml"}, "", nil, []string{"sockinclude", "include"}},
@@ -162,7 +162,7 @@ func TestSocketGuardFragments(t *testing.T) {
 		{"excepted plugin: renamed volume that names a socket device is its own confirmed socket", map[string]string{"forgejo": "combo_renamed.yml"}, "", nil, nil},
 		{"excepted plugin: external volume that also names a socket device", map[string]string{"monitoring": "combo_external.yml"}, "", nil, []string{"monitoring", "sockcomboext", "cannot be proven"}},
 		{"excepted plugin: name-only volume stays an ordinary named volume", map[string]string{"monitoring": "renamed_volume.yml"}, "", nil, nil},
-		{"excepted plugin: env_file", map[string]string{"forgejo": "env_file.yml"}, "", nil, []string{"forgejo", "sockenvfile", "env_file"}},
+		{"excepted plugin: missing env_file has no socket", map[string]string{"forgejo": "env_file.yml"}, "", nil, nil},
 		{"excepted plugin: extends", map[string]string{"forgejo": "extends_file.yml"}, "", nil, []string{"forgejo", "sockextends", "extends"}},
 		{"excepted plugin: volumes_from", map[string]string{"monitoring": "volumes_from.yml"}, "", nil, []string{"monitoring", "sockvolsfrom", "volumes_from"}},
 		{"an excepted plugin cannot hold the proxy service", map[string]string{"forgejo": "proxy_nginx.yml"}, "", nil, []string{"forgejo", "nginx"}},
@@ -383,6 +383,14 @@ func TestSocketGuardFragments(t *testing.T) {
 		}
 	})
 
+	t.Run("invalid dotenv never supplies a partially parsed socket value", func(t *testing.T) {
+		file := filepath.Join(t.TempDir(), "invalid.env")
+		writeFixtureFile(t, file, "SOCKGUARD_INVALID=tcp://safe.invalid:2375\nBROKEN='private-value\n", 0o600)
+		if _, ok := expandSocket("${SOCKGUARD_INVALID}", NewSocketEnv(nil, file)); ok {
+			t.Fatal("invalid dotenv supplied a supposedly proven value")
+		}
+	})
+
 	t.Run("dependent dotenv values need the exact context", func(t *testing.T) {
 		const unix, tcp = "unix:///var/run/docker.sock", "tcp://safe.invalid:2375"
 		unset := func(k string) {
@@ -504,6 +512,58 @@ func TestSocketGuardFragments(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestSocketGuardOverridePlanDeferral(t *testing.T) {
+	for _, tc := range []struct {
+		name, override string
+		mode           BuildMode
+		refuse         bool
+	}{
+		{"plan malformed", "services: [broken", ModePlan, false},
+		{"write malformed", "services: [broken", ModeWrite, true},
+		{"plan socket", "services:\n  nginx:\n    volumes: ['/var/run/docker.sock:/var/run/docker.sock']\n", ModePlan, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newPlanFixture(t, "dev-minimal")
+			writeFixtureFile(t, filepath.Join(f.workdir, userComposeOverrideFile), tc.override, 0o644)
+			_, err := Build(f.workdir, BuildOptions{Mode: tc.mode, Force: true})
+			if (err != nil) != tc.refuse || tc.refuse && !strings.Contains(err.Error(), "E130") {
+				t.Fatalf("build error = %v, want E130 refusal %v", err, tc.refuse)
+			}
+		})
+	}
+}
+
+func TestSocketGuardServiceEnvFiles(t *testing.T) {
+	for _, tc := range []struct {
+		name, envFile, contents, environment string
+		refuse                               bool
+	}{
+		{"harmless", "fixture.env", "HARMLESS=value\n", "", false},
+		{"tcp host", "fixture.env", "DOCKER_HOST=tcp://safe.invalid:2375\n", "", false},
+		{"unix host", "fixture.env", "DOCKER_HOST=unix:///var/run/docker.sock\n", "", true},
+		{"environment wins", "fixture.env", "DOCKER_HOST=unix:///var/run/docker.sock\n", "    environment: {DOCKER_HOST: 'tcp://safe.invalid:2375'}\n", false},
+		{"optional absent", "[{path: absent.env, required: false}]", "", "", false},
+		{"raw unix host", "[{path: fixture.env, format: raw}]", "DOCKER_HOST=unix:///var/run/docker.sock\n", "", true},
+		{"malformed dotenv", "fixture.env", "DOCKER_HOST='private-value\n", "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			wd, plugins := t.TempDir(), t.TempDir()
+			if tc.contents != "" {
+				writeFixtureFile(t, filepath.Join(wd, "fixture.env"), tc.contents, 0o600)
+			}
+			fragment := "services:\n  echo:\n    image: echo:fixture\n    env_file: " + tc.envFile + "\n" + tc.environment
+			writeFixtureFile(t, filepath.Join(plugins, "echo", pluginComposeFilename), fragment, 0o644)
+			rep, err := AnalyzeSocket(wd, plugins, NewSocketEnv(nil), []byte("services: {}\n"))
+			if err == nil {
+				err = rep.Refuse()
+			}
+			if (err != nil) != tc.refuse {
+				t.Fatalf("guard error = %v, want refusal %v", err, tc.refuse)
+			}
+		})
+	}
 }
 
 func TestSocketGuardExceptionExpiry(t *testing.T) {

@@ -1,22 +1,5 @@
 package doctor
 
-// deep_docker_socket.go — P7-DEPL-21 (ADR 0027 §3): `nself doctor --deep`
-// check proxy-docker-socket. A live proxy (nginx, traefik) or plugin container
-// that holds the Docker socket (bind mount, its parent directory, a
-// socket-backed named volume, or a unix DOCKER_HOST) fails and is named.
-// Inputs:  the project dir; the live containers from the docker package's
-//          compose ps and inspect (behind SocketInspector, faked in tests);
-//          build.AnalyzeSocket's view of the compose inputs.
-// Outputs: one CheckResult: fail > unknown > warn > pass (skip: no project).
-// Constraints: read-only. Unproven evidence outranks an exception (unknown, not
-//          warn); a known exposure outranks both (fail). Plugin containers are every non-proxy service neither
-//          the generated stack nor the service catalog declares (an override
-//          alone does not make a name core), so a deleted or disabled
-//          fragment cannot hide one; the exception table is build's own, applies to a
-//          plugin the fragments name exactly once, never to a proxy. An
-//          inspection error, a malformed field or any volume mount is
-//          "unknown", never "pass" (Constitution §4.1).
-
 import (
 	"context"
 	"fmt"
@@ -26,77 +9,39 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/docker"
+	"github.com/nself-org/cli/internal/version"
 )
 
 const dockerSocketCheckName = "proxy-docker-socket"
 
-// SocketInspector returns the live (not exited) containers of the project with
-// Service, State, Mounts and Env filled.
 type SocketInspector interface {
 	RunningContainers(ctx context.Context) ([]docker.ContainerInfo, error)
 }
 
-// evidenceCertifier is implemented (inside this package only) by an inspector
-// that certifies every container it returns carries its full Config.Env and
-// Mounts, so empty values mean empty. composeInspector cannot: see the
-// check below.
 type evidenceCertifier interface{ evidenceComplete() bool }
 
-// composeInspector lists through `docker compose ps`, then inspects each one.
-type composeInspector struct {
-	dir      string
-	files    []string
-	envFiles []string
-}
-
-func (c composeInspector) RunningContainers(ctx context.Context) ([]docker.ContainerInfo, error) {
-	cmp := docker.NewCompose(c.files...)
-	cmp.EnvFiles = c.envFiles
-	listed, err := cmp.ComposePs(ctx, c.dir)
-	if err != nil {
-		return nil, err
-	}
-	var out []docker.ContainerInfo
-	for _, l := range listed {
-		if l.Name == "" || l.Service == "" || l.State == "" {
-			return nil, fmt.Errorf("compose ps returned an entry without name, service or state: %+v", l)
-		}
-		if l.State == "exited" || l.State == "dead" || l.State == "removing" {
-			continue
-		}
-		info, err := docker.InspectContainer(ctx, l.Name)
-		if err != nil {
-			return nil, err
-		}
-		if info == nil || info.ID == "" || info.Name == "" {
-			return nil, fmt.Errorf("docker inspect %s returned no container", l.Name)
-		}
-		info.Service = l.Service
-		out = append(out, *info)
-	}
-	return out, nil
-}
-
-// DockerSocketChecks is the DeepChecks entry point.
 func DockerSocketChecks(ctx context.Context, projectDir string) []CheckResult {
 	core, err := os.ReadFile(filepath.Join(projectDir, "docker-compose.yml"))
 	if os.IsNotExist(err) {
 		return []CheckResult{socketResult("skip", "no docker-compose.yml in this project", "")}
 	}
-	pluginDir := build.DefaultPluginDir()
-	var rep *build.SocketReport
+	pluginDir := os.Getenv("NSELF_PLUGIN_DIR")
+	if pluginDir == "" {
+		home, _ := os.UserHomeDir()
+		pluginDir = filepath.Join(home, ".nself", "plugins")
+	}
+	var rep *socketInventory
 	var files, envFiles []string
 	if err == nil {
-		rep, err = build.AnalyzeSocket(projectDir, pluginDir, build.NewSocketEnv(nil, filepath.Join(projectDir, ".env"), filepath.Join(projectDir, ".nself", "compose.env")), core)
+		rep, err = readSocketInventory(projectDir, pluginDir, core)
 	}
 	if err == nil {
-		files, err = build.ReadComposeManifest(projectDir)
+		files, err = socketManifest(projectDir, "compose-files.txt")
 	}
 	if err == nil {
-		envFiles, err = build.ReadComposeEnvManifest(projectDir)
+		envFiles, err = socketManifest(projectDir, "compose-env-files.txt")
 	}
 	if err != nil {
 		return []CheckResult{socketResult("unknown", "cannot read the compose inputs, so the Docker socket exposure is unknown: "+err.Error(), "nself build")}
@@ -108,8 +53,7 @@ func socketResult(status, msg, fix string) CheckResult {
 	return CheckResult{Section: "docker", Name: dockerSocketCheckName, Status: status, Message: msg, FixCmd: fix}
 }
 
-// CheckProxyDockerSocket judges the live containers against rep.
-func CheckProxyDockerSocket(ctx context.Context, ins SocketInspector, rep *build.SocketReport) CheckResult {
+func CheckProxyDockerSocket(ctx context.Context, ins SocketInspector, rep *socketInventory) CheckResult {
 	containers, err := ins.RunningContainers(ctx)
 	if err != nil {
 		return socketResult("unknown", "cannot inspect containers, so the Docker socket exposure is unknown: "+err.Error(), "docker ps")
@@ -127,7 +71,7 @@ func CheckProxyDockerSocket(ctx context.Context, ins SocketInspector, rep *build
 			continue
 		}
 		owners, label := rep.Owners[service], c.Labels["nself.plugin"]
-		proxy := build.SocketProxyService(service)
+		proxy := socketProxyService(service)
 		if !proxy && label == "" && len(owners) == 0 && isCoreService(rep, service) {
 			continue // a core or custom service: not judged
 		}
@@ -143,9 +87,6 @@ func CheckProxyDockerSocket(ctx context.Context, ins SocketInspector, rep *build
 			who = "plugin (no fragment names it) " + who
 		}
 		found, unk := containerSocketExposure(c, rep)
-		// internal/docker decodes inspect JSON into empty (not nil) values, so an
-		// omitted Config.Env or Mounts looks like an empty one. Only non-empty
-		// values prove a field was present; otherwise the inspector must certify.
 		if !certified && (len(c.Env) == 0 || len(c.Mounts) == 0) {
 			unk = append(unk, "has an empty Config.Env or Mounts in its inspect output, which cannot prove the field was present")
 		}
@@ -153,9 +94,7 @@ func CheckProxyDockerSocket(ctx context.Context, ins SocketInspector, rep *build
 			unknown = append(unknown, who+" "+u)
 		}
 		for _, detail := range found {
-			// An exception needs the fragments to name exactly one owner, and a
-			// label (which the plugin itself writes) may not name another.
-			ex, ok := build.ActiveSocketException(strings.Join(owners, ""))
+			ex, ok := activeSocketException(strings.Join(owners, ""))
 			if ok && !proxy && len(owners) == 1 && (label == "" || label == owners[0]) {
 				allowed = append(allowed, fmt.Sprintf("%s %s; allowed until nself %s (%s)", who, detail, ex.RemovalAt, ex.Ticket))
 				continue
@@ -178,10 +117,7 @@ func CheckProxyDockerSocket(ctx context.Context, ins SocketInspector, rep *build
 	return socketResult("pass", "no proxy or plugin container holds the Docker socket", "")
 }
 
-// isCoreService reports a service the generated stack declares or the service
-// catalog knows (a disabled optional service may still be running). A service
-// only an override names is not core.
-func isCoreService(rep *build.SocketReport, name string) bool {
+func isCoreService(rep *socketInventory, name string) bool {
 	for _, e := range compose.ServiceCatalog() {
 		if e.Name == name {
 			return true
@@ -190,15 +126,12 @@ func isCoreService(rep *build.SocketReport, name string) bool {
 	return rep.Core[name]
 }
 
-// remoteDocker reports a DOCKER_HOST that is not a local unix socket.
 func remoteDocker() bool {
 	h := strings.ToLower(os.Getenv("DOCKER_HOST"))
 	return h != "" && !strings.HasPrefix(h, "unix:")
 }
 
-// containerSocketExposure lists how one live container reaches the socket,
-// and what could not be established.
-func containerSocketExposure(c docker.ContainerInfo, rep *build.SocketReport) (found, unknown []string) {
+func containerSocketExposure(c docker.ContainerInfo, rep *socketInventory) (found, unknown []string) {
 	for _, m := range c.Mounts {
 		if m.Destination == "" {
 			unknown = append(unknown, fmt.Sprintf("has a %q mount without a destination", m.Type))
@@ -213,13 +146,10 @@ func containerSocketExposure(c docker.ContainerInfo, rep *build.SocketReport) (f
 				unknown = append(unknown, "has a bind mount without a source")
 				break
 			}
-			// A bind source is a host path; follow symlinks where this host can
-			// see it. A missing, dangling or relative source, or a remote
-			// DOCKER_HOST (whose paths are not ours), cannot be verified.
-			r, ok := build.ResolveSocketPath("", m.Source)
+			r, ok := resolveSocketPath("", m.Source)
 			_, statErr := os.Lstat(m.Source)
 			switch {
-			case build.SocketPathExposed(m.Source) || ok && build.SocketPathExposed(r):
+			case socketPathExposed(m.Source) || ok && socketPathExposed(r):
 				found = append(found, fmt.Sprintf("mounts the Docker socket (%s)", m.Source))
 			case !ok || statErr != nil || remoteDocker():
 				unknown = append(unknown, fmt.Sprintf("has a bind source %q that cannot be verified on this host", m.Source))
@@ -231,9 +161,6 @@ func containerSocketExposure(c docker.ContainerInfo, rep *build.SocketReport) (f
 				unknown = append(unknown, fmt.Sprintf("has a volume mount %q whose volume cannot be identified", m.Source))
 				break
 			}
-			// The docker package cannot show a volume's live backing, so a
-			// Compose declaration (or a name) never proves it safe: only a
-			// declared socket-backed volume is a definite exposure.
 			for logical, why := range rep.Volumes {
 				if strings.HasPrefix(why, "is backed by") && (name == logical || strings.HasSuffix(name, "_"+logical)) {
 					found = append(found, fmt.Sprintf("mounts named volume %s, which %s", name, why))
@@ -249,4 +176,100 @@ func containerSocketExposure(c docker.ContainerInfo, rep *build.SocketReport) (f
 		found = append(found, fmt.Sprintf("sets DOCKER_HOST=%s", v))
 	}
 	return found, unknown
+}
+
+type socketException struct{ Slug, Ticket, RemovalAt string }
+
+func activeSocketException(slug string) (socketException, bool) {
+	ex, ok := map[string]socketException{"forgejo": {"forgejo", "P7-TRUST-21", "1.5.0"}, "monitoring": {"monitoring", "P7-PLUG-58", "1.5.0"}}[slug]
+	var c, t [3]int
+	nc, _ := fmt.Sscanf(strings.TrimPrefix(strings.TrimSpace(version.GetVersion()), "v"), "%d.%d.%d", &c[0], &c[1], &c[2])
+	nt, _ := fmt.Sscanf(ex.RemovalAt, "%d.%d.%d", &t[0], &t[1], &t[2])
+	return ex, ok && nc == 3 && nt == 3 && (c[0] < t[0] || c[0] == t[0] && (c[1] < t[1] || c[1] == t[1] && c[2] < t[2]))
+}
+
+type socketInventory struct {
+	Owners  map[string][]string
+	Core    map[string]bool
+	Volumes map[string]string
+}
+
+func socketManifest(dir, name string) ([]string, error) {
+	data, err := os.ReadFile(filepath.Join(dir, ".nself", name))
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	var files []string
+	for _, line := range strings.Split(string(data), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			files = append(files, line)
+		}
+	}
+	if name == "compose-env-files.txt" {
+		if len(files) == 0 {
+			if _, err := os.Lstat(filepath.Join(dir, ".nself", "compose.env")); !os.IsNotExist(err) {
+				return nil, fmt.Errorf("missing compose env manifest; run nself build")
+			}
+		}
+		return files, nil
+	}
+	if len(files) == 0 {
+		files = []string{"docker-compose.yml"}
+	}
+	override := filepath.Join(dir, "docker-compose.override.yml")
+	if _, err := os.Stat(override); err == nil {
+		for _, file := range files {
+			if filepath.Base(file) == filepath.Base(override) {
+				return files, nil
+			}
+		}
+		files = append(files, override)
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
+	return files, nil
+}
+
+func socketProxyService(n string) bool { return n == "nginx" || n == "traefik" }
+
+func socketPathExposed(p string) bool {
+	c := strings.TrimPrefix(path.Clean(strings.ToLower(strings.TrimSpace(p))), "/private")
+	switch c {
+	case "", "/", "/var", "/var/run", "/run":
+		return true
+	}
+	return path.Base(c) == "docker.sock"
+}
+
+func resolveSocketPath(base, p string) (string, bool) {
+	if rest, cut := strings.CutPrefix(p, "~"); cut && (rest == "" || rest[0] == '/') {
+		h, _ := os.UserHomeDir()
+		p = h + rest
+	}
+	if !filepath.IsAbs(p) {
+		if base == "" {
+			return "", false
+		}
+		p = base + string(filepath.Separator) + p
+	}
+	for rest := ""; ; {
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			return filepath.Join(r, rest), true
+		} else if _, serr := os.Lstat(p); serr == nil {
+			return "", false // exists but does not resolve: dangling or looping
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return p, true
+		}
+		rest, p = filepath.Join(filepath.Base(p), rest), parent
+	}
+}
+
+// recordSocketVolume retains definite backing evidence; other live volumes stay unknown.
+func recordSocketVolume(rep *socketInventory, dir, name, device string) {
+	resolved, ok := resolveSocketPath(dir, device)
+	if device != "" && !strings.Contains(device, "$") && (socketPathExposed(device) || ok && socketPathExposed(resolved)) {
+		rep.Volumes[name] = "is backed by " + device
+	}
 }

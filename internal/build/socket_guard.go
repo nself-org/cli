@@ -1,63 +1,26 @@
 package build
 
-// socket_guard.go — P7-DEPL-21 (ADR 0027 §3): no proxy or plugin container gets
-// the Docker socket. One merged view of the generated stack, plugin fragments
-// and override file; only nginx/traefik and plugin-declared services are judged
-// (core admin, CS_N are not). Bind sources resolve against the project dir (~ is
-// home), symlinks followed. Fail closed: unresolved values, external/renamed
-// volumes, env_file, extends, volumes_from, include, bad shapes. Podman sockets
-// and Docker data dirs are out of scope. Refuse() is E130; an excepted plugin
-// warns once until removal_at; a proxy never inherits one. Shared with doctor.
+// ADR 0027: inspect merged Compose inputs; refuse sockets on proxy/plugin services.
 
 import (
 	"fmt"
+	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/errs"
+	"gopkg.in/yaml.v3"
 	"maps"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
-
-	"github.com/joho/godotenv"
-	"github.com/nself-org/cli/internal/errs"
-	"github.com/nself-org/cli/internal/version"
-	"gopkg.in/yaml.v3"
 )
 
-// SocketException allows one plugin to keep a socket mount until RemovalAt.
 type SocketException struct{ Slug, Ticket, RemovalAt string } // RemovalAt: first CLI version (X.Y.Z) that refuses it
-
 var socketExceptions = map[string]SocketException{
 	"forgejo":    {Slug: "forgejo", RemovalAt: "1.5.0", Ticket: "P7-TRUST-21"},
 	"monitoring": {Slug: "monitoring", RemovalAt: "1.5.0", Ticket: "P7-PLUG-58"},
 }
 
-// ActiveSocketException returns slug's exception below its removal_at; an unparsable version is past it.
-func ActiveSocketException(slug string) (SocketException, bool) {
-	ex, ok := socketExceptions[slug]
-	var c, t [3]int
-	nc, _ := fmt.Sscanf(strings.TrimPrefix(strings.TrimSpace(version.GetVersion()), "v"), "%d.%d.%d", &c[0], &c[1], &c[2])
-	nt, _ := fmt.Sscanf(ex.RemovalAt, "%d.%d.%d", &t[0], &t[1], &t[2])
-	return ex, ok && nc == 3 && nt == 3 && (c[0] < t[0] || c[0] == t[0] && (c[1] < t[1] || c[1] == t[1] && c[2] < t[2]))
-}
-
-// SocketProxyService reports the services no exception can ever cover.
-func SocketProxyService(n string) bool { return n == "nginx" || n == "traefik" }
-
-// SocketPathExposed reports whether a host path is the Docker socket or a
-// directory that holds it (including the macOS /private alias).
-func SocketPathExposed(p string) bool {
-	c := strings.TrimPrefix(path.Clean(strings.ToLower(strings.TrimSpace(p))), "/private")
-	switch c {
-	case "", "/", "/var", "/var/run", "/run":
-		return true
-	}
-	return path.Base(c) == "docker.sock"
-}
-
-// ResolveSocketPath makes a bind source absolute (~ is home, relative to base)
-// and follows symlinks; ok is false when that fails (dangling or looping link).
 func ResolveSocketPath(base, p string) (string, bool) {
 	if rest, cut := strings.CutPrefix(p, "~"); cut && (rest == "" || rest[0] == '/') {
 		h, _ := os.UserHomeDir()
@@ -83,20 +46,15 @@ func ResolveSocketPath(base, p string) (string, bool) {
 	}
 }
 
-// SocketEnv resolves a ${VAR} name.
 type SocketEnv func(string) (string, bool)
 
 var envRefRE = regexp.MustCompile(`\$\{?([A-Za-z_][A-Za-z0-9_]*)`)
 
-// NewSocketEnv layers like Compose: process env, then base (the compose.env this
-// build will write), then the env files in order (later wins). godotenv expands
-// each file alone, so a `$`-bearing value is trusted only if every variable it
-// names (transitively) is defined earlier in that file, nowhere else, and not
-// contradicted by the process env; any other is the unresolvable marker "$".
+// NewSocketEnv uses process/base/file precedence and distrusts ambiguous dotenv dependencies.
 func NewSocketEnv(base map[string]string, files ...string) SocketEnv {
 	vars, refs, count := map[string]string{}, map[string][]string{}, map[string]int{}
 	for _, f := range files {
-		m, _ := godotenv.Read(f)
+		m, _ := config.ReadEnvFile(f)
 		maps.Copy(vars, m)
 		data, _ := os.ReadFile(f)
 		defined := map[string]bool{}
@@ -141,65 +99,41 @@ func NewSocketEnv(base map[string]string, files ...string) SocketEnv {
 	}
 }
 
-// expandSocket expands $VAR, ${VAR} and ${VAR:-d} ($$ is a literal $); an unset
-// variable without a default, an unbalanced brace and every other form are not ok.
-func expandSocket(s string, env SocketEnv) (string, bool) {
-	if strings.Count(s, "${") != strings.Count(s, "}") {
-		return "", false
-	}
-	ok := true
-	out := os.Expand(s, func(ref string) string {
-		name, def, hasDef := strings.Cut(ref, ":-")
-		switch v, set := env(name); {
-		case ref == "$":
-			return "\x00"
-		case set && (v != "" || !hasDef):
-			return v
-		case hasDef:
-			return def
-		}
-		ok = false
-		return ""
-	})
-	return strings.ReplaceAll(out, "\x00", "$"), ok && !strings.Contains(out, "$")
-}
-
-// SocketUse is one way a service reaches the socket and which input said so;
-// Unproven marks what the guard could not read through (no exception waives it).
 type SocketUse struct {
 	Origin, Detail string
 	Unproven       bool
 }
-
-// SocketReport is the merged view of every compose input.
 type SocketReport struct {
 	Uses    map[string][]SocketUse // service -> exposures
 	Owners  map[string][]string    // service -> plugin slugs that declare it
 	Core    map[string]bool        // services declared by the generated core stack
 	Volumes map[string]string      // named volume -> "" or why it is socket-backed
 }
-
 type socketDoc struct {
 	origin, dir string
 	top         map[string]any
 }
+type socketParseError struct {
+	origin string
+	err    error
+}
 
-// socketMap reads a mapping that may be absent or an empty `!reset []`.
+func (e *socketParseError) Error() string { return fmt.Sprintf("%s: %v", e.origin, e.err) }
 func socketMap(v any, what string) (map[string]any, error) {
 	m, ok := v.(map[string]any)
-	if l, isList := v.([]any); !ok && v != nil && !(isList && len(l) == 0) {
+	if l, isList := v.([]any); !ok && v != nil && (!isList || len(l) != 0) {
 		return nil, fmt.Errorf("%s has an unsupported shape", what)
 	}
 	return m, nil
 }
 
-// AnalyzeSocket scans the generated stack, enabled plugin fragments and the override file.
+// AnalyzeSocket scans all generated, plugin and override inputs; exceptions never waive uncertainty.
 func AnalyzeSocket(workdir, pluginDir string, env SocketEnv, core []byte) (*SocketReport, error) {
 	var docs []socketDoc
 	add := func(origin string, data []byte) error {
 		var top map[string]any
 		if err := yaml.Unmarshal(data, &top); err != nil {
-			return fmt.Errorf("%s: %w", origin, err)
+			return &socketParseError{origin, err}
 		}
 		if top["include"] != nil {
 			return fmt.Errorf("%s uses include, which is not inspected", origin)
@@ -278,7 +212,73 @@ func AnalyzeSocket(workdir, pluginDir string, env SocketEnv, core []byte) (*Sock
 	return rep, nil
 }
 
-// Refuse returns E130 for the first judged service that holds the socket.
+// socketFileEnv reads container values, distinct from Compose interpolation variables.
+// Missing files cannot start a container; malformed present files fail without quoting contents.
+func socketFileEnv(d socketDoc, value any, lookup SocketEnv) (map[string]any, error) {
+	out := map[string]any{}
+	files, list := value.([]any)
+	if value == nil {
+		return out, nil
+	}
+	if !list {
+		files = []any{value}
+	}
+	for _, entry := range files {
+		name, raw := "", false
+		switch e := entry.(type) {
+		case string:
+			name = e
+		case map[string]any:
+			name, _ = e["path"].(string)
+			raw = e["format"] == "raw"
+			if e["format"] != nil && e["format"] != "raw" {
+				return nil, fmt.Errorf("%s env_file has unsupported format", d.origin)
+			}
+		default:
+			return nil, fmt.Errorf("%s env_file has unsupported shape", d.origin)
+		}
+		p, ok := expandSocket(name, lookup)
+		if !ok || p == "" {
+			return nil, fmt.Errorf("%s env_file path cannot be resolved", d.origin)
+		}
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(d.dir, p)
+		}
+		data, err := os.ReadFile(p)
+		if os.IsNotExist(err) {
+			continue
+		} // cannot run or expose a socket; optional files also disappear
+		if err != nil {
+			return nil, fmt.Errorf("%s env_file: %w", d.origin, err)
+		}
+		vars := map[string]string{}
+		if !raw {
+			vars, err = config.ParseEnvBytes(p, data)
+			if err != nil {
+				return nil, fmt.Errorf("%s env_file: %w", d.origin, err)
+			}
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			k, v, has := strings.Cut(strings.TrimPrefix(strings.TrimSpace(line), "export "), "=")
+			if strings.TrimSpace(k) != "DOCKER_HOST" || !has {
+				continue
+			}
+			if raw {
+				vars["DOCKER_HOST"] = v
+			} else if strings.Contains(v, "$") {
+				x, resolved := expandSocket(strings.Trim(strings.TrimSpace(v), "\"'"), lookup)
+				if !resolved {
+					x = "$"
+				}
+				vars["DOCKER_HOST"] = x
+			}
+		}
+		if v, present := vars["DOCKER_HOST"]; present {
+			out["DOCKER_HOST"] = v
+		}
+	}
+	return out, nil
+}
 func (r *SocketReport) Refuse() error {
 	for _, svc := range slices.Sorted(maps.Keys(r.Uses)) {
 		slugs, uses := r.Owners[svc], r.Uses[svc]

@@ -1,8 +1,7 @@
 package doctor
 
 // deep_docker_socket_test.go — P7-DEPL-21: proxy-docker-socket verdicts from a
-// fake inspector and a synthetic build.SocketReport. The exception table is
-// the build guard's own.
+// fake inspector and an independent live service inventory.
 
 import (
 	"context"
@@ -22,6 +21,67 @@ type fakeSocketInspector struct {
 	containers  []docker.ContainerInfo
 	err         error
 	uncertified bool // behaves like the production inspector: empty typed fields prove nothing
+}
+
+func TestSocketPolicyMatchesBuild(t *testing.T) {
+	old := version.Version
+	t.Cleanup(func() { version.Version = old })
+	for _, v := range []string{"0.0.0", "1.4.14", "v1.4.99", "1.5.0", "2.0.0", "dev", ""} {
+		version.Version = v
+		for _, slug := range []string{"forgejo", "monitoring", "unknown", "nginx"} {
+			got, active := activeSocketException(slug)
+			want, wantActive := build.ActiveSocketException(slug)
+			if active != wantActive || got.Slug != want.Slug || got.Ticket != want.Ticket || got.RemovalAt != want.RemovalAt {
+				t.Errorf("version %q plugin %q: policy drift: %+v %v versus %+v %v", v, slug, got, active, want, wantActive)
+			}
+		}
+	}
+	for _, value := range []string{"/", "/var", "/run", "/private/var/run", "/var/run/docker.sock", "/safe/docker.sock", "/safe", "/private/safe", ""} {
+		if socketPathExposed(value) != build.SocketPathExposed(value) {
+			t.Errorf("path policy drift for %q", value)
+		}
+	}
+	dir := t.TempDir()
+	if err := os.Symlink("/var/run", filepath.Join(dir, "run")); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{dir, "run/docker.sock", "missing", "~/socket", "/var/run"} {
+		got, ok := resolveSocketPath(dir, value)
+		want, wantOK := build.ResolveSocketPath(dir, value)
+		if got != want || ok != wantOK {
+			t.Errorf("path resolution drift for %q", value)
+		}
+	}
+}
+
+func TestSocketInventoryDoesNotApplyStaticGuard(t *testing.T) {
+	dir, plugins := t.TempDir(), t.TempDir()
+	if err := os.MkdirAll(filepath.Join(plugins, "echo"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fragment := "services:\n  echo:\n    image: echo\n    env_file: harmless.env\nvolumes:\n  socket:\n    driver_opts:\n      device: /var/run\n"
+	if err := os.WriteFile(filepath.Join(plugins, "echo", "docker-compose.plugin.yml"), []byte(fragment), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := readSocketInventory(dir, plugins, []byte("services:\n  nginx:\n    image: nginx\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rep.Core["nginx"] || len(rep.Owners["echo"]) != 1 || rep.Owners["echo"][0] != "echo" || rep.Volumes["socket"] != "is backed by /var/run" {
+		t.Fatalf("inventory: %+v", rep)
+	}
+	if err := os.WriteFile(filepath.Join(plugins, "echo", ".disabled"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rep, err = readSocketInventory(dir, plugins, []byte("services: {}"))
+	if err != nil || len(rep.Owners) != 0 {
+		t.Fatalf("disabled plugin: %+v %v", rep, err)
+	}
+	for _, invalid := range []string{"services: [broken", "services: [nginx]", "services: {nginx: [bad]}"} {
+		if _, err := readSocketInventory(dir, plugins, []byte(invalid)); err == nil {
+			t.Errorf("accepted malformed inventory %q", invalid)
+		}
+	}
 }
 
 // evidenceComplete: the fake certifies its containers' Env and Mounts unless uncertified.
@@ -45,8 +105,8 @@ var (
 	anonymous = strings.Repeat("ab12", 16)
 )
 
-func socketReport() *build.SocketReport {
-	return &build.SocketReport{
+func socketReport() *socketInventory {
+	return &socketInventory{
 		Owners: map[string][]string{
 			"forgejo": {"forgejo"}, "monitoring": {"monitoring"}, "sockshort": {"sockshort"}, "evil": {"evil"},
 			"nginx": {"forgejo"}, "dupsvc": {"forgejo", "monitoring"}, "sockdata": {"sockdata"},
@@ -192,8 +252,7 @@ func TestDockerSocketDoctor(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(wd, "docker-compose.override.yml"), []byte("services:\n  oldplugin:\n    image: example.invalid/old:1\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		none := func(string) (string, bool) { return "", false }
-		rep, err := build.AnalyzeSocket(wd, t.TempDir(), none, []byte("services:\n  nginx:\n    image: x\n"))
+		rep, err := readSocketInventory(wd, t.TempDir(), []byte("services:\n  nginx:\n    image: x\n"))
 		if err != nil {
 			t.Fatal(err)
 		}
