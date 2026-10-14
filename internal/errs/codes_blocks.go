@@ -27,12 +27,12 @@ type Owner struct {
 	Fragment string // base name of the fragment file, e.g. "codes_plugin_manifest.go"
 }
 
-// Reserved external block: the ci plugin keeps its own registry here
-// (plugins:free/ci/internal/model). A cli fragment in this range is a
-// registry problem.
+// Reserved external blocks: E600-E719 belongs to the ci plugin's registry
+// (plugins:free/ci/internal/model); E720-E739 belongs to the k8s plugin.
+// A CLI fragment in either range is a registry problem.
 const (
 	reservedLo = 600
-	reservedHi = 719
+	reservedHi = 739
 )
 
 // Blocks is the ordered block table.
