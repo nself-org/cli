@@ -34,7 +34,7 @@ var sslCmd = &cobra.Command{
 
 Subcommands:
   status   Show certificate expiry, covered domains, and CA trust status
-  renew    Reload nginx and optionally renew certificates`,
+  renew    Renew SSL certificates and reload the serving proxy`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},
@@ -52,11 +52,16 @@ Exits non-zero when any certificate is expired.`,
 
 var sslRenewCmd = &cobra.Command{
 	Use:   "renew [domain]",
-	Short: "Reload nginx and optionally renew certificates",
-	Long: `Reload nginx with existing certificates and optionally run certbot renewal.
+	Short: "Renew SSL certificates and reload the serving proxy",
+	Long: `Renew SSL certificates using the selected certificate engine.
 
-If a domain argument is provided and certbot is installed, runs:
-  certbot renew --cert-name <domain>
+In v1.5 mode, renew managed ACME lineages with 30 days or fewer left, then
+reload the serving proxy and verify the served certificate. An optional
+argument selects a lineage by name; --force renews it regardless of expiry.
+
+In v1.4 mode, reload nginx with existing certificates. If a domain argument is
+provided and certbot is installed, run certbot renew --cert-name <domain>
+before reloading. --acme selects the ACME client in v1.4 mode too.
 
 Exits non-zero on failure.`,
 	Args: cobra.MaximumNArgs(1),

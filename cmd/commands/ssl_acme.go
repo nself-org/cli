@@ -15,6 +15,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/nginxtopo"
@@ -48,20 +49,30 @@ var acmeD = struct {
 // acmeOnlyFlags mean nothing without --acme and are refused without it.
 var acmeOnlyFlags = []string{"dry-run", "nginx-container", "agree-tos", "force", "quiet", "adopt-certbot", "dns-credential-file", "challenge", "lineage"}
 
+// acmeCommand formats remediation text for the current command surface.
+// Inputs: an SSL subcommand. Outputs: its ACME invocation. Constraints: text only.
+func acmeCommand(subcommand string) string {
+	// compat.V15(P7-LIVE-22): remediation uses trust ssl with --acme -> canonical config trust ssl without --acme
+	if compat.V15() {
+		return "nself config trust ssl " + subcommand
+	}
+	return "nself trust ssl " + subcommand + " --acme"
+}
+
 func init() {
 	for _, c := range []*cobra.Command{sslSetupCmd, sslRenewCmd} {
 		f := c.Flags()
-		f.Bool("acme", false, "Use the CLI's own ACME client (DNS-01, lego one-shot container) instead of certbot")
-		f.Bool("dry-run", false, "With --acme: print the resolved stack, lineages and targets; write nothing")
-		f.String("nginx-container", "", "With --acme: nginx container to reload (default: found by compose labels)")
-		f.Bool("agree-tos", false, "With --acme: accept the ACME CA's terms of service on first account registration")
+		f.Bool("acme", false, "Use the CLI's own ACME client (DNS-01, lego one-shot container; default in v1.5 mode)")
+		f.Bool("dry-run", false, "ACME client: print the resolved stack, lineages and targets; write nothing")
+		f.String("nginx-container", "", "ACME client: nginx container to reload (default: found by compose labels)")
+		f.Bool("agree-tos", false, "ACME client: accept the ACME CA's terms of service on first account registration")
 	}
 	r, s := sslRenewCmd.Flags(), sslSetupCmd.Flags()
-	r.String("email", "", "With --acme: ACME contact (default: stored contact, ACME_EMAIL, ADMIN_EMAIL)")
-	r.Bool("staging", false, "With --acme: issue from the staging CA into .acme/staging; installs nothing")
-	r.Bool("force", false, "With --acme: renew every lineage, not only those with 30 days or fewer left")
-	r.Bool("quiet", false, "With --acme: suppress non-error output (for the renewal timer)")
-	s.String("adopt-certbot", "", "With --acme: adopt certbot lineages from [dir] (default /etc/letsencrypt); never issues")
+	r.String("email", "", "ACME client: ACME contact (default: stored contact, ACME_EMAIL, ADMIN_EMAIL)")
+	r.Bool("staging", false, "ACME client: issue from the staging CA into .acme/staging; installs nothing")
+	r.Bool("force", false, "ACME client: renew every lineage, not only those with 30 days or fewer left")
+	r.Bool("quiet", false, "ACME client: suppress non-error output (for the renewal timer)")
+	s.String("adopt-certbot", "", "ACME client: adopt certbot lineages from [dir] (default /etc/letsencrypt); never issues")
 	s.Lookup("adopt-certbot").NoOptDefVal = "/etc/letsencrypt"
 	s.String("dns-credential-file", "", "With --adopt-certbot: certbot DNS-plugin INI; its credential is stored by name")
 	s.String("challenge", "dns-01", "With --adopt-certbot: challenge for converted lineages: dns-01 (a webroot lineage with no credential becomes http-01 when the served nginx answers the challenge location)")

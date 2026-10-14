@@ -4,59 +4,63 @@ Add up to 10 custom Docker services (CS_1 through CS_10) to your ɳSelf stack. U
 
 ## How Custom Services Work
 
-Custom services are defined via environment variables. ɳSelf reads `CS_1_*` through `CS_10_*` variables and generates the corresponding `docker-compose` service block automatically on `nself build`.
+Each service needs a nonempty `CS_N=name:template[:port][:route]` definition. ɳSelf reads its supported `CS_N_*` overrides and generates the corresponding Docker Compose service block on `nself build`. Overrides alone do not register a service.
 
 ## Adding a Custom Service
 
 ### Step 1: Define the service in `.env`
 
 ```env
-# CS_1: Node.js API server
-CS_1_ENABLED=true
-CS_1_NAME=my-api
-CS_1_IMAGE=node:20-alpine
-CS_1_PORT=3100
+# CS_1: an existing application image containing /app/server.js
+CS_1=my-api:node:3100:api
+CS_1_IMAGE=registry.example.com/my-api:1.0.0
 CS_1_COMMAND=node server.js
-CS_1_WORKDIR=/app
 
 # Pass environment variables to the service
-CS_1_ENV_NODE_ENV=production
-CS_1_ENV_DATABASE_URL=${DATABASE_URL}
+CS_1_ENV=NODE_ENV=production
+# DATABASE_URL is injected automatically.
 ```
 
-### Step 2: Rebuild and restart
+The image must set its own working directory (for example `WORKDIR /app` in its Dockerfile) and provide a `/health` endpoint plus `wget`, or set `CS_1_HEALTHCHECK` to a suitable probe. `CS_N_ENABLED`, `CS_N_NAME`, `CS_N_WORKDIR`, and arbitrary `CS_N_ENV_*` keys are not read. Remove the `CS_N` definition to stop generating that slot.
+
+### Step 2: Rebuild and start
 
 ```bash
 nself build    # generates updated docker-compose.yml
-nself restart  # applies changes
+nself start    # creates/recreates containers from the generated config
 ```
 
 ### Step 3: Verify
 
 ```bash
 nself status          # should show my-api as running
-nself urls            # shows URL if routed through nginx
+nself logs -f -S my-api # follows logs by the Compose service name
 ```
+
+The route `api` exposes the service at `api.<BASE_DOMAIN>` by default. Omit the route for a service without an Nginx route.
 
 ## Available Language Templates
 
-See 40+ starter templates to get going quickly:
+The custom-service scaffolder supports `go`, `node`, `python`, `static`, `rust`, and `other`:
 
 ```bash
-nself service templates
+nself service add --help # doc-check: skip registered in cmd/commands/service.go; no command-signature fixture yet
 ```
 
-Templates include: Node.js, Python (FastAPI, Django), Go, Ruby on Rails, PHP, Java Spring Boot, Rust, and more.
+Use `nself service add <name> --template <language>` to create `services/<name>/` and register the next free slot in `.env.dev`. See [[Config-Custom-Services]] for healthcheck setup.
 
 ## Example: Python Worker (CS_2)
 
 ```env
-CS_2_ENABLED=true
-CS_2_NAME=worker
-CS_2_IMAGE=python:3.12-slim
+CS_2=worker:python:8002
+# An existing image containing Celery and the application's worker code
+CS_2_IMAGE=registry.example.com/worker:1.0.0
 CS_2_COMMAND=python -m celery worker
-CS_2_ENV_CELERY_BROKER_URL=redis://redis:6379/0
+CS_2_ENV=CELERY_BROKER_URL=redis://redis:6379/0
+CS_2_HEALTHCHECK=disabled
 ```
+
+This example requires Redis to be enabled and reachable at the configured broker URL; include its credentials if required. Use a worker-specific probe instead of `disabled` when one is available.
 
 ## Example: Service Built From a Monorepo Root
 
@@ -94,14 +98,19 @@ The name is resolved after the plugin step of `nself build`. A name that does no
 
 ## Example: A Third-Party Stack
 
-A third-party stack that has several containers (a message broker and a UI, say) maps to one `CS_N_IMAGE` service per container, or to a plugin when one exists. `CS_N_IMAGE` services can share a project network with `CS_N_NETWORKS=<PROJECT_NAME>_shared` once that network exists. See [[Custom-Services-Migration]] for what `CS_N` does not cover yet.
+A third-party stack that has several containers (a message broker and a UI, say) maps to one `CS_N` definition with `CS_N_IMAGE` per container, or to a plugin when one exists. Services already share the default project network. To attach an extra network, use `CS_N_NETWORKS=<PROJECT_NAME>_shared` and create it before starting the stack. For `PROJECT_NAME=myapp`:
+
+```bash
+docker network create myapp_shared
+```
+
+Set `CS_N_NETWORKS=myapp_shared` on each service that needs it. The generator declares these extra networks external; it does not create them. See [[Custom-Services-Migration]] for what `CS_N` does not cover yet.
 
 ## Custom Service Variables Reference
 
 | Variable | Description |
 |----------|-------------|
-| `CS_N_ENABLED` | `true` / `false` |
-| `CS_N_NAME` | Service name (lowercase, alphanumeric + hyphens) |
+| `CS_N` | Required definition: `name:template[:port][:route]` |
 | `CS_N_IMAGE` | Docker image reference |
 | `CS_N_PORT` | Internal port the service listens on |
 | `CS_N_COMMAND` | Override container command (exec form, split on whitespace, no shell) |
@@ -111,8 +120,9 @@ A third-party stack that has several containers (a message broker and a UI, say)
 | `CS_N_ENV_FILE` | One or more dotenv files, comma-separated, later wins |
 | `CS_N_DEPENDS_ON` | `name[:started\|healthy\|completed]`, comma-separated |
 | `CS_N_NETWORKS` | Extra `<PROJECT_NAME>_*` networks (must already exist) |
-| `CS_N_WORKDIR` | Working directory inside container |
-| `CS_N_ENV_*` | Environment variables passed to the service |
+| `CS_N_ENV` | Comma-separated `KEY=VALUE` pairs passed to the service |
+| `CS_N_ENV_PASSTHROUGH` | Comma-separated allowlist of project environment variables to forward |
+| `CS_N_HEALTHCHECK` | Probe path, `CMD`/`CMD-SHELL` command, or `disabled` |
 
 ## See Also
 

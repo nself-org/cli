@@ -11,12 +11,14 @@ The workflow `.github/workflows/image-pin-bump.yml` runs every Monday at 06:00 U
 3. It runs `go run ./tools/imagelock -resolve`, which regenerates `internal/compose/images.lock.json`. This also runs when no version moved, so floating tags such as `latest` or `alpine` refresh their digests.
 4. `go run ./tools/imagelock -check` verifies the lock.
 5. If nothing changed, the job prints `no pin changes` and ends green.
-6. Otherwise the job opens one PR from branch `chore/image-pins` with the label `image-pins`. A PR that is still open is updated in place.
-7. On the branch head the job runs three checks and writes the results into the PR body:
+6. Otherwise it regenerates `internal/reconcile/testdata/fixtures/dev-minimal/golden-tree.txt` with `UPDATE_GOLDEN=1 go test -count=1 ./cmd/commands -run '^TestBuildPlanDevGolden$'`. A failed regeneration stops the run before a PR is opened.
+7. It runs `go test -count=1 ./internal/compose ./internal/config ./cmd/commands ./tools/imagebump/...` against the bumped tree. A failure is recorded; it does not stop the PR from being opened.
+8. The job opens one PR from branch `chore/image-pins` with the label `image-pins`, including the regenerated golden. A PR that is still open is updated in place.
+9. On the branch head the job runs three more checks and writes their results, the lock check and the Go test result into the PR body:
    - the image probe (`default-images-pullable.yml`),
    - the stack smoke (`e2e-golden-path.yml` with `source=local`),
    - `scripts/images/mirror-images.sh --plan` (status-line counts and the plan detail).
-8. The job fails if the probe, the smoke or the plan failed. The PR body is written first.
+10. The job fails if the Go tests, the probe, the smoke or the plan failed. The PR body is written first. Go test failures list failing test and package names in the body; the full test log stays in the workflow run log.
 
 If a later run finds no pin changes, a stale open `chore/image-pins` PR is left untouched. Close it by hand.
 

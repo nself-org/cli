@@ -1619,23 +1619,23 @@ export interface ConfigTrustSslRenewData {
 }
 
 export type ConfigTrustSslRenewFlags = {
-  /** Use the CLI's own ACME client (DNS-01, lego one-shot container) instead of certbot */
+  /** Use the CLI's own ACME client (DNS-01, lego one-shot container; default in v1.5 mode) */
   acme?: boolean;
-  /** With --acme: print the resolved stack, lineages and targets; write nothing */
+  /** ACME client: print the resolved stack, lineages and targets; write nothing */
   "dry-run"?: boolean;
-  /** With --acme: ACME contact (default: stored contact, ACME_EMAIL, ADMIN_EMAIL) */
+  /** ACME client: ACME contact (default: stored contact, ACME_EMAIL, ADMIN_EMAIL) */
   email?: string;
-  /** With --acme: renew every lineage, not only those with 30 days or fewer left */
+  /** ACME client: renew every lineage, not only those with 30 days or fewer left */
   force?: boolean;
-  /** With --acme: nginx container to reload (default: found by compose labels) */
+  /** ACME client: nginx container to reload (default: found by compose labels) */
   "nginx-container"?: string;
-  /** With --acme: suppress non-error output (for the renewal timer) */
+  /** ACME client: suppress non-error output (for the renewal timer) */
   quiet?: boolean;
-  /** With --acme: issue from the staging CA into .acme/staging; installs nothing */
+  /** ACME client: issue from the staging CA into .acme/staging; installs nothing */
   staging?: boolean;
 };
 
-/** Reload nginx and optionally renew certificates */
+/** Renew SSL certificates and reload the serving proxy */
 export interface ConfigTrustSslRenewRequest {
   args?: ConfigTrustSslRenewArgs;
   flags?: ConfigTrustSslRenewFlags;
@@ -1657,15 +1657,15 @@ export interface ConfigTrustSslSetupData {
 }
 
 export type ConfigTrustSslSetupFlags = {
-  /** Use the CLI's own ACME client (DNS-01, lego one-shot container) instead of certbot */
+  /** Use the CLI's own ACME client (DNS-01, lego one-shot container; default in v1.5 mode) */
   acme?: boolean;
-  /** With --acme: adopt certbot lineages from [dir] (default /etc/letsencrypt); never issues */
+  /** ACME client: adopt certbot lineages from [dir] (default /etc/letsencrypt); never issues */
   "adopt-certbot"?: string;
   /** With --adopt-certbot: challenge for converted lineages: dns-01 (a webroot lineage with no credential becomes http-01 when the served nginx answers the challenge location) */
   challenge?: string;
   /** With --adopt-certbot: certbot DNS-plugin INI; its credential is stored by name */
   "dns-credential-file"?: string;
-  /** With --acme: print the resolved stack, lineages and targets; write nothing */
+  /** ACME client: print the resolved stack, lineages and targets; write nothing */
   "dry-run"?: boolean;
   /** Email for Let's Encrypt registration */
   email?: string;
@@ -1673,7 +1673,7 @@ export type ConfigTrustSslSetupFlags = {
   "install-cron"?: boolean;
   /** With --adopt-certbot: adopt only this certbot lineage */
   lineage?: string;
-  /** With --acme: nginx container to reload (default: found by compose labels) */
+  /** ACME client: nginx container to reload (default: found by compose labels) */
   "nginx-container"?: string;
   /** DNS provider (cloudflare, route53, digitalocean) */
   provider?: string;

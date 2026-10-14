@@ -20,7 +20,7 @@ func runSSLRenewACME(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if len(r.file.Lineages) == 0 {
-		return e151(acmeRefuse("run `nself trust ssl setup --acme` or `--adopt-certbot` first", "no lineages are managed in %s", acme.StateDir(r.res.SSLDir)))
+		return e151(acmeRefuse("run `"+acmeCommand("setup")+"` (optionally with --adopt-certbot) first", "no lineages are managed in %s", acme.StateDir(r.res.SSLDir)))
 	}
 	if err := r.lock(); err != nil {
 		return err
@@ -48,7 +48,7 @@ func runSSLRenewACME(cmd *cobra.Command, args []string) error {
 		}
 	}
 	if !matched {
-		return e151(acmeRefuse("list them with `nself trust ssl renew --acme --dry-run`", "no lineage named %q", args[0]))
+		return e151(acmeRefuse("list them with `"+acmeCommand("renew")+" --dry-run`", "no lineage named %q", args[0]))
 	}
 	if len(due) == 0 || r.dry {
 		return nil
