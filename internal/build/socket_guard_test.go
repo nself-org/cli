@@ -35,6 +35,15 @@ func warnedCount() int {
 
 func ptr(s string) *string { return &s }
 
+// activeAt reports whether slug's exception still applies at CLI version v.
+func activeAt(slug, v string) bool {
+	old := version.Version
+	version.Version = v
+	defer func() { version.Version = old }()
+	_, ok := ActiveSocketException(slug)
+	return ok
+}
+
 // socketFixture reads a testdata/socket fixture and records that it was used.
 func socketFixture(t *testing.T, used map[string]bool, name string) string {
 	t.Helper()
@@ -313,12 +322,12 @@ func TestSocketGuardFragments(t *testing.T) {
 			}
 		}
 		env := func(k string) (string, bool) { v, ok := map[string]string{"A": "/a", "E": ""}[k]; return v, ok }
-		for in, want := range map[string]string{"${A}/x": "/a/x", "${U:-/d}": "/d", "${E:-/d}": "/d", "${A:-/d}": "/a", "$$A": "$A", "${U:-${A}}": ""} {
+		for in, want := range map[string]string{"${A}/x": "/a/x", "${U:-/d}": "/d", "${E:-/d}": "/d", "${A:-/d}": "/a", "$$A": "$A", "$A": "/a", "x${A}y": "x/ay", "${U:-${A}}": ""} {
 			if got, ok := expandSocket(in, env); in == "${U:-${A}}" && ok || in != "${U:-${A}}" && (!ok || got != want) {
 				t.Errorf("expandSocket(%q) = %q, %v; want %q", in, got, ok, want)
 			}
 		}
-		for _, in := range []string{"${U}", "${E-/d}", "$A", "${A:?x}", "${A:+x}", "${A"} {
+		for _, in := range []string{"${U}", "${E-/d}", "$U", "a$", "${A:?x}", "${A:+x}", "${A"} {
 			if _, ok := expandSocket(in, env); ok {
 				t.Errorf("expandSocket(%q) must not resolve", in)
 			}
@@ -355,6 +364,66 @@ func TestSocketGuardFragments(t *testing.T) {
 		}
 	})
 
+	t.Run("dependent dotenv values need the exact context", func(t *testing.T) {
+		const unix, tcp = "unix:///var/run/docker.sock", "tcp://safe.invalid:2375"
+		unset := func(k string) {
+			old, had := os.LookupEnv(k)
+			_ = os.Unsetenv(k)
+			t.Cleanup(func() {
+				if had {
+					_ = os.Setenv(k, old)
+				}
+			})
+		}
+		write := func(name, body string) string {
+			p := filepath.Join(t.TempDir(), name)
+			writeFixtureFile(t, p, body, 0o600)
+			return p
+		}
+		check := func(label string, env SocketEnv, name, want string, wantOK bool) {
+			t.Helper()
+			if got, ok := expandSocket("${"+name+"}", env); ok != wantOK || ok && got != want {
+				t.Errorf("%s: ${%s} = %q, %v; want %q, %v", label, name, got, ok, want, wantOK)
+			}
+		}
+		for _, k := range []string{"SOCKGUARD_H", "SOCKGUARD_HOST", "SOCKGUARD_B", "SOCKGUARD_A", "SOCKGUARD_X", "SOCKGUARD_Y", "SOCKGUARD_BASE", "SOCKGUARD_NESTED", "NSELF_PLUGIN_DIR"} {
+			unset(k)
+		}
+		dotenv := write(".env", "SOCKGUARD_H="+tcp+"\nSOCKGUARD_HOST=${SOCKGUARD_H}\n")
+		t.Setenv("SOCKGUARD_H", unix) // the shell wins over the file in Compose
+		check("process differs from the file", NewSocketEnv(nil, dotenv), "SOCKGUARD_HOST", "", false)
+		check("the shell value itself", NewSocketEnv(nil, dotenv), "SOCKGUARD_H", unix, true)
+		t.Setenv("SOCKGUARD_H", tcp)
+		check("process equals the file", NewSocketEnv(nil, dotenv), "SOCKGUARD_HOST", tcp, true)
+		_ = os.Unsetenv("SOCKGUARD_H")
+		check("process unset: isolated nested expansion is exact", NewSocketEnv(nil, dotenv), "SOCKGUARD_HOST", tcp, true)
+		check("cross-file dependency", NewSocketEnv(nil, write("a.env", "SOCKGUARD_B="+tcp+"\n"), write("b.env", "SOCKGUARD_A=${SOCKGUARD_B}\n")), "SOCKGUARD_A", "", false)
+		check("computed value redefines a referenced name", NewSocketEnv(map[string]string{"SOCKGUARD_X": "2"}, write("c.env", "SOCKGUARD_X=1\nSOCKGUARD_Y=${SOCKGUARD_X}\n")), "SOCKGUARD_Y", "", false)
+		check("forward reference", NewSocketEnv(nil, write("d.env", "SOCKGUARD_Y=${SOCKGUARD_X}\nSOCKGUARD_X=1\n")), "SOCKGUARD_Y", "", false)
+		check("name defined nowhere in the files", NewSocketEnv(nil, write("e.env", "SOCKGUARD_Y=${SOCKGUARD_X}\n")), "SOCKGUARD_Y", "", false)
+		check("computed plugin variable", NewSocketEnv(map[string]string{"NSELF_PLUGIN_DIR": "/p"}, write("f.env", "SOCKGUARD_Y=literal\n")), "NSELF_PLUGIN_DIR", "/p", true)
+		check("plain literal", NewSocketEnv(nil, write("g.env", "SOCKGUARD_Y=literal\n")), "SOCKGUARD_Y", "literal", true)
+
+		// End to end: the fragment's DOCKER_HOST=${SOCKGUARD_NESTED} against the process-H repro.
+		pluginDir := t.TempDir()
+		writeFixtureFile(t, filepath.Join(pluginDir, "socknested", pluginComposeFilename), socketFixture(t, used, "docker_host_nested.yml"), 0o644)
+		env := NewSocketEnv(nil, write("h.env", "SOCKGUARD_BASE="+tcp+"\nSOCKGUARD_NESTED=${SOCKGUARD_BASE}\n"))
+		refuse := func(env SocketEnv) error {
+			rep, err := AnalyzeSocket(t.TempDir(), pluginDir, env, []byte("services:\n  nginx:\n    image: x\n"))
+			if err != nil {
+				return err
+			}
+			return rep.Refuse()
+		}
+		if err := refuse(env); err != nil {
+			t.Fatalf("exact isolated nesting to tcp must pass: %v", err)
+		}
+		t.Setenv("SOCKGUARD_BASE", unix)
+		if err := refuse(NewSocketEnv(nil, write("i.env", "SOCKGUARD_BASE="+tcp+"\nSOCKGUARD_NESTED=${SOCKGUARD_BASE}\n"))); err == nil || !strings.Contains(err.Error(), "socknested") {
+			t.Fatalf("a process value that differs from the file must make the nested DOCKER_HOST unprovable: %v", err)
+		}
+	})
+
 	t.Run("every fixture is exercised", func(t *testing.T) {
 		entries, err := os.ReadDir(filepath.Join("testdata", "socket"))
 		if err != nil {
@@ -371,7 +440,7 @@ func TestSocketGuardFragments(t *testing.T) {
 func TestSocketGuardExceptionExpiry(t *testing.T) {
 	t.Run("table entries all expire", func(t *testing.T) {
 		for slug, ex := range socketExceptions {
-			if versionAtLeast("0.0.0", ex.RemovalAt) || !versionAtLeast(ex.RemovalAt, ex.RemovalAt) || ex.Slug != slug || ex.Ticket == "" {
+			if ex.Slug != slug || ex.Ticket == "" || !activeAt(slug, "0.0.0") || activeAt(slug, ex.RemovalAt) {
 				t.Errorf("%s: removal_at %q ticket %q slug %q is not a usable, expiring entry", slug, ex.RemovalAt, ex.Ticket, ex.Slug)
 			}
 		}
