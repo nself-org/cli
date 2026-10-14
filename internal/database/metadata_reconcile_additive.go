@@ -43,7 +43,7 @@ func additivePlan(tables []map[string]any, live map[string]hasuraTable) (Reconci
 			subset[key] = t
 		}
 	}
-	plan := buildReconcilePlanPure(repo, subset)
+	plan := buildReconcilePlan(repo, subset, true)
 	for _, op := range plan.BulkOps {
 		kind, _ := op["type"].(string)
 		if strings.Contains(kind, "drop") || strings.Contains(kind, "untrack") || kind == "replace_metadata" {
@@ -53,6 +53,9 @@ func additivePlan(tables []map[string]any, live map[string]hasuraTable) (Reconci
 	// Existing relationships are never overwritten; reject conflicting definitions.
 	for key, want := range repo {
 		got := subset[key]
+		if computedFieldConflict(got, want) {
+			return ReconcilePlan{}, errors.New("import metadata conflicts with existing computed fields")
+		}
 		for _, pair := range [][2][]hasuraRelationship{{got.ObjectRelationships, want.ObjectRelationships}, {got.ArrayRelationships, want.ArrayRelationships}} {
 			for _, w := range pair[1] {
 				for _, g := range pair[0] {

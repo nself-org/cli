@@ -126,7 +126,13 @@ func sqlQuoteLiteral(s string) string {
 // buildReconcilePlanPure is the deterministic planning logic, split out from
 // BuildReconcilePlan so it can be unit tested without live Hasura/Postgres.
 func buildReconcilePlanPure(repo, live map[string]hasuraTable) ReconcilePlan {
-	var trackOps, relOps, permOps []map[string]interface{}
+	return buildReconcilePlan(repo, live, false)
+}
+
+// buildReconcilePlan also plans computed fields when withComputed is set; only the additive
+// import asks for them.
+func buildReconcilePlan(repo, live map[string]hasuraTable, withComputed bool) ReconcilePlan {
+	var trackOps, relOps, cfOps, permOps []map[string]interface{}
 	var changes []ReconcileChange
 
 	for _, key := range sortedTableKeys(repo) {
@@ -146,14 +152,21 @@ func buildReconcilePlanPure(repo, live map[string]hasuraTable) ReconcilePlan {
 		relOps = append(relOps, newRelOps...)
 		changes = append(changes, relChanges...)
 
+		if withComputed {
+			newCfOps, cfChanges := planComputedFieldOps(key, tableArg, lt, rt)
+			cfOps = append(cfOps, newCfOps...)
+			changes = append(changes, cfChanges...)
+		}
+
 		newPermOps, permChanges := planPermissionOps(key, tableArg, lt, rt)
 		permOps = append(permOps, newPermOps...)
 		changes = append(changes, permChanges...)
 	}
 
-	bulk := make([]map[string]interface{}, 0, len(trackOps)+len(relOps)+len(permOps))
+	bulk := make([]map[string]interface{}, 0, len(trackOps)+len(relOps)+len(cfOps)+len(permOps))
 	bulk = append(bulk, trackOps...)
 	bulk = append(bulk, relOps...)
+	bulk = append(bulk, cfOps...)
 	bulk = append(bulk, permOps...)
 	return ReconcilePlan{BulkOps: bulk, Changes: changes}
 }
