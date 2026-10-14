@@ -13,6 +13,7 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/importer"
 	"github.com/nself-org/cli/internal/importer/postgres"
+	"github.com/nself-org/cli/internal/portable"
 )
 
 type Source struct{}
@@ -81,11 +82,11 @@ func detect(ctx context.Context, db *pgx.Conn, in importer.Input) (importer.Dete
 	if db.QueryRow(ctx, `SELECT count(*) FROM auth.users`).Scan(&d.SourceUsers) != nil {
 		return d, errs.New("E517", "source auth lookup failed")
 	}
-	objects, err := storageObjects(ctx, db)
+	d.Objects, err = detectStorageObjects(ctx, db)
 	if err != nil {
 		return d, err
 	}
-	if objects > 0 {
+	if len(d.Objects) > 0 {
 		d.Notes = append(d.Notes, "source has storage objects; the storage API is required")
 	}
 	return d, nil
@@ -98,4 +99,34 @@ func storageObjects(ctx context.Context, db *pgx.Conn) (int64, error) {
 		return 0, errs.New("E517", "source storage lookup failed")
 	}
 	return n, nil
+}
+
+// detectStorageObjects lists bucket/key pairs for the plan's target storage preflight.
+// An absent catalog is empty; object identities remain out of the detection report.
+func detectStorageObjects(ctx context.Context, db *pgx.Conn) ([]portable.Object, error) {
+	fail := errs.New("E517", "source storage lookup failed")
+	var has bool
+	if db.QueryRow(ctx, `SELECT to_regclass('storage.objects') IS NOT NULL`).Scan(&has) != nil {
+		return nil, fail
+	}
+	if !has {
+		return nil, nil
+	}
+	rows, err := db.Query(ctx, `SELECT bucket_id::text, name::text FROM storage.objects ORDER BY bucket_id, name`)
+	if err != nil {
+		return nil, fail
+	}
+	defer rows.Close()
+	var objects []portable.Object
+	for rows.Next() {
+		var o portable.Object
+		if rows.Scan(&o.Bucket, &o.Key) != nil {
+			return nil, fail
+		}
+		objects = append(objects, o)
+	}
+	if rows.Err() != nil {
+		return nil, fail
+	}
+	return objects, nil
 }

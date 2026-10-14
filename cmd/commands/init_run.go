@@ -21,7 +21,8 @@ import (
 	"golang.org/x/term"
 )
 
-func runInit(cmd *cobra.Command, args []string) error {
+// runInitFlow is the init body; res is the result `init --json` reports (init.go: runInit).
+func runInitFlow(cmd *cobra.Command, args []string, res *InitResult) error {
 	fast, _ := cmd.Flags().GetBool("fast")
 	interactive, _ := cmd.Flags().GetBool("interactive")
 	nonInteractive, _ := cmd.Flags().GetBool("non-interactive")
@@ -60,22 +61,18 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 		// Clone templates are embedded in the binary and scaffold directly.
 		if clonetemplate.IsCloneTemplate(template) {
-			destDir := "."
-			if len(args) > 0 {
-				destDir = args[0]
-			}
 			noSeed, _ := cmd.Flags().GetBool("no-seed")
 			dryRun, _ := cmd.Flags().GetBool("dry-run")
-			return runInitCloneTemplate(template, destDir, noSeed, dryRun, force, quiet)
+			return recordTemplateInit(res, template, args, func(destDir string) error {
+				return runInitCloneTemplate(template, destDir, noSeed, dryRun, force, quiet)
+			})
 		}
 
 		// Marketplace slug (not a built-in language template): fetch from registry.
 		if !isBuiltinTemplate(template) {
-			destDir := "."
-			if len(args) > 0 {
-				destDir = args[0]
-			}
-			return runInitMarketplaceTemplate(template, destDir, force, quiet)
+			return recordTemplateInit(res, template, args, func(destDir string) error {
+				return runInitMarketplaceTemplate(template, destDir, force, quiet)
+			})
 		}
 	}
 
@@ -216,6 +213,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	scaffoldAgentsMD(cmd, cwd, quiet)
+	*res = initScaffoldResult(cwd, result.Env, result.FilesCreated, result.Demo, agentsMDWrittenSince(cwd, initStart.UnixNano()))
 
 	if quiet {
 		return nil
@@ -238,17 +236,8 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	// Next steps.
 	ui.Section("Next steps")
-	fmt.Printf("  1. %s  %s Verify environment (Docker, ports, config)\n",
-		ui.C(ui.Bold, "nself doctor"), ui.C(ui.Dim, ui.IconArrow))
-	fmt.Printf("  2. %s  %s Launch your backend stack\n",
-		ui.C(ui.Bold, "nself start"), ui.C(ui.Dim, ui.IconArrow))
-	fmt.Printf("  3. %s  %s Live health dashboard\n",
-		ui.C(ui.Bold, "nself status"), ui.C(ui.Dim, ui.IconArrow))
-	fmt.Printf("  4. %s  %s Browse available plugins\n",
-		ui.C(ui.Bold, "nself plugin list"), ui.C(ui.Dim, ui.IconArrow))
-	if result.Demo {
-		fmt.Printf("  5. %s  %s Open the admin panel (demo mode)\n",
-			ui.C(ui.Bold, "nself admin start"), ui.C(ui.Dim, ui.IconArrow))
+	for i, step := range initNextSteps(result.Demo) {
+		fmt.Printf("  %d. %s  %s %s\n", i+1, ui.C(ui.Bold, step.cmd), ui.C(ui.Dim, ui.IconArrow), step.why)
 	}
 	fmt.Println()
 

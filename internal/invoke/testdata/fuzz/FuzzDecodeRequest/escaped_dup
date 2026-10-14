@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"ar\\u0067s\":[\"a\"],\"args\":[\"b\"]}")

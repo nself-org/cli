@@ -17,6 +17,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 )
 
@@ -99,7 +100,8 @@ func readObject(raw []byte) ([]field, error) {
 	if _, err := dec.Token(); err != nil {
 		return nil, err
 	}
-	if dec.More() {
+	var trailing json.RawMessage
+	if err := dec.Decode(&trailing); err != io.EOF {
 		return nil, fmt.Errorf("trailing data after the object")
 	}
 	return out, nil
@@ -121,9 +123,10 @@ func writeObject(fs []field) []byte {
 	return b.Bytes()
 }
 
+// find returns the last matching member, following last-key-wins clients.
 func find(fs []field, key string) int {
-	for i, f := range fs {
-		if f.key == key {
+	for i := len(fs) - 1; i >= 0; i-- {
+		if fs[i].key == key {
 			return i
 		}
 	}

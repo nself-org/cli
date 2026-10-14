@@ -360,8 +360,14 @@ func TestInvocationRealRegistryBuildsAndGuardDecides(t *testing.T) {
 		// The mode's dispatch resolves spellings on the prepared tree after
 		// the canon rewrite, so the subtest does the same.
 		defer prepareTreeWith(&canonTable, RootCmd, compat.V15(), false)()
-		// restart: root --json flag, none: E402 in both modes.
-		wantE402(t, refuseUnsupportedJSON(parseReal(t, "restart")))
+		// dev (start dev in v1.5) is a stream, json none, with the root --json
+		// flag: E402 in both modes. (restart answered E402 here until P7-SURF-10
+		// made it an envelope.)
+		dev, _, devErr := rewriteCanonArgsWith(&canonTable, RootCmd, []string{"dev"}, compat.V15())
+		if devErr != nil {
+			t.Fatalf("rewrite dev: %v", devErr)
+		}
+		wantE402(t, refuseUnsupportedJSON(parseReal(t, dev...)))
 		// secrets edit is interactive (json none): E402 in both modes. It moves
 		// under config in v1.5, so the spelling is the mode's rewrite of the old
 		// one. (decrypt-on-deploy answered E402 here under D-0216; P7-SURF-12
@@ -455,11 +461,21 @@ func TestInvocationRefusedBundleDoesNoWork(t *testing.T) {
 		// `config` itself, which only refused --json while it was json none.
 		defer prepareTreeWith(&canonTable, RootCmd, compat.V15(), false)()
 		hits = 0
-		path := []string{"bundle", "install"}
 		if compat.V15() {
-			path = []string{"config", "bundles", "install"}
+			// `config bundles install` has a v1 envelope (P7-SURF-13), so --json is no
+			// longer refused: the hook runs and fetches bundles.json. The refusal
+			// stays covered by the v1.4 half, where `bundle install` is json none.
+			cmd := parseReal(t, "config", "bundles", "install")
+			err := bundleCmd.PersistentPreRunE(cmd, nil)
+			if err == nil || !strings.Contains(err.Error(), "fetching bundles.json") {
+				t.Fatalf("v1.5 bundle install --json: want the bundles.json fetch error, got %v", err)
+			}
+			if hits == 0 {
+				t.Fatal("v1.5 bundle install --json did not reach the fetch path")
+			}
+			return
 		}
-		cmd := parseReal(t, path...)
+		cmd := parseReal(t, "bundle", "install")
 		wantE402(t, bundleCmd.PersistentPreRunE(cmd, nil))
 		if hits != 0 {
 			t.Fatalf("refused bundle command made %d network request(s)", hits)

@@ -79,29 +79,36 @@ func Tools(o Options) ([]server.ServerTool, error) {
 		return nil
 	}
 	merged := map[string]bool{}
-	for i := range o.Registry.Commands {
+	for _, i := range claimOrder(o.Registry) { // core first: a plugin never shadows a core command
 		cmd := &o.Registry.Commands[i]
 		if ok, _ := invoke.Exposure(cmd, invoke.TransportMCP, nil); !ok {
 			continue
 		}
 		name := cmdregistry.ToolName(cmd.Path)
-		if len(name) > 64 {
-			if skipPlugin(o, cmd, "tool name is longer than 64 characters") {
+		if why := nameProblem(cmd, name); why != "" {
+			if skipPlugin(o, cmd, why) {
 				continue
 			}
-			return nil, fmt.Errorf("mcpgen: tool name %q for %q is longer than 64 characters", name, cmd.Path)
+			return nil, fmt.Errorf("mcpgen: tool name %q for %q: %s", name, cmd.Path, why)
 		}
 		row, legacy := table.Lookup(name)
+		if legacy && row.Shortcut && skipPlugin(o, cmd, "its tool name is a reserved shortcut name") {
+			continue // the shortcut row registers the name later, in both modes
+		}
 		legacy = legacy && !row.Shortcut
 		switch {
 		case legacy && !o.V15:
-			continue // a hand tool owns the name in v1.4 mode
+			skipPlugin(o, cmd, "its tool name is a legacy alias name") // warns for a plugin only
+			continue                                                   // a hand tool owns the name in v1.4 mode
 		case legacy && row.Kind != KindMerged:
 			if skipPlugin(o, cmd, "its tool name is a legacy alias name") {
 				continue
 			}
 			return nil, fmt.Errorf("mcpgen: generated name %q is also the %s legacy name of %q", name, row.Kind, row.Target)
 		case legacy && barePath(cmd.Path) != row.Target:
+			if skipPlugin(o, cmd, "its tool name is the legacy name of another command") {
+				continue
+			}
 			return nil, fmt.Errorf("mcpgen: merged row %s targets %q but the generated tool is %q", name, row.Target, cmd.Path)
 		}
 		if !legacy {
@@ -112,6 +119,9 @@ func Tools(o Options) ([]server.ServerTool, error) {
 		}
 		t, err := g.generated(cmd, name, row)
 		if err != nil {
+			if skipPlugin(o, cmd, err.Error()) {
+				continue
+			}
 			return nil, err
 		}
 		if err := add(name, cmd.Path, t); err != nil {
@@ -169,6 +179,7 @@ func toolName(path string) string { return cmdregistry.ToolName(path) }
 // merged legacy row of the same name.
 func (g *gen) generated(cmd *cmdregistry.Command, name string, row *Row) (server.ServerTool, error) {
 	in := invoke.ParamsSchemaIn(g.Registry, cmd)
+	cleanSchema(in)
 	if row != nil {
 		if err := addLegacyProps(in, row, cmd.Confirm != nil); err != nil {
 			return server.ServerTool{}, err
@@ -237,7 +248,7 @@ func (g *gen) aliasDescription(row *Row, cmd *cmdregistry.Command) string {
 }
 
 func sentence(s string) string {
-	s = strings.TrimSpace(s)
+	s = cleanText(s, maxSummaryRunes)
 	if s != "" && !strings.HasSuffix(s, ".") {
 		s += "."
 	}

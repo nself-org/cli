@@ -129,6 +129,9 @@ func LoadWithOptions(projectDir string, opts LoadOptions) (*Config, error) {
 
 	// 4. Parse os.Environ into Config struct.
 	cfg := parseEnvToConfig()
+	if err := validateFunctionsRuntime(cfg.Functions.Runtime); err != nil {
+		return nil, err
+	}
 	if err := validateImagePinning(); err != nil {
 		return nil, err
 	}

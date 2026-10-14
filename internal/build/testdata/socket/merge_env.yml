@@ -1,0 +1,9 @@
+# synthetic fixture: DOCKER_HOST arrives through an anchor and a merge key
+x-env: &sockenv
+  DOCKER_HOST: unix:///var/run/docker.sock
+services:
+  sockmergeenv:
+    image: example.invalid/sockmergeenv:1
+    environment:
+      <<: *sockenv
+      OTHER: "1"

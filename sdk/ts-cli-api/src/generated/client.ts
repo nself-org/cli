@@ -4,6 +4,26 @@ import type { CallOptions, Transport } from "../runtime/transport";
 import type * as T from "./types";
 
 export interface Operations {
+  /** Install a plugin or bundle (POST /v1/commands/add) */
+  add(request: T.AddRequest, options?: CallOptions): Promise<T.AddData>;
+  /** Manage the nSelf Admin dashboard (POST /v1/commands/admin) */
+  admin(request?: T.AdminRequest, options?: CallOptions): Promise<T.AdminData>;
+  /** Check Admin service liveness (POST /v1/commands/admin/health) */
+  adminHealth(request?: T.AdminHealthRequest, options?: CallOptions): Promise<T.AdminHealthData>;
+  /** Tail Admin container logs (POST /v1/commands/admin/logs) */
+  adminLogs(request?: T.AdminLogsRequest, options?: CallOptions): Promise<T.AdminLogsData>;
+  /** Manage multi-project admin configuration (POST /v1/commands/admin/projects) */
+  adminProjects(request?: T.AdminProjectsRequest, options?: CallOptions): Promise<T.AdminProjectsData>;
+  /** Add a project to the admin multi-project config (POST /v1/commands/admin/projects/add) */
+  adminProjectsAdd(request?: T.AdminProjectsAddRequest, options?: CallOptions): Promise<T.AdminProjectsAddData>;
+  /** List configured admin projects (POST /v1/commands/admin/projects/list) */
+  adminProjectsList(request?: T.AdminProjectsListRequest, options?: CallOptions): Promise<T.AdminProjectsListData>;
+  /** Remove a project from admin config (POST /v1/commands/admin/projects/remove) */
+  adminProjectsRemove(request: T.AdminProjectsRemoveRequest, options?: CallOptions): Promise<T.AdminProjectsRemoveData>;
+  /** Start the Admin service (POST /v1/commands/admin/start) */
+  adminStart(request?: T.AdminStartRequest, options?: CallOptions): Promise<T.AdminStartData>;
+  /** Stop the Admin container (POST /v1/commands/admin/stop) */
+  adminStop(request?: T.AdminStopRequest, options?: CallOptions): Promise<T.AdminStopData>;
   /** Backup operations: create, list, restore, verify, prune, config, status, init-key (POST /v1/commands/backup) */
   backup(request?: T.BackupRequest, options?: CallOptions): Promise<T.BackupData>;
   /** View backup configuration (POST /v1/commands/backup/config) */
@@ -48,6 +68,14 @@ export interface Operations {
   clean(request?: T.CleanRequest, options?: CallOptions): Promise<T.CleanData>;
   /** Manage project configuration (POST /v1/commands/config) */
   config(request?: T.ConfigRequest, options?: CallOptions): Promise<T.ConfigData>;
+  /** Manage and inspect nSelf plugin bundles (POST /v1/commands/config/bundles) */
+  configBundles(request?: T.ConfigBundlesRequest, options?: CallOptions): Promise<T.ConfigBundlesData>;
+  /** Show bundle details, plugins, and license status (POST /v1/commands/config/bundles/info) */
+  configBundlesInfo(request: T.ConfigBundlesInfoRequest, options?: CallOptions): Promise<T.ConfigBundlesInfoData>;
+  /** Install every plugin in a bundle (license-gated, atomic rollback on failure) (POST /v1/commands/config/bundles/install) */
+  configBundlesInstall(request: T.ConfigBundlesInstallRequest, options?: CallOptions): Promise<T.ConfigBundlesInstallData>;
+  /** List all available nSelf plugin bundles (POST /v1/commands/config/bundles/list) */
+  configBundlesList(request?: T.ConfigBundlesListRequest, options?: CallOptions): Promise<T.ConfigBundlesListData>;
   /** Multi-environment management: switch, list, diff, copy (POST /v1/commands/config/env) */
   configEnv(request?: T.ConfigEnvRequest, options?: CallOptions): Promise<T.ConfigEnvData>;
   /** Scaffold a new environment from an existing one (POST /v1/commands/config/env/copy) */
@@ -96,6 +124,38 @@ export interface Operations {
   configOauth(request?: T.ConfigOauthRequest, options?: CallOptions): Promise<T.ConfigOauthData>;
   /** Trigger immediate OAuth token refresh for a provider (POST /v1/commands/config/oauth/refresh) */
   configOauthRefresh(request: T.ConfigOauthRefreshRequest, options?: CallOptions): Promise<T.ConfigOauthRefreshData>;
+  /** Audit np_* table row counts and multi-tenant isolation compliance (POST /v1/commands/config/plugins/audit-tables) */
+  configPluginsAuditTables(request?: T.ConfigPluginsAuditTablesRequest, options?: CallOptions): Promise<T.ConfigPluginsAuditTablesData>;
+  /** Check installed plugins against the current CLI version (POST /v1/commands/config/plugins/compat-check) */
+  configPluginsCompatCheck(request?: T.ConfigPluginsCompatCheckRequest, options?: CallOptions): Promise<T.ConfigPluginsCompatCheckData>;
+  /** Show the authoritative plugin counts (free, pro, advertised) (POST /v1/commands/config/plugins/count) */
+  configPluginsCount(request?: T.ConfigPluginsCountRequest, options?: CallOptions): Promise<T.ConfigPluginsCountData>;
+  /** Disable a plugin (excluded from compose on next build) (POST /v1/commands/config/plugins/disable) */
+  configPluginsDisable(request: T.ConfigPluginsDisableRequest, options?: CallOptions): Promise<T.ConfigPluginsDisableData>;
+  /** Re-enable a previously disabled plugin (POST /v1/commands/config/plugins/enable) */
+  configPluginsEnable(request: T.ConfigPluginsEnableRequest, options?: CallOptions): Promise<T.ConfigPluginsEnableData>;
+  /** Show detailed plugin information (POST /v1/commands/config/plugins/info) */
+  configPluginsInfo(request: T.ConfigPluginsInfoRequest, options?: CallOptions): Promise<T.ConfigPluginsInfoData>;
+  /** List installed plugins with version, tier, and status (POST /v1/commands/config/plugins/inventory) */
+  configPluginsInventory(request?: T.ConfigPluginsInventoryRequest, options?: CallOptions): Promise<T.ConfigPluginsInventoryData>;
+  /** List available and installed plugins (POST /v1/commands/config/plugins/list) */
+  configPluginsList(request?: T.ConfigPluginsListRequest, options?: CallOptions): Promise<T.ConfigPluginsListData>;
+  /** List installed plugins with a newer version available (POST /v1/commands/config/plugins/outdated) */
+  configPluginsOutdated(request?: T.ConfigPluginsOutdatedRequest, options?: CallOptions): Promise<T.ConfigPluginsOutdatedData>;
+  /** Force refresh the registry cache (POST /v1/commands/config/plugins/refresh) */
+  configPluginsRefresh(request?: T.ConfigPluginsRefreshRequest, options?: CallOptions): Promise<T.ConfigPluginsRefreshData>;
+  /** Search plugins by name, description, or tag (POST /v1/commands/config/plugins/search) */
+  configPluginsSearch(request: T.ConfigPluginsSearchRequest, options?: CallOptions): Promise<T.ConfigPluginsSearchData>;
+  /** Start a plugin service (POST /v1/commands/config/plugins/start) */
+  configPluginsStart(request: T.ConfigPluginsStartRequest, options?: CallOptions): Promise<T.ConfigPluginsStartData>;
+  /** Show plugin status (POST /v1/commands/config/plugins/status) */
+  configPluginsStatus(request?: T.ConfigPluginsStatusRequest, options?: CallOptions): Promise<T.ConfigPluginsStatusData>;
+  /** Stop a plugin service (POST /v1/commands/config/plugins/stop) */
+  configPluginsStop(request: T.ConfigPluginsStopRequest, options?: CallOptions): Promise<T.ConfigPluginsStopData>;
+  /** Update a specific plugin or all plugins (POST /v1/commands/config/plugins/update) */
+  configPluginsUpdate(request?: T.ConfigPluginsUpdateRequest, options?: CallOptions): Promise<T.ConfigPluginsUpdateData>;
+  /** Check for available plugin updates (POST /v1/commands/config/plugins/updates) */
+  configPluginsUpdates(request?: T.ConfigPluginsUpdatesRequest, options?: CallOptions): Promise<T.ConfigPluginsUpdatesData>;
   /** Manage encrypted project secrets (age encryption) (POST /v1/commands/config/secrets) */
   configSecrets(request?: T.ConfigSecretsRequest, options?: CallOptions): Promise<T.ConfigSecretsData>;
   /** Report secrets that haven't been rotated in >90 days (POST /v1/commands/config/secrets/audit) */
@@ -124,6 +184,32 @@ export interface Operations {
   configSecretsSet(request: T.ConfigSecretsSetRequest, options?: CallOptions): Promise<T.ConfigSecretsSetData>;
   /** Verify that a named secret exists in the store (POST /v1/commands/config/secrets/verify) */
   configSecretsVerify(request: T.ConfigSecretsVerifyRequest, options?: CallOptions): Promise<T.ConfigSecretsVerifyData>;
+  /** Manage optional services (POST /v1/commands/config/services) */
+  configServices(request?: T.ConfigServicesRequest, options?: CallOptions): Promise<T.ConfigServicesData>;
+  /** Scaffold a custom service (CS_N slot) into the current project (POST /v1/commands/config/services/add) */
+  configServicesAdd(request: T.ConfigServicesAddRequest, options?: CallOptions): Promise<T.ConfigServicesAddData>;
+  /** Configure service settings (e.g. email provider presets) (POST /v1/commands/config/services/configure) */
+  configServicesConfigure(request: T.ConfigServicesConfigureRequest, options?: CallOptions): Promise<T.ConfigServicesConfigureData>;
+  /** Disable an optional service (POST /v1/commands/config/services/disable) */
+  configServicesDisable(request: T.ConfigServicesDisableRequest, options?: CallOptions): Promise<T.ConfigServicesDisableData>;
+  /** Enable an optional service (POST /v1/commands/config/services/enable) */
+  configServicesEnable(request: T.ConfigServicesEnableRequest, options?: CallOptions): Promise<T.ConfigServicesEnableData>;
+  /** List all optional services with enabled/disabled status (POST /v1/commands/config/services/list) */
+  configServicesList(request?: T.ConfigServicesListRequest, options?: CallOptions): Promise<T.ConfigServicesListData>;
+  /** Show status of all nSelf stack services (POST /v1/commands/config/services/ps) */
+  configServicesPs(request?: T.ConfigServicesPsRequest, options?: CallOptions): Promise<T.ConfigServicesPsData>;
+  /** Restart a named nSelf service (POST /v1/commands/config/services/restart) */
+  configServicesRestart(request: T.ConfigServicesRestartRequest, options?: CallOptions): Promise<T.ConfigServicesRestartData>;
+  /** Set the replica count for a named service (POST /v1/commands/config/services/scale) */
+  configServicesScale(request: T.ConfigServicesScaleRequest, options?: CallOptions): Promise<T.ConfigServicesScaleData>;
+  /** Start a named nSelf service (POST /v1/commands/config/services/start) */
+  configServicesStart(request: T.ConfigServicesStartRequest, options?: CallOptions): Promise<T.ConfigServicesStartData>;
+  /** Stop a named nSelf service (container preserved) (POST /v1/commands/config/services/stop) */
+  configServicesStop(request: T.ConfigServicesStopRequest, options?: CallOptions): Promise<T.ConfigServicesStopData>;
+  /** Pull the latest image for a service and restart it (POST /v1/commands/config/services/update) */
+  configServicesUpdate(request: T.ConfigServicesUpdateRequest, options?: CallOptions): Promise<T.ConfigServicesUpdateData>;
+  /** Pin a service to a specific image version (POST /v1/commands/config/services/upgrade) */
+  configServicesUpgrade(request: T.ConfigServicesUpgradeRequest, options?: CallOptions): Promise<T.ConfigServicesUpgradeData>;
   /** Update a configuration value (writes to .env) (POST /v1/commands/config/set) */
   configSet(request: T.ConfigSetRequest, options?: CallOptions): Promise<T.ConfigSetData>;
   /** Show all config key=value pairs (masked by default) (POST /v1/commands/config/show) */
@@ -374,6 +460,8 @@ export interface Operations {
   helpCapabilities(request: T.HelpCapabilitiesRequest, options?: CallOptions): Promise<T.HelpCapabilitiesData>;
   /** Browse help topics (quickstart, plugins, license, envs, doctor, errors) (POST /v1/commands/help/topics) */
   helpTopics(request?: T.HelpTopicsRequest, options?: CallOptions): Promise<T.HelpTopicsData>;
+  /** Initialize a new nSelf project (POST /v1/commands/init) */
+  init(request?: T.InitRequest, options?: CallOptions): Promise<T.InitData>;
   /** Browse and publish full-stack app templates (POST /v1/commands/init/template) */
   initTemplate(request?: T.InitTemplateRequest, options?: CallOptions): Promise<T.InitTemplateData>;
   /** Show detail for a single template (POST /v1/commands/init/template/info) */
@@ -388,8 +476,14 @@ export interface Operations {
   logs(request?: T.LogsRequest, options?: CallOptions): Promise<T.LogsData>;
   /** Print or write the MCP client config and AGENTS.md for this project (POST /v1/commands/mcp/setup) */
   mcpSetup(request?: T.McpSetupRequest, options?: CallOptions): Promise<T.McpSetupData>;
+  /** Remove an installed plugin or bundle (POST /v1/commands/remove) */
+  remove(request: T.RemoveRequest, options?: CallOptions): Promise<T.RemoveData>;
   /** Stop containers, remove all data volumes, and clean generated files (POST /v1/commands/reset) */
   reset(request?: T.ResetRequest, options?: CallOptions): Promise<T.ResetData>;
+  /** Smart restart with config change detection (POST /v1/commands/restart) */
+  restart(request?: T.RestartRequest, options?: CallOptions): Promise<T.RestartData>;
+  /** Boot your nSelf stack (POST /v1/commands/start) */
+  start(request?: T.StartRequest, options?: CallOptions): Promise<T.StartData>;
   /** Show health status of all services (POST /v1/commands/status) */
   status(request?: T.StatusRequest, options?: CallOptions): Promise<T.StatusData>;
   /** Health check management with continuous monitoring (POST /v1/commands/status/health) */
@@ -406,6 +500,8 @@ export interface Operations {
   statusHealthService(request: T.StatusHealthServiceRequest, options?: CallOptions): Promise<T.StatusHealthServiceData>;
   /** Display all service URLs with route conflict detection (POST /v1/commands/status/urls) */
   statusUrls(request?: T.StatusUrlsRequest, options?: CallOptions): Promise<T.StatusUrlsData>;
+  /** Gracefully shut down all services or specific services (POST /v1/commands/stop) */
+  stop(request?: T.StopRequest, options?: CallOptions): Promise<T.StopData>;
   /** Update the nSelf CLI and admin UI (POST /v1/commands/update) */
   update(request?: T.UpdateRequest, options?: CallOptions): Promise<T.UpdateData>;
   /** Refresh Docker image digests from registries (POST /v1/commands/update/images) */
@@ -430,6 +526,16 @@ export interface Operations {
 
 export function createOperations(transport: Transport): Operations {
   return {
+    add: (request, options) => transport.call<T.AddData>("/v1/commands/add", request, options),
+    admin: (request, options) => transport.call<T.AdminData>("/v1/commands/admin", request, options),
+    adminHealth: (request, options) => transport.call<T.AdminHealthData>("/v1/commands/admin/health", request, options),
+    adminLogs: (request, options) => transport.call<T.AdminLogsData>("/v1/commands/admin/logs", request, options),
+    adminProjects: (request, options) => transport.call<T.AdminProjectsData>("/v1/commands/admin/projects", request, options),
+    adminProjectsAdd: (request, options) => transport.call<T.AdminProjectsAddData>("/v1/commands/admin/projects/add", request, options),
+    adminProjectsList: (request, options) => transport.call<T.AdminProjectsListData>("/v1/commands/admin/projects/list", request, options),
+    adminProjectsRemove: (request, options) => transport.call<T.AdminProjectsRemoveData>("/v1/commands/admin/projects/remove", request, options),
+    adminStart: (request, options) => transport.call<T.AdminStartData>("/v1/commands/admin/start", request, options),
+    adminStop: (request, options) => transport.call<T.AdminStopData>("/v1/commands/admin/stop", request, options),
     backup: (request, options) => transport.call<T.BackupData>("/v1/commands/backup", request, options),
     backupConfig: (request, options) => transport.call<T.BackupConfigData>("/v1/commands/backup/config", request, options),
     backupCreate: (request, options) => transport.call<T.BackupCreateData>("/v1/commands/backup/create", request, options),
@@ -452,6 +558,10 @@ export function createOperations(transport: Transport): Operations {
     build: (request, options) => transport.call<T.BuildData>("/v1/commands/build", request, options),
     clean: (request, options) => transport.call<T.CleanData>("/v1/commands/clean", request, options),
     config: (request, options) => transport.call<T.ConfigData>("/v1/commands/config", request, options),
+    configBundles: (request, options) => transport.call<T.ConfigBundlesData>("/v1/commands/config/bundles", request, options),
+    configBundlesInfo: (request, options) => transport.call<T.ConfigBundlesInfoData>("/v1/commands/config/bundles/info", request, options),
+    configBundlesInstall: (request, options) => transport.call<T.ConfigBundlesInstallData>("/v1/commands/config/bundles/install", request, options),
+    configBundlesList: (request, options) => transport.call<T.ConfigBundlesListData>("/v1/commands/config/bundles/list", request, options),
     configEnv: (request, options) => transport.call<T.ConfigEnvData>("/v1/commands/config/env", request, options),
     configEnvCopy: (request, options) => transport.call<T.ConfigEnvCopyData>("/v1/commands/config/env/copy", request, options),
     configEnvDiff: (request, options) => transport.call<T.ConfigEnvDiffData>("/v1/commands/config/env/diff", request, options),
@@ -476,6 +586,22 @@ export function createOperations(transport: Transport): Operations {
     configList: (request, options) => transport.call<T.ConfigListData>("/v1/commands/config/list", request, options),
     configOauth: (request, options) => transport.call<T.ConfigOauthData>("/v1/commands/config/oauth", request, options),
     configOauthRefresh: (request, options) => transport.call<T.ConfigOauthRefreshData>("/v1/commands/config/oauth/refresh", request, options),
+    configPluginsAuditTables: (request, options) => transport.call<T.ConfigPluginsAuditTablesData>("/v1/commands/config/plugins/audit-tables", request, options),
+    configPluginsCompatCheck: (request, options) => transport.call<T.ConfigPluginsCompatCheckData>("/v1/commands/config/plugins/compat-check", request, options),
+    configPluginsCount: (request, options) => transport.call<T.ConfigPluginsCountData>("/v1/commands/config/plugins/count", request, options),
+    configPluginsDisable: (request, options) => transport.call<T.ConfigPluginsDisableData>("/v1/commands/config/plugins/disable", request, options),
+    configPluginsEnable: (request, options) => transport.call<T.ConfigPluginsEnableData>("/v1/commands/config/plugins/enable", request, options),
+    configPluginsInfo: (request, options) => transport.call<T.ConfigPluginsInfoData>("/v1/commands/config/plugins/info", request, options),
+    configPluginsInventory: (request, options) => transport.call<T.ConfigPluginsInventoryData>("/v1/commands/config/plugins/inventory", request, options),
+    configPluginsList: (request, options) => transport.call<T.ConfigPluginsListData>("/v1/commands/config/plugins/list", request, options),
+    configPluginsOutdated: (request, options) => transport.call<T.ConfigPluginsOutdatedData>("/v1/commands/config/plugins/outdated", request, options),
+    configPluginsRefresh: (request, options) => transport.call<T.ConfigPluginsRefreshData>("/v1/commands/config/plugins/refresh", request, options),
+    configPluginsSearch: (request, options) => transport.call<T.ConfigPluginsSearchData>("/v1/commands/config/plugins/search", request, options),
+    configPluginsStart: (request, options) => transport.call<T.ConfigPluginsStartData>("/v1/commands/config/plugins/start", request, options),
+    configPluginsStatus: (request, options) => transport.call<T.ConfigPluginsStatusData>("/v1/commands/config/plugins/status", request, options),
+    configPluginsStop: (request, options) => transport.call<T.ConfigPluginsStopData>("/v1/commands/config/plugins/stop", request, options),
+    configPluginsUpdate: (request, options) => transport.call<T.ConfigPluginsUpdateData>("/v1/commands/config/plugins/update", request, options),
+    configPluginsUpdates: (request, options) => transport.call<T.ConfigPluginsUpdatesData>("/v1/commands/config/plugins/updates", request, options),
     configSecrets: (request, options) => transport.call<T.ConfigSecretsData>("/v1/commands/config/secrets", request, options),
     configSecretsAudit: (request, options) => transport.call<T.ConfigSecretsAuditData>("/v1/commands/config/secrets/audit", request, options),
     configSecretsInit: (request, options) => transport.call<T.ConfigSecretsInitData>("/v1/commands/config/secrets/init", request, options),
@@ -490,6 +616,19 @@ export function createOperations(transport: Transport): Operations {
     configSecretsSchedule: (request, options) => transport.call<T.ConfigSecretsScheduleData>("/v1/commands/config/secrets/schedule", request, options),
     configSecretsSet: (request, options) => transport.call<T.ConfigSecretsSetData>("/v1/commands/config/secrets/set", request, options),
     configSecretsVerify: (request, options) => transport.call<T.ConfigSecretsVerifyData>("/v1/commands/config/secrets/verify", request, options),
+    configServices: (request, options) => transport.call<T.ConfigServicesData>("/v1/commands/config/services", request, options),
+    configServicesAdd: (request, options) => transport.call<T.ConfigServicesAddData>("/v1/commands/config/services/add", request, options),
+    configServicesConfigure: (request, options) => transport.call<T.ConfigServicesConfigureData>("/v1/commands/config/services/configure", request, options),
+    configServicesDisable: (request, options) => transport.call<T.ConfigServicesDisableData>("/v1/commands/config/services/disable", request, options),
+    configServicesEnable: (request, options) => transport.call<T.ConfigServicesEnableData>("/v1/commands/config/services/enable", request, options),
+    configServicesList: (request, options) => transport.call<T.ConfigServicesListData>("/v1/commands/config/services/list", request, options),
+    configServicesPs: (request, options) => transport.call<T.ConfigServicesPsData>("/v1/commands/config/services/ps", request, options),
+    configServicesRestart: (request, options) => transport.call<T.ConfigServicesRestartData>("/v1/commands/config/services/restart", request, options),
+    configServicesScale: (request, options) => transport.call<T.ConfigServicesScaleData>("/v1/commands/config/services/scale", request, options),
+    configServicesStart: (request, options) => transport.call<T.ConfigServicesStartData>("/v1/commands/config/services/start", request, options),
+    configServicesStop: (request, options) => transport.call<T.ConfigServicesStopData>("/v1/commands/config/services/stop", request, options),
+    configServicesUpdate: (request, options) => transport.call<T.ConfigServicesUpdateData>("/v1/commands/config/services/update", request, options),
+    configServicesUpgrade: (request, options) => transport.call<T.ConfigServicesUpgradeData>("/v1/commands/config/services/upgrade", request, options),
     configSet: (request, options) => transport.call<T.ConfigSetData>("/v1/commands/config/set", request, options),
     configShow: (request, options) => transport.call<T.ConfigShowData>("/v1/commands/config/show", request, options),
     configTelemetry: (request, options) => transport.call<T.ConfigTelemetryData>("/v1/commands/config/telemetry", request, options),
@@ -615,6 +754,7 @@ export function createOperations(transport: Transport): Operations {
     doctorSecurityStatus: (request, options) => transport.call<T.DoctorSecurityStatusData>("/v1/commands/doctor/security/status", request, options),
     helpCapabilities: (request, options) => transport.call<T.HelpCapabilitiesData>("/v1/commands/help/capabilities", request, options),
     helpTopics: (request, options) => transport.call<T.HelpTopicsData>("/v1/commands/help/topics", request, options),
+    init: (request, options) => transport.call<T.InitData>("/v1/commands/init", request, options),
     initTemplate: (request, options) => transport.call<T.InitTemplateData>("/v1/commands/init/template", request, options),
     initTemplateInfo: (request, options) => transport.call<T.InitTemplateInfoData>("/v1/commands/init/template/info", request, options),
     initTemplateList: (request, options) => transport.call<T.InitTemplateListData>("/v1/commands/init/template/list", request, options),
@@ -622,7 +762,10 @@ export function createOperations(transport: Transport): Operations {
     initTemplateUpdate: (request, options) => transport.call<T.InitTemplateUpdateData>("/v1/commands/init/template/update", request, options),
     logs: (request, options) => transport.call<T.LogsData>("/v1/commands/logs", request, options),
     mcpSetup: (request, options) => transport.call<T.McpSetupData>("/v1/commands/mcp/setup", request, options),
+    remove: (request, options) => transport.call<T.RemoveData>("/v1/commands/remove", request, options),
     reset: (request, options) => transport.call<T.ResetData>("/v1/commands/reset", request, options),
+    restart: (request, options) => transport.call<T.RestartData>("/v1/commands/restart", request, options),
+    start: (request, options) => transport.call<T.StartData>("/v1/commands/start", request, options),
     status: (request, options) => transport.call<T.StatusData>("/v1/commands/status", request, options),
     statusHealth: (request, options) => transport.call<T.StatusHealthData>("/v1/commands/status/health", request, options),
     statusHealthCheck: (request, options) => transport.call<T.StatusHealthCheckData>("/v1/commands/status/health/check", request, options),
@@ -631,6 +774,7 @@ export function createOperations(transport: Transport): Operations {
     statusHealthHistory: (request, options) => transport.call<T.StatusHealthHistoryData>("/v1/commands/status/health/history", request, options),
     statusHealthService: (request, options) => transport.call<T.StatusHealthServiceData>("/v1/commands/status/health/service", request, options),
     statusUrls: (request, options) => transport.call<T.StatusUrlsData>("/v1/commands/status/urls", request, options),
+    stop: (request, options) => transport.call<T.StopData>("/v1/commands/stop", request, options),
     update: (request, options) => transport.call<T.UpdateData>("/v1/commands/update", request, options),
     updateImages: (request, options) => transport.call<T.UpdateImagesData>("/v1/commands/update/images", request, options),
     updateProjectDetect: (request, options) => transport.call<T.UpdateProjectDetectData>("/v1/commands/update/project/detect", request, options),

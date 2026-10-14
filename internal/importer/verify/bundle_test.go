@@ -60,3 +60,18 @@ func TestIdentityKeepsNullApart(t *testing.T) {
 		t.Fatalf("want exactly the empty-vs-NULL user to mismatch: %+v", got)
 	}
 }
+
+func TestCompareStateFlagsMissingComputedField(t *testing.T) {
+	cf := []any{map[string]any{"name": "word_count"}}
+	want := Metadata{"public.posts": {"computed_fields": cf}}
+	for name, got := range map[string]map[string]any{"missing": {}, "present": {"computed_fields": cf}} {
+		mm := CompareState(State{Metadata: Metadata{"public.posts": got}}, portable.Manifest{}, nil, want)
+		found := false
+		for _, m := range mm {
+			found = found || (m.Kind == "computed_field" && m.ID == "public.posts")
+		}
+		if (name == "missing") != found {
+			t.Errorf("%s: mismatches %+v", name, mm)
+		}
+	}
+}

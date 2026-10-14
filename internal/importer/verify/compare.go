@@ -115,6 +115,7 @@ func CompareState(state State, m portable.Manifest, users []User, metadata Metad
 		}{
 			{"permission", []string{"insert_permissions", "select_permissions", "update_permissions", "delete_permissions"}},
 			{"relationship", []string{"object_relationships", "array_relationships"}},
+			{"computed_field", []string{"computed_fields"}},
 		} {
 			differs := false
 			for _, k := range fields.keys {

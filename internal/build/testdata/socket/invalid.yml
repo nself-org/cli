@@ -1,0 +1,2 @@
+# synthetic fixture: not parseable as a compose document
+services: [unclosed

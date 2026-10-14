@@ -1,0 +1,8 @@
+# synthetic fixture: long-syntax bind whose source has no ./ (a symlink the test plants)
+services:
+  sockbare:
+    image: example.invalid/sockbare:1
+    volumes:
+      - type: bind
+        source: run
+        target: /h

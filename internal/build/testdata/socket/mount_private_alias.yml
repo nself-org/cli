@@ -1,0 +1,6 @@
+# synthetic fixture: socket through the /private alias
+services:
+  sockprivate:
+    image: example.invalid/sockprivate:1
+    volumes:
+      - /private/var/run/docker.sock:/s

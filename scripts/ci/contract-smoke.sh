@@ -150,19 +150,20 @@ check "NSELF_JSON_LEGACY=1 doctor --json equals the envelope data minus state" \
 
 # ---- acceptance 4: --json refusal (E402) ----
 for mode in v14 v15; do
-  run "$mode" -- restart --json
-  check "$mode restart --json: exit 1 with [E402] on stderr" rc_err 1 "[E402]"
+  # dev is a json-none stream (restart answered E402 here until P7-SURF-10)
+  run "$mode" -- dev --json
+  check "$mode dev --json: exit 1 with [E402] on stderr" rc_err 1 "[E402]"
   if [ "$mode" = v15 ]; then
-    check "$mode restart --json: error envelope on stdout" jq -e '.error.code == "E402"' "$OUT"
+    check "$mode dev --json: error envelope on stdout" jq -e '.error.code == "E402"' "$OUT"
   else
-    check "$mode restart --json: nothing on stdout" test ! -s "$OUT"
+    check "$mode dev --json: nothing on stdout" test ! -s "$OUT"
   fi
 done
 run v14 -- config validate --json
 if has_err "[E402]"; then fail "v14 config validate --json: behaves as before (no E402)" "stderr mentions E402"
 else pass "v14 config validate --json: behaves as before (no E402)"; fi
 # config validate is an envelope row since P7-SURF-12 (was json none, refused
-# with E402); restart above keeps the E402 refusal covered.
+# with E402); dev above keeps the E402 refusal covered.
 run v15 -- config validate --json
 check "v15 config validate --json: one v1 envelope, no E402 (P7-SURF-12)" envelope "config validate"
 if has_err "[E402]"; then fail "v15 config validate --json: no E402" "stderr mentions E402"

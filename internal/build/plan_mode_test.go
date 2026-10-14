@@ -36,6 +36,7 @@ import (
 
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/nginx"
+	"github.com/nself-org/cli/internal/sysexec"
 )
 
 const goldenDir = "testdata/plan-mode"
@@ -719,6 +720,10 @@ func planSeeded(t *testing.T, f *planFixture, r io.Reader) *BuildResult {
 // pre-seeded secret, the same seeded reader gives byte-identical plan and apply
 // trees, and two seeded plans agree, including the secret-bearing files.
 func TestRandSeededPlanEqualsApply(t *testing.T) {
+	// The write Build of local-tls reaches mkcert; a fake runner keeps the test off
+	// the host's privileged tools on a machine that has mkcert installed
+	// (sysexec's guard panics otherwise).
+	t.Cleanup(sysexec.Set(&sysexec.Fake{}))
 	for _, name := range []string{"dev-minimal", "local-tls"} {
 		t.Run(name, func(t *testing.T) {
 			f := freshProject(t, name)

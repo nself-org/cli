@@ -1,0 +1,38 @@
+# synthetic fixture: the shape of the shipped forgejo fragment (fake values): named data,
+# a named runner volume, and the runner's own direct socket bind
+services:
+  forgejo:
+    image: example.invalid/forgejo:9
+    environment:
+      USER_UID: "1000"
+      GITEA__server__DOMAIN: ${FORGEJO_DOMAIN:-localhost}
+    ports:
+      - "127.0.0.1:${FORGEJO_HTTP_PORT:-3844}:3000"
+    volumes:
+      - forgejo_data:/data
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - forgejo_runner_net
+  forgejo-init:
+    image: example.invalid/forgejo:9
+    environment:
+      FAKE_ADMIN_PASSWORD: ${FAKE_ADMIN_PASSWORD:-synthetic}
+    volumes:
+      - forgejo_data:/data
+      - forgejo_runner_config:/runner-config
+      - ./forgejo-bootstrap.sh:/forgejo-bootstrap.sh:ro
+  forgejo-runner:
+    image: example.invalid/runner:6
+    volumes:
+      - forgejo_runner_config:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./runner-entrypoint.sh:/runner-entrypoint.sh:ro
+volumes:
+  forgejo_data:
+    name: ${COMPOSE_PROJECT_NAME:-nself}_forgejo_data
+  forgejo_runner_config:
+    name: ${COMPOSE_PROJECT_NAME:-nself}_forgejo_runner_config
+networks:
+  forgejo_runner_net:
+    name: ${COMPOSE_PROJECT_NAME:-nself}_forgejo_runner_net
+    driver: bridge

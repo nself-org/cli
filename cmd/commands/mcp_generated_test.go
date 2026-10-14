@@ -368,13 +368,10 @@ func TestMCPResourcesV15(t *testing.T) {
 		t.Error("nself://plugins/catalog is not the cached catalogue")
 	}
 	// The legacy URIs return their command's data (the stub echoes argv) when the
-	// command is exposed; nself://services keeps its hand handler until
-	// `config services list` has an envelope.
-	if body := readURI(t, sess, "nself://services"); !strings.Contains(body, "postgres") {
-		t.Errorf("nself://services lost its hand handler: %.200s", body)
-	}
+	// command is exposed.
 	for uri, path := range map[string]string{"nself://config": "config show",
-		"nself://env": "config env explain", "nself://urls": "status urls"} {
+		"nself://env": "config env explain", "nself://urls": "status urls",
+		"nself://services": "config services list"} {
 		var data struct{ Argv []string }
 		body := readURI(t, sess, uri)
 		if err := json.Unmarshal([]byte(body), &data); err != nil {

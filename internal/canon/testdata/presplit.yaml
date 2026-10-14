@@ -31,17 +31,17 @@ commands:
   # cmd/commands/admin.go:126 RunE path changes no persistent state (prints/reads only)
   admin: {canon: pending, side_effect: read}
   # cmd/commands/admin_connect.go:49 opens an SSH tunnel and bootstraps the admin session on the remote host
-  admin connect: {side_effect: remote, output: stream}
+  admin connect: {side_effect: remote, output: interactive}
   # cmd/commands/admin.go:245 RunE path changes no persistent state (prints/reads only)
   admin health: {side_effect: read}
-  admin logs: {side_effect: read, output: stream}
+  admin logs: {side_effect: read, flags: {follow: {output: stream}}}
   # cmd/commands/admin_projects.go:20 RunE path changes no persistent state (prints/reads only)
   admin projects: {side_effect: read}
   admin projects add: {side_effect: write}
   admin projects list: {side_effect: read, json: legacy}
   # cmd/commands/admin_projects.go:97 removes one entry from the local admin project config; `admin projects add` restores it (write, not destructive)
   admin projects remove: {side_effect: write}
-  admin start: {side_effect: write}
+  admin start: {side_effect: write, flags: {expose-network: {cli_only: true}}}
   admin stop: {side_effect: write}
   # cmd/commands/backup_ops.go:23 RunE path changes no persistent state (prints/reads only)
   backup: {canon: core, side_effect: read}
@@ -288,7 +288,7 @@ commands:
   help-topics: {canon: pending, side_effect: read}
   init: {canon: core, side_effect: write}
   # cmd/commands/install.go:93 plugin installs may register a free account and send install telemetry (plugin_install.go:139,172)
-  install: {canon: pending, side_effect: remote}
+  install: {canon: pending, side_effect: remote, confirm: {flags: [yes]}}
   # cmd/commands/license.go:32 RunE path changes no persistent state (prints/reads only)
   license: {canon: core, side_effect: read}
   license add: {side_effect: write}

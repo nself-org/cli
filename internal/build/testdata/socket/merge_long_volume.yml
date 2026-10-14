@@ -1,0 +1,10 @@
+# synthetic fixture: a long-syntax bind assembled through a merge key
+x-mount: &sockmount
+  type: bind
+  source: /var/run/docker.sock
+services:
+  sockmergevol:
+    image: example.invalid/sockmergevol:1
+    volumes:
+      - <<: *sockmount
+        target: /sock

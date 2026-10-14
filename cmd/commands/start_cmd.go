@@ -3,12 +3,21 @@ package commands
 // start_cmd.go — cobra command registration for `nself start`.
 // Purpose: declares startCmd (flags, usage text) and registers it on
 //          RootCmd. Split out of start.go (T-P6-E2-W1-S1-T3) for 300-line
-//          compliance.
+//          compliance. Also holds runStart, the `start --json` wrapper around
+//          runStartFlow (start.go), and the StartResult assembly (P7-SURF-10).
 // Inputs:  none (invoked once at package init via init()).
 // Outputs: none — side effect is RootCmd.AddCommand(startCmd).
-// Constraints: pure move, same flags/usage text/defaults, no behavior change.
+// Constraints: same flags/usage text/defaults; human output unchanged.
 
-import "github.com/spf13/cobra"
+import (
+	"context"
+	"strings"
+	"time"
+
+	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/health"
+	"github.com/spf13/cobra"
+)
 
 var startCmd = &cobra.Command{
 	Use:     "start",
@@ -33,6 +42,20 @@ Executes the startup sequence:
 	// P7-LIVE-09: compare the stack with nself.lock.yaml before anything runs.
 	PreRunE: startLockPreRun,
 	RunE:    runStart,
+}
+
+// runStart boots the stack (runStartFlow); in JSON mode it ends with the
+// lifecycle result (the last line of a json-stream under --watch).
+func runStart(cmd *cobra.Command, args []string) error {
+	began := time.Now()
+	var out startOutcome
+	if err := runStartFlow(cmd, args, &out); err != nil {
+		return err
+	}
+	if !lifecycleJSON(cmd) {
+		return nil
+	}
+	return emitLifecycle(cmd, "start", startResult(cmd, out, time.Since(began).Milliseconds()))
 }
 
 func init() {
@@ -61,4 +84,60 @@ Overrides NSELF_PROFILE env var. Has no effect when --skip-build is set.`)
 
 	RootCmd.AddCommand(startCmd)
 
+}
+
+// startOutcome is what a finished `start` hands to its result: the project and
+// the last health report of the run (nil when health checks were skipped).
+type startOutcome struct {
+	cfg    *config.Config
+	dir    string
+	report *health.HealthReport
+}
+
+// startResult builds the StartResult of a finished start. Without a report from
+// the run (health checks skipped, CI gate) it asks the health checker once.
+func startResult(cmd *cobra.Command, out startOutcome, elapsedMS int64) StartResult {
+	res := StartResult{Services: []StartService{}, URLs: []string{}, DurationMS: elapsedMS}
+	if out.cfg == nil {
+		return res
+	}
+	report := out.report
+	if report == nil {
+		report, _ = health.RunAllChecks(commandContext(cmd), out.cfg, out.dir)
+	}
+	if report != nil {
+		for _, r := range report.Results {
+			status, healthState := serviceState(r.Status)
+			res.Services = append(res.Services, StartService{Name: r.Service, Status: status, Health: healthState})
+		}
+	}
+	for _, line := range stackURLs(out.cfg) {
+		if f := strings.Fields(line); len(f) > 0 && strings.Contains(f[len(f)-1], "://") {
+			res.URLs = append(res.URLs, f[len(f)-1])
+		}
+	}
+	return res
+}
+
+// commandContext is the command's context, or Background for a command that
+// was not run through Execute.
+func commandContext(cmd *cobra.Command) context.Context {
+	if ctx := cmd.Context(); ctx != nil {
+		return ctx
+	}
+	return context.Background()
+}
+
+// serviceState splits a health.HealthResult status into the container state and
+// the healthcheck result. "running" is a container without a healthcheck.
+func serviceState(raw string) (status, healthState string) {
+	switch raw {
+	case "healthy", "unhealthy", "starting":
+		return "running", raw
+	case "running":
+		return "running", "none"
+	case "not_found":
+		return "missing", "none"
+	}
+	return "unknown", "none"
 }

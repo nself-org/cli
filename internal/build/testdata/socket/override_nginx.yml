@@ -1,0 +1,5 @@
+# synthetic fixture: docker-compose.override.yml adds the socket to nginx
+services:
+  nginx:
+    volumes:
+      - /var/run/docker.sock:/s

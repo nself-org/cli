@@ -105,7 +105,7 @@ func TestTemplateSecrets_NoLiteralSecretsInGeneratedCompose(t *testing.T) {
 		"MINIO_ROOT_USER: ${MINIO_ROOT_USER}",
 		"MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}",
 		"AUTH_JWT_SECRET: ${HASURA_JWT_KEY}",
-		":${POSTGRES_PASSWORD}@", // DATABASE_URL credential position
+		":${POSTGRES_PASSWORD_URLENC:-${POSTGRES_PASSWORD}}@", // DATABASE_URL credential position (D-0334)
 	} {
 		if !strings.Contains(doc, ref) {
 			t.Errorf("expected templated reference %q in generated compose", ref)

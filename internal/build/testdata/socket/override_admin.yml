@@ -1,0 +1,5 @@
+# synthetic fixture: docker-compose.override.yml gives a core service the socket
+services:
+  nself-admin:
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro

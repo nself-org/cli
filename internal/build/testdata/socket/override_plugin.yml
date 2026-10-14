@@ -1,0 +1,5 @@
+# synthetic fixture: docker-compose.override.yml adds the socket to a plugin service
+services:
+  sockclean:
+    volumes:
+      - /var/run/docker.sock:/s

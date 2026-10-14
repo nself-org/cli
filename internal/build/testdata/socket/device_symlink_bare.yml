@@ -1,0 +1,13 @@
+# synthetic fixture: named volume device without ./ (a symlink the test plants)
+services:
+  sockbaredev:
+    image: example.invalid/sockbaredev:1
+    volumes:
+      - barevol:/d
+volumes:
+  barevol:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: run

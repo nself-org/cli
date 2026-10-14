@@ -213,8 +213,7 @@ type nginxNode struct {
 	block bool
 }
 
-// maxNginxDepth bounds nesting (deeper blocks are read flat: no stack overflow).
-const maxNginxDepth = 64
+const maxNginxDepth = 64 // Deeper nesting is read flat to bound stack usage.
 
 // parseNginx parses nginx config text (no include or variable expansion).
 func parseNginx(src string) []*nginxNode {
@@ -246,6 +245,9 @@ func parseNginx(src string) []*nginxNode {
 		case c == '"' || c == '\'':
 			inWord = true
 			for i++; i < len(src) && src[i] != c; i++ {
+				if src[i] == '\\' && i+1 < len(src) {
+					i++
+				}
 				cur.WriteByte(src[i])
 			}
 		case c == ';':

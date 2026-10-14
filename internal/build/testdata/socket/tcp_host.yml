@@ -1,0 +1,6 @@
+# synthetic fixture: a remote DOCKER_HOST is not a socket mount
+services:
+  socktcp:
+    image: example.invalid/socktcp:1
+    environment:
+      DOCKER_HOST: tcp://dockerproxy.invalid:2375

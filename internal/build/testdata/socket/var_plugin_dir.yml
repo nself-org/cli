@@ -1,0 +1,6 @@
+# synthetic fixture: a legitimate config mount under the plugin directory
+services:
+  sockvarok:
+    image: example.invalid/sockvarok:1
+    volumes:
+      - ${NSELF_PLUGIN_DIR}/sockvarok/config/app.yml:/etc/app.yml:ro

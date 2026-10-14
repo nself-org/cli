@@ -6,6 +6,7 @@ package invoke
 // every object level; it describes exactly what BuildArgv accepts.
 
 import (
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -113,8 +114,8 @@ func flagSchema(f cmdregistry.Flag) map[string]any {
 		}
 	case kindNumber:
 		s["type"] = "number"
-		if n, err := strconv.ParseFloat(f.Default, 64); err == nil {
-			s["default"] = n
+		if n, err := strconv.ParseFloat(f.Default, 64); err == nil && !math.IsNaN(n) && !math.IsInf(n, 0) {
+			s["default"] = n // NaN and Inf parse but cannot be encoded as JSON
 		}
 	case kindDuration:
 		s["type"] = "string"
@@ -129,6 +130,9 @@ func flagSchema(f cmdregistry.Flag) map[string]any {
 	default:
 		s["type"] = "string"
 		s["default"] = f.Default
+	}
+	if f.Secret {
+		delete(s, "default") // tools/list and the OpenAPI document are not a place for a secret's value
 	}
 	return s
 }

@@ -1,9 +1,11 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/nself-org/cli/internal/build"
@@ -42,7 +44,12 @@ func init() {
 	RootCmd.AddCommand(restartCmd)
 }
 
+// runRestart restarts the stack; a daemon-unreachable failure is E002 in v1.5 JSON.
 func runRestart(cmd *cobra.Command, args []string) error {
+	return lifecycleFailure(cmd, "restart", runRestartFlow(cmd, args))
+}
+
+func runRestartFlow(cmd *cobra.Command, args []string) error {
 	ui.CommandHeader("nself restart", "Smart restart with change detection")
 
 	smart, _ := cmd.Flags().GetBool("smart")
@@ -113,6 +120,11 @@ func runRestart(cmd *cobra.Command, args []string) error {
 	ui.Step(stepNum, totalSteps, "Determining restart strategy")
 	stepNum++
 
+	mode := restartMode(all, smart, services)
+	var before restartBefore
+	if lifecycleJSON(cmd) {
+		before = snapshotRestart(ctx, comp, workdir, cfg.ProjectName)
+	}
 	if all {
 		// Full mode: stop all, wait, start all
 		if err := restartFull(ctx, comp, workdir, cfg, verbose, skipBuild, stepNum, totalSteps); err != nil {
@@ -165,5 +177,93 @@ func runRestart(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	return nil
+	if !lifecycleJSON(cmd) {
+		return nil
+	}
+	return emitLifecycle(cmd, "restart", RestartResult{Restarted: restartedServices(ctx, comp, workdir, mode, services, before), Mode: mode})
+}
+
+// runningServices names the compose services of the containers `stop` found
+// running before it ran compose down; never nil.
+func runningServices(containers []docker.ContainerInfo) []string {
+	names := []string{}
+	for _, c := range containers {
+		name := c.Service
+		if name == "" {
+			name = c.Name
+		}
+		if !slices.Contains(names, name) {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+// restartMode names the strategy runRestart dispatches to, in its own order:
+// --all, then named services, then smart (the default), else quick.
+func restartMode(all, smart bool, services []string) string {
+	switch {
+	case all:
+		return "all"
+	case len(services) > 0:
+		return "services"
+	case smart:
+		return "smart"
+	}
+	return "quick"
+}
+
+// restartBefore is what a restart can see before its strategy runs: the
+// configured services that have a container in any state (compose restart
+// touches stopped ones too) and the compose file stamp, which a rebuild changes.
+type restartBefore struct {
+	existing []string
+	compose  string
+}
+
+func composeStamp(workdir string) string {
+	info, err := os.Stat(filepath.Join(workdir, "docker-compose.yml"))
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%d/%d", info.Size(), info.ModTime().UnixNano())
+}
+
+// snapshotRestart lists the services of the compose manifest that have a
+// container of this project, in manifest order; orphans and configured services
+// without a container are left out.
+func snapshotRestart(ctx context.Context, comp *docker.Compose, workdir, project string) restartBefore {
+	before := restartBefore{existing: []string{}, compose: composeStamp(workdir)}
+	containers, err := docker.RunningConfigHashes(ctx, project)
+	if err != nil {
+		return before
+	}
+	have := map[string]bool{}
+	for _, c := range containers {
+		have[c.Service] = true
+	}
+	configured, _ := comp.ComposeServiceNames(ctx, workdir)
+	for _, name := range configured {
+		if have[name] {
+			before.existing = append(before.existing, name)
+		}
+	}
+	return before
+}
+
+// restartedServices names what a finished restart restarted, never nil, by the
+// branch runRestart took (all wins over named services): the whole compose
+// manifest after --all (down, then up of everything) or after a smart rebuild
+// (the compose file changed, up applied it); the services asked for; else the
+// services that had a container, the only ones compose restart touches.
+func restartedServices(ctx context.Context, comp *docker.Compose, workdir, mode string, services []string, before restartBefore) []string {
+	if mode == "all" || (mode != "services" && composeStamp(workdir) != before.compose) {
+		if names, err := comp.ComposeServiceNames(ctx, workdir); err == nil && len(names) > 0 {
+			return names
+		}
+	}
+	if mode == "services" {
+		return services
+	}
+	return before.existing
 }

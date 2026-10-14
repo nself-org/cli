@@ -1,0 +1,10 @@
+# synthetic fixture: a fragment with no socket exposure
+services:
+  sockclean:
+    image: example.invalid/sockclean:1
+    ports:
+      - "3901:3901"
+    volumes:
+      - sockclean_data:/data
+volumes:
+  sockclean_data:
