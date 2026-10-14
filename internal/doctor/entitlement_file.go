@@ -2,7 +2,6 @@ package doctor
 
 import (
 	"context"
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,11 +10,12 @@ import (
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/license"
+	"github.com/nself-org/cli/internal/license/entitlement"
 )
 
 // Purpose: surface E126 before the server-signed entitlement grace runs out.
 // Inputs: project directory and the current time, with a bounded JWT read.
-// Outputs: no finding for an absent file; warning for invalid or stale files.
+// Outputs: no finding for free stacks; warning for missing, invalid or stale files.
 // Constraints: read-only, v1.5 only, never trust an unsigned exp or local mtime.
 // SPORT: contract:plugin.entitlement-token v1 (P7-PLUG-24).
 func EntitlementFileChecks(_ context.Context, projectDir string) []CheckResult {
@@ -31,10 +31,14 @@ func entitlementFileChecks(projectDir string, now time.Time) []CheckResult {
 	if !compat.V15() {
 		return nil
 	}
-	f, err := os.Open(filepath.Join(projectDir, ".nself", "state", "entitlement.jwt"))
-	if errors.Is(err, os.ErrNotExist) {
+	installed, err := entitlement.HasLicensedInstalled()
+	if err != nil {
+		return entitlementWarning("Cannot classify installed plugin manifests; run nself build to check them.")
+	}
+	if !installed {
 		return nil
 	}
+	f, err := os.Open(filepath.Join(projectDir, ".nself", "state", "entitlement.jwt"))
 	if err != nil {
 		return entitlementWarning("Cannot read the entitlement file; run nself build to restore it.")
 	}

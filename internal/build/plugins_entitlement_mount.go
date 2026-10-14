@@ -7,13 +7,12 @@ package build
 
 import (
 	"bytes"
-	"encoding/json"
-	"fmt"
-	"os"
+	"path"
 	"path/filepath"
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/license/entitlement"
 	"gopkg.in/yaml.v3"
 )
 
@@ -26,25 +25,7 @@ var skipEntitlementMount = func() bool { return false }
 // licensedPlugin reads only the manifest licence axis, never a plugin name.
 // Inputs: installed directory/name. Outputs: licence decision; malformed data is refused.
 func licensedPlugin(pluginDir, name string) (bool, error) {
-	data, err := os.ReadFile(filepath.Join(pluginDir, name, "plugin.json"))
-	if os.IsNotExist(err) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	var m struct {
-		License         string `json:"license"`
-		Tier            string `json:"tier"`
-		RequiresLicense bool   `json:"requiresLicense"`
-	}
-	if err := json.Unmarshal(data, &m); err != nil {
-		return false, err
-	}
-	if m.License == "free" {
-		return false, nil
-	}
-	return m.License == "licensed" || m.Tier == "licensed" || m.Tier == "pro" || m.Tier == "paid" || m.RequiresLicense, nil
+	return entitlement.IsLicensedPlugin(filepath.Join(pluginDir, name))
 }
 
 // normalizeComposeEntitlement enforces the fixed env and ro mount on every service.
@@ -64,7 +45,7 @@ func normalizeComposeEntitlement(content []byte, pluginDir, name string) ([]byte
 	}
 	var doc yaml.Node
 	if err := yaml.Unmarshal(content, &doc); err != nil {
-		return nil, err
+		return nil, errs.Wrap("E125", "invalid licensed compose fragment in "+filepath.Join(pluginDir, name), err)
 	}
 	if len(doc.Content) != 1 {
 		return nil, errs.New("E125", "invalid licensed compose fragment")
@@ -80,10 +61,10 @@ func normalizeComposeEntitlement(content []byte, pluginDir, name string) ([]byte
 	enc := yaml.NewEncoder(&out)
 	enc.SetIndent(2)
 	if err := enc.Encode(&doc); err != nil {
-		return nil, err
+		return nil, errs.Wrap("E125", "cannot encode licensed compose fragment", err)
 	}
 	if err := enc.Close(); err != nil {
-		return nil, err
+		return nil, errs.Wrap("E125", "cannot finish licensed compose fragment", err)
 	}
 	return out.Bytes(), nil
 }
@@ -101,6 +82,9 @@ func injectEntitlementServices(services *yaml.Node) error {
 		seen := map[string]bool{}
 		for j := 0; j < len(svc.Content); j += 2 {
 			key := svc.Content[j].Value
+			if key == "<<" || key == "extends" {
+				return errs.New("E125", "licensed service cannot use "+key+"; declare environment and volumes directly")
+			}
 			if seen[key] {
 				return errs.New("E125", "duplicate licensed service key")
 			}
@@ -131,15 +115,23 @@ func injectEntitlementVolume(svc *yaml.Node) error {
 	for _, v := range volumes.Content {
 		if v.Kind == yaml.ScalarNode {
 			parts := bytes.Split([]byte(v.Value), []byte(":"))
-			if len(parts) >= 2 && string(parts[1]) == entitlementContainerFile {
+			if len(parts) == 1 && path.Clean(string(parts[0])) == entitlementContainerFile {
+				continue
+			}
+			if len(parts) >= 2 && path.Clean(string(parts[1])) == entitlementContainerFile {
 				continue
 			}
 		} else if v.Kind == yaml.MappingNode {
-			if target := yamlGet(v, "target"); target != nil && target.Value == entitlementContainerFile {
-				continue
+			if target := yamlGet(v, "target"); target != nil {
+				if target.Kind != yaml.ScalarNode {
+					return errs.New("E125", "licensed volume target must be a literal path")
+				}
+				if path.Clean(target.Value) == entitlementContainerFile {
+					continue
+				}
 			}
 		} else {
-			return fmt.Errorf("unsupported licensed volume shape")
+			return errs.New("E125", "unsupported licensed volume shape")
 		}
 		kept = append(kept, v)
 	}

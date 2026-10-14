@@ -17,6 +17,7 @@ import (
 )
 
 func TestDoctorE126StaleEntitlement(t *testing.T) {
+	installDoctorPlugin(t, true)
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -64,8 +65,9 @@ func TestDoctorE126StaleEntitlement(t *testing.T) {
 
 func TestDoctorEntitlementMissingAndInvalid(t *testing.T) {
 	compattest.Set(t, true)
+	installDoctorPlugin(t, true)
 	dir := t.TempDir()
-	if got := entitlementFileChecks(dir, time.Now()); len(got) != 0 {
+	if got := entitlementFileChecks(dir, time.Now()); len(got) != 1 {
 		t.Fatalf("missing file: %+v", got)
 	}
 	path := filepath.Join(dir, ".nself", "state", "entitlement.jwt")
@@ -78,5 +80,53 @@ func TestDoctorEntitlementMissingAndInvalid(t *testing.T) {
 	got := entitlementFileChecks(dir, time.Now())
 	if len(got) != 1 || got[0].Status != "warn" || strings.Contains(got[0].Message, "E126") {
 		t.Fatalf("invalid token should warn without trusting exp: %+v", got)
+	}
+}
+
+func installDoctorPlugin(t *testing.T, licensed bool) {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("NSELF_PLUGIN_DIR", dir)
+	if !licensed {
+		return
+	}
+	if err := os.Mkdir(filepath.Join(dir, "fixture"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "fixture", "plugin.json"), []byte(`{"license":"licensed"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDoctorEntitlementInstallationGate(t *testing.T) {
+	compattest.Set(t, true)
+	for _, licensed := range []bool{false, true} {
+		for _, shape := range []string{"missing", "empty", "directory", "invalid"} {
+			t.Run(shape+"/"+map[bool]string{false: "free", true: "licensed"}[licensed], func(t *testing.T) {
+				installDoctorPlugin(t, licensed)
+				dir := t.TempDir()
+				path := filepath.Join(dir, ".nself", "state", "entitlement.jwt")
+				if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+					t.Fatal(err)
+				}
+				switch shape {
+				case "directory":
+					if err := os.Mkdir(path, 0700); err != nil {
+						t.Fatal(err)
+					}
+				case "empty", "invalid":
+					data := []byte{}
+					if shape == "invalid" {
+						data = []byte("invalid")
+					}
+					if err := os.WriteFile(path, data, 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if got := entitlementFileChecks(dir, time.Now()); (len(got) > 0) != licensed {
+					t.Fatalf("findings=%+v licensed=%v", got, licensed)
+				}
+			})
+		}
 	}
 }

@@ -2,6 +2,7 @@ package build
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"os"
 	"path/filepath"
@@ -152,5 +153,102 @@ func TestKeysEqual(t *testing.T) {
 		if string(rows[i][1]) != key.ID || string(rows[i][2]) != hex.EncodeToString(key.Public) {
 			t.Fatalf("SDK key ID or bytes differ at index %d", i)
 		}
+	}
+}
+
+func TestMountManifestFixtures(t *testing.T) {
+	for _, version := range []string{"v1", "v2"} {
+		files, err := filepath.Glob("../plugin/manifestv2/testdata/" + version + "/*.json")
+		if err != nil || len(files) == 0 {
+			t.Fatalf("fixtures: %v", err)
+		}
+		for _, file := range files {
+			t.Run(version+"/"+filepath.Base(file), func(t *testing.T) {
+				dir, _ := entitlementFixture(t, "free")
+				data, err := os.ReadFile(file)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "fixture", "plugin.json"), data, 0600); err != nil {
+					t.Fatal(err)
+				}
+				got, err := licensedPlugin(dir, "fixture")
+				want := filepath.Base(file) == "licensed.json" || filepath.Base(file) == "full.json"
+				if err != nil || got != want {
+					t.Fatalf("licensed=%v, want %v: %v", got, want, err)
+				}
+			})
+		}
+	}
+}
+
+func TestMountRejectsInheritedService(t *testing.T) {
+	compattest.Set(t, true)
+	dir, _ := entitlementFixture(t, "licensed")
+	for _, field := range []string{"<<: {environment: {KEEP: yes}}", "extends: {service: base}"} {
+		_, err := normalizeComposeEntitlement([]byte("services:\n  fixture:\n    "+field+"\n"), dir, "fixture")
+		if e := errs.Describe(err); e == nil || e.Code != "E125" {
+			t.Fatalf("%s: want E125, got %v", field, err)
+		}
+	}
+}
+
+func TestMountCleansVolumeTargets(t *testing.T) {
+	compattest.Set(t, true)
+	dir, _ := entitlementFixture(t, "licensed")
+	for _, volume := range []string{"fake:/run/nself//entitlement.jwt:rw", "fake:/run/nself/../nself/entitlement.jwt:rw", "type: bind\n        source: fake\n        target: /run/nself//entitlement.jwt"} {
+		out, err := normalizeComposeEntitlement([]byte("services:\n  fixture:\n    volumes:\n      - "+volume+"\n"), dir, "fixture")
+		if err != nil || bytes.Contains(out, []byte("fake")) {
+			t.Fatalf("conflict survives: %s %v", out, err)
+		}
+	}
+}
+
+func TestMountMalformedManifestCoded(t *testing.T) {
+	compattest.Set(t, true)
+	dir, in := entitlementFixture(t, "free")
+	if err := os.WriteFile(filepath.Join(dir, "fixture", "plugin.json"), []byte("{"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := normalizeComposeEntitlement(in, dir, "fixture")
+	if e := errs.Describe(err); e == nil || e.Code != "E125" || !strings.Contains(err.Error(), "fixture") {
+		t.Fatalf("want named E125: %v", err)
+	}
+}
+
+func TestMountRefreshOnceAfterDiscovery(t *testing.T) {
+	compattest.Set(t, true)
+	dir, in := entitlementFixture(t, "licensed")
+	if err := os.Mkdir(filepath.Join(dir, "second"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "second", "plugin.json"), []byte(`{"requires_license":true}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"fixture", "second"} {
+		if err := os.WriteFile(filepath.Join(dir, name, pluginComposeFilename), in, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := refreshPluginEntitlement
+	t.Cleanup(func() { refreshPluginEntitlement = old })
+	calls := 0
+	failure := errs.New("E125", "first refresh failure")
+	refreshPluginEntitlement = func(_ context.Context, project string) error {
+		calls++
+		for _, name := range []string{"fixture", "second"} {
+			data, err := os.ReadFile(filepath.Join(dir, name, pluginComposeFilename))
+			if err != nil || !bytes.Contains(data, []byte(entitlementMount)) {
+				t.Errorf("refresh before discovery completed: %s %v", name, err)
+			}
+		}
+		if calls == 1 {
+			return failure
+		}
+		return nil
+	}
+	_, err := DiscoverPluginComposeFiles(t.TempDir(), dir)
+	if calls != 1 || err != failure {
+		t.Fatalf("calls=%d err=%v; want first failure once", calls, err)
 	}
 }
