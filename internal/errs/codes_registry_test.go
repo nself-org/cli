@@ -210,6 +210,27 @@ func TestRegister_DuplicateNamesBothFragments(t *testing.T) {
 	}
 }
 
+// TestRegister_RejectsK8sPluginRange keeps every plugin code out of the CLI.
+func TestRegister_RejectsK8sPluginRange(t *testing.T) {
+	for n := 720; n <= 739; n++ {
+		code := fmt.Sprintf("E%03d", n)
+		t.Run(code, func(t *testing.T) {
+			if _, exists := Registry[code]; exists {
+				t.Fatalf("CLI registered reserved k8s plugin code %s", code)
+			}
+			snapshotRegistry(t)
+			Register(CodeEntry{Code: code, Exit: 1})
+			problems := RegistryErrors()
+			if len(problems) != 1 || !strings.Contains(problems[0].Error(), "reserved external block") {
+				t.Fatalf("RegistryErrors() = %v, want reserved range rejection", problems)
+			}
+			if _, stored := Registry[code]; stored {
+				t.Fatal("reserved k8s plugin code was stored")
+			}
+		})
+	}
+}
+
 // TestRegister_RejectsBadCodes covers reserved, unallocated and mismatched
 // registrations plus the empty-category fill.
 func TestRegister_RejectsBadCodes(t *testing.T) {

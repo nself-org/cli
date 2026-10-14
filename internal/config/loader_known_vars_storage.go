@@ -70,6 +70,7 @@ var knownEnvVarsStorage = []string{
 	"FUNCTIONS_VERSION",
 	"FUNCTIONS_PORT",
 	"FUNCTIONS_ROUTE",
+	"FUNCTIONS_RUNTIME",
 
 	// MLflow
 	"MLFLOW_ENABLED",

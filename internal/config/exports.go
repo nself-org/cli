@@ -100,6 +100,7 @@ func DefaultFor(key string) string {
 		"FUNCTIONS_VERSION": "latest",
 		"FUNCTIONS_PORT":    "3008",
 		"FUNCTIONS_ROUTE":   "functions",
+		"FUNCTIONS_RUNTIME": "node",
 
 		// MLflow
 		"MLFLOW_ENABLED":          "false",

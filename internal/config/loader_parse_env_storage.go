@@ -98,6 +98,7 @@ func parseEnvStorage(cfg *Config) {
 		Version: os.Getenv("FUNCTIONS_VERSION"),
 		Port:    getEnvInt("FUNCTIONS_PORT", 0),
 		Route:   os.Getenv("FUNCTIONS_ROUTE"),
+		Runtime: os.Getenv("FUNCTIONS_RUNTIME"),
 	}
 
 	// ── MLflow ───────────────────────────────────────────────────────
