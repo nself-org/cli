@@ -48,7 +48,7 @@ jobs:
   coverage:
     name: Go coverage gate (cli)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7.0.1
 
