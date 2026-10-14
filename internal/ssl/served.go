@@ -66,10 +66,14 @@ func Classify(days int) CertStatus {
 
 // ServedCert describes the leaf certificate an endpoint served for one SNI.
 type ServedCert struct {
+	// Certificate is the complete parsed leaf for callers needing x509 fields.
+	Certificate *x509.Certificate
 	// Host is the name the probe asked for: sni, or the host of addr when sni is empty.
 	Host string
 	// IssuerCN is the leaf's issuer common name.
 	IssuerCN string
+	// IssuerOrg is the leaf issuer's first organization, or empty when absent.
+	IssuerOrg string
 	// NotAfter is the leaf's expiry instant.
 	NotAfter time.Time
 	// SHA256 is the lowercase hex SHA-256 of the leaf's DER bytes.
@@ -132,11 +136,15 @@ func probeServed(ctx context.Context, addr, sni string, timeout time.Duration, r
 	}
 	sum := sha256.Sum256(leaf.Raw)
 	out := ServedCert{
-		Host:     host,
-		IssuerCN: leaf.Issuer.CommonName,
-		NotAfter: leaf.NotAfter,
-		SHA256:   hex.EncodeToString(sum[:]),
-		DNSNames: append([]string(nil), leaf.DNSNames...),
+		Certificate: leaf,
+		Host:        host,
+		IssuerCN:    leaf.Issuer.CommonName,
+		NotAfter:    leaf.NotAfter,
+		SHA256:      hex.EncodeToString(sum[:]),
+		DNSNames:    append([]string(nil), leaf.DNSNames...),
+	}
+	if len(leaf.Issuer.Organization) > 0 {
+		out.IssuerOrg = leaf.Issuer.Organization[0]
 	}
 
 	inter := x509.NewCertPool()
