@@ -5,6 +5,7 @@ package build
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/google/jsonschema-go/jsonschema"
 
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/nginx/routemodel"
 )
 
@@ -140,6 +142,39 @@ func TestPluginRoutesInRoutesJSON(t *testing.T) {
 	}
 	if _, _, gone := routesOf(t, f.workdir); !bytes.Equal(gone, plain) {
 		t.Error("routes.json kept a removed plugin's routes")
+	}
+}
+
+// TestInstalledPluginRoutesInRoutesJSON covers a plugin installed during Build.
+func TestInstalledPluginRoutesInRoutesJSON(t *testing.T) {
+	f := newPlanFixture(t, "dev-minimal")
+	t.Setenv("NSELF_AUTO_INSTALL_PLUGINS", "true")
+	writeFixtureFile(t, filepath.Join(f.workdir, "nself.yaml"), "app: fixture\nplugins:\n  free:\n    - idme\n", 0o644)
+	original := PluginInstall
+	t.Cleanup(func() { PluginInstall = original })
+	installed := false
+	PluginInstall = func(_ context.Context, _ *config.Config, name, dir string) error {
+		if name != "idme" || dir != f.plugins {
+			t.Fatalf("unexpected install: %s in %s", name, dir)
+		}
+		installed = true
+		writeFixtureFile(t, filepath.Join(dir, name, "plugin.json"), `{"name":"idme","version":"1.0.0"}`, 0o644)
+		writeFixtureFile(t, filepath.Join(dir, name, "nginx", "idme.conf"), idmeSnippet, 0o644)
+		return nil
+	}
+	if _, err := Build(f.workdir, BuildOptions{Force: true}); err != nil {
+		t.Fatal(err)
+	}
+	if !installed {
+		t.Fatal("build did not install the declared plugin")
+	}
+	byID, _, _ := routesOf(t, f.workdir)
+	r, ok := byID["plugin:idme/idme.conf#2"]
+	if !ok || r.Source != "plugin" || len(r.Locations) != 1 || r.Locations[0].Upstream == nil {
+		t.Fatalf("newly installed plugin missing from routes.json: %+v", r)
+	}
+	if _, err := os.Stat(filepath.Join(f.workdir, "nginx", "sites", "idme-idme.conf")); err != nil {
+		t.Fatalf("plugin route was not injected: %v", err)
 	}
 }
 
