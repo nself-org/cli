@@ -23,7 +23,6 @@ cmd/commands/start_health.go 1
 cmd/commands/update.go 2
 internal/backup/create_targets.go 3
 internal/backup/pitr/restore.go 2
-internal/backup/restore.go 1
 internal/backup/restore_container.go 1
 internal/backup/stream_restore_remote.go 1
 internal/build/postgres_image_warning.go 1

@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -34,8 +33,8 @@ type RestoreOptions struct {
 	Only       []string // pg, minio, metadata — subset to restore
 	DecryptKey string   // path to age identity file
 	Yes        bool     // skip confirmation
-	// Strict makes any pg_restore "error:" line fail the restore whatever the
-	// compat mode. Callers that prove the restore another way leave it false.
+	// Strict is retained for caller compatibility. Local database restores now
+	// always fail on every pg_restore error before swapping the scratch database.
 	Strict bool
 }
 
@@ -227,45 +226,6 @@ func restorePostgres(ctx context.Context, cfg *config.Config, backupFile, origNa
 
 	// For base backup tar format, use pg_basebackup restore flow.
 	return restoreBaseBackup(ctx, cfg, container, user, backupFile, opts)
-}
-
-func restorePgDump(ctx context.Context, container, user, db, backupFile string, strict bool) error {
-	// Stream backup file into pg_restore via docker exec.
-	f, err := os.Open(backupFile)
-	if err != nil {
-		return fmt.Errorf("open backup file: %w", err)
-	}
-	defer func() { _ = f.Close() }()
-
-	args := []string{
-		"exec", "-i", container,
-		"pg_restore",
-		"-U", user,
-		"-d", db,
-		"--clean",
-		"--if-exists",
-	}
-
-	cmd := exec.CommandContext(ctx, "docker", args...)
-	cmd.Stdin = f
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return fmt.Errorf("pg_restore stderr pipe: %w", err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("start pg_restore: %w", err)
-	}
-
-	errOutput, _ := io.ReadAll(stderr)
-	if err := cmd.Wait(); err != nil {
-		if ctx.Err() != nil { // cancelled (SIGINT/SIGTERM): a killed restore is not a warning
-			return fmt.Errorf("%w: %v", errs.ErrBackupRestoreFailed, ctx.Err())
-		}
-		return restoreVerdictMode(string(errOutput), strict)
-	}
-
-	return nil
 }
 
 func restoreBaseBackup(_ context.Context, _ *config.Config, _, _, backupFile string, _ RestoreOptions) error {
