@@ -9,7 +9,13 @@ package controlplane
 //              architecture preflight, and aborts the whole run (a host-key
 //              failure is never folded into a "skipped" server).
 
-import "context"
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/nself-org/cli/internal/errs"
+)
 
 type shippingRunKey struct{}
 
@@ -42,6 +48,18 @@ func checkShippingHostKeys(ctx context.Context, name string, env Environment) er
 		}
 		if _, err := HostKeyOptions(ctx, name, srv.Name, normalizedTier(env), srv.Host, true); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// probeHostKeyError aborts a shipping run when a probe made after the host-key
+// check could not verify a server's key (it changed mid-run). Resolve turns that
+// failure into a read-only server; for a run that ships secrets it is an E487.
+func probeHostKeyError(statuses []TargetStatus) error {
+	for _, ts := range statuses {
+		if ts.Capability != CapManage && strings.Contains(ts.Reason, "host key mismatch") {
+			return errs.New("E487", fmt.Sprintf("the host key of %s/%s could not be verified after the pre-run check (it changed during the run); nothing was shipped. Re-verify the key, then deploy again", ts.Env, ts.Server))
 		}
 	}
 	return nil

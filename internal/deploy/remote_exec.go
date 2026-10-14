@@ -16,6 +16,7 @@ package deploy
 // SPORT: cli/internal/deploy — see gap #9.
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -40,14 +41,17 @@ func ScanDeployKeys(ctx context.Context, spec remote.HostSpec) ([]remote.HostKey
 		if err != nil {
 			return nil, err
 		}
-		out, err := cmd.Output()
-		if keys := parseScannedKeys(string(out)); len(keys) > 0 {
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		err = cmd.Run()
+		if keys := parseScannedKeys(stdout.String()); len(keys) > 0 {
 			return keys, nil
 		}
 		// OpenSSH exits 1 when the host offers no key of the asked type, but it
-		// has printed the server banner ("# host:port SSH-2.0-...") by then. No
-		// banner means no connection (refused, timeout): stop, another type cannot work.
-		if err != nil && !scanSawBanner(string(out)) {
+		// has printed the server banner ("# host:port SSH-2.0-...") by then, on
+		// stdout or stderr depending on the release. No banner means no
+		// connection (refused, timeout): stop, another type cannot work.
+		if err != nil && !scanSawBanner(stdout.String()+"\n"+stderr.String()) {
 			return nil, fmt.Errorf("ssh-keyscan %s: %w", spec.Host, err)
 		}
 	}

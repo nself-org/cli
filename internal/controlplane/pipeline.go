@@ -78,6 +78,11 @@ func runPayload(ctx context.Context, inv *Inventory, env string, prober Prober, 
 	}
 	statuses := Resolve(scoped, prober)
 	emitAudit(statuses)
+	if pl.envFile != "" {
+		if err := probeHostKeyError(statuses); err != nil {
+			return nil, err
+		}
+	}
 	files, err := ComposeFilesForDeploy(composePath)
 	if err != nil {
 		return nil, err

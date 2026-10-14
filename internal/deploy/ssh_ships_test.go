@@ -26,7 +26,7 @@ import (
 // algorithm: keys maps "ed25519" to "ssh-ed25519 AQID" and so on; an absent
 // type prints nothing. failAll makes every call exit 1 (a connect error). The
 // returned func lists the -t values asked, in order.
-func installTypedKeyscan(t *testing.T, keys map[string]string, failAll bool, missRC int) func() []string {
+func installTypedKeyscan(t *testing.T, keys map[string]string, failAll bool, missRC int, bannerFD int) func() []string {
 	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("fake ssh-keyscan is a POSIX shell stub")
@@ -48,7 +48,7 @@ func installTypedKeyscan(t *testing.T, keys map[string]string, failAll bool, mis
 	} else {
 		// Like OpenSSH: a host with no key of the asked type still gets its banner
 		// line on stdout; OpenSSH 10 then exits 1, older releases exit 0 (missRC).
-		script += "if [ -f '" + dir + "/key-'\"$t\" ]; then printf '%s %s\\n' \"$h\" \"$(cat '" + dir + "/key-'\"$t\")\"; else printf '# %s SSH-2.0-Fake\\n' \"$h\"; exit " + strconv.Itoa(missRC) + "; fi\n"
+		script += "if [ -f '" + dir + "/key-'\"$t\" ]; then printf '%s %s\\n' \"$h\" \"$(cat '" + dir + "/key-'\"$t\")\"; else printf '# %s SSH-2.0-Fake\\n' \"$h\" >&" + strconv.Itoa(bannerFD) + "; exit " + strconv.Itoa(missRC) + "; fi\n"
 	}
 	if err := os.WriteFile(filepath.Join(dir, "ssh-keyscan"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
@@ -164,20 +164,22 @@ func TestScanDeployKeysFallbackTypes(t *testing.T) {
 		keys     map[string]string
 		fail     bool
 		missRC   int
+		bannerFD int
 		wantAsk  []string
 		wantType string
 		wantErr  bool
 	}{
-		{"ed25519 host: one call", map[string]string{"ed25519": "ssh-ed25519 AQID"}, false, 1, []string{"ed25519"}, "ssh-ed25519", false},
-		{"ecdsa-only host", map[string]string{"ecdsa": "ecdsa-sha2-nistp256 AQID"}, false, 1, []string{"ed25519", "ecdsa"}, "ecdsa-sha2-nistp256", false},
-		{"rsa-only host", map[string]string{"rsa": rsaLine}, false, 1, []string{"ed25519", "ecdsa", "rsa"}, "ssh-rsa", false},
-		{"rsa-only host, keyscan exits 0 on a miss", map[string]string{"rsa": rsaLine}, false, 0, []string{"ed25519", "ecdsa", "rsa"}, "ssh-rsa", false},
-		{"no key at all", nil, false, 1, []string{"ed25519", "ecdsa", "rsa"}, "", true},
-		{"connect error stops at once", map[string]string{"rsa": rsaLine}, true, 1, []string{"ed25519"}, "", true},
+		{"ed25519 host: one call", map[string]string{"ed25519": "ssh-ed25519 AQID"}, false, 1, 1, []string{"ed25519"}, "ssh-ed25519", false},
+		{"ecdsa-only host", map[string]string{"ecdsa": "ecdsa-sha2-nistp256 AQID"}, false, 1, 1, []string{"ed25519", "ecdsa"}, "ecdsa-sha2-nistp256", false},
+		{"rsa-only host", map[string]string{"rsa": rsaLine}, false, 1, 1, []string{"ed25519", "ecdsa", "rsa"}, "ssh-rsa", false},
+		{"rsa-only host, keyscan exits 0 on a miss", map[string]string{"rsa": rsaLine}, false, 0, 1, []string{"ed25519", "ecdsa", "rsa"}, "ssh-rsa", false},
+		{"rsa-only host, banner on stderr (other OpenSSH releases)", map[string]string{"rsa": rsaLine}, false, 1, 2, []string{"ed25519", "ecdsa", "rsa"}, "ssh-rsa", false},
+		{"no key at all", nil, false, 1, 1, []string{"ed25519", "ecdsa", "rsa"}, "", true},
+		{"connect error stops at once", map[string]string{"rsa": rsaLine}, true, 1, 1, []string{"ed25519"}, "", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			asked := installTypedKeyscan(t, c.keys, c.fail, c.missRC)
+			asked := installTypedKeyscan(t, c.keys, c.fail, c.missRC, c.bannerFD)
 			keys, err := ScanDeployKeys(context.Background(), spec)
 			if (err != nil) != c.wantErr {
 				t.Fatalf("err = %v, wantErr %v", err, c.wantErr)
@@ -194,7 +196,7 @@ func TestScanDeployKeysFallbackTypes(t *testing.T) {
 		requireKeygen(t)
 		t.Setenv("NSELF_V15", "")
 		t.Setenv("HOME", pinHome(t))
-		installTypedKeyscan(t, map[string]string{"rsa": rsaLine}, false, 1)
+		installTypedKeyscan(t, map[string]string{"rsa": rsaLine}, false, 1, 1)
 		ctx := context.Background()
 		if _, err := HostKeyPolicy(ctx, "u@203.0.113.7", "live", "web", true, true); err == nil || !strings.Contains(err.Error(), "E487") {
 			t.Fatalf("unpinned rsa host: %v", err)

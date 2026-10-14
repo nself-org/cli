@@ -84,6 +84,29 @@ func TestRunWithEnvProbeCannotSeedTrust(t *testing.T) {
 			t.Fatalf("~/.ssh/known_hosts was touched: %v", err)
 		}
 	})
+	t.Run("key changes after the pre-check", func(t *testing.T) {
+		inv, compose, envFile, bin, host := shippingRunFixture(t)
+		fp, err := remote.Fingerprint("host.example ssh-ed25519 AQID")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := TrustHostKey(context.Background(), host, fp); err != nil {
+			t.Fatal(err)
+		}
+		// The first scan (the pre-check) shows the pinned key, every later one another key.
+		count := filepath.Join(bin, "scans")
+		script := "#!/bin/sh\necho x >> '" + count + "'\nif [ \"$(wc -l < '" + count + "')\" -le 1 ]; then k=AQID; else k=AQIE; fi\nprintf 'host.example ssh-ed25519 %s\\n' \"$k\"\n"
+		if err := os.WriteFile(filepath.Join(bin, "ssh-keyscan"), []byte(script), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		_, err = RunWithEnv(context.Background(), inv, "qa", NewSSHProber(filepath.Dir(compose), false), compose, envFile, "qa")
+		if err == nil || !strings.Contains(err.Error(), "E487") {
+			t.Fatalf("want E487 for a key that changed mid-run, got %v", err)
+		}
+		if b, _ := os.ReadFile(filepath.Join(bin, "calls.log")); strings.Contains(string(b), "rsync") {
+			t.Fatalf("a copy ran after the key changed:\n%s", b)
+		}
+	})
 	t.Run("pin-only host", func(t *testing.T) {
 		inv, compose, envFile, bin, host := shippingRunFixture(t)
 		fp, err := remote.Fingerprint("host.example ssh-ed25519 AQID")

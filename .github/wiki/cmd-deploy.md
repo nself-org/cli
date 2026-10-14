@@ -389,7 +389,7 @@ is not trusted: pin the key the scan reports.
 
 A run that ships an env file is strict from its first connection. The inventory pipeline checks
 every remote server of the environment before any probe, preflight, load-balancer step or copy, and
-an unknown key stops the whole run with `E487` (it is never reported as a skipped server). The probes
+an unknown key stops the whole run with `E487` (it is never reported as a skipped server), and so does a key that stops verifying later in the run. The probes
 that follow use strict ssh too, so no probe can record a key that the secrets check then trusts.
 
 Outside a shipping run, v1.4 keeps `accept-new` byte for byte, and ssh records a first-seen key in
