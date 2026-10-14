@@ -25,6 +25,7 @@ import (
 func TestLicenseSetOutsideProjectThenBuild(t *testing.T) {
 	compattest.Set(t, true)
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
 	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "")
 	for i := 1; i <= 10; i++ {
 		t.Setenv("NSELF_LICENSE_KEY_"+strconv.Itoa(i), "")

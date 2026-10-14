@@ -23,6 +23,7 @@ func policySigner(t *testing.T) func(string, []string, int64) string {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
+	t.Setenv("USERPROFILE", home)
 	for i := 1; i <= 10; i++ {
 		t.Setenv("NSELF_LICENSE_KEY_"+strconv.Itoa(i), "")
 	}
@@ -143,10 +144,12 @@ func TestInstallationDirectoryHomeDefaultAndFailure(t *testing.T) {
 	t.Setenv("NSELF_PLUGIN_DIR", "")
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
+	t.Setenv("USERPROFILE", home)
 	if got, err := installationDirectory(""); err != nil || got != filepath.Join(home, ".nself", "plugins") {
 		t.Fatalf("home default: %q, %v", got, err)
 	}
 	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", "")
 	t.Setenv("USERPROFILE", "")
 	if got, err := installationDirectory(""); err == nil || got != "" {
 		t.Fatalf("unavailable home must fail: %q, %v", got, err)

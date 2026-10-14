@@ -26,6 +26,7 @@ import (
 func seedVerifiedCache(t *testing.T) *license.CacheEntry {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
 	t.Setenv("NSELF_PING_API_URL", "http://127.0.0.1:1")
 	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "synthetic-license-key")
 	for i := 1; i <= 10; i++ {

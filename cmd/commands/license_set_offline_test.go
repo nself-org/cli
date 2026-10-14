@@ -24,6 +24,7 @@ func TestLicenseSetOutsideProjectOfflineSaved(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			compattest.Both(t, func(t *testing.T) {
 				t.Setenv("HOME", t.TempDir())
+				t.Setenv("USERPROFILE", t.TempDir())
 				t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "")
 				for i := 1; i <= 10; i++ {
 					t.Setenv("NSELF_LICENSE_KEY_"+strconv.Itoa(i), "")
