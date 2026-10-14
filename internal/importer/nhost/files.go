@@ -145,6 +145,13 @@ func readFiles(ctx context.Context, in importer.Input) ([]fileRow, int64, error)
 		return nil, 0, errs.New("E520", msgSnapshot)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	var present bool
+	if tx.QueryRow(ctx, `SELECT to_regclass('storage.files') IS NOT NULL`).Scan(&present) != nil {
+		return nil, 0, errs.New("E520", msgListing)
+	}
+	if !present {
+		return nil, 0, nil
+	}
 	filter, err := uploadedFilter(ctx, tx)
 	if err != nil {
 		return nil, 0, err
@@ -191,7 +198,7 @@ var storageState = func(ctx context.Context, in importer.Input) (storageSnapshot
 	}
 	uploaded, err := uploadedFiles(ctx, db)
 	_ = db.Close(ctx)
-	if err != nil || uploaded == 0 {
+	if err != nil {
 		return storageSnapshot{uploaded: uploaded}, err
 	}
 	rows, total, err := readFiles(ctx, in)
@@ -215,8 +222,19 @@ func dumpedRows(m *portable.Manifest) (int64, bool) {
 func addStorage(ctx context.Context, in importer.Input) func(*portable.Writer, *portable.Manifest) error {
 	return func(w *portable.Writer, m *portable.Manifest) error {
 		snap, err := storageState(ctx, in)
-		if err != nil || snap.uploaded == 0 {
+		if err != nil {
 			return err
+		}
+		if snap.uploaded > maxFiles {
+			return errs.New("E520", msgTooManyFiles)
+		}
+		// Check even an empty listing: the dump may still hold a removed uploaded row.
+		// A missing dumped table is valid only when the source also holds no files.
+		if dumped, ok := dumpedRows(m); (!ok && snap.uploaded != 0) || dumped != snap.total || int64(len(snap.rows)) != snap.uploaded {
+			return errs.New("E520", msgStorageChanged)
+		}
+		if snap.uploaded == 0 {
+			return nil
 		}
 		if err = needStorageFlags(in); err != nil {
 			return err
@@ -224,13 +242,6 @@ func addStorage(ctx context.Context, in importer.Input) func(*portable.Writer, *
 		client, err := s3Client(in)
 		if err != nil {
 			return err
-		}
-		if snap.uploaded > maxFiles {
-			return errs.New("E520", msgTooManyFiles)
-		}
-		// Fail closed: storage.files must be in the dump for the cross-check to mean anything.
-		if dumped, ok := dumpedRows(m); !ok || dumped != snap.total || int64(len(snap.rows)) != snap.uploaded {
-			return errs.New("E520", msgStorageChanged)
 		}
 		for _, r := range snap.rows {
 			if r.size == nil {
