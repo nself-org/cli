@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/database"
+	"github.com/nself-org/cli/internal/importer/load"
 	"github.com/nself-org/cli/internal/importer/scratch"
 	"github.com/nself-org/cli/internal/portable"
 )
@@ -61,8 +62,8 @@ func fit(name, key string) string {
 	return name[:54] + "_" + hex.EncodeToString(sum[:4])
 }
 
-// assignNames sets every table name; the first pattern in sorted order keeps a contested name,
-// later ones get _2, _3 ... and an exemption note says so.
+// assignNames sets every table name outside protected namespaces; the first pattern in sorted
+// order keeps a contested name, later ones get _2, _3 ... and an exemption note says so.
 func assignNames(tables []*tableAcc) []portable.Exemption {
 	used := map[string]bool{}
 	var notes []portable.Exemption
@@ -72,6 +73,12 @@ func assignNames(tables []*tableAcc) []portable.Exemption {
 		if t.parent != nil {
 			base = t.parent.name + "__" + base
 		}
+		original := base
+		reason := "name collision or length"
+		if load.SystemTable(schemaName, base, false) {
+			base = "firebase_" + base
+			reason = "protected namespace, name collision or length"
+		}
 		name := fit(base, t.pattern)
 		// The counter is part of the hash key: a long base is cut to the same 54 bytes for every
 		// n, and only the hash suffix tells the candidates apart.
@@ -80,8 +87,8 @@ func assignNames(tables []*tableAcc) []portable.Exemption {
 		}
 		used[name] = true
 		t.name = name
-		if name != base {
-			notes = append(notes, portable.Exemption{Kind: "metadata", ID: schemaName + "." + name + "#renamed", Reason: "collection " + t.pattern + " renamed (name collision or length)"})
+		if name != original {
+			notes = append(notes, portable.Exemption{Kind: "metadata", ID: schemaName + "." + name + "#renamed", Reason: "collection " + t.pattern + " renamed (" + reason + ")"})
 		}
 	}
 	return notes
