@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -303,6 +305,59 @@ func TestPluginInfoUnresolvedTier(t *testing.T) {
 	table, terr := runInfoRoot(t)
 	if terr == nil || !strings.Contains(terr.Error(), "tier unresolved") || strings.Contains(table, "first entry") {
 		t.Fatalf("table mode: err=%v out=%q", terr, table)
+	}
+}
+
+// TestPluginInfoLegacyEnvFailureIsOneBareDocument: with NSELF_JSON_LEGACY=1 the
+// failed lookup keeps the pre-contract shape, one bare document with tier_reason
+// and tier_error, and no second (error envelope) document; the exit stays
+// non-zero and the stderr line is redacted.
+func TestPluginInfoLegacyEnvFailureIsOneBareDocument(t *testing.T) {
+	compattest.Set(t, true)
+	t.Setenv(output.LegacyEnvVar, "1")
+	infoFixtureRegistry(t, "", `{"plugins":[`+
+		`{"name":"notify","tier":"free","version":"1.0.0","description":"first entry"},`+
+		`{"name":"notify","tier":"pro","version":"2.0.0","description":"second entry"}]}`)
+	out, err := runInfoRoot(t, "--json")
+	if err == nil {
+		t.Fatalf("an unresolved tier must still fail, got output %s", out)
+	}
+	dec := json.NewDecoder(strings.NewReader(out))
+	var doc map[string]json.RawMessage
+	if jerr := dec.Decode(&doc); jerr != nil {
+		t.Fatalf("not a JSON document: %v\n%s", jerr, out)
+	}
+	var more json.RawMessage
+	if dec.Decode(&more) != io.EOF {
+		t.Fatalf("a second document follows the bare one:\n%s", out)
+	}
+	for _, key := range []string{"name", "tier", "tier_reason", "tier_error"} {
+		if _, ok := doc[key]; !ok {
+			t.Errorf("bare document lacks %q: %s", key, out)
+		}
+	}
+	for _, key := range []string{"schema_version", "command", "data", "error"} {
+		if _, ok := doc[key]; ok {
+			t.Errorf("bare document carries the envelope member %q: %s", key, out)
+		}
+	}
+	var reason, cause string
+	_ = json.Unmarshal(doc["tier_reason"], &reason)
+	_ = json.Unmarshal(doc["tier_error"], &cause)
+	if reason != "unresolved" || cause == "" {
+		t.Fatalf("tier_reason %q tier_error %q", reason, cause)
+	}
+}
+
+// The tier_error text goes through the public redaction seam.
+func TestRedactedMessageRemovesCredentials(t *testing.T) {
+	err := errors.New("license lookup failed: https://user" + ":" + "synthetic@license.example.test/check?token=abc123")
+	got := redactedMessage(err)
+	if strings.Contains(got, "synthetic") || strings.Contains(got, "abc123") || !strings.Contains(got, "license lookup failed") {
+		t.Fatalf("redactedMessage = %q", got)
+	}
+	if plain := redactedMessage(errors.New("registry serves no licensed entry")); plain != "registry serves no licensed entry" {
+		t.Fatalf("a plain message changed: %q", plain)
 	}
 }
 

@@ -16,10 +16,14 @@ package commands
 // SPORT: P7-SURF-13, contract:cli.json-envelope, contract:cli.bundle-ledger
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
 	"net/url"
 	"sync"
 
 	"github.com/nself-org/cli/internal/bundle"
+	"github.com/nself-org/cli/internal/output"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/spf13/cobra"
 )
@@ -187,4 +191,25 @@ func outcomeBody(run func(*cobra.Command, []string) error, facts func(*cobra.Com
 func init() {
 	installCmd.RunE = outcomeBody(installCmd.RunE, addFacts)
 	removeCmd.RunE = outcomeBody(removeCmd.RunE, removeFacts)
+}
+
+// redactedMessage is err's text as the public error renderer writes it: URL
+// credentials, key=value secrets and personal data removed. It uses the public
+// output.EmitError (the redaction seam of every error document) and reads the
+// message back, so no second redactor exists. Used for fields that carry an
+// error's text inside a success document (plugin info tier_error).
+func redactedMessage(err error) string {
+	var buf bytes.Buffer
+	if output.EmitError(output.Writer{Out: &buf, Err: io.Discard}, "redact", err) != nil {
+		return "[unprintable error]"
+	}
+	var doc struct {
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(buf.Bytes(), &doc) != nil {
+		return "[unprintable error]"
+	}
+	return doc.Error.Message
 }

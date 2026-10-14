@@ -262,7 +262,7 @@ func newPluginInfoData(name string, m *plugin.PluginManifest, tier, reason strin
 		out.Name, out.Version, out.Description, out.Category, out.License, out.Port = m.Name, m.Version, m.Description, m.Category, m.License, m.Port
 	}
 	if cause != nil {
-		out.TierError = cause.Error()
+		out.TierError = redactedMessage(cause)
 	}
 	return out
 }

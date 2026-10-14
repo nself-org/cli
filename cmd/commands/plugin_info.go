@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/output"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/ui"
 
@@ -88,6 +89,13 @@ func runPluginInfo(cmd *cobra.Command, args []string) error {
 		}
 		if err := writePluginInfoJSON(cmd, name, manifest, tier, tierReason, tierErr); err != nil {
 			return err
+		}
+		if tierErr != nil && jsonEnvelopeOn(cmd) {
+			// NSELF_JSON_LEGACY=1: the one bare document is already on stdout. The failure is
+			// reported redacted on stderr and the exit status stays its own; the silent
+			// wrapper keeps the top-level handler from printing a second (error) document.
+			output.RenderError(os.Stderr, fmt.Errorf("plugin %q: tier unresolved: %w", name, tierErr))
+			return &streamedError{err: tierErr}
 		}
 		return tierErr
 	}
