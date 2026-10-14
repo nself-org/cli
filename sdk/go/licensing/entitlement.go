@@ -46,7 +46,11 @@ func verifyFile(path, slug string, now time.Time) error {
 	if err != nil {
 		return ErrEntitlementExpired
 	}
-	return verifyToken(strings.TrimSpace(string(data)), slug, now)
+	deadline, err := verifiedDeadline(string(data), slug)
+	if err != nil || now.Unix() > deadline || (now.Unix() == deadline && now.Nanosecond() > 0) {
+		return ErrEntitlementExpired
+	}
+	return nil
 }
 
 // Purpose: bound reads of mounted files. Inputs: path. Outputs: bytes or rejection.
@@ -111,6 +115,23 @@ func verifyToken(token, slug string, now time.Time) error {
 // Outputs: signed grace deadline. Constraints: expiry remains checked per request.
 // SPORT: plugin.entitlement-token.
 func verifiedDeadline(token, slug string) (int64, error) {
+	var latest int64
+	for _, line := range strings.Split(token, "\n") {
+		deadline, err := singleDeadline(strings.TrimSpace(line), slug)
+		if err == nil && deadline > latest {
+			latest = deadline
+		}
+	}
+	if latest == 0 {
+		return 0, ErrEntitlementExpired
+	}
+	return latest, nil
+}
+
+// Purpose: verify one signed token and extract its slug-specific deadline.
+// Inputs: compact JWT/slug. Outputs: deadline/error. Constraints: signature first.
+// SPORT: plugin.entitlement-token v1.1.
+func singleDeadline(token, slug string) (int64, error) {
 	if err := verifyToken(token, slug, time.Unix(0, 0)); err != nil {
 		return 0, err
 	}

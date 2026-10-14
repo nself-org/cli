@@ -153,6 +153,17 @@ func (g *Middleware) reloadLocked(now time.Time) {
 // Inputs: compact JWT. Outputs: incomplete structure. Constraints: complete
 // signature and claim failures remain fail closed. SPORT: plugin.entitlement-token.
 func incompleteToken(token string) bool {
+	for _, line := range strings.Split(token, "\n") {
+		if !incompleteLine(strings.TrimSpace(line)) {
+			return false
+		}
+	}
+	return true
+}
+
+// Purpose: recognize a torn compact JWT. Inputs: line. Outputs: incomplete.
+// Constraints: cryptographic validity is checked separately. SPORT: file reload.
+func incompleteLine(token string) bool {
 	if token == "" {
 		return false // An explicit empty-file revocation cannot be a write-before-truncate tear.
 	}

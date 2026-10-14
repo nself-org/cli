@@ -90,7 +90,7 @@ func Validate(ctx context.Context, key string, opts *ValidatorOptions) (*Validat
 	}
 
 	// 2) Cache-only path.
-	entry, cacheErr := ReadCache()
+	entry, cacheErr := ReadCacheForKey(key)
 	if cacheErr != nil || entry == nil {
 		return &ValidatorResult{
 			Status:     StatusFailClosed,

@@ -35,17 +35,18 @@ import (
 // Signature and SignatureKeyID are the legacy fields no server ever filled;
 // they are read from old cache files and verified only in v1.4 mode.
 type CacheEntry struct {
-	KeyHash        string   `json:"key_hash"`
-	Tier           string   `json:"tier"`
-	PluginsAllowed []string `json:"plugins_allowed"`
-	FetchedAt      int64    `json:"fetched_at"`
-	ExpiresAt      int64    `json:"expires_at"`
-	RawBody        string   `json:"raw_body,omitempty"`
-	BodySig        string   `json:"body_sig,omitempty"`
-	JWT            string   `json:"jwt,omitempty"`
-	JWTKid         string   `json:"jwt_kid,omitempty"`
-	Signature      string   `json:"signature,omitempty"`
-	SignatureKeyID int      `json:"signature_key_id,omitempty"`
+	Entries        map[string]*CacheEntry `json:"entries,omitempty"`
+	KeyHash        string                 `json:"key_hash"`
+	Tier           string                 `json:"tier"`
+	PluginsAllowed []string               `json:"plugins_allowed"`
+	FetchedAt      int64                  `json:"fetched_at"`
+	ExpiresAt      int64                  `json:"expires_at"`
+	RawBody        string                 `json:"raw_body,omitempty"`
+	BodySig        string                 `json:"body_sig,omitempty"`
+	JWT            string                 `json:"jwt,omitempty"`
+	JWTKid         string                 `json:"jwt_kid,omitempty"`
+	Signature      string                 `json:"signature,omitempty"`
+	SignatureKeyID int                    `json:"signature_key_id,omitempty"`
 }
 
 // pluginsFor returns the plugin list a decision should use for resp.

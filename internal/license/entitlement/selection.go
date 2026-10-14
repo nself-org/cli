@@ -46,7 +46,6 @@ func publishAfterKeyRejection(projectDir, key string) error {
 	if err != nil {
 		return err
 	}
-	token, _ := cachedToken()
 	return publishCandidates(projectDir, names, map[string]bool{license.HashKey(key): true},
-		[]string{token, retainedToken(Path(projectDir))})
+		append(cachedTokens(), retainedToken(Path(projectDir))))
 }

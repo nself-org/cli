@@ -69,32 +69,39 @@ func retainedToken(path string) string {
 	if err != nil || len(data) > 1<<20 {
 		return ""
 	}
-	claims, err := license.ParseLicenseJWT(string(data))
-	if err != nil || claims.Exp <= 0 || time.Now().After(time.Unix(claims.Exp, 0).Add(license.PostExpiryGraceWindow)) {
-		return ""
-	}
-	for _, key := range license.CollectLicenseKeys() {
-		if claims.Sub == license.HashKey(key) {
-			return string(data)
+	var tokens []string
+	for _, token := range strings.Split(string(data), "\n") {
+		token = strings.TrimSpace(token)
+		claims, err := license.ParseLicenseJWT(token)
+		if err != nil || claims.Exp <= 0 || tokenPolicy(token, nil) != nil {
+			continue
+		}
+		for _, key := range license.CollectLicenseKeys() {
+			if claims.Sub == license.HashKey(key) {
+				tokens = append(tokens, token)
+				break
+			}
 		}
 	}
-	return ""
+	return strings.Join(tokens, "\n")
 }
 
 // Purpose: report expired grace and uncovered installed manifest slugs.
 // Inputs: verified token/slugs. Outputs: policy error. Constraints: signed exp.
-// SPORT: honest build diagnostics under the single-token v1 contract.
+// SPORT: union coverage under plugin.entitlement-token v1.1.
 func tokenPolicy(token string, names []string) error {
-	claims, err := license.ParseLicenseJWT(token)
-	if err != nil {
-		return err
-	}
-	if time.Now().After(time.Unix(claims.Exp, 0).Add(license.PostExpiryGraceWindow)) {
-		return fmt.Errorf("entitlement grace ended")
-	}
 	allowed := make(map[string]bool)
-	for _, name := range claims.Plugins {
-		allowed[name] = true
+	for _, line := range strings.Split(token, "\n") {
+		claims, err := license.ParseLicenseJWT(line)
+		if err != nil {
+			return err
+		}
+		if time.Now().After(time.Unix(claims.Exp, 0).Add(license.PostExpiryGraceWindow)) {
+			return fmt.Errorf("entitlement grace ended")
+		}
+		for _, name := range claims.Plugins {
+			allowed[name] = true
+		}
 	}
 	var missing []string
 	for _, name := range names {

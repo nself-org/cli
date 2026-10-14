@@ -48,8 +48,7 @@ func RefreshForPlugins(ctx context.Context, projectDir, pluginDir string) error 
 	if err != nil {
 		return errs.Wrap("E125", "could not inspect installed plugin entitlements", err)
 	}
-	token, _ := cachedToken()
-	candidates := []string{token, retainedToken(Path(projectDir))}
+	candidates := append(cachedTokens(), retainedToken(Path(projectDir)))
 	var rejected map[string]bool
 	if len(names) > 0 {
 		var renewed []string
@@ -63,8 +62,7 @@ func RefreshForPlugins(ctx context.Context, projectDir, pluginDir string) error 
 // Inputs: root/slugs. Outputs: private file/E125. Constraints: retain
 // verified tokens across transient cache failures. SPORT: entitlement lifecycle.
 func publishToken(projectDir string, names []string) error {
-	token, _ := cachedToken()
-	return publishCandidates(projectDir, names, nil, []string{token, retainedToken(Path(projectDir))})
+	return publishCandidates(projectDir, names, nil, append(cachedTokens(), retainedToken(Path(projectDir))))
 }
 
 // Purpose: publish the newest covering token without reviving rejected subjects.
@@ -72,7 +70,7 @@ func publishToken(projectDir string, names []string) error {
 // Constraints: signed expiry only; preserve diagnostic token if none covers.
 // SPORT: per-key rejection and offline entitlement selection.
 func publishCandidates(projectDir string, names []string, rejected map[string]bool, candidates []string) error {
-	token, tokenErr := selectToken(candidates, names, rejected)
+	token, tokenErr := selectTokens(candidates, names, rejected)
 	if err := writeAtomic(Path(projectDir), []byte(token)); err != nil {
 		return errs.Wrap("E125", fmt.Sprintf("could not write the plugin entitlement file: %v", err), err)
 	}

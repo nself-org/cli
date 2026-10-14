@@ -74,7 +74,7 @@ func WriteCache(entry *CacheEntry) error {
 	if err := ensureDir(dir); err != nil {
 		return fmt.Errorf("creating cache directory: %w", err)
 	}
-	data, err := json.MarshalIndent(entry, "", "  ")
+	data, err := json.MarshalIndent(cacheWithHistory(entry), "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshalling cache entry: %w", err)
 	}
