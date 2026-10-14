@@ -5,6 +5,7 @@ package controlplane
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -177,6 +178,15 @@ func TestMarkShippingOverlappingRuns(t *testing.T) {
 	if sp.shipping.on() {
 		t.Fatal("shipping mode stayed on after every run ended")
 	}
+	// A host-key error of one run is gone when the next run starts on the same prober.
+	endC := markShipping(sp)
+	sp.noteHostKeyErr(errors.New("E487 stale"))
+	endC()
+	endD := markShipping(sp)
+	if err := takeProbeHostKeyErr(sp); err != nil {
+		t.Fatalf("stale error leaked into the next run: %v", err)
+	}
+	endD()
 	markShipping(struct{}{})()                                      // a non-SSHProber is a no-op
 	if !isShippingRun(WithShippingRun(nil)) || isShippingRun(nil) { //nolint:staticcheck // callers do pass nil
 		t.Fatal("nil ctx handling")

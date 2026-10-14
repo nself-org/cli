@@ -27,8 +27,18 @@ func markShipping(v any) (restore func()) {
 	if !ok || sp == nil {
 		return func() {}
 	}
-	sp.shipping.Add(1)
-	return func() { sp.shipping.Add(-1) }
+	// The recorded host-key error belongs to one run: it is cleared when the
+	// first run starts on the prober and when the last one ends, so a retry on
+	// the same prober never trips over the error of an earlier run. Runs are
+	// not meant to overlap on one prober (newDeployProber builds one per call).
+	if sp.shipping.Add(1) == 1 {
+		sp.keyErr.clear()
+	}
+	return func() {
+		if sp.shipping.Add(-1) == 0 {
+			sp.keyErr.clear()
+		}
+	}
 }
 
 // shippedKeyErr keeps the first host-key error that a probe met while a shipping
@@ -37,6 +47,12 @@ func markShipping(v any) (restore func()) {
 type shippedKeyErr struct {
 	mu  sync.Mutex
 	err error
+}
+
+func (k *shippedKeyErr) clear() {
+	k.mu.Lock()
+	k.err = nil
+	k.mu.Unlock()
 }
 
 // noteHostKeyErr records err when a shipping run is active on the prober.
