@@ -157,6 +157,10 @@ var knownEnvVarsCore = []string{
 
 	// SSL
 	"SSL_MODE",
+	"SSL_PROVIDER",
+	"SSL_WILDCARD_DOMAIN",
+	"CLOUDFLARE_API_KEY",
+	"WAF_MODE",
 	"EXTRA_SSL_DOMAINS",
 
 	// Redis
