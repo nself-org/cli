@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	clonetemplate "github.com/nself-org/cli/internal/templates/clone"
@@ -52,6 +53,16 @@ func init() {
 	f.String("cs-template", "", "Scaffold a custom service at init time: specify language (go, node, python, rust, other)")
 
 	RootCmd.AddCommand(initCmd)
+}
+
+// runInit runs the init flow; in JSON mode it ends with the lifecycle envelope.
+func runInit(cmd *cobra.Command, args []string) error {
+	res := InitResult{FilesWritten: []string{}, Next: []string{}}
+	res.ProjectDir, _ = os.Getwd()
+	if err := runInitFlow(cmd, args, &res); err != nil {
+		return err
+	}
+	return emitLifecycle(cmd, "init", res)
 }
 
 // classifyInitError maps an init error to a categorical string safe for telemetry.

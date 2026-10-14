@@ -4,9 +4,10 @@ schema_version: 1
 commands:
   init: {canon: core, side_effect: write}
   restart: {canon: core, side_effect: write}
+  # start --watch keeps polling and restarting unhealthy containers, so its --json is a json-stream that ends with the start result
   start: {canon: core, side_effect: write, flags: {watch: {output: stream}}}
-  start dev: {side_effect: write, output: stream}
-  # cmd/commands/stop.go:42 stops containers; --volumes deletes data volumes
-  stop: {canon: core, side_effect: write, flags: {volumes: {side_effect: destructive}}}
+  start dev: {side_effect: write, output: stream} # runs until Ctrl+C: dev keeps the stack up and (--hot) rebuilds plugins on change, so it has no end-of-run document
+  # cmd/commands/stop.go:42 stops containers; --volumes deletes data volumes, so a machine surface must confirm it (stop has no --yes flag: the confirmation is the caller's)
+  stop: {canon: core, side_effect: write, flags: {volumes: {side_effect: destructive}}, confirm: {flags: []}}
 moves:
   - {from: dev, to: start dev, since: v1.5.0, removal_at: v1.6.0}

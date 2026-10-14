@@ -18427,8 +18427,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/init.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -21406,8 +21406,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/restart.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -22702,8 +22702,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/start.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -23397,10 +23397,13 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/stop.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -24382,7 +24385,7 @@
     "deprecated_shims": 48,
     "plugin": 11,
     "core_missing": [],
-    "json_envelope": 224,
+    "json_envelope": 228,
     "json_legacy": 27
   }
 }

@@ -4689,6 +4689,62 @@ export interface HelpTopicsRequest {
   flags?: HelpTopicsFlags;
 }
 
+export type InitArgs = [];
+
+export interface InitData {
+  env: string;
+  files_written: null | Array<string>;
+  next: null | Array<string>;
+  project_dir: string;
+}
+
+export type InitFlags = {
+  /** Scaffold a custom service at init time: specify language (go, node, python, rust, other) */
+  "cs-template"?: string;
+  /** Auto-configure with all services enabled */
+  demo?: boolean;
+  /** Base domain (default: local.nself.org; init never prompts for it, e.g. myapp.dev) */
+  domain?: string;
+  /** Print files that would be written without writing them (clone templates only) */
+  "dry-run"?: boolean;
+  /** Skip advanced options, use smart defaults */
+  fast?: boolean;
+  /** Overwrite existing configuration */
+  force?: boolean;
+  /** Create all environment files (.env.dev, .env.staging, .env.prod, .env.secrets) */
+  full?: boolean;
+  /** Explicitly enable interactive wizard */
+  interactive?: boolean;
+  /** List all available project presets and exit */
+  "list-presets"?: boolean;
+  /** Project name (sets PROJECT_NAME in generated .env) */
+  name?: string;
+  /** Skip pgvector extension and RAG scaffold tables (sets PGVECTOR_ENABLED=false) */
+  "no-pgvector"?: boolean;
+  /** Skip seed data when scaffolding a clone template */
+  "no-seed"?: boolean;
+  /** Use all defaults without prompts */
+  "non-interactive"?: boolean;
+  /** Use a project-type preset: b2b-saas, mobile-backend, ai-assistant, community-forum, media-hosting, dev, sentry, nclaw-app */
+  preset?: string;
+  /** Resource profile: 'tiny' for small VPS (Postgres+nginx only) */
+  profile?: string;
+  /** Suppress output messages */
+  quiet?: boolean;
+  /** Skip configuration validation */
+  "skip-validation"?: boolean;
+  /** Use a built-in, clone, or marketplace template (e.g. airbnb-clone, go, rust) */
+  template?: string;
+  /** Run the full 10-step interactive wizard */
+  wizard?: boolean;
+};
+
+/** Initialize a new nSelf project */
+export interface InitRequest {
+  args?: InitArgs;
+  flags?: InitFlags;
+}
+
 export type InitTemplateArgs = [];
 
 export interface InitTemplateData {
@@ -4918,6 +4974,87 @@ export interface ResetRequest {
   args?: ResetArgs;
   flags?: ResetFlags;
   confirm?: string;
+}
+
+export type RestartArgs = [string?, ...Array<string>];
+
+export interface RestartData {
+  mode: string;
+  restarted: null | Array<string>;
+}
+
+export type RestartFlags = {
+  /** Full restart: stop all + start all */
+  all?: boolean;
+  /** Alias for --skip-build */
+  "no-build"?: boolean;
+  /** Skip image rebuild */
+  "skip-build"?: boolean;
+  /** Detect changes, only restart affected (default) */
+  smart?: boolean;
+  /** Detailed output */
+  verbose?: boolean;
+};
+
+/** Smart restart with config change detection */
+export interface RestartRequest {
+  args?: RestartArgs;
+  flags?: RestartFlags;
+}
+
+export type StartArgs = [];
+
+export interface StartData {
+  duration_ms: number;
+  services: null | Array<{
+    health: string;
+    name: string;
+    status: string;
+  }>;
+  urls: null | Array<string>;
+}
+
+export type StartFlags = {
+  /** Bypass v0.9 artifact check and proceed with WARNING (not recommended) */
+  "allow-legacy"?: boolean;
+  /** Remove all containers before starting */
+  "clean-start"?: boolean;
+  /** Show debug information */
+  debug?: boolean;
+  /** Boot PostgreSQL via embedded pglite/wasmtime — no Docker postgres container required; pgvector included */
+  "embedded-pg"?: boolean;
+  /** Alias for --fresh */
+  "force-recreate"?: boolean;
+  /** Force recreate all containers */
+  fresh?: boolean;
+  /** Fail with E455 unless the CLI-owned service images (not CS_N or plugin-fragment services), plugin versions and checksums, and CLI minor match nself.lock.yaml */
+  frozen?: boolean;
+  /** Service profile passed to an automatic rebuild when the compose file is stale. app (default) — full service set. ops — observability + CI server (postgres, hasura, auth, nginx, monitoring). Overrides NSELF_PROFILE env var. Has no effect when --skip-build is set. */
+  profile?: string;
+  /** Quick start (timeout=30, required=60%) */
+  quick?: boolean;
+  /** Suppress progress output (for CI; preserves --json output) */
+  quiet?: boolean;
+  /** Skip automatic rebuild detection */
+  "skip-build"?: boolean;
+  /** Skip database migrations and seed; bring up Postgres+Hasura+hasura-auth only. Intended for CI/E2E environments. */
+  "skip-db-init"?: boolean;
+  /** Skip health validation after startup */
+  "skip-health-checks"?: boolean;
+  /** Start base stack only, skip all plugin compose files */
+  "skip-plugins"?: boolean;
+  /** Skip port availability check */
+  "skip-port-check"?: boolean;
+  /** Health check timeout in seconds (range: 30-600) */
+  timeout?: number;
+  /** Show detailed Docker output */
+  verbose?: boolean;
+};
+
+/** Boot your nSelf stack */
+export interface StartRequest {
+  args?: StartArgs;
+  flags?: StartFlags;
 }
 
 export type StatusArgs = [string?];
@@ -5191,6 +5328,35 @@ export type StatusUrlsFlags = {
 export interface StatusUrlsRequest {
   args?: StatusUrlsArgs;
   flags?: StatusUrlsFlags;
+}
+
+export type StopArgs = [string?, ...Array<string>];
+
+export interface StopData {
+  stopped: null | Array<string>;
+  volumes_removed: boolean;
+}
+
+export type StopFlags = {
+  /** Graceful shutdown timeout in seconds */
+  graceful?: number;
+  /** Alias for --rmi */
+  "remove-images"?: boolean;
+  /** Remove orphaned containers */
+  "remove-orphans"?: boolean;
+  /** Remove Docker images */
+  rmi?: boolean;
+  /** Show detailed output */
+  verbose?: boolean;
+  /** Remove volumes (WARNING: deletes data) */
+  volumes?: boolean;
+};
+
+/** Gracefully shut down all services or specific services */
+export interface StopRequest {
+  args?: StopArgs;
+  flags?: StopFlags;
+  confirm?: string;
 }
 
 export type UpdateArgs = [];

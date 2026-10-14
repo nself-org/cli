@@ -374,6 +374,8 @@ export interface Operations {
   helpCapabilities(request: T.HelpCapabilitiesRequest, options?: CallOptions): Promise<T.HelpCapabilitiesData>;
   /** Browse help topics (quickstart, plugins, license, envs, doctor, errors) (POST /v1/commands/help/topics) */
   helpTopics(request?: T.HelpTopicsRequest, options?: CallOptions): Promise<T.HelpTopicsData>;
+  /** Initialize a new nSelf project (POST /v1/commands/init) */
+  init(request?: T.InitRequest, options?: CallOptions): Promise<T.InitData>;
   /** Browse and publish full-stack app templates (POST /v1/commands/init/template) */
   initTemplate(request?: T.InitTemplateRequest, options?: CallOptions): Promise<T.InitTemplateData>;
   /** Show detail for a single template (POST /v1/commands/init/template/info) */
@@ -390,6 +392,10 @@ export interface Operations {
   mcpSetup(request?: T.McpSetupRequest, options?: CallOptions): Promise<T.McpSetupData>;
   /** Stop containers, remove all data volumes, and clean generated files (POST /v1/commands/reset) */
   reset(request?: T.ResetRequest, options?: CallOptions): Promise<T.ResetData>;
+  /** Smart restart with config change detection (POST /v1/commands/restart) */
+  restart(request?: T.RestartRequest, options?: CallOptions): Promise<T.RestartData>;
+  /** Boot your nSelf stack (POST /v1/commands/start) */
+  start(request?: T.StartRequest, options?: CallOptions): Promise<T.StartData>;
   /** Show health status of all services (POST /v1/commands/status) */
   status(request?: T.StatusRequest, options?: CallOptions): Promise<T.StatusData>;
   /** Health check management with continuous monitoring (POST /v1/commands/status/health) */
@@ -406,6 +412,8 @@ export interface Operations {
   statusHealthService(request: T.StatusHealthServiceRequest, options?: CallOptions): Promise<T.StatusHealthServiceData>;
   /** Display all service URLs with route conflict detection (POST /v1/commands/status/urls) */
   statusUrls(request?: T.StatusUrlsRequest, options?: CallOptions): Promise<T.StatusUrlsData>;
+  /** Gracefully shut down all services or specific services (POST /v1/commands/stop) */
+  stop(request?: T.StopRequest, options?: CallOptions): Promise<T.StopData>;
   /** Update the nSelf CLI and admin UI (POST /v1/commands/update) */
   update(request?: T.UpdateRequest, options?: CallOptions): Promise<T.UpdateData>;
   /** Refresh Docker image digests from registries (POST /v1/commands/update/images) */
@@ -615,6 +623,7 @@ export function createOperations(transport: Transport): Operations {
     doctorSecurityStatus: (request, options) => transport.call<T.DoctorSecurityStatusData>("/v1/commands/doctor/security/status", request, options),
     helpCapabilities: (request, options) => transport.call<T.HelpCapabilitiesData>("/v1/commands/help/capabilities", request, options),
     helpTopics: (request, options) => transport.call<T.HelpTopicsData>("/v1/commands/help/topics", request, options),
+    init: (request, options) => transport.call<T.InitData>("/v1/commands/init", request, options),
     initTemplate: (request, options) => transport.call<T.InitTemplateData>("/v1/commands/init/template", request, options),
     initTemplateInfo: (request, options) => transport.call<T.InitTemplateInfoData>("/v1/commands/init/template/info", request, options),
     initTemplateList: (request, options) => transport.call<T.InitTemplateListData>("/v1/commands/init/template/list", request, options),
@@ -623,6 +632,8 @@ export function createOperations(transport: Transport): Operations {
     logs: (request, options) => transport.call<T.LogsData>("/v1/commands/logs", request, options),
     mcpSetup: (request, options) => transport.call<T.McpSetupData>("/v1/commands/mcp/setup", request, options),
     reset: (request, options) => transport.call<T.ResetData>("/v1/commands/reset", request, options),
+    restart: (request, options) => transport.call<T.RestartData>("/v1/commands/restart", request, options),
+    start: (request, options) => transport.call<T.StartData>("/v1/commands/start", request, options),
     status: (request, options) => transport.call<T.StatusData>("/v1/commands/status", request, options),
     statusHealth: (request, options) => transport.call<T.StatusHealthData>("/v1/commands/status/health", request, options),
     statusHealthCheck: (request, options) => transport.call<T.StatusHealthCheckData>("/v1/commands/status/health/check", request, options),
@@ -631,6 +642,7 @@ export function createOperations(transport: Transport): Operations {
     statusHealthHistory: (request, options) => transport.call<T.StatusHealthHistoryData>("/v1/commands/status/health/history", request, options),
     statusHealthService: (request, options) => transport.call<T.StatusHealthServiceData>("/v1/commands/status/health/service", request, options),
     statusUrls: (request, options) => transport.call<T.StatusUrlsData>("/v1/commands/status/urls", request, options),
+    stop: (request, options) => transport.call<T.StopData>("/v1/commands/stop", request, options),
     update: (request, options) => transport.call<T.UpdateData>("/v1/commands/update", request, options),
     updateImages: (request, options) => transport.call<T.UpdateImagesData>("/v1/commands/update/images", request, options),
     updateProjectDetect: (request, options) => transport.call<T.UpdateProjectDetectData>("/v1/commands/update/project/detect", request, options),
