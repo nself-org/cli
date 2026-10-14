@@ -177,8 +177,14 @@ func TestPluginInfoRootChild(t *testing.T) {
 	}
 	os.Args = append([]string{"nself", "plugin", "info", "notify"}, strings.Fields(os.Getenv("NSELF_TEST_INFO_ARGS"))...)
 	if err := Execute(); err != nil {
-		// What cmd/nself/report.go does in v1.5: the error envelope on stdout in JSON mode,
-		// the redacting human rendering on stderr, the cause's exit status.
+		// What cmd/nself/report.go does in v1.5 (report_legacy.go has the same first check):
+		// a silent error was already reported, only its exit status is returned; otherwise
+		// the error envelope on stdout in JSON mode, the redacting human rendering on
+		// stderr, the cause's exit status.
+		var silencer errs.Silencer
+		if errors.As(err, &silencer) && silencer.Silent() {
+			os.Exit(errs.ExitCodeFor(err))
+		}
 		if command, jsonMode, known := output.Invocation(); known && jsonMode {
 			_ = output.EmitError(output.Default(), command, err)
 		}
@@ -321,6 +327,9 @@ func TestPluginInfoLegacyEnvFailureIsOneBareDocument(t *testing.T) {
 	out, err := runInfoRoot(t, "--json")
 	if err == nil {
 		t.Fatalf("an unresolved tier must still fail, got output %s", out)
+	}
+	if !strings.Contains(err.Error(), "exit status") || !strings.Contains(err.Error(), "tier unresolved") {
+		t.Fatalf("want a non-zero exit and the reported failure on stderr, got %v", err)
 	}
 	dec := json.NewDecoder(strings.NewReader(out))
 	var doc map[string]json.RawMessage
