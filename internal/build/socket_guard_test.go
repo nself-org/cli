@@ -106,7 +106,19 @@ func TestSocketGuardFragments(t *testing.T) {
 		{"relative path climbing out to /var/run", map[string]string{"sockrelescape": "mount_relative_escape.yml"}, "", nil, []string{"sockrelescape"}},
 		{"home-relative docker socket", map[string]string{"sockhome": "mount_home.yml"}, "", nil, []string{"sockhome"}},
 		{"external volume on a plugin service", map[string]string{"sockext": "external_volume.yml"}, "", nil, []string{"sockext", "extvol", "cannot be proven"}},
-		{"volume mapped with name:", map[string]string{"sockrenamed": "renamed_volume.yml"}, "", nil, []string{"sockrenamed", "renamedvol", "cannot be proven"}},
+		{"volume mapped with name: alone is an ordinary named volume", map[string]string{"sockrenamed": "renamed_volume.yml"}, "", nil, nil},
+		{"renamed volume that names a socket device, non-excepted plugin", map[string]string{"sockcombo": "combo_renamed.yml"}, "", nil, []string{"sockcombo", "combovol", "/var/run"}},
+		{"forgejo-shaped fragment under a non-excepted slug", map[string]string{"other": "forgejo_shape.yml"}, "", nil, []string{"other", "forgejo-runner"}},
+		{"forgejo-shaped fragment: own direct socket, warns before expiry", map[string]string{"forgejo": "forgejo_shape.yml"}, "", nil, nil},
+		{"secret file that is the socket", map[string]string{"socksecret": "secret_file.yml"}, "", nil, []string{"socksecret", "secrets"}},
+		{"config file that is the socket", map[string]string{"sockconfig": "config_file.yml"}, "", nil, []string{"sockconfig", "configs"}},
+		{"empty secrets and configs lists stay safe", map[string]string{"sockemptysecrets": "secrets_empty.yml"}, "", nil, nil},
+		{"use_api_socket true", map[string]string{"sockapitrue": "use_api_socket_true.yml"}, "", nil, []string{"sockapitrue", "use_api_socket"}},
+		{"use_api_socket false", map[string]string{"sockapifalse": "use_api_socket_false.yml"}, "", nil, nil},
+		{"use_api_socket variable resolving to true", map[string]string{"sockapivar": "use_api_socket_var.yml"}, "", map[string]string{"SOCKGUARD_API": "true"}, []string{"sockapivar", "use_api_socket"}},
+		{"use_api_socket variable resolving to false", map[string]string{"sockapivar": "use_api_socket_var.yml"}, "", map[string]string{"SOCKGUARD_API": "false"}, nil},
+		{"use_api_socket variable that cannot be resolved", map[string]string{"sockapivar": "use_api_socket_var.yml"}, "", nil, []string{"sockapivar", "use_api_socket"}},
+		{"excepted plugin: use_api_socket is never waived", map[string]string{"forgejo": "use_api_socket_true.yml"}, "", nil, []string{"forgejo", "use_api_socket"}},
 		{"short bind", map[string]string{"sockshort": "mount_short.yml"}, "", nil, []string{"sockshort"}},
 		{"long bind", map[string]string{"socklong": "mount_long.yml"}, "", nil, []string{"socklong"}},
 		{"interpolated default hides the socket", map[string]string{"sockvar": "mount_interpolated.yml"}, "", nil, []string{"sockvar"}},
@@ -147,9 +159,9 @@ func TestSocketGuardFragments(t *testing.T) {
 		{"excepted plugin: unresolved DOCKER_HOST", map[string]string{"forgejo": "var_docker_host.yml"}, "", nil, []string{"forgejo", "sockvarhost"}},
 		{"excepted plugin: unresolved volume device", map[string]string{"forgejo": "var_device.yml"}, "", nil, []string{"forgejo", "sockvardev", "cannot be proven"}},
 		{"excepted plugin: external volume", map[string]string{"forgejo": "external_volume.yml"}, "", nil, []string{"forgejo", "sockext", "cannot be proven"}},
-		{"excepted plugin: renamed volume that also names a socket device", map[string]string{"forgejo": "combo_renamed.yml"}, "", nil, []string{"forgejo", "sockcombo", "cannot be proven"}},
+		{"excepted plugin: renamed volume that names a socket device is its own confirmed socket", map[string]string{"forgejo": "combo_renamed.yml"}, "", nil, nil},
 		{"excepted plugin: external volume that also names a socket device", map[string]string{"monitoring": "combo_external.yml"}, "", nil, []string{"monitoring", "sockcomboext", "cannot be proven"}},
-		{"excepted plugin: renamed volume", map[string]string{"monitoring": "renamed_volume.yml"}, "", nil, []string{"monitoring", "sockrenamed", "cannot be proven"}},
+		{"excepted plugin: name-only volume stays an ordinary named volume", map[string]string{"monitoring": "renamed_volume.yml"}, "", nil, nil},
 		{"excepted plugin: env_file", map[string]string{"forgejo": "env_file.yml"}, "", nil, []string{"forgejo", "sockenvfile", "env_file"}},
 		{"excepted plugin: extends", map[string]string{"forgejo": "extends_file.yml"}, "", nil, []string{"forgejo", "sockextends", "extends"}},
 		{"excepted plugin: volumes_from", map[string]string{"monitoring": "volumes_from.yml"}, "", nil, []string{"monitoring", "sockvolsfrom", "volumes_from"}},
@@ -549,6 +561,28 @@ func TestSocketGuardExceptionExpiry(t *testing.T) {
 			if !errors.As(err, &ce) || ce.Code != "E130" || !strings.Contains(err.Error(), slug) {
 				t.Fatalf("%s at its removal version: want E130, got %v", slug, err)
 			}
+		}
+	})
+
+	t.Run("forgejo-shaped fragment and a renamed socket volume stop at the removal version", func(t *testing.T) {
+		used := map[string]bool{}
+		resetWarnOnce()
+		for fixture, slug := range map[string]string{"forgejo_shape.yml": "forgejo", "combo_renamed.yml": "monitoring"} {
+			tc := socketCase{plugins: map[string]string{slug: fixture}}
+			setCLIVersion(t, "1.4.14")
+			if err := buildSocketCase(t, used, tc); err != nil {
+				t.Fatalf("%s refused before removal: %v", fixture, err)
+			}
+			if err := buildSocketCase(t, used, tc); err != nil || warnedCount() < 1 {
+				t.Fatalf("%s second build: %v, warnings %d", fixture, err, warnedCount())
+			}
+			setCLIVersion(t, socketExceptions[slug].RemovalAt)
+			if err := buildSocketCase(t, used, tc); err == nil || !strings.Contains(err.Error(), slug) {
+				t.Fatalf("%s at its removal version: want E130, got %v", fixture, err)
+			}
+		}
+		if n := warnedCount(); n != 2 {
+			t.Errorf("want one warning per excepted plugin (2), got %d", n)
 		}
 	})
 

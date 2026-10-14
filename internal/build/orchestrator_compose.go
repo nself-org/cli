@@ -54,7 +54,6 @@ func (st *buildState) applyProxyProvider(g *compose.Generator) error {
 		if err := proxyFrontingStack(st.cfg, st.workdir); err != nil {
 			return err
 		}
-		// P7-DEPL-21 (ADR 0027): refuse before any provider output is touched.
 		if err := st.guardDockerSocket(g); err != nil {
 			return err
 		}
@@ -193,9 +192,14 @@ func scanSocketService(d socketDoc, name string, body map[string]any, lookup Soc
 	var uses []SocketUse
 	use := func(u bool, f string, a ...any) { uses = append(uses, SocketUse{d.origin, fmt.Sprintf(f, a...), u}) }
 	bad := func(w string) error { return fmt.Errorf("%s service %q has an unsupported %s", d.origin, name, w) }
-	for _, k := range []string{"env_file", "extends", "volumes_from"} {
-		if body[k] != nil {
+	for _, k := range []string{"env_file", "extends", "volumes_from", "secrets", "configs"} {
+		if v := body[k]; v != nil && fmt.Sprint(v) != "[]" { // an empty list is safe
 			use(true, "uses %s, which is not inspected", k)
+		}
+	}
+	if v := body["use_api_socket"]; v != nil && v != false { // the engine API socket, mounted by the provider
+		if x, ok := expandSocket(fmt.Sprint(v), lookup); !ok || !slices.Contains([]string{"", "false", "no", "off", "0"}, strings.ToLower(x)) {
+			use(true, "enables use_api_socket, which hands the container the engine API socket")
 		}
 	}
 	entries, isList := body["volumes"].([]any)
@@ -270,17 +274,15 @@ func scanSocketService(d socketDoc, name string, body map[string]any, lookup Soc
 	return uses, nil
 }
 
-// futureComposeEnv is the .nself/compose.env this build is about to write (the real
-// writer, into memory), so the guard judges what Compose will see, not a stale .env field.
+// futureComposeEnv is the compose.env this build will write (the real writer, in memory).
 func (st *buildState) futureComposeEnv() map[string]string {
 	vars := withHostOwner(ComputePluginEnvVars(st.workdir, st.pluginDir, st.cfg), proxyHostOwner(st.cfg, st.workdir, st.pluginDir))
 	sink := newMemSink(st.workdir, "")
 	_ = writeComposeEnvVia(sink, st.workdir, st.cfg, SecretEnvMap(st.cfg), vars)
-	data := []byte(nil)
+	m := map[string]string{}
 	for _, f := range sink.files { // the writer produced exactly one file
-		data = f.Data
+		m, _ = godotenv.Unmarshal(string(f.Data))
 	}
-	m, _ := godotenv.Unmarshal(string(data))
 	return m
 }
 

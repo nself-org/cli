@@ -248,8 +248,8 @@ func AnalyzeSocket(workdir, pluginDir string, env SocketEnv, core []byte) (*Sock
 			} else if dev != "" && (SocketPathExposed(x) || SocketPathExposed(r)) && !strings.HasPrefix(rep.Volumes[name], "has a backing") {
 				rep.Volumes[name] = "is backed by " + x // never replaces an unprovable reason: no exception waives that
 			}
-			if m["external"] != nil && m["external"] != false || m["name"] != nil {
-				rep.Volumes[name] = "has a backing that cannot be proven (external or renamed)"
+			if m["external"] != nil && m["external"] != false {
+				rep.Volumes[name] = "has a backing that cannot be proven (external)"
 			}
 		}
 	}

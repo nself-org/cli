@@ -1,0 +1,5 @@
+# synthetic fixture: the implicit engine API socket
+services:
+  sockapitrue:
+    image: example.invalid/sockapitrue:1
+    use_api_socket: true
