@@ -111,7 +111,7 @@ func writeExisting(path string, data []byte, before os.FileInfo) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	after, err := f.Stat()
 	if err != nil {
 		return err
@@ -140,8 +140,8 @@ func writeNew(path string, data []byte) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
-	defer tmp.Close()
+	defer func() { _ = os.Remove(tmp.Name()) }()
+	defer func() { _ = tmp.Close() }()
 	if err := tmp.Chmod(0600); err != nil {
 		return err
 	}
@@ -161,6 +161,6 @@ func writeNew(path string, data []byte) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return f.Sync()
 }

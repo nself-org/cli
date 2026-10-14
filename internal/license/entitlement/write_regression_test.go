@@ -32,7 +32,7 @@ func TestRefreshPreservesExistingInode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pinned.Close()
+	defer func() { _ = pinned.Close() }()
 	if err := entitlement.Refresh(context.Background(), dir); err != nil {
 		t.Fatal(err)
 	}
