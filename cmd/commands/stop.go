@@ -181,27 +181,11 @@ func runStopFlow(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// ComposeDown handles volumes, orphans, and timeout.
-	// For --rmi we need to pass it separately since DownOptions doesn't have it.
-	if rmi {
-		downArgs := composeBaseArgs(composeFiles)
-		downArgs = append(downArgs, "down")
-		if volumes {
-			downArgs = append(downArgs, "-v")
-		}
-		downArgs = append(downArgs, "--rmi", "all")
-		// Always remove orphans to clean up stale containers.
-		downArgs = append(downArgs, "--remove-orphans")
-		if gracefulTimeout > 0 {
-			downArgs = append(downArgs, "-t", fmt.Sprintf("%d", gracefulTimeout))
-		}
-		if err := compose.Run(ctx, workdir, downArgs...); err != nil {
-			return fmt.Errorf("compose down failed: %w", err)
-		}
-	} else {
-		if err := compose.ComposeDown(ctx, workdir, downOpts); err != nil {
-			return fmt.Errorf("compose down failed: %w", err)
-		}
+	// ComposeDown handles volumes, images, orphans and timeout, and runs the
+	// pre-down hooks (a fronted project detaches the shared proxy's nginx).
+	downOpts.RemoveImages = rmi
+	if err := compose.ComposeDown(ctx, workdir, downOpts); err != nil {
+		return fmt.Errorf("compose down failed: %w", err)
 	}
 
 	// Summary. When psErr != nil we could not determine the running container

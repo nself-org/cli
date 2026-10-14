@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"strings"
 
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/confirm"
+	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -184,13 +184,11 @@ func runReset(cmd *cobra.Command, args []string) error {
 }
 
 // resetComposeDown runs `docker compose down --volumes --remove-orphans` in
-// projectDir. A package variable so tests can make it fail without Docker.
+// projectDir through the docker funnel, so the pre-down hooks run first (a
+// fronted project detaches the shared proxy's nginx). A package variable so
+// tests can make it fail without Docker.
 var resetComposeDown = func(ctx context.Context, projectDir string) error {
-	dcCmd := exec.CommandContext(ctx, "docker", "compose", "down", "--volumes", "--remove-orphans")
-	dcCmd.Dir = projectDir
-	dcCmd.Stdout = os.Stdout
-	dcCmd.Stderr = os.Stderr
-	return dcCmd.Run()
+	return docker.NewCompose().ComposeDown(ctx, projectDir, docker.DownOptions{RemoveVolumes: true, RemoveOrphans: true})
 }
 
 // recordIfExists runs remove on project-relative rel when it exists and

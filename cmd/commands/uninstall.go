@@ -6,12 +6,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 
+	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -173,6 +172,8 @@ func uninstallProject(cmd *cobra.Command) (res UninstallResult, done bool, err e
 			ui.C(ui.Yellow, ui.IconWarning), err)
 	}
 
+	leaveSharedProxy(cmd.Context(), cwd) // R2b: files and registration leave the owner
+
 	removed := []string{}
 	var failed []error
 	record := func(rel string, remove func(string) error) {
@@ -251,26 +252,19 @@ func abortedUninstall(cmd *cobra.Command) error {
 // its volumes. A package variable so tests can make it fail without Docker.
 var composeDown = runDockerComposeDown
 
-// runDockerComposeDown stops and removes containers for the project.
-// If purge is true it also removes volumes. ran is false when there is no
-// compose file, so nothing was stopped and no volume was touched.
-// ctx is used to cancel the docker subprocess if the command context fires
-// (e.g. test harness deadline), preventing orphan I/O after the test exits.
-func runDockerComposeDown(ctx context.Context, stdout, stderr io.Writer, projectDir string, purge bool) (ran bool, err error) {
+// runDockerComposeDown stops and removes containers for the project through the
+// docker funnel, so the pre-down hooks run first (a fronted project detaches
+// the shared proxy's nginx). If purge is true it also removes volumes. ran is
+// false when there is no compose file, so nothing was stopped and no volume
+// was touched. ctx cancels the docker subprocess if the command context fires
+// (e.g. test harness deadline). The writers are kept for the test seam; the
+// funnel decides where docker's output goes.
+func runDockerComposeDown(ctx context.Context, _, _ io.Writer, projectDir string, purge bool) (ran bool, err error) {
 	composeFile := filepath.Join(projectDir, "docker-compose.yml")
 	if _, err := os.Stat(composeFile); os.IsNotExist(err) {
 		return false, nil // nothing to stop
 	}
-
-	dockerArgs := []string{"compose", "--file", composeFile, "down"}
-	if purge {
-		dockerArgs = append(dockerArgs, "--volumes")
-	}
-	dcmd := exec.CommandContext(ctx, "docker", dockerArgs...)
-	dcmd.Stdout = stdout
-	dcmd.Stderr = stderr
-	dcmd.WaitDelay = 5 * time.Second
-	return true, dcmd.Run()
+	return true, docker.NewCompose(composeFile).ComposeDown(ctx, projectDir, docker.DownOptions{RemoveVolumes: purge})
 }
 
 // confirmPrompt prints the given prompt and returns true if the user typed
