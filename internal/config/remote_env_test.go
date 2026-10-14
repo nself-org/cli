@@ -1,0 +1,56 @@
+package config
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestRemoteDeployProcessOnlyConfig(t *testing.T) {
+	isolateRemoteConfigEnv(t)
+	for _, key := range []string{"POSTGRES_PASSWORD", "CLOUDFLARE_API_KEY", "AUTH_PROVIDER_TEST_SECRET", "CS_1_ENV", "FRONTEND_APP_1_IMAGE", "INTERNAL_ROUTE_1_TARGET"} {
+		t.Run(key, func(t *testing.T) {
+			t.Setenv("ENV", "staging")
+			t.Setenv(key, "process-secret-sentinel")
+			_, err := LoadWithOptions(t.TempDir(), LoadOptions{RemoteDeploy: true})
+			if err == nil {
+				t.Fatalf("remote build accepted process-only %s", key)
+			}
+			if !strings.Contains(err.Error(), key) || !strings.Contains(err.Error(), "env file") || strings.Contains(err.Error(), "process-secret-sentinel") {
+				t.Fatalf("unsafe or unactionable refusal: %v", err)
+			}
+		})
+	}
+}
+
+func TestRemoteDeployFilePrecedence(t *testing.T) {
+	isolateRemoteConfigEnv(t)
+	t.Setenv("ENV", "staging")
+	t.Setenv("POSTGRES_PASSWORD", "shell-secret")
+	t.Setenv("UNRELATED_SHELL_SECRET", "shell-only")
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("POSTGRES_PASSWORD=file-secret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadWithOptions(dir, LoadOptions{RemoteDeploy: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Postgres.Password != "file-secret" {
+		t.Fatalf("file password lost precedence")
+	}
+}
+
+func isolateRemoteConfigEnv(t *testing.T) {
+	t.Helper()
+	for _, key := range knownEnvVars {
+		t.Setenv(key, "")
+	}
+	for _, entry := range os.Environ() {
+		key, _, _ := strings.Cut(entry, "=")
+		if remoteDynamicConfigKey(key) {
+			t.Setenv(key, "")
+		}
+	}
+}
