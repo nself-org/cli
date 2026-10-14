@@ -93,7 +93,10 @@ func schemaLines(golden []byte) map[string]int {
 		case strings.HasPrefix(l, `      "inputSchema": `):
 			schemaAt = i + 1
 		case strings.HasPrefix(l, `      "name": "`):
-			lines[strings.TrimSuffix(strings.TrimPrefix(l, `      "name": "`), `",`)] = schemaAt
+			name := strings.TrimSuffix(strings.TrimPrefix(l, `      "name": "`), `",`)
+			if _, seen := lines[name]; !seen { // a repeated name keeps its first anchor; the checks reject the repeat
+				lines[name] = schemaAt
+			}
 		}
 	}
 	return lines
@@ -123,7 +126,7 @@ func mcpRows(tools []server.ServerTool, table *mcpgen.Table, resolve func(string
 				}
 			}
 			row.Confirm = confirmCell(cmd, only)
-			if !isAlias && !(isLegacy && legacy.Shortcut) { // aliases and shortcuts keep their own description
+			if !isAlias && (!isLegacy || !legacy.Shortcut) { // aliases and shortcuts keep their own description
 				row.Summary = cmd.Summary
 			}
 		}
