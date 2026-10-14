@@ -34,6 +34,15 @@ import (
 // advChildEnv switches this test binary into the lock-holding child.
 const advChildEnv = "MCPADV_CHILD"
 
+// Names of the FIFO and log paths the lock-holding child reads. They are
+// consts, not literals in the os.Getenv calls, so tools/parity (which scans
+// those calls for documented env vars) does not list test plumbing.
+const (
+	advLogEnv     = "MCPADV_LOG"
+	advReadyEnv   = "MCPADV_READY"
+	advReleaseEnv = "MCPADV_RELEASE"
+)
+
 // init turns the test binary into advChild when the invoker runs it as the
 // nself child of the concurrency case. Normal test runs never set the variable.
 func init() {
@@ -54,15 +63,15 @@ func advChild() int {
 		return 1
 	}
 	defer release()
-	if f, err := os.OpenFile(os.Getenv("MCPADV_LOG"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
+	if f, err := os.OpenFile(os.Getenv(advLogEnv), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
 		_, _ = fmt.Fprintln(f, "ran "+strings.Join(os.Args[1:], " "))
 		_ = f.Close()
 	}
-	if f, err := os.OpenFile(os.Getenv("MCPADV_READY"), os.O_WRONLY, 0); err == nil {
+	if f, err := os.OpenFile(os.Getenv(advReadyEnv), os.O_WRONLY, 0); err == nil {
 		_, _ = f.WriteString("1")
 		_ = f.Close()
 	}
-	if f, err := os.OpenFile(os.Getenv("MCPADV_RELEASE"), os.O_RDONLY, 0); err == nil {
+	if f, err := os.OpenFile(os.Getenv(advReleaseEnv), os.O_RDONLY, 0); err == nil {
 		_, _ = io.Copy(io.Discard, f)
 		_ = f.Close()
 	}
@@ -152,9 +161,9 @@ func advConcurrentDestructive(t *testing.T) {
 	dir := t.TempDir()
 	ready, release := fifo(t, dir, "ready"), fifo(t, dir, "release")
 	logPath := filepath.Join(dir, "child.log")
-	t.Setenv("MCPADV_READY", ready)
-	t.Setenv("MCPADV_RELEASE", release)
-	t.Setenv("MCPADV_LOG", logPath)
+	t.Setenv(advReadyEnv, ready)
+	t.Setenv(advReleaseEnv, release)
+	t.Setenv(advLogEnv, logPath)
 	t.Cleanup(func() { // free a stuck child and reader if a check failed early
 		for _, p := range []string{ready, release} {
 			if f, err := os.OpenFile(p, os.O_WRONLY|syscall.O_NONBLOCK, 0); err == nil {
