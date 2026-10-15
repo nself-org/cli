@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -72,5 +73,27 @@ func TestCLIBinaryOwnershipAllowsOwnCommands(t *testing.T) {
 		if _, err := os.Stat(PublishedBinaryPath(bin)); !os.IsNotExist(err) {
 			t.Errorf("own binary %s survived removal: %v", bin, err)
 		}
+	}
+}
+
+// A project plugin directory (NSELF_PLUGIN_DIR) is not ~/.nself/plugins: the
+// owners come from the directory the plugin was extracted into, on both paths.
+func TestCLIBinaryOwnershipProjectPluginDir(t *testing.T) {
+	collisionHome(t)
+	projectDir := filepath.Join(t.TempDir(), "plugins")
+	ownerDir := extractFake(t, projectDir, "notify", `,"pluginType":"cli"`, "nself-notify")
+	if err := linkCLIBinary(ownerDir, "notify", readPluginManifest(ownerDir)); err != nil {
+		t.Fatal(err)
+	}
+	dir := extractFake(t, projectDir, "other", `,"pluginType":"cli","binaryName":"nself-notify"`, "nself-notify")
+	m := readPluginManifest(dir)
+	if err := linkCLIBinary(dir, "other", m); codeOfErr(err) != "E141" {
+		t.Errorf("publication must refuse a binary owned in the project plugin dir: %v", err)
+	}
+	if err := unlinkCLIBinaryIn(projectDir, "other", m); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(PublishedBinaryPath("nself-notify")); err != nil {
+		t.Errorf("removal unpublished notify's binary: %v", err)
 	}
 }

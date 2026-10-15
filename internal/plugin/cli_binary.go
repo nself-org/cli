@@ -127,7 +127,9 @@ func linkCLIBinary(destDir, name string, m *PluginManifest) error {
 		return err
 	}
 	// Check at the shared publication boundary too, before replacing any target.
-	if err := checkCLIBinaries(filepath.Dir(pluginBinDir()), name, m); err != nil {
+	// Owners are read from the plugin directory this plugin was extracted into,
+	// the same one the install-time check used.
+	if err := checkCLIBinaries(filepath.Dir(destDir), name, m); err != nil {
 		return err
 	}
 
@@ -166,11 +168,17 @@ func linkCLIBinary(destDir, name string, m *PluginManifest) error {
 // unlinkCLIBinary removes a plugin's published binary. A missing file is not an
 // error — the plugin may never have shipped one.
 func unlinkCLIBinary(name string, m *PluginManifest) error {
+	return unlinkCLIBinaryIn(filepath.Dir(pluginBinDir()), name, m)
+}
+
+// unlinkCLIBinaryIn is unlinkCLIBinary with the plugin directory whose installed
+// manifests decide ownership: a binary another plugin there also provides stays.
+func unlinkCLIBinaryIn(pluginDir, name string, m *PluginManifest) error {
 	binNames := cliBinaryNames(name, m)
 	if len(binNames) == 0 {
 		binNames = []string{"nself-" + name} // best effort on an unreadable manifest
 	}
-	owners, err := installedCLIBinaryOwners(filepath.Dir(pluginBinDir()), name)
+	owners, err := installedCLIBinaryOwners(pluginDir, name)
 	if err != nil {
 		return err
 	}

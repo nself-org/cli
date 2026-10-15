@@ -115,7 +115,7 @@ func UndoInstall(_ context.Context, _ *config.Config, name, pluginDir string) er
 	if _, err := os.Stat(destDir); errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
-	if err := unlinkCLIBinary(name, readPluginManifest(destDir)); err != nil {
+	if err := unlinkCLIBinaryIn(pluginDir, name, readPluginManifest(destDir)); err != nil {
 		return fmt.Errorf("unpublishing plugin %q command: %w", name, err)
 	}
 	if err := os.RemoveAll(destDir); err != nil {

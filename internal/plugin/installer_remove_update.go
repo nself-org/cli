@@ -122,7 +122,7 @@ func Remove(ctx context.Context, cfg *config.Config, name string, pluginDir stri
 	// install side was written and was never called from anywhere, so removing
 	// a plugin left its command working: `nself remove foo` then `nself foo`
 	// still ran the removed plugin.
-	if err := unlinkCLIBinary(name, manifest); err != nil {
+	if err := unlinkCLIBinaryIn(pluginDir, name, manifest); err != nil {
 		return fmt.Errorf("unpublishing plugin %q command: %w", name, err)
 	}
 
