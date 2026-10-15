@@ -13,6 +13,7 @@ import (
 
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/docker"
+	"gopkg.in/yaml.v3"
 )
 
 // knownServiceNames is the set of valid optional service names accepted by the
@@ -41,16 +42,41 @@ var knownServiceNames = map[string]bool{
 
 // serviceAlias maps alternate names to the canonical Docker Compose service name.
 var serviceAlias = map[string]string{
-	"storage":     "minio",
 	"mail":        "email",
 	"mailpit":     "email",
 	"meilisearch": "search",
 }
 
+// ComposeDeclaresService reports whether the project's docker-compose.yml in
+// dir declares a service called name. An unreadable or unparsable file reports
+// false, so the compose call that follows surfaces the real error.
+func ComposeDeclaresService(dir, name string) bool {
+	data, err := os.ReadFile(filepath.Join(dir, "docker-compose.yml"))
+	if err != nil {
+		return false
+	}
+	var doc struct {
+		Services map[string]yaml.Node `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return false
+	}
+	_, ok := doc.Services[name]
+	return ok
+}
+
 // resolveService validates and resolves the service name to its canonical
-// Docker Compose service label. Returns an error for unknown names.
-func resolveService(name string) (string, error) {
+// Docker Compose service label. Returns an error for unknown names. The name
+// "storage" reaches the free storage plugin when the compose file in dir
+// declares that service, and falls back to core MinIO otherwise (D-0451).
+func resolveService(name, dir string) (string, error) {
 	lower := strings.ToLower(strings.TrimSpace(name))
+	if lower == "storage" {
+		if ComposeDeclaresService(dir, "storage") {
+			return "storage", nil
+		}
+		lower = "minio"
+	}
 	if canon, ok := serviceAlias[lower]; ok {
 		lower = canon
 	}
@@ -81,11 +107,11 @@ func projectDir() (string, error) {
 // Start starts a named nSelf service via `docker compose up -d --no-deps <service>`.
 // The service must be configured in the stack (docker-compose.yml must exist).
 func Start(ctx context.Context, serviceName string) error {
-	canon, err := resolveService(serviceName)
+	dir, err := projectDir()
 	if err != nil {
 		return err
 	}
-	dir, err := projectDir()
+	canon, err := resolveService(serviceName, dir)
 	if err != nil {
 		return err
 	}
@@ -96,11 +122,11 @@ func Start(ctx context.Context, serviceName string) error {
 // Stop stops a named nSelf service via `docker compose stop <service>`.
 // The container is stopped but not removed; its state is preserved.
 func Stop(ctx context.Context, serviceName string) error {
-	canon, err := resolveService(serviceName)
+	dir, err := projectDir()
 	if err != nil {
 		return err
 	}
-	dir, err := projectDir()
+	canon, err := resolveService(serviceName, dir)
 	if err != nil {
 		return err
 	}
@@ -110,11 +136,11 @@ func Stop(ctx context.Context, serviceName string) error {
 
 // Restart restarts a named nSelf service via `docker compose restart <service>`.
 func Restart(ctx context.Context, serviceName string) error {
-	canon, err := resolveService(serviceName)
+	dir, err := projectDir()
 	if err != nil {
 		return err
 	}
-	dir, err := projectDir()
+	canon, err := resolveService(serviceName, dir)
 	if err != nil {
 		return err
 	}
@@ -161,11 +187,11 @@ func PS(ctx context.Context) ([]PSEntry, error) {
 // Update pulls the latest image for a service and restarts it.
 // This is equivalent to `docker compose pull <service> && docker compose up -d --no-deps <service>`.
 func Update(ctx context.Context, serviceName string) error {
-	canon, err := resolveService(serviceName)
+	dir, err := projectDir()
 	if err != nil {
 		return err
 	}
-	dir, err := projectDir()
+	canon, err := resolveService(serviceName, dir)
 	if err != nil {
 		return err
 	}
@@ -190,11 +216,11 @@ func Scale(ctx context.Context, serviceName string, replicas int) error {
 	if replicas < 1 {
 		return fmt.Errorf("replicas must be at least 1 (got %d)", replicas)
 	}
-	canon, err := resolveService(serviceName)
+	dir, err := projectDir()
 	if err != nil {
 		return err
 	}
-	dir, err := projectDir()
+	canon, err := resolveService(serviceName, dir)
 	if err != nil {
 		return err
 	}

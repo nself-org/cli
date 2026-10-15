@@ -207,15 +207,35 @@ func TestResolveDeclaredPlugins_MissingPluginReported(t *testing.T) {
 	}
 }
 
-// TestResolveDeclaredPlugins_CoreServiceSatisfies asserts declared names that
-// core compose services provide (auth via hasura-auth, storage via MinIO) do
-// not produce false missing-plugin reports.
+// TestResolveDeclaredPlugins_CoreServiceSatisfies asserts the declared name
+// auth, which hasura-auth provides, does not produce a false missing-plugin
+// report.
 func TestResolveDeclaredPlugins_CoreServiceSatisfies(t *testing.T) {
 	t.Setenv("NSELF_AUTO_INSTALL_PLUGINS", "false")
 	workdir := t.TempDir()
 	pluginDir := t.TempDir()
 
-	yaml := "app: repro\nplugins:\n  free:\n    - auth\n    - storage\n"
+	yaml := "app: repro\nplugins:\n  free:\n    - auth\n"
+	if err := os.WriteFile(filepath.Join(workdir, "nself.yaml"), []byte(yaml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{ProjectName: "repro"}
+	missing := ResolveDeclaredPlugins(context.Background(), cfg, workdir, pluginDir, expectedCoreServices(cfg))
+	if len(missing) != 0 {
+		t.Fatalf("auth is a core service — expected no missing plugins, got %v", missing)
+	}
+}
+
+// TestResolveDeclaredPlugins_StoragePluginNotCoveredByMinio guards D-0451: the
+// free storage plugin is a plugin, so MinIO being enabled must not count as
+// covering a declared `storage` (directly or through a bundle).
+func TestResolveDeclaredPlugins_StoragePluginNotCoveredByMinio(t *testing.T) {
+	t.Setenv("NSELF_AUTO_INSTALL_PLUGINS", "false")
+	workdir := t.TempDir()
+	pluginDir := t.TempDir()
+
+	yaml := "app: repro\nplugins:\n  free:\n    - storage\n"
 	if err := os.WriteFile(filepath.Join(workdir, "nself.yaml"), []byte(yaml), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -223,8 +243,13 @@ func TestResolveDeclaredPlugins_CoreServiceSatisfies(t *testing.T) {
 	cfg := &config.Config{ProjectName: "repro"}
 	cfg.Minio.Enabled = true
 	missing := ResolveDeclaredPlugins(context.Background(), cfg, workdir, pluginDir, expectedCoreServices(cfg))
-	if len(missing) != 0 {
-		t.Fatalf("auth/storage are core services — expected no missing plugins, got %v", missing)
+	if len(missing) != 1 || missing[0] != "storage" {
+		t.Fatalf("storage plugin is not provided by MinIO — want missing [storage], got %v", missing)
+	}
+
+	writeTestPlugin(t, pluginDir, "storage", 9007, true)
+	if missing := ResolveDeclaredPlugins(context.Background(), cfg, workdir, pluginDir, expectedCoreServices(cfg)); len(missing) != 0 {
+		t.Fatalf("installed storage plugin must satisfy the declaration, got missing %v", missing)
 	}
 }
 

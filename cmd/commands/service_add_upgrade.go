@@ -26,6 +26,7 @@ import (
 	"github.com/nself-org/cli/internal/reconcile"
 	"github.com/nself-org/cli/internal/scaffold"
 	"github.com/nself-org/cli/internal/security"
+	"github.com/nself-org/cli/internal/service"
 	"github.com/nself-org/cli/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -180,6 +181,15 @@ func canonicalServiceName(input string) (string, serviceEntry, error) {
 	// MLflow redirect: was an optional service, now a free plugin.
 	if lower == "mlflow" {
 		return "", serviceEntry{}, fmt.Errorf("%s", mlflowRedirectMsg)
+	}
+
+	// "storage" is the free storage plugin once the stack declares it (D-0451):
+	// the env toggles below only manage core MinIO, so refuse rather than flip
+	// MINIO_ENABLED for a plugin the operator meant.
+	if lower == "storage" {
+		if dir, err := os.Getwd(); err == nil && service.ComposeDeclaresService(dir, "storage") {
+			return "", serviceEntry{}, fmt.Errorf("%q is the storage plugin in this project, not MinIO; manage it with `nself plugin install|remove storage`, or use `minio` for the core MinIO toggle", input)
+		}
 	}
 
 	// Resolve alias to canonical name.

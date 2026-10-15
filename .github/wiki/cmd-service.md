@@ -25,7 +25,7 @@ Enabling or disabling a service writes to your `.env` file. After changing servi
 | Service | Env Var | Aliases |
 |---------|---------|---------|
 | `redis` | `REDIS_ENABLED` | — |
-| `minio` | `MINIO_ENABLED` | `storage` |
+| `minio` | `MINIO_ENABLED` | `storage` (refused when the stack declares the free storage plugin) |
 | `email` | `MAILPIT_ENABLED` | `mail`, `mailpit` |
 | `functions` | `FUNCTIONS_ENABLED` | — |
 | `search` | `SEARCH_ENABLED` | `meilisearch` |
@@ -44,8 +44,8 @@ nself service list --json
 # Enable Redis
 nself service enable redis
 
-# Enable MinIO object storage (using alias)
-nself service enable storage
+# Enable MinIO object storage (the alias `storage` works only while the stack does not declare the storage plugin)
+nself service enable minio
 
 # Enable monitoring stack
 nself service enable monitoring
