@@ -85,7 +85,7 @@ func TestCanonExtendRegistry(t *testing.T) {
 
 func TestInstallFlagParity(t *testing.T) {
 	for _, row := range []struct{ target, source *cobra.Command }{{installCmd, pluginInstallCmd}, {installCmd, bundleInstallCmd}, {removeCmd, pluginRemoveCmd}, {removeCmd, bundleRemoveCmd}} {
-		row.source.Flags().VisitAll(func(f *pflag.Flag) {
+		row.source.LocalNonPersistentFlags().VisitAll(func(f *pflag.Flag) {
 			got := row.target.Flags().Lookup(f.Name)
 			if got == nil {
 				t.Errorf("%s missing --%s from %s", row.target.Name(), f.Name, row.source.CommandPath())

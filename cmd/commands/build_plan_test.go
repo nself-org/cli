@@ -145,11 +145,11 @@ func (p *l03Project) run(t *testing.T, v15 bool, args ...string) pilotRun {
 	t.Helper()
 	bin := l03Binary(t)
 	var env []string
-	configKeys := projectConfigKeys()
-	for _, kv := range os.Environ() {
-		key, _, _ := strings.Cut(kv, "=")
-		if !configKeys[key] && !strings.HasPrefix(kv, "NSELF_") && !strings.HasPrefix(kv, "HOME=") && !strings.HasPrefix(kv, "PATH=") && !strings.HasPrefix(kv, "STUB_") {
-			env = append(env, kv)
+	// Config also accepts dynamic namespaces absent from KnownEnvVars. Keep
+	// only OS inputs; the project's dotenv files supply every config value.
+	for _, key := range []string{"TMPDIR", "TMP", "TEMP", "LANG", "LC_ALL", "SYSTEMROOT"} {
+		if value, ok := os.LookupEnv(key); ok {
+			env = append(env, key+"="+value)
 		}
 	}
 	env = append(env, "HOME="+p.home, "NSELF_PLUGIN_DIR="+p.plugins, "AI_AUTO_INSTALL=false",

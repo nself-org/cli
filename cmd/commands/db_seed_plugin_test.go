@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -152,6 +153,18 @@ func TestPluginSeedNoCommandE127(t *testing.T) {
 }
 
 func TestPluginSeedAllPluginsJSON(t *testing.T) {
+	// Earlier dispatch tests leave the shared tree in its v1.5 shape. The
+	// legacy seed envelope needs the tree registered by init in a fresh process.
+	const child = "NSELF_SEED_JSON_CHILD"
+	if os.Getenv(child) != "1" {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestPluginSeedAllPluginsJSON$", "-test.count=1", "-test.v")
+		cmd.Env = append(os.Environ(), child+"=1", "NSELF_V15=0")
+		out, err := cmd.CombinedOutput()
+		if err != nil || !bytes.Contains(out, []byte("--- PASS: TestPluginSeedAllPluginsJSON")) {
+			t.Fatalf("legacy seed JSON in a fresh process: %v\n%s", err, out)
+		}
+		return
+	}
 	dir, rt, out := seedHarness(t, "dev")
 	writeSeedPlugin(t, dir, "alpha", []string{"alpha", "seed"})
 	writeSeedPlugin(t, dir, "bare", nil)

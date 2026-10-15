@@ -204,6 +204,8 @@ func TestReviewCleanApplyHasNoDoctorDrift(t *testing.T) {
 }
 
 func TestReviewDoctorFixRespectsHandEditAndProdGate(t *testing.T) {
+	restoreProcessEnv(t)
+	clearProjectConfigEnv(t)
 	isolateDoctorHome(t)
 	compattest.Set(t, true)
 	dir := t.TempDir()

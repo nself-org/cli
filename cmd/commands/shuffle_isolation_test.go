@@ -42,3 +42,10 @@ func TestChecksumRegistryAfterReparenting(t *testing.T) {
 	root.RemoveCommand(dbCmd)
 	t.Run("checksum", TestResetChecksumConfirmBlock)
 }
+
+// TestBuildGoldenIgnoresPriorPassthrough reproduces dynamic config exported
+// by an earlier fixture, which is absent from KnownEnvVars but affects compose.
+func TestBuildGoldenIgnoresPriorPassthrough(t *testing.T) {
+	t.Setenv("AUTH_PROVIDER_GOOGLE_ENABLED", "true")
+	t.Run("golden", TestBuildPlanDevGolden)
+}

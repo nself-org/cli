@@ -13,8 +13,16 @@ import (
 func projectConfigKeys() map[string]bool {
 	keys := make(map[string]bool)
 	for _, key := range config.KnownEnvVars() {
-		if !strings.HasPrefix(key, "NSELF_") && key != "AI_AUTO_INSTALL" {
+		if key != "AI_AUTO_INSTALL" {
 			keys[key] = true
+		}
+	}
+	for _, entry := range os.Environ() {
+		key, _, _ := strings.Cut(entry, "=")
+		for _, prefix := range []string{"AUTH_", "HASURA_GRAPHQL_", "HASURA_EXTRA_", "REMOTE_SCHEMA_", "CS_", "FRONTEND_APP_", "INTERNAL_ROUTE_"} {
+			if strings.HasPrefix(key, prefix) {
+				keys[key] = true
+			}
 		}
 	}
 	return keys

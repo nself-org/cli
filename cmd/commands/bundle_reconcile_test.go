@@ -31,6 +31,8 @@ import (
 
 func extensionFixture(t *testing.T, env string) *l03Project {
 	t.Helper()
+	restoreProcessEnv(t)
+	clearProjectConfigEnv(t)
 	p := newL03Project(t, "dev-minimal")
 	if env != "" {
 		body, err := os.ReadFile(filepath.Join(p.project, ".env"))

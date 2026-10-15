@@ -167,6 +167,7 @@ func TestHealthConfigJSON(t *testing.T) {
 	})
 	healthTimeout, healthInterval, healthRetries, healthEnv, healthJSON, healthQuiet = 30, 10, 3, "staging", true, false
 	compattest.Both(t, func(t *testing.T) {
+		t.Cleanup(prepareTree(RootCmd, compat.V15(), false))
 		out, _ := pilotBuffers(t)
 		if err := healthConfigCmd.RunE(healthConfigCmd, nil); err != nil {
 			t.Fatal(err)
@@ -222,6 +223,7 @@ func TestHealthHistoryJSON(t *testing.T) {
 		}
 	}
 	compattest.Both(t, func(t *testing.T) {
+		t.Cleanup(prepareTree(RootCmd, compat.V15(), false))
 		out, _ := pilotBuffers(t)
 		healthJSON = true
 		t.Cleanup(func() { healthJSON = false })
