@@ -108,13 +108,13 @@ Then restore your data: `nself db restore /path/to/backup.sql`
 If migration fails, roll back to v1 state:
 
 ```bash
-nself migrate rollback
+nself migrate rollback --yes
 ```
 
 Or restore a specific backup:
 
 ```bash
-nself migrate rollback --backup 20260328-143022
+nself migrate rollback --backup 20260328-143022 --yes
 ```
 
 ---

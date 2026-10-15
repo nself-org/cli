@@ -22,6 +22,7 @@ import (
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -90,8 +91,11 @@ func requireDataLossConsent(cmd *cobra.Command, what string) error {
 		return errs.New("E403", fmt.Sprintf("%s %s and was not confirmed", cmd.CommandPath(), what)).
 			WithFix("pass --yes to confirm, or run it on a terminal and answer y")
 	}
+	path := strings.TrimPrefix(cmd.CommandPath(), "nself ")
+	if output.JSONRequestedFromArgs(os.Args) {
+		output.AddDeprecation(path, path+" --yes", "v1.5.0")
+	}
 	if !warningsSilenced(os.Args) {
-		path := strings.TrimPrefix(cmd.CommandPath(), "nself ")
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: nself %s without --yes is deprecated (%s); from v1.5 it needs --yes or a terminal confirmation. Pass --yes now.\n", path, what)
 	}
 	return nil

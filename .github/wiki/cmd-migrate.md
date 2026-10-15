@@ -20,7 +20,7 @@ The `run` subcommand performs the full automated migration: it stops running con
 
 After migration, the CLI prints the exact `nself plugin install` commands for every v0.9 plugin detected in your `.env`. Run those commands to re-install your plugins using the signed v1 bundle system.
 
-If anything goes wrong, use `nself migrate rollback` to restore from the automatic backup.
+If anything goes wrong, use `nself migrate rollback --yes` to restore from the automatic backup.
 
 > **Note:** `nself migrate` manages v0.9→v1 project migration. For database schema migrations within a v1 project, see [[cmd-db]].
 
@@ -86,13 +86,13 @@ nself migrate detect
 nself migrate run
 
 # Restore from the most recent backup
-nself migrate rollback
+nself migrate rollback --yes
 
 # List available backups
 nself migrate rollback --list
 
 # Restore from a specific backup
-nself migrate rollback --backup 20260417-143022
+nself migrate rollback --backup 20260417-143022 --yes
 ```
 
 See [[Upgrade-From-v0.9]] for the full step-by-step migration guide.
