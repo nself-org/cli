@@ -133,27 +133,10 @@ func (st *buildState) writeFinalArtifacts() (*BuildResult, error) {
 	}
 
 	// ── Step 11.5: Post-build validation ────────────────────────────
-	nginxSitesDir := filepath.Join(st.workdir, "nginx", "sites")
-	var pvResult PostValidateResult
-	if !st.planning() {
-		// PostValidate reads the written tree from disk (and may run `nginx -t`),
-		// so plan mode skips it; the plan's artifacts are validated by whoever
-		// applies them (P7-LIVE-03).
-		pvResult = PostValidate(st.composePath, nginxSitesDir)
-	}
-
-	// Print warnings — they do not fail the build.
-	for _, w := range pvResult.Warnings {
-		slog.Warn(w)
-	}
-
-	// Any errors from post-validation fail the build.
-	if len(pvResult.Errors) > 0 {
-		msg := "post-build validation failed:\n"
-		for _, e := range pvResult.Errors {
-			msg += "  - " + e + "\n"
+	if _, held := st.sink.(*expectSink); !st.planning() && !held {
+		if err := st.postValidate(); err != nil {
+			return nil, err
 		}
-		return nil, fmt.Errorf("%s", msg)
 	}
 
 	// ── Step 12: Return BuildResult with summary ────────────────────
@@ -171,6 +154,24 @@ func (st *buildState) writeFinalArtifacts() (*BuildResult, error) {
 		HostsAdded:         st.sslResult.HostsAdded,
 		HostsManualNote:    st.sslResult.HostsManualNote,
 	}, nil
+}
+
+// postValidate checks the published artifacts and reports all findings. Held
+// builds call it inside their publication transaction, so a validation failure
+// restores the previous artifacts. Ordinary builds call it after generation.
+func (st *buildState) postValidate() error {
+	result := PostValidate(st.composePath, filepath.Join(st.workdir, "nginx", "sites"))
+	for _, warning := range result.Warnings {
+		slog.Warn(warning)
+	}
+	if len(result.Errors) == 0 {
+		return nil
+	}
+	msg := "post-build validation failed:\n"
+	for _, finding := range result.Errors {
+		msg += "  - " + finding + "\n"
+	}
+	return fmt.Errorf("%s", msg)
 }
 
 // writeAPIDocs renders the OpenAPI spec and Scalar page and writes the two

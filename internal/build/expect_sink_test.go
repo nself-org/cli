@@ -49,34 +49,32 @@ func TestExpectSinkBackupOnlyWithEffect(t *testing.T) {
 	}
 }
 
-// TestExpectVerifyIsCodedAndChecksModes (review F1): after the build every
-// planned file must exist with its bytes and mode; otherwise the build fails
+// TestExpectVerifyIsCodedAndChecksModes (review F1): after rendering every
+// planned file must be staged with its bytes and mode; otherwise the build fails
 // with E452, never "applied".
 func TestExpectVerifyIsCodedAndChecksModes(t *testing.T) {
 	dir := t.TempDir()
 	exp := &PlannedBuild{Files: map[string]PlannedFile{"a.txt": {Data: []byte("x"), Perm: 0o600}}}
 	es := newExpectSink(dir, exp)
-	if err := es.verify(); err == nil || errs.Describe(err) == nil || errs.Describe(err).Code != "E452" {
+	if err := es.verify(); err == nil || errs.Describe(err) == nil || errs.Describe(err).Code != "E452" || !strings.Contains(err.Error(), "is missing") {
 		t.Fatalf("a missing planned file must be E452, got %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("other"), 0o600); err != nil {
+	// Bypass the hold to exercise verification independently of write checks.
+	if err := es.keyr.WriteAtomic("a.txt", []byte("other"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := es.verify(); err == nil || errs.Describe(err) == nil || errs.Describe(err).Code != "E452" {
+	if err := es.verify(); err == nil || errs.Describe(err) == nil || errs.Describe(err).Code != "E452" || !strings.Contains(err.Error(), "does not hold the planned content") {
 		t.Fatalf("wrong content must be E452, got %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(filepath.Join(dir, "a.txt"), 0o644); err != nil {
+	if err := es.keyr.WriteAtomic("a.txt", []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if runtime.GOOS != "windows" {
-		if err := es.verify(); err == nil || errs.Describe(err) == nil || errs.Describe(err).Code != "E452" {
+		if err := es.verify(); err == nil || errs.Describe(err) == nil || errs.Describe(err).Code != "E452" || !strings.Contains(err.Error(), "has mode 0644, not the planned 0600") {
 			t.Fatalf("a wrong mode must be E452, got %v", err)
 		}
 	}
-	if err := os.Chmod(filepath.Join(dir, "a.txt"), 0o600); err != nil {
+	if err := es.WriteAtomic("a.txt", []byte("x"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := es.verify(); err != nil {

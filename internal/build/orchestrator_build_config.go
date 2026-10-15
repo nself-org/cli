@@ -132,8 +132,8 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 			// files outstanding: reconcile.Apply forces a rebuild for a
 			// non-empty plan; this is the backstop.
 			if es, ok := st.sink.(*expectSink); ok {
-				if err := es.verify(); err != nil {
-					return nil, err
+				if err := es.verifyPublished(); err != nil {
+					return nil, nil // staged changes still need the complete render
 				}
 			}
 			return &BuildResult{

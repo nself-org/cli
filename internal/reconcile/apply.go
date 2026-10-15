@@ -114,13 +114,16 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (applied *Pl
 				WithWhy("what a plugin brings is only known after it runs, so the id cannot describe the render that is written").
 				WithFix("run nself build --yes without --plan-id (the render after the plugin changes is printed and held), or install or remove the plugins first")
 		}
+		if certificateEffects(p) {
+			return nil, nil, errs.New("E454", "this plan changes certificates or trust state, so --plan-id cannot bind it")
+		}
 		if opt.PlanID != p.PlanID {
 			return nil, nil, errs.New("E450", "the plan id does not match what this command would change now").
 				WithWhy(fmt.Sprintf("plan %s was passed, the project now plans %s: an input changed since the plan was shown", short(opt.PlanID), short(p.PlanID))).
 				WithFix("re-run nself build --plan and pass the new plan_id")
 		}
 	}
-	if req.Stderr != nil && (!p.Empty || p.RequiresConfirmation) && (p.RequiresConfirmation || len(HandEditedPaths(*p)) > 0) {
+	if req.Stderr != nil && (!p.Empty || p.RequiresConfirmation) && (p.RequiresConfirmation || len(HandEditedPaths(*p)) > 0 || certificateEffects(p)) {
 		if err := RenderHuman(req.Stderr, *p); err != nil {
 			return nil, nil, err
 		}
@@ -242,6 +245,13 @@ func hasEffect(p *Plan, k EffectKind) bool {
 		}
 	}
 	return false
+}
+
+// certificateEffects identifies runtime effects excluded from artifact byte
+// confirmation. Certificate generation and host trust cannot be reproduced by
+// the artifact render or authenticated by its plan id.
+func certificateEffects(p *Plan) bool {
+	return hasEffect(p, EffectCertificates) || hasEffect(p, EffectTrustStore)
 }
 
 // afterRecheck is a test seam run between the re-check and the write.

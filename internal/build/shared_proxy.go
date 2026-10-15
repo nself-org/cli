@@ -129,7 +129,7 @@ func (st *buildState) sharedBegin(m *routemodel.Model) error {
 	}
 	if sp.role == sharedFronted && !st.planning() {
 		// The registration is written last; fail now if it could not be.
-		if err := os.MkdirAll(sp.sharedDir, 0o755); err != nil {
+		if err := st.sink.MkdirAll(sp.sharedDir, 0o755); err != nil {
 			return certRefusal("cannot create %s: %v", sp.sharedDir, err)
 		}
 		return probeWritable(sp.sharedDir)
