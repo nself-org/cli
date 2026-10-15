@@ -11,6 +11,8 @@ export interface AddData {
 }
 
 export type AddFlags = {
+  /** Install a registry version older than the installed one (v1.5 refuses by default) */
+  "allow-downgrade"?: boolean;
   /** Allow installing an EOL plugin (not recommended) */
   "allow-eol"?: boolean;
   /** Release channel: stable | beta | canary */
@@ -1780,6 +1782,8 @@ export interface ConfigPluginsUpdateData {
 }
 
 export type ConfigPluginsUpdateFlags = {
+  /** Accept a registry version older than the installed one (v1.5 refuses by default) */
+  "allow-downgrade"?: boolean;
   /** Allow updating to/from an EOL plugin (not recommended) */
   "allow-eol"?: boolean;
   /** Switch the plugin to "free" or "licensed" on purpose (needs a plugin name); default keeps the installed tier */

@@ -167,6 +167,23 @@
       ],
       "flags": [
         {
+          "name": "allow-downgrade",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Install a registry version older than the installed one (v1.5 refuses by default)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        },
+        {
           "name": "allow-eol",
           "shorthand": null,
           "type": "bool",
@@ -5558,6 +5575,23 @@
         }
       ],
       "flags": [
+        {
+          "name": "allow-downgrade",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Accept a registry version older than the installed one (v1.5 refuses by default)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        },
         {
           "name": "allow-eol",
           "shorthand": null,
