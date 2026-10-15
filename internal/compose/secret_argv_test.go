@@ -5,8 +5,8 @@ package compose_test
 // file; a ${SECRET} reference is interpolated by compose into the container's
 // Cmd or healthcheck, where `docker ps --no-trunc`, `docker inspect` and host
 // `ps` show the value (the prod Redis leak). A secret reaches a process
-// through its environment instead, like every other secret ($$NAME, expanded
-// by a shell inside the container, is fine).
+// through its environment instead. Shell expansion must also keep secrets
+// off the final process argv; secret_argv_expanded_test.go exercises that path.
 
 import (
 	"github.com/nself-org/cli/internal/compat/compattest"
@@ -161,8 +161,8 @@ func TestNoSecretOnGeneratedArgv(t *testing.T) {
 			if got := argv["redis healthcheck.test"]; strings.Join(got, " ") != "CMD "+cache+"-cli ping" {
 				t.Errorf("%s/%s: redis healthcheck = %q, want %s-cli reading REDISCLI_AUTH", engine, cache, got, cache)
 			}
-			if got := strings.Join(argv["redis command"], " "); !strings.Contains(got, `exec `+cache+`-server `) || !strings.Contains(got, `--requirepass "$$REDISCLI_AUTH"`) {
-				t.Errorf("%s/%s: redis command = %q, want %s-server reading $$REDISCLI_AUTH", engine, cache, got, cache)
+			if got := strings.Join(argv["redis command"], " "); !strings.Contains(got, `exec `+cache+`-server "$$conf"`) || strings.Contains(got, "--requirepass") {
+				t.Errorf("%s/%s: redis command = %q, want %s-server reading a private config", engine, cache, got, cache)
 			}
 		}
 	}

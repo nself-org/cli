@@ -248,8 +248,8 @@ func TestBuildRedisService_WithPassword(t *testing.T) {
 	svc := g.buildRedisService()
 
 	cmd, ok := svc.Command.([]string)
-	if !ok || len(cmd) != 3 || cmd[0] != "sh" || !strings.Contains(cmd[2], `--requirepass "$$REDISCLI_AUTH"`) {
-		t.Errorf("Redis with password: command = %#v, want sh -c with requirepass from REDISCLI_AUTH", svc.Command)
+	if !ok || len(cmd) != 3 || cmd[0] != "sh" || !strings.Contains(cmd[2], `exec redis-server "$$conf"`) || strings.Contains(cmd[2], "--requirepass") {
+		t.Errorf("Redis with password: command = %#v, want sh -c with private config", svc.Command)
 	}
 	if strings.Contains(strings.Join(cmd, " "), cfg.Redis.Password) {
 		t.Error("Redis password must not appear in the command (D-0282)")

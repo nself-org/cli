@@ -173,16 +173,10 @@ func (g *Generator) buildRedisService() ServiceConfig {
 	var env map[string]string
 
 	if rc.Password != "" {
-		// D-0282: no argv carries the password. It reaches the container as
-		// REDISCLI_AUTH (Env, like every other secret), which the engine's CLI
-		// reads on its own (the health check needs no -a), and a shell expands it
-		// for the server ($$ survives compose interpolation as $). Valkey's CLI
-		// reads REDISCLI_AUTH too.
+		// Both CLIs read REDISCLI_AUTH directly. The server reads a private
+		// tmpfs config so shell expansion never puts the password on argv.
 		env = map[string]string{"REDISCLI_AUTH": secretRef("REDIS_PASSWORD", rc.Password)}
-		command = []string{"sh", "-c", fmt.Sprintf(
-			`exec %s --appendonly yes --protected-mode yes --requirepass "$$REDISCLI_AUTH" --maxclients %d`,
-			server, poolSize,
-		)}
+		command = cachePasswordCommand(server, poolSize)
 	} else {
 		command = fmt.Sprintf(
 			"%s --appendonly yes --protected-mode no --maxclients %d",
@@ -215,4 +209,16 @@ func (g *Generator) buildRedisService() ServiceConfig {
 			},
 		},
 	}
+}
+
+// Purpose: keep cache passwords off server argv (D-0587).
+// Inputs: engine binary and connection limit; REDISCLI_AUTH at container startup.
+// Outputs: shell command writing a mode-0600 config on the service's /tmp tmpfs.
+// Constraints: password bytes are hex-escaped for Redis/Valkey's quoted parser;
+// printf is a shell builtin, and external tools receive the secret only on stdin.
+func cachePasswordCommand(server string, poolSize int) []string {
+	return []string{"sh", "-c", fmt.Sprintf(
+		`set -eu; umask 077; conf=$$(mktemp /tmp/nself-cache.XXXXXX); { printf 'requirepass "'; printf '%%s' "$$REDISCLI_AUTH" | od -An -v -tx1 | awk '{ for (i=1; i<=NF; i++) printf "\\x%%s", $$i }'; printf '"\n'; } > "$$conf"; exec %s "$$conf" --appendonly yes --protected-mode yes --maxclients %d`,
+		server, poolSize,
+	)}
 }
