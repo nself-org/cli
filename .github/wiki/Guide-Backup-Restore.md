@@ -19,6 +19,19 @@ BACKUP_RETENTION_DAYS=30           # keep 30 days
 BACKUP_S3_BUCKET=my-backup-bucket  # optional: upload to S3/MinIO
 ```
 
+## Retention holds
+
+`nself backup prune` never deletes backups tagged `keep` or `keep-*`,
+regardless of the daily, weekly or monthly retention policy. This includes
+the `keep-stack-<run_id>-<nonce>` backup created by `nself update stack`.
+
+To release a hold, rename the backup file in the backup directory so its tag
+is neither `keep` nor prefixed with `keep-`; normal retention applies on the
+next prune. Keep the timestamp and file extension unchanged. For example,
+change the tag `keep-stack-<run_id>-<nonce>` to `stack-<run_id>-<nonce>`.
+Only release an update-stack backup after the run is complete and you no
+longer need it for recovery; an active journal references its original ID.
+
 ## Manual Database Backup
 
 ```bash
@@ -71,6 +84,11 @@ The restore command:
 2. Drops and recreates the target database
 3. Restores from the dump file
 4. Restarts services
+
+`nself update stack` restores strictly: any unexpected `pg_restore` `error:`
+line fails the restore, even in v1.4 compatibility mode. It cannot count as
+a successful rollback just because row counts match. See [[cmd-update]] for
+the update-stack recovery procedure and production/staging operator steps.
 
 > **Important:** Test your restores regularly. Untested backups are not backups.
 
