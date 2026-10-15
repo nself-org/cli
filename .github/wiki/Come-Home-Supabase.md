@@ -84,7 +84,10 @@ listed as exemptions (`compat:<name>`); define them in the target before relying
   in the report (`untranslated_policies`, and exemptions `trigger:<table>#<name>`); recreate them.
   A schema with triggers that call Supabase-owned functions (database webhooks:
   `supabase_functions.http_request`) is refused before anything is written.
-- Users whose email differs only by case, or whose phone repeats, are refused before anything is
+- Digit-only phone numbers gain a `+` prefix for hasura-auth SMS lookups. Existing prefixes are kept.
+  Supabase anonymous users are imported as ordinary users; their anonymous status is not carried
+  and each user is listed in the report exemptions as `user:<id>` (kind `metadata`).
+- Users whose email differs only by case, or whose phone repeats after normalization, are refused before anything is
   written (hasura-auth keeps both unique). Soft-deleted users (`deleted_at`) and users with a ban
   in the future are imported as disabled; a dated ban becomes a plain disabled flag.
 - The shim `auth.uid()` reads the session Hasura sets for mutations. It serves column defaults on
