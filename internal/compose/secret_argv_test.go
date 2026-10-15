@@ -141,16 +141,21 @@ func TestNoSecretOnGeneratedArgv(t *testing.T) {
 		// Both cache engines (P7-LIVE-19): neither may carry the password on argv,
 		// and each runs its own server and CLI binary.
 		for _, cache := range []string{"redis", "valkey"} {
-			cfg := optionalSecretsConfig(engine, setSecrets)
+			cfg := argvSecretsConfig(engine)
 			cfg.Redis.Engine = cache
-			cfg.Minio.S3SecretKey = "s3SecretSentinel0123456789"
+			cfg.CustomServices = []config.CustomService{{
+				Name: "worker", Image: "example/worker:1", Port: 3000,
+				Command: []string{"worker"},
+				ExtraEnv: "PLUGIN_INTERNAL_SECRET=" + cfg.PluginSystem.InternalSecret +
+					",NOTIFY_INTERNAL_SECRET=" + cfg.PluginConfig.NotifySecret,
+			}}
 			out, err := compose.NewGenerator(cfg).Generate()
 			if err != nil {
 				t.Fatalf("%s/%s: Generate() error: %v", engine, cache, err)
 			}
 			secrets := build.SecretEnvMap(cfg)
 			argv := argvStrings(t, build.TemplateSecrets(out, secrets))
-			for _, svc := range []string{"postgres", "hasura", "auth", "redis", "minio", "mailpit", engine} {
+			for _, svc := range []string{"postgres", "hasura", "auth", "redis", "minio", "mailpit", engine, "worker"} {
 				if _, ok := argv[svc+" healthcheck.test"]; !ok {
 					t.Fatalf("%s/%s: service %q missing; the guard would not cover it", engine, cache, svc)
 				}
@@ -175,7 +180,7 @@ func TestNoSecretOnMonitoringArgv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	secrets := build.SecretEnvMap(optionalSecretsConfig("meilisearch", setSecrets))
+	secrets := build.SecretEnvMap(argvSecretsConfig("meilisearch"))
 	argv := argvStrings(t, data)
 	if len(argv) == 0 {
 		t.Fatal("no services parsed from docker-compose.monitoring.yml")
