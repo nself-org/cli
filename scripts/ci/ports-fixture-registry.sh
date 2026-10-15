@@ -41,8 +41,15 @@ trap cleanup EXIT
 git -C "$PLUGINS" fetch -q origin main 2>/dev/null || echo "ports-fixture-registry: fetch failed, using the local origin/main" >&2
 git -C "$PLUGINS" worktree add -q --detach "$WT" origin/main || die "cannot make a worktree of $PLUGINS origin/main" 1
 
+# $OUT is wiped, so refuse anything that could be a real directory: it must be
+# new, empty, or a directory this script made before (marker file).
+case "$OUT" in ""|/|.|..|"$HOME"|"$HOME"/) die "refusing to use '$OUT' as the output directory" ;; esac
+if [ -e "$OUT" ] && [ ! -f "$OUT/.ports-fixture" ] && [ -n "$(ls -A "$OUT" 2>/dev/null)" ]; then
+  die "$OUT exists and is not a previous ports-fixture output; choose a new directory"
+fi
 rm -rf "$OUT"
 mkdir -p "$OUT/tarballs"
+: > "$OUT/.ports-fixture"
 OUT="$(cd "$OUT" && pwd)"
 ENTRIES="$WORK/entries"
 : > "$ENTRIES"
