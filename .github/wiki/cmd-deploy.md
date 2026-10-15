@@ -623,9 +623,11 @@ file. v1.4 mode keeps the push described above, byte for byte. One flow runs per
    and production-class targets, a warning elsewhere; `NSELF_HASURA_METADATA_STRICT` overrides).
 
 **Limit: build contexts.** The artifact set does not ship build contexts. Before anything is
-written, a service with a `build:` context that is not already a directory on the host stops the
-deploy with `E485` (`build context not shippable`) naming the services. Publish an image for the
-service, or place its context on the host.
+written, a service with a `build:` context that is not already a directory on the host, or whose
+context holds no Dockerfile (the `dockerfile:` key, default `Dockerfile`; `dockerfile_inline` needs
+none), stops the deploy with `E485` (`build context not shippable`) naming the services. A service
+that also sets `image:` runs on that image and is not checked. Publish an image for the service,
+or place its context on the host.
 
 **Limits.**
 
