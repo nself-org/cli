@@ -155,6 +155,15 @@ func validatePasswords(cfg *Config, checkPatterns bool) error {
 			}
 		}
 
+		// S3_SECRET_KEY (the SeaweedFS identity) — only if object storage is
+		// enabled and a key is set, min 16. An unset key is refused at build
+		// time (E142), so it is not re-checked here.
+		if cfg.Minio.Enabled && cfg.Minio.S3SecretKey != "" {
+			if err := checkPassword(cfg.Minio.S3SecretKey, "S3_SECRET_KEY", 16, checkPatterns); err != nil {
+				return err
+			}
+		}
+
 		// MEILISEARCH_MASTER_KEY — only if Search enabled with meilisearch engine, min 16
 		if cfg.Search.Enabled && strings.EqualFold(cfg.Search.Engine, "meilisearch") {
 			if err := checkPassword(cfg.Search.MeiliSearch.MasterKey, "MEILISEARCH_MASTER_KEY", 16, checkPatterns); err != nil {
