@@ -83,7 +83,11 @@ func runDBImageSwitch(cmd *cobra.Command, _ []string) error {
 	}
 	ctx, stop := signal.NotifyContext(cmdContext(cmd), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
-	sw := imageswitch.New(imageSwitchConfig(dir, cfg), imageSwitchDepsFor(cmd, dir, asJSON))
+	switchConfig, err := imageSwitchConfig(dir, cfg)
+	if err != nil {
+		return err
+	}
+	sw := imageswitch.New(switchConfig, imageSwitchDepsFor(cmd, dir, asJSON))
 	var rep *imageswitch.Report
 	switch {
 	case plan:

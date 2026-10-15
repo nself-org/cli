@@ -61,7 +61,7 @@ func compute(ctx context.Context, req Request) (*computed, error) {
 	if len(req.Seed) > 0 {
 		opts.Rand = newSeededRand(req.Seed)
 	}
-	env, envChanged, err := pendingEnv(req.ProjectDir, req.EnvOverlay)
+	env, envChanged, err := pendingEnv(req.ProjectDir, req.EnvOverlay, req.EnvRemove)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +120,7 @@ func compute(ctx context.Context, req Request) (*computed, error) {
 	if p.Command == "" {
 		p.Command = CmdBuild
 	}
-	if len(req.EnvOverlay) > 0 {
+	if len(req.EnvOverlay) > 0 || len(req.EnvRemove) > 0 {
 		p.PendingEnv = envChanged
 		p.EnvBefore = req.EnvBefore
 		if p.EnvBefore == "" {

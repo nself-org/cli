@@ -15,6 +15,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -31,12 +32,22 @@ import (
 )
 
 // imageSwitchConfig builds the engine's Config from the loaded project config.
-func imageSwitchConfig(dir string, cfg *config.Config) imageswitch.Config {
+func imageSwitchConfig(dir string, cfg *config.Config) (imageswitch.Config, error) {
+	previous, err := config.ReadEnvFile(filepath.Join(dir, ".env"))
+	if err != nil && !os.IsNotExist(err) {
+		return imageswitch.Config{}, config.EnvReadError(filepath.Join(dir, ".env"), err)
+	}
+	prev := make(map[string]string)
+	for _, key := range []string{imageswitch.EnvImage, imageswitch.EnvDataVolume} {
+		if value, present := previous[key]; present {
+			prev[key] = value
+		}
+	}
 	return imageswitch.Config{
 		ProjectDir: dir, ProjectName: cfg.ProjectName, Service: "postgres", Container: cfg.ProjectName + "_postgres",
 		User: cfg.Postgres.User, Password: cfg.Postgres.Password, TargetFor: pgvectorImageForMajor,
-		PrevEnv: map[string]string{imageswitch.EnvImage: cfg.Postgres.Image, imageswitch.EnvDataVolume: cfg.Postgres.DataVolume},
-	}
+		PrevEnv: prev,
+	}, nil
 }
 
 // pgvectorImageForMajor is the pgvector image compose would run for a Postgres major.
@@ -138,10 +149,17 @@ type envApplier struct {
 }
 
 func (a *envApplier) request(env map[string]string) reconcile.Request {
+	var remove []string
+	for _, key := range []string{imageswitch.EnvImage, imageswitch.EnvDataVolume} {
+		if _, present := env[key]; !present {
+			remove = append(remove, key)
+		}
+	}
 	return reconcile.Request{
 		ProjectDir: a.dir, Command: reconcile.CmdConfigSet,
 		Trigger:    reconcile.Trigger{Kind: reconcile.TriggerConfig, Subject: imageswitch.EnvDataVolume},
 		EnvOverlay: map[string]map[string]string{".env": env}, Stderr: a.stderr, DiffOut: a.diff,
+		EnvRemove: map[string][]string{".env": remove},
 	}
 }
 
@@ -160,12 +178,18 @@ func (a *envApplier) Plan(ctx context.Context, env map[string]string) (any, erro
 
 // Apply writes the lines and regenerates; on failure the env file is restored.
 func (a *envApplier) Apply(ctx context.Context, env map[string]string) error {
-	envFile := filepath.Join(a.dir, ".env")
-	keys := make([]string, 0, len(env))
-	for k := range env {
-		keys = append(keys, k)
+	defer build.SnapshotEnv()()
+	// config.Load exports the switched values. Removed lines must not inherit
+	// those stale process values when reconcile renders the restored cascade.
+	for _, key := range []string{imageswitch.EnvImage, imageswitch.EnvDataVolume} {
+		if _, present := env[key]; !present {
+			if err := os.Unsetenv(key); err != nil {
+				return err
+			}
+		}
 	}
-	sort.Strings(keys)
+	envFile := filepath.Join(a.dir, ".env")
+	keys := []string{imageswitch.EnvImage, imageswitch.EnvDataVolume}
 	var writes []*envLineWrite
 	defer func() {
 		for _, w := range writes {
@@ -178,7 +202,8 @@ func (a *envApplier) Apply(ctx context.Context, env map[string]string) error {
 			for _, k := range keys {
 				w := &envLineWrite{path: envFile}
 				writes = append(writes, w)
-				if err := w.write(k, env[k]); err != nil {
+				value, present := env[k]
+				if err := w.writeEnvPresence(k, value, present); err != nil {
 					return err
 				}
 			}
