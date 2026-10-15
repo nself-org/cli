@@ -251,7 +251,12 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 		return fmt.Errorf("sbom verification for plugin %q: %w", name, err)
 	}
 
-	// Step 6: Extract to pluginDir/{name}/.
+	// Step 6: Recheck after the SBOM request, immediately before extraction,
+	// to refuse any replacement of the verified download (D-0844).
+	if err := verifyChecksum(archivePath, expectedChecksum, manifest.PublishStatus); err != nil {
+		return fmt.Errorf("checksum verification before extraction for plugin %q: %w", name, err)
+	}
+
 	destDir := filepath.Join(pluginDir, name)
 	if err := extractTarGz(archivePath, destDir); err != nil {
 		return fmt.Errorf("extracting plugin %q: %w", name, err)
