@@ -23,7 +23,7 @@ import (
 
 // SSHKeyRe is the safe alphabet for an SSH key path. The one definition: the
 // legacy push in cmd/commands aliases it.
-var SSHKeyRe = regexp.MustCompile(`^[a-zA-Z0-9/_.~-]+$`)
+var SSHKeyRe = regexp.MustCompile(`^([a-zA-Z]:[/\\][a-zA-Z0-9/\\_.~-]*|[a-zA-Z0-9/_.~-]+)$`)
 
 // sshTransport is the ssh option set for one host. opts holds [-i key], the
 // host-key policy and ForwardAgent=no; the port is NOT in opts (it is added
@@ -40,7 +40,7 @@ func checkDeployKeyPath(p string) error {
 		return nil
 	}
 	if !SSHKeyRe.MatchString(p) {
-		return fmt.Errorf("ssh key path contains unsafe characters (got %q): only [a-zA-Z0-9/_.~-] allowed", p)
+		return fmt.Errorf("ssh key path contains unsafe characters (got %q): use [a-zA-Z0-9/_.~-], optionally with an absolute Windows drive prefix and separators", p)
 	}
 	if p[0] == '-' {
 		return fmt.Errorf("ssh key path must not start with '-' (got %q)", p)
@@ -80,7 +80,7 @@ func newSSHTransport(spec remote.HostSpec, keyPath string, policy []string) (ssh
 	}
 	var opts []string
 	if keyPath != "" {
-		opts = append(opts, "-i", keyPath)
+		opts = append(opts, "-i", sshKeyPath(keyPath))
 	}
 	opts = append(opts, policy...)
 	opts = append(opts, "-o", "ForwardAgent=no")
@@ -134,7 +134,7 @@ func (t sshTransport) rsyncMultiArgv(flags []string, dest string, srcs ...string
 	}
 	args = append(args, "-e", sshCommand, "--")
 	for _, src := range srcs {
-		local, err := localOperand(src)
+		local, err := rsyncLocalOperand(src)
 		if err != nil {
 			return nil, err
 		}
@@ -190,14 +190,14 @@ func hostOperand(spec remote.HostSpec, path string) string {
 }
 
 // localOperand makes a relative p absolute, so scp and rsync never read it as
-// a "host:path" operand or an option. A path that is already absolute (or
-// starts with '/') is returned unchanged, so argv stays as it was on every OS.
+// a "host:path" operand or an option. Absolute paths retain their native
+// form for scp; rsyncLocalOperand also maps Windows paths for POSIX rsync.
 // Empty paths, newlines and NUL are refused.
 func localOperand(p string) (string, error) {
 	if p == "" || strings.ContainsAny(p, "\n\x00") {
 		return "", fmt.Errorf("local path %q is empty or contains a newline or NUL", p)
 	}
-	if strings.HasPrefix(p, "/") || filepath.IsAbs(p) {
+	if strings.HasPrefix(p, "/") || filepath.IsAbs(p) || windowsDrivePath(p) {
 		return p, nil
 	}
 	return filepath.Abs(p)
