@@ -274,7 +274,7 @@ func scanSocketService(d socketDoc, name string, body map[string]any, lookup Soc
 }
 
 func (st *buildState) futureComposeEnv() map[string]string {
-	vars := withHostOwner(ComputePluginEnvVars(st.workdir, st.pluginDir, st.cfg), proxyHostOwner(st.cfg, st.workdir, st.pluginDir))
+	vars := withHostOwner(computePluginEnvVarsForProfileName(st.workdir, st.pluginDir, st.cfg, st.opts.Profile), proxyHostOwner(st.cfg, st.workdir, st.pluginDir))
 	sink := newMemSink(st.workdir, "")
 	_ = writeComposeEnvVia(sink, st.workdir, st.cfg, SecretEnvMap(st.cfg), vars)
 	m := map[string]string{}

@@ -54,7 +54,7 @@ func writeAPIDocsSiteConfVia(sink Sink, workdir, frontedBy string, conf []byte) 
 func (st *buildState) writeFinalArtifacts() (*BuildResult, error) {
 	st.ensureSeam()
 	// ── Step 10: Write .env.computed ────────────────────────────────
-	pluginEnvVars := ComputePluginEnvVars(st.workdir, st.pluginDir, st.cfg)
+	pluginEnvVars := computePluginEnvVarsForProfileName(st.workdir, st.pluginDir, st.cfg, st.opts.Profile)
 	computedPath := filepath.Join(st.workdir, ".env.computed")
 	computedContent := buildEnvComputed(st.cfg, pluginEnvVars)
 	if err := st.sink.WriteFile(computedPath, []byte(computedContent), 0600); err != nil {

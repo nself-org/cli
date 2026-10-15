@@ -402,7 +402,7 @@ func TestNormalizeComposePluginCoreEnv_RealCronFragmentGolden(t *testing.T) {
 // pre-existing zero-cfg callers/tests.
 func TestAddPluginCoreEnvVars_NilCfgIsNoop(t *testing.T) {
 	vars := map[string]string{"NSELF_PLUGIN_DIR": "/x"}
-	addPluginCoreEnvVars(vars, nil)
+	addPluginCoreEnvVars(vars, nil, t.TempDir(), true)
 	if len(vars) != 1 {
 		t.Errorf("nil cfg must be a no-op, got: %v", vars)
 	}
@@ -422,7 +422,7 @@ func TestAddPluginCoreEnvVars_Populated(t *testing.T) {
 	// NotifySecret intentionally left empty.
 
 	vars := map[string]string{}
-	addPluginCoreEnvVars(vars, cfg)
+	addPluginCoreEnvVars(vars, cfg, t.TempDir(), true)
 
 	want := map[string]string{
 		"ENV":                    "dev",
