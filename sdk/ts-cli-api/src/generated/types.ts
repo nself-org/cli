@@ -5861,7 +5861,7 @@ export interface RemoveData {
 }
 
 export type RemoveFlags = {
-  /** Delete plugin data (schema/tables). A bundle remove asks for confirmation (or pass --yes); a plugin remove never asks and drops data unless --keep-data */
+  /** Delete plugin data (schema/tables). v1.5 keeps data by default; plugin --delete-data asks for confirmation (or pass --yes). v1.4 plugin remove drops data unless --keep-data and never asks; bundle --delete-data always asks for confirmation (or pass --yes) */
   "delete-data"?: boolean;
   /** Print the planned actions without removing */
   "dry-run"?: boolean;
