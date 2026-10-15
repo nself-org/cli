@@ -6273,7 +6273,18 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "force": {
+                "default": false,
+                "description": "Confirm pending hand-edited generated file overwrites",
+                "type": "boolean"
+              },
+              "yes": {
+                "default": false,
+                "description": "Confirm disabling a plugin on a prod-class environment",
+                "type": "boolean"
+              }
+            },
             "type": "object"
           }
         },

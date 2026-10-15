@@ -102,12 +102,14 @@ func autoRebuildIfNeeded(projectDir string, opts startOpts) (bool, error) {
 	}
 	if needsRebuild {
 		ui.Info("Configuration changed — rebuilding before start...")
-		result, err := build.Build(projectDir, build.BuildOptions{Profile: opts.profile})
+		result, err := runAutomaticBuild(projectDir, build.BuildOptions{Profile: opts.profile})
 		if !build.StartMayContinue(err, os.Stderr) {
 			return false, fmt.Errorf("auto-build failed: %w", err)
 		}
 		ui.Success("Build completed")
-		return result.EntitlementRefreshed, nil
+		// Reconcile drops the result on a soft entitlement-refresh error;
+		// StartMayContinue accepts it only after that refresh was attempted.
+		return result == nil || result.EntitlementRefreshed, nil
 	}
 	return false, nil
 }

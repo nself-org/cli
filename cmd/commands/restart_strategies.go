@@ -31,21 +31,8 @@ import (
 
 // restartFull performs a full stop + start cycle.
 func restartFull(ctx context.Context, comp *docker.Compose, workdir string, cfg *config.Config, verbose, skipBuild bool, stepNum, totalSteps int) error {
-	ui.Step(stepNum, totalSteps, "Stopping all services")
-	stepNum++
-
-	if err := comp.ComposeDown(ctx, workdir, docker.DownOptions{RemoveOrphans: true}); err != nil {
-		ui.Error(fmt.Sprintf("Failed to stop services: %v", err))
-		return fmt.Errorf("stopping services: %w", err)
-	}
-	ui.Success("All services stopped")
-
-	if verbose {
-		ui.Info("Waiting 2 seconds before restart...")
-	}
-	time.Sleep(2 * time.Second)
-
-	// Rebuild if config changed and not skipped
+	// Confirm and rebuild before stopping services: a refusal must leave the
+	// running stack untouched.
 	if !skipBuild {
 		needsRebuild, err := build.NeedsRebuild(workdir)
 		if err != nil {
@@ -53,14 +40,25 @@ func restartFull(ctx context.Context, comp *docker.Compose, workdir string, cfg 
 		}
 		if needsRebuild {
 			ui.Info("Configuration changed, rebuilding...")
-			opts := build.BuildOptions{Force: true}
-			if _, err := build.Build(workdir, opts); err != nil {
+			if _, err := runAutomaticBuild(workdir, build.BuildOptions{}); err != nil {
 				ui.Error(fmt.Sprintf("Rebuild failed: %v", err))
 				return fmt.Errorf("rebuilding: %w", err)
 			}
 			ui.Success("Rebuild complete")
 		}
 	}
+
+	ui.Step(stepNum, totalSteps, "Stopping all services")
+	stepNum++
+	if err := comp.ComposeDown(ctx, workdir, docker.DownOptions{RemoveOrphans: true}); err != nil {
+		ui.Error(fmt.Sprintf("Failed to stop services: %v", err))
+		return fmt.Errorf("stopping services: %w", err)
+	}
+	ui.Success("All services stopped")
+	if verbose {
+		ui.Info("Waiting 2 seconds before restart...")
+	}
+	time.Sleep(2 * time.Second)
 
 	ui.Step(stepNum, totalSteps, "Starting all services")
 
@@ -168,8 +166,7 @@ func restartSmart(ctx context.Context, comp *docker.Compose, workdir string, cfg
 
 	if configChanged && !skipBuild {
 		ui.Info("Configuration changed since last start, rebuilding...")
-		opts := build.BuildOptions{Force: true}
-		if _, err := build.Build(workdir, opts); err != nil {
+		if _, err := runAutomaticBuild(workdir, build.BuildOptions{}); err != nil {
 			ui.Error(fmt.Sprintf("Rebuild failed: %v", err))
 			return fmt.Errorf("rebuilding: %w", err)
 		}

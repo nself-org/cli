@@ -257,6 +257,12 @@ func runPluginStop(cmd *cobra.Command, args []string) error {
 
 func runPluginDisable(cmd *cobra.Command, args []string) error {
 	name := args[0]
+	if err := plugin.ValidateName(name); err != nil {
+		return err
+	}
+	if err := confirmPluginDisable(cmd, name); err != nil {
+		return err
+	}
 	pluginDir := resolvePluginDir()
 
 	fmt.Fprintf(os.Stderr, "Disabling plugin %q...\n", name)

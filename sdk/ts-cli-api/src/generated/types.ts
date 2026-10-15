@@ -1551,7 +1551,12 @@ export interface ConfigPluginsDisableData {
   target: string;
 }
 
-export type ConfigPluginsDisableFlags = Record<string, never>;
+export type ConfigPluginsDisableFlags = {
+  /** Confirm pending hand-edited generated file overwrites */
+  force?: boolean;
+  /** Confirm disabling a plugin on a prod-class environment */
+  yes?: boolean;
+};
 
 /** Disable a plugin (excluded from compose on next build) */
 export interface ConfigPluginsDisableRequest {
