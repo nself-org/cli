@@ -99,13 +99,13 @@ func certbotHooks(dir string, sslDirs ...string) ([]string, error) {
 		isConf := slices.Contains(confs, p)
 		lines := strings.Split(string(data), "\n")
 		for i := 0; i < len(lines); i++ {
-			line, start, quoted := lines[i], i, false
+			line, start, keepWhole := lines[i], i, false
 			if isConf {
-				line, i, quoted = certbotConfigEntry(lines, i)
+				line, i, keepWhole = certbotConfigEntry(lines, i)
 			}
 			code, ok := hookCode(line, isConf)
-			if quoted {
-				code = line // '#' inside a config-quoted value is literal config text.
+			if keepWhole {
+				code = line // Joined or unclosed values cannot safely lose shell comments.
 			}
 			if ok && slices.ContainsFunc(needles, func(n string) bool { return mentionsPath(code, n) }) {
 				hits = append(hits, fmt.Sprintf("%s:%d", p, start+1))
@@ -117,7 +117,7 @@ func certbotHooks(dir string, sslDirs ...string) ([]string, error) {
 
 // Purpose: joins config-quoted values before filtering hook keys.
 // Inputs: physical config lines and an entry's opening index.
-// Outputs: an unwrapped entry, its final physical index, and whether quoted.
+// Outputs: an unwrapped entry, its final index, and whether to keep it whole.
 // Constraints: all keys consume continuations; shell quotes within unquoted
 // values stay untouched. Unclosed values are retained conservatively.
 func certbotConfigEntry(lines []string, start int) (string, int, bool) {
@@ -147,7 +147,7 @@ func certbotConfigEntry(lines []string, start int) (string, int, bool) {
 				return lines[start], start, false
 			}
 			parts[len(parts)-1] = part[:close]
-			return t[:k] + " = " + strings.Join(parts, " "), end, true
+			return t[:k] + " = " + strings.Join(parts, " "), end, end != start
 		}
 		if end+1 == len(lines) {
 			return t[:k] + " = " + strings.Join(parts, " "), end, true
@@ -188,29 +188,32 @@ func hookCode(line string, isConf bool) (string, bool) {
 	return cutComment(t), true
 }
 
-// cutComment cuts a trailing comment: a '#' after a space or tab that is
-// outside quotes. A '#' inside "..." or '...' (or escaped) is text the shell
-// runs past, so the rest of the line is kept. A line with a command
-// substitution ("$(" or a backtick) or an ANSI-C string ("$'") nests quotes
-// this scan cannot follow, so it is kept whole: a false refusal names the
-// line, a false pass loses the certs.
+// cutComment cuts an unquoted, unescaped '#' at the start of a shell word,
+// including after a command separator. Substitutions and ANSI-C strings before
+// a comment nest quotes this scan cannot follow, so those lines stay whole:
+// a false refusal names the line, a false pass loses the certs.
 func cutComment(t string) string {
-	if strings.Contains(t, "$(") || strings.Contains(t, "$'") || strings.ContainsRune(t, '`') {
-		return t
-	}
 	var quote byte
+	wordStart := true
 	for i := 0; i < len(t); i++ {
+		if t[i] == '`' || strings.HasPrefix(t[i:], "$(") || strings.HasPrefix(t[i:], "$'") {
+			return t
+		}
 		switch c := t[i]; {
 		case c == '\\' && quote != '\'':
 			i++
+			wordStart = false
 		case quote != 0:
 			if c == quote {
 				quote = 0
 			}
 		case c == '"' || c == '\'':
 			quote = c
-		case c == '#' && i > 0 && (t[i-1] == ' ' || t[i-1] == '\t'):
-			return t[:i-1]
+			wordStart = false
+		case c == '#' && wordStart:
+			return t[:i]
+		default:
+			wordStart = strings.ContainsRune(" \t;&|()", rune(c))
 		}
 	}
 	return t
