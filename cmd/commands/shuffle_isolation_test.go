@@ -49,3 +49,20 @@ func TestBuildGoldenIgnoresPriorPassthrough(t *testing.T) {
 	t.Setenv("AUTH_PROVIDER_GOOGLE_ENABLED", "true")
 	t.Run("golden", TestBuildPlanDevGolden)
 }
+
+// TestErrorHarnessRestoresCommandParents guards the producer of invalid parent
+// pointers, so later registry tests do not each need a defensive repair.
+func TestErrorHarnessRestoresCommandParents(t *testing.T) {
+	reattachRealTree()
+	t.Cleanup(reattachRealTree)
+	t.Run("harness", func(t *testing.T) {
+		if err := runErrorHarnessCmd(t, []string{"start", "--no-such-flag-xyz"}); err == nil {
+			t.Fatal("the invalid harness invocation unexpectedly succeeded")
+		}
+	})
+	for _, cmd := range RootCmd.Commands() {
+		if cmd.Parent() != RootCmd {
+			t.Errorf("%s retained a temporary execution root", cmd.Name())
+		}
+	}
+}

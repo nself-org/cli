@@ -55,7 +55,7 @@ func ledgerProject(t *testing.T, plugins ...string) string {
 
 func listLedgerRows(t *testing.T) (map[string]ledgerRow, error) {
 	t.Helper()
-	root := newBundleTestCmd()
+	root := newBundleTestCmd(t)
 	buf := &bytes.Buffer{}
 	root.SetOut(buf)
 	root.SetErr(buf)
@@ -164,7 +164,7 @@ func TestBundleListTableIgnoresLedger(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "bundles.json"), []byte(`{"hand":"edited"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	root := newBundleTestCmd()
+	root := newBundleTestCmd(t)
 	buf := &bytes.Buffer{}
 	root.SetOut(buf)
 	root.SetErr(buf)
@@ -220,7 +220,7 @@ func TestBundleListJSONWithUnparsableManifest(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(bad, "plugin.json"), []byte("{not json"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	root := newBundleTestCmd()
+	root := newBundleTestCmd(t)
 	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
 	root.SetOut(out)
 	root.SetErr(errOut)

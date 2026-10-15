@@ -403,7 +403,8 @@ func runErrorHarnessCmd(t *testing.T, args []string) error {
 	// parent pointer, so the per-case ctx we set below will be inherited by
 	// every child command. On cleanup we restore a fresh Background context
 	// on every child so a deadline-cancelled ctx cannot leak into a
-	// subsequent test that invokes the command's RunE directly.
+	// subsequent test that invokes the command's RunE directly. Restore the
+	// shared parent pointers too, before the temporary root is discarded.
 	children := RootCmd.Commands()
 	for _, c := range children {
 		root.AddCommand(c)
@@ -412,6 +413,7 @@ func runErrorHarnessCmd(t *testing.T, args []string) error {
 		for _, c := range children {
 			c.SetContext(context.Background())
 		}
+		reattachRealTree()
 	})
 
 	var buf bytes.Buffer

@@ -78,9 +78,20 @@ func TestMain(m *testing.M) {
 
 // newBundleTestCmd returns an isolated cobra root with only the bundle
 // command tree attached — avoids touching the global RootCmd state.
-func newBundleTestCmd() *cobra.Command {
+func newBundleTestCmd(t *testing.T) *cobra.Command {
+	t.Helper()
+	parent := bundleCmd.Parent()
 	root := &cobra.Command{Use: "nself", RunE: func(cmd *cobra.Command, args []string) error { return nil }}
 	root.AddCommand(bundleCmd)
+	t.Cleanup(func() {
+		if current := bundleCmd.Parent(); current != nil {
+			current.RemoveCommand(bundleCmd)
+		}
+		if parent != nil {
+			parent.RemoveCommand(bundleCmd)
+			parent.AddCommand(bundleCmd)
+		}
+	})
 	// bundleCmd carries the GroupID the shared RootCmd tree assigned it; cobra
 	// panics on Execute when that group is not defined on the parent, so register
 	// the groups on this root too (otherwise the result depends on test order).
@@ -301,7 +312,7 @@ func TestBundleInfo_UnknownBundle(t *testing.T) {
 }
 
 func TestBundleInfo_UnknownBundle_ExitCode(t *testing.T) {
-	root := newBundleTestCmd()
+	root := newBundleTestCmd(t)
 	buf := &bytes.Buffer{}
 	root.SetOut(buf)
 	root.SetErr(buf)
@@ -313,7 +324,7 @@ func TestBundleInfo_UnknownBundle_ExitCode(t *testing.T) {
 }
 
 func TestBundleInfo_JSONFlag(t *testing.T) {
-	root := newBundleTestCmd()
+	root := newBundleTestCmd(t)
 	buf := &bytes.Buffer{}
 	root.SetOut(buf)
 	root.SetErr(buf)
@@ -333,7 +344,7 @@ func TestBundleInfo_JSONFlag(t *testing.T) {
 }
 
 func TestBundleInfo_JSON_AllFields(t *testing.T) {
-	root := newBundleTestCmd()
+	root := newBundleTestCmd(t)
 	buf := &bytes.Buffer{}
 	root.SetOut(buf)
 	root.SetErr(buf)
@@ -430,7 +441,7 @@ func TestResolveBundleLicenseStatus_NoCache(t *testing.T) {
 // ── bundle list / display order ─────────────────────────────────────────
 
 func TestBundleList_JSONFlag(t *testing.T) {
-	root := newBundleTestCmd()
+	root := newBundleTestCmd(t)
 	buf := &bytes.Buffer{}
 	root.SetOut(buf)
 	root.SetErr(buf)
@@ -450,7 +461,7 @@ func TestBundleList_JSONFlag(t *testing.T) {
 func TestBundleList_InstalledFlag_NoPlugins(t *testing.T) {
 	// With no plugins installed the --installed flag should produce empty output
 	// (just the header and footer lines, no bundle rows).
-	root := newBundleTestCmd()
+	root := newBundleTestCmd(t)
 	buf := &bytes.Buffer{}
 	root.SetOut(buf)
 	root.SetErr(buf)
@@ -471,7 +482,7 @@ func TestDisplayOrder_AllKeysValid(t *testing.T) {
 // ── parent command dispatching ────────────────────────────────────────
 
 func TestBundleCmd_NoArgs_ShowsHelp(t *testing.T) {
-	root := newBundleTestCmd()
+	root := newBundleTestCmd(t)
 	buf := &bytes.Buffer{}
 	root.SetOut(buf)
 	root.SetErr(buf)
