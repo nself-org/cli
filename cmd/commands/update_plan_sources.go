@@ -40,7 +40,7 @@ func gatherPlan(ctx context.Context, d updateDeps, l lock.Lock, target string) (
 	switch {
 	case err == nil:
 		c.CLI = plan.Candidate{Value: tag}
-	case strings.Contains(err.Error(), "status 404"):
+	case releaseHasStatus(err, http.StatusNotFound):
 		c.CLI = plan.Candidate{Reason: "no such release (HTTP 404)"}
 	default:
 		return plan.Plan{}, sourceFailure("the CLI release lookup", err)

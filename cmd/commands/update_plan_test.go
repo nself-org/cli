@@ -237,7 +237,10 @@ func TestUpdatePlanUnresolvable(t *testing.T) {
 	oldURL := githubLatestReleaseURL
 	githubLatestReleaseURL = stub.URL + "/releases/latest"
 	defer func() { githubLatestReleaseURL = oldURL }()
-	r.cli = fetchLatestRelease // the real lookup, answered 404 by the fixture
+	r.cli = func() (string, string, error) {
+		tag, url, err := fetchLatestRelease() // real lookup, answered 404 by the fixture
+		return tag, url, fmt.Errorf("wrapped release lookup: %w", err)
+	}
 
 	out, _, err := runUpdate(t, "--plan")
 	if err != nil {
@@ -282,7 +285,7 @@ func TestUpdatePlanRateLimited(t *testing.T) {
 	if err == nil {
 		t.Fatalf("a 429 produced a plan instead of an error:\n%s", out)
 	}
-	if d := errs.Describe(err); d == nil || d.Code != "E400" || errs.ExitCodeFor(err) == 0 {
+	if d := errs.Describe(err); d == nil || d.Code != "E456" || errs.ExitCodeFor(err) == 0 {
 		t.Fatalf("error is not coded and non-zero: %v (%+v)", err, d)
 	}
 	if !strings.Contains(err.Error(), "429") && !strings.Contains(fmt.Sprint(errs.Describe(err)), "429") {
@@ -302,8 +305,8 @@ func TestUpdatePlanRateLimited(t *testing.T) {
 		return d
 	}
 	t.Cleanup(func() { newUpdateDeps = old })
-	if _, _, err := runUpdate(t, "--plan"); err == nil || errs.Describe(err).Code != "E400" {
-		t.Fatalf("registry failure = %v, want E400", err)
+	if _, _, err := runUpdate(t, "--plan"); err == nil || errs.Describe(err).Code != "E456" {
+		t.Fatalf("registry failure = %v, want E456", err)
 	}
 }
 

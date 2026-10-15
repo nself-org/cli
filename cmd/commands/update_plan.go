@@ -18,8 +18,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
-	"regexp"
 	"strings"
 
 	"github.com/nself-org/cli/internal/errs"
@@ -66,16 +66,13 @@ func runUpdatePlanMode(cmd *cobra.Command) (handled bool, err error) {
 	return true, runUpdateYes(cmd, newUpdateDeps())
 }
 
-// httpStatusRE pulls the status out of fetchReleaseFromURL's error text.
-var httpStatusRE = regexp.MustCompile(`status (\d{3})`)
-
 // sourceFailure codes a source that could not answer. 429 gets its own words.
 func sourceFailure(source string, err error) error {
 	why := "The source did not answer: " + err.Error()
-	if m := httpStatusRE.FindStringSubmatch(err.Error()); m != nil && m[1] == "429" {
+	if releaseHasStatus(err, http.StatusTooManyRequests) {
 		why = "The source rate-limited this request (HTTP 429)."
 	}
-	return errs.Wrap("E400", "update plan: "+source+" is unavailable", err).
+	return errs.Wrap("E456", "update plan: "+source+" is unavailable", err).
 		WithWhy(why).WithFix("Retry in a few minutes. Nothing was changed.")
 }
 

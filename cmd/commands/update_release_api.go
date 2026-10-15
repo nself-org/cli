@@ -15,6 +15,7 @@ package commands
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,6 +24,23 @@ import (
 
 	"github.com/nself-org/cli/internal/ui"
 )
+
+// releaseAPIStatusError preserves an unsuccessful release lookup's HTTP status.
+// Inputs: response status. Outputs: an error with machine-readable status.
+// Constraints: callers must inspect the type, never parse the message.
+type releaseAPIStatusError struct{ status int }
+
+func (e *releaseAPIStatusError) Error() string {
+	return fmt.Sprintf("GitHub API returned status %d", e.status)
+}
+
+func (e *releaseAPIStatusError) HTTPStatusCode() int { return e.status }
+
+// releaseHasStatus checks wrapped release errors without inspecting their text.
+func releaseHasStatus(err error, status int) bool {
+	var apiErr *releaseAPIStatusError
+	return errors.As(err, &apiErr) && apiErr.HTTPStatusCode() == status
+}
 
 func fetchLatestRelease() (tag string, url string, err error) {
 	return fetchReleaseFromURL(githubLatestReleaseURL)
@@ -43,7 +61,7 @@ func fetchReleaseFromURL(apiURL string) (tag string, htmlURL string, err error) 
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
+		return "", "", &releaseAPIStatusError{status: resp.StatusCode}
 	}
 
 	body, err := io.ReadAll(resp.Body)
