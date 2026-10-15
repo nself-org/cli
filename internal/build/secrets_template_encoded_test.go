@@ -255,11 +255,11 @@ func TestTemplateSecrets_MultiLineAndKeyPositions(t *testing.T) {
 	if env["POSTGRES_PASSWORD"] != "${POSTGRES_PASSWORD}" || env["OTHER"] != "kept" {
 		t.Errorf("multi-line value not replaced whole:\n%s", out)
 	}
-	if !strings.Contains(out, "\n  postgres-db-data: {}") || !strings.Contains(out, "- postgres-db-data:/var/lib") {
-		t.Errorf("volume key renamed by a secret:\n%s", out)
+	if !strings.Contains(out, "\n  postgres-db-data: {}") || !strings.Contains(out, "- ${MINIO_ROOT_USER}:/var/lib") {
+		t.Errorf("volume key must stay literal while its scalar reference is templated:\n%s", out)
 	}
 	if leaks := LiteralSecretLeaks([]byte(out), secrets); len(leaks) != 1 || leaks[0] != "MINIO_ROOT_USER" {
-		t.Errorf("LiteralSecretLeaks = %v, want [MINIO_ROOT_USER] (left literal, reported)", leaks)
+		t.Errorf("LiteralSecretLeaks = %v, want [MINIO_ROOT_USER] (mapping key left literal, reported)", leaks)
 	}
 	// The leak net also catches a secret-named key whose value is not its
 	// bare reference (what Phase A used to leave behind).

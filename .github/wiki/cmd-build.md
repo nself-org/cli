@@ -63,6 +63,8 @@ Projects without a manifest keep the install-then-discover flow unchanged.
 
 Since v1.2.2, generated `docker-compose.yml` files contain no literal secret values. Secrets (Postgres password, Hasura admin secret, JWT configuration, MinIO credentials, SMTP password) are emitted as `${VAR}` references. The interpolation values are written to `.nself/compose.env` with mode 0600, and `nself start`/`stop`/`restart` pass it to docker compose via `--env-file`. Editing a secret in `.env` and re-running `nself build` updates the running stack on next start. Projects built before v1.2.2 keep default `.env` discovery until rebuilt.
 
+Literal secrets of at least eight bytes are also templated in YAML sequence items and block scalars, including values containing quotes, backslashes or control characters. Mapping keys and existing variable references stay unchanged. Only changed scalar values are re-encoded; surrounding formatting and comments are preserved.
+
 ## Unknown env var warnings
 
 `nself build` warns on unrecognized variables in the `.env` cascade. Common app-owned variables (`NODE_ENV`, `JWT_SECRET`, `LOG_LEVEL`, `COOKIE_SECRET`, `SSL_AUTO_TRUST`, `ENABLE_DEBUG`, `NSELF_PROJECT_NAME`) are recognized and never warn. For project-specific variables, set `ENV_ALLOWLIST` to a comma-separated list of exact names or prefix patterns ending in `*`:
