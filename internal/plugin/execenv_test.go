@@ -136,11 +136,14 @@ func TestMountStubPluginEnv(t *testing.T) {
 	}
 }
 
-// Every function in router.go and runtime_start.go that builds an exec.Cmd
-// must call ExecEnv (contract:cli.plugin-exec-env v1). cmd/commands/relocate.go
+// Plugin runtime and development launchers must call ExecEnv when building
+// an exec.Cmd (contract:cli.plugin-exec-env v1). cmd/commands/relocate.go
 // carries the same check from P7-CANON-13.
 func TestExecSitesUseExecEnv(t *testing.T) {
-	for _, file := range []string{"router.go", "runtime_start.go"} {
+	for _, file := range []string{
+		"router.go", "runtime_start.go",
+		"../../cmd/commands/plugin_dev.go", "../../cmd/commands/plugin_debug.go",
+	} {
 		for _, f := range execSitesWithoutExecEnv(t, file) {
 			t.Errorf("%s: func %s builds an exec.Cmd without calling ExecEnv", file, f)
 		}
@@ -152,6 +155,7 @@ func TestExecSiteCheckDetectsMissingExecEnv(t *testing.T) {
 import "os/exec"
 func bad() { _ = exec.Command("x") }
 func good() { c := exec.CommandContext(nil, "x"); c.Env = ExecEnv(nil, nil) }
+func qualified() { c := exec.Command("x"); c.Env = plugin.ExecEnv(nil, nil) }
 func other() {}
 `
 	got := execSitesInSource(t, "fixture.go", src)
@@ -189,6 +193,9 @@ func execSitesInSource(t *testing.T, name, src string) []string {
 			}
 			switch fun := call.Fun.(type) {
 			case *ast.SelectorExpr:
+				if x, ok := fun.X.(*ast.Ident); ok && x.Name == "plugin" && fun.Sel.Name == "ExecEnv" {
+					calls = true
+				}
 				if x, ok := fun.X.(*ast.Ident); ok && x.Name == "exec" && (fun.Sel.Name == "Command" || fun.Sel.Name == "CommandContext") {
 					builds = true
 				}
