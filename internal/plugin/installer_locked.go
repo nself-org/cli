@@ -207,11 +207,10 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 	// (installer_signature.go). A missing signature warns in v1.4 mode and
 	// refuses (E107) in v1.5 mode or under NSELF_PLUGIN_REQUIRE_CHECKSUM=1.
 	// The dev bypass below skips a missing signature, never a present one on a
-	// pinned tier; it requires BOTH
-	// NSELF_LICENSE_SKIP_VERIFY=1 AND NSELF_LICENSE_SKIP_VERIFY_FORCE=1.
-	// Either var alone is insufficient — standalone skip is not permitted (matches license/validate.go).
-	// In prod/staging these bypass vars are fatal — dev-only escapes must never reach production.
-	bypassed, bypassErr := checkSigBypassAllowed(cfg.Env, name)
+	// pinned tier; NSELF_LICENSE_SKIP_VERIFY=1 also requires an explicit force
+	// acknowledgement from the caller or the legacy FORCE env switch.
+	// In prod/staging the bypass is always fatal.
+	bypassed, bypassErr := checkSigBypassAllowedWithContext(ctx, cfg.Env, name)
 	if bypassErr != nil {
 		_ = os.Remove(archivePath)
 		return bypassErr
@@ -220,7 +219,7 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 		fmt.Fprintf(os.Stderr, "WARNING: plugin signature verification skipped (NSELF_LICENSE_SKIP_VERIFY=1 + FORCE)\n")
 		if werr := audit.Write("plugin-install-bypass", map[string]string{
 			"plugin": name,
-			"reason": "NSELF_LICENSE_SKIP_VERIFY=1 + NSELF_LICENSE_SKIP_VERIFY_FORCE=1",
+			"reason": "NSELF_LICENSE_SKIP_VERIFY=1 + explicit force acknowledgement",
 			"uid":    os.Getenv("USER"),
 			"env":    cfg.Env,
 		}); werr != nil {

@@ -104,6 +104,14 @@ Example: `claw` requires `ai`. Installing `claw` automatically installs `ai` if 
 
 ## Environment Variables
 
+`nself add` and `nself remove` load the project `.env` before choosing the plugin
+directory. Set `NSELF_PLUGIN_DIR` there to use a project-specific directory; remove
+also checks that directory's bundle ledger when deciding whether to remove a bundle.
+
+For development installs with `NSELF_LICENSE_SKIP_VERIFY=1`, pass `--force` to
+acknowledge the signature verification bypass. The bypass is refused in production
+and staging even with `--force`.
+
 Each plugin declares its required env vars in `plugin.json`. After install, add the required vars to your `.env` file:
 
 ```bash
