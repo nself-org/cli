@@ -3,6 +3,7 @@ package firebase
 import (
 	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -329,37 +330,52 @@ func TestSubcollectionsUnderMissingParentAreWalked(t *testing.T) {
 	}
 }
 
-// TestDotLineValuesAreNotPromoted: a promoted text value with a line of backslash-dot would end
-// psql's client-side \copy early, so the column is dropped and the value stays in data.
-func TestDotLineValuesAreNotPromoted(t *testing.T) {
-	d := fixtureDB()
-	d.docs["notes"] = []fakeDoc{{ID: "n1", Fields: map[string]any{"snippet": sv("a\n\\.\nb"), "plain": sv("x")}}}
-	d.subs["users/u1"], d.subs["users/u2"] = nil, nil
-	col, dir := collectFixture(t, d)
-	script, _, notes, err := emit(col.sorted(), dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(script, `"snippet"`) || !strings.Contains(script, `"plain"`) {
-		t.Fatalf("snippet must stay out of the columns:\n%s", script)
-	}
-	found := false
-	for _, n := range notes {
-		found = found || (n.ID == "firebase.notes.snippet" && strings.Contains(n.Reason, "backslash dot"))
-	}
-	if !found {
-		t.Fatalf("no note: %v", notes)
-	}
-	if !hasDotLine("x\r\n\\.\r\ny") || hasDotLine("a\\.b") || hasDotLine("") {
-		t.Fatal("hasDotLine misjudges")
-	}
-	d.docs["notes"] = []fakeDoc{{ID: "bad\n\\.\nid", Fields: map[string]any{}}}
-	fs, _, _ := fakeClient(t, d)
-	bad := newCollector(fs, t.TempDir())
-	err = bad.walk(context.Background(), "", nil)
-	_ = bad.close() // Windows cannot remove the temp dir while a spool is open
-	if err == nil {
-		t.Fatal("an id with a dot line must stop the import")
+// Server-side COPY permits dot lines in promoted text, document ids and parent paths.
+func TestDotLineValuesArePreserved(t *testing.T) {
+	for _, newline := range []string{"\n", "\r\n"} {
+		t.Run(fmt.Sprintf("newline=%q", newline), func(t *testing.T) {
+			dir := t.TempDir()
+			col := newCollector(nil, dir)
+			parent := &tableAcc{pattern: "parents", name: "parents"}
+			table, err := col.table("parents/*/notes", parent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			value := "a" + newline + "\\." + newline + "b"
+			parentPath := "parents/" + value
+			field, err := json.Marshal(sv(value))
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = col.add(table, parentPath, document{ID: value, Fields: map[string]json.RawMessage{"snippet": field}})
+			closeErr := col.close()
+			if err != nil || closeErr != nil {
+				t.Fatalf("collect dot line: %v, close: %v", err, closeErr)
+			}
+			script, copies, notes, err := emit(col.sorted(), dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(script, `"snippet" text`) || len(notes) != 0 || len(copies) != 1 {
+				t.Fatalf("dot-line text must be promoted: %s, copies %v, notes %v", script, copies, notes)
+			}
+			data, err := os.ReadFile(copies[0].Path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// encoding/csv normalizes CRLF, so inspect the raw quoted fields too.
+			if strings.Count(string(data), csvField(value)) != 3 || !strings.Contains(string(data), csvField(parentPath)) {
+				t.Fatalf("CSV lost a dot-line value: %q", data)
+			}
+			rows, err := csv.NewReader(bytes.NewReader(data)).ReadAll()
+			if err != nil || len(rows) != 1 || len(rows[0]) != 5 {
+				t.Fatalf("invalid CSV: %v, %v", rows, err)
+			}
+			var decoded map[string]any
+			if err := json.Unmarshal([]byte(rows[0][3]), &decoded); err != nil || decoded["snippet"] != value {
+				t.Fatalf("JSON value changed: %v, %v", decoded, err)
+			}
+		})
 	}
 }
 

@@ -38,7 +38,7 @@ becomes a table in the schema `firebase`:
 | Typed columns | a top-level field becomes a column when every document that has it agrees on one scalar type: string `text`, integer `bigint`, double `double precision`, boolean `boolean`, timestamp `timestamptz` |
 | Disagreement | a field whose documents disagree on type, or whose column name clashes after sanitising (`Title` and `title`, or `id`), gets no column; the value stays in `data`, and the report lists the field in `exemptions` (kind `metadata`) |
 | Column limit | at most 200 typed columns per table, the most common fields first; the rest stay in `data` and are listed |
-| Unsafe text | a text value with a line that is only a backslash and a dot would end the `psql \copy` early, so that field gets no column (the value stays in `data`) |
+| Multiline text | lines containing only a backslash and a dot are preserved in typed text columns, document ids and parent paths; the scratch database loads CSV with server-side `COPY` |
 | Sub-collections | table `<parent>__<sub>` with `parent_path` (for example `users/u1`) and `parent_id`; the key is `(parent_path, id)` because document ids repeat across parents |
 | Nested maps, arrays, geo points, references, bytes | stay in `data` only (bytes as base64, references as the resource name) |
 

@@ -146,7 +146,7 @@ func copySQL(copies []CopyFile) (string, []string, error) {
 		if len(cols) > 0 {
 			columns = " (" + strings.Join(cols, ",") + ")"
 		}
-		fmt.Fprintf(&sql, "\\copy %s.%s%s FROM '/scratch/copy-%d.csv' WITH (FORMAT csv)\n", schema, table, columns, i)
+		fmt.Fprintf(&sql, "COPY %s.%s%s FROM '/scratch/copy-%d.csv' WITH (FORMAT csv);\n", schema, table, columns, i)
 	}
 	out := []string{}
 	for schema := range schemas {

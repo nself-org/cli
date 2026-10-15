@@ -119,10 +119,6 @@ func columnsFor(t *tableAcc) ([]column, []portable.Exemption) {
 			note(f, "field types differ ("+strings.Join(seen, ",")+"); kept in data only")
 			continue
 		}
-		if len(seen) == 1 && promotable(kind(seen[0])) && t.unsafe[f] {
-			note(f, "a text value has a line psql cannot copy (backslash dot); kept in data only")
-			continue
-		}
 		if len(seen) == 1 && promotable(kind(seen[0])) {
 			c := column{Field: f, Name: fit(sanitize(f), f), K: kind(seen[0])}
 			groups[c.Name] = append(groups[c.Name], c)
