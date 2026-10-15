@@ -52,6 +52,13 @@ func TestDevComposeCallsCarryEnvFiles(t *testing.T) {
 		t.Skip("fake docker is a shell script")
 	}
 	dir := devProject(t, true, true)
+	fragment := filepath.Join(dir, "plugin.yml")
+	if err := os.WriteFile(fragment, []byte("services: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := build.WriteComposeManifest(dir, "docker-compose.yml", []string{fragment}); err != nil {
+		t.Fatal(err)
+	}
 	stub := t.TempDir()
 	log := filepath.Join(stub, "log")
 	bin := filepath.Join(stub, "docker")
@@ -77,7 +84,7 @@ func TestDevComposeCallsCarryEnvFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	flags := "compose --env-file " + filepath.Join(dir, ".env") + " --env-file " + filepath.Join(dir, ".nself", "compose.env")
+	flags := "compose -f " + fragment + " --env-file " + filepath.Join(dir, ".env") + " --env-file " + filepath.Join(dir, ".nself", "compose.env")
 	want := []string{flags + " up -d", flags + " up -d --no-deps --build -- notify"}
 	if got := strings.Split(strings.TrimRight(string(b), "\n"), "\n"); !reflect.DeepEqual(got, want) {
 		t.Errorf("compose calls =\n%q\nwant\n%q", got, want)

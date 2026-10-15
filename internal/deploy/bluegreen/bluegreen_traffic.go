@@ -97,7 +97,7 @@ func frontedByFor(projectRoot string) string {
 // reloadNginx sends a reload signal to the nginx container or the system nginx.
 func reloadNginx(projectRoot string) error {
 	// Try docker compose exec nginx nginx -s reload.
-	cmd := exec.Command("docker", "compose", "exec", "-T", "nginx", "nginx", "-s", "reload")
+	cmd := newCompose(projectRoot).CommandContext(context.Background(), projectRoot, "exec", "-T", "nginx", "nginx", "-s", "reload")
 	cmd.Dir = projectRoot
 	cmd.Env = os.Environ()
 	if err := cmd.Run(); err == nil {
@@ -152,8 +152,7 @@ func soak(ctx context.Context, cfg DeployConfig, duration time.Duration) (bool, 
 // is which is reported.
 func measureErrorRate(ctx context.Context, cfg DeployConfig) (float64, error) {
 	project := composeProjectName(EnvGreen)
-	out, err := exec.CommandContext(ctx,
-		"docker", "compose",
+	out, err := newCompose(cfg.ProjectRoot).CommandContext(ctx, cfg.ProjectRoot,
 		"-p", project,
 		"ps", "--format", containerStatusFormat,
 	).Output()

@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"strconv"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -182,7 +182,7 @@ func runLogsBody(cmd *cobra.Command, args []string) error {
 	// Check that at least one container exists before attempting to stream logs.
 	// "docker compose ps -q" returns one container ID per line; empty output means
 	// no containers are running (stack not started or wrong project directory).
-	psCmd := exec.CommandContext(cmd.Context(), "docker", "compose", "ps", "-q")
+	psCmd := docker.NewProjectCompose(workdir).CommandContext(cmd.Context(), workdir, "ps", "-q")
 	psCmd.Dir = workdir
 	psOut, _ := psCmd.Output()
 	if len(bytes.TrimSpace(psOut)) == 0 {

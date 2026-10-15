@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/controlplane"
+	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/ui"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 
@@ -73,7 +74,7 @@ func runDeployLogs(cmd *cobra.Command, args []string) error {
 	}
 
 	// Default: local docker compose logs.
-	c := exec.CommandContext(cmd.Context(), "docker", "compose", "logs", "--tail=200")
+	c := docker.NewProjectCompose(workdir).CommandContext(cmd.Context(), workdir, "logs", "--tail=200")
 	c.Dir = workdir
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr

@@ -44,6 +44,22 @@ func ProjectEnvFiles(workdir string) []string {
 	return []string{computed}
 }
 
+// NewProjectCompose configures interpolation for a project's compose calls.
+// Compose file discovery stays with Docker unless the caller supplies files.
+func NewProjectCompose(workdir string, files ...string) *Compose {
+	c := NewCompose(files...)
+	c.EnvFiles = ProjectEnvFiles(workdir)
+	return c
+}
+
+// CommandContext builds a compose subprocess with the client's files and env
+// files, working directory and cancellation policy. Callers own its pipes and
+// writers so streaming, filtering and pass-through output retain their behavior.
+// args begins with the compose subcommand, without the leading "compose".
+func (c *Compose) CommandContext(ctx context.Context, workdir string, args ...string) *exec.Cmd {
+	return c.projectCmd(ctx, workdir, ProjectRun{}, args)
+}
+
 // ComposeUpBuild runs `docker compose up -d --no-deps --build [services...]`:
 // rebuild the named services' images and recreate only those containers.
 func (c *Compose) ComposeUpBuild(ctx context.Context, workdir string, services ...string) error {

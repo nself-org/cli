@@ -10,10 +10,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/nself-org/cli/internal/docker"
 )
 
 // isValidDeployKey checks that the key matches the expected format.
@@ -73,9 +74,7 @@ func runRollback(ctx context.Context, projectRoot, service, priorVersion, env st
 	// Set the image tag env var for the specific service.
 	imageTag := fmt.Sprintf("%s_IMAGE_TAG=%s", strings.ToUpper(service), priorVersion)
 
-	cmd := exec.CommandContext(ctx,
-		"docker", "compose",
-		"-f", composeFile,
+	cmd := docker.NewProjectCompose(projectRoot, composeFile).CommandContext(ctx, projectRoot,
 		"up", "-d",
 		"--no-deps",
 		"--force-recreate",

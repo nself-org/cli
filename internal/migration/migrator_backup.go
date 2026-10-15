@@ -12,15 +12,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/nself-org/cli/internal/docker"
 )
 
 // composeDown runs `docker compose down` in the given directory.
 func composeDown(ctx context.Context, dir string) error {
-	cmd := exec.CommandContext(ctx, "docker", "compose", "down")
+	cmd := docker.NewProjectCompose(dir).CommandContext(ctx, dir, "down")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

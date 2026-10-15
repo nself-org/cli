@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/nself-org/cli/internal/docker"
 )
 
 // WAFMode represents the Coraza WAF enforcement mode.
@@ -177,7 +178,7 @@ func ScanWAFAuditLog(ctx context.Context, r io.Reader) ([]WAFEvent, int, error) 
 // ReadWAFAuditLogFromContainer reads the WAF audit log from the nginx container
 // and returns parsed events. workdir is the nself project directory.
 func ReadWAFAuditLogFromContainer(ctx context.Context, workdir string) ([]WAFEvent, int, error) {
-	cmd := exec.CommandContext(ctx, "docker", "compose", "exec", "nginx",
+	cmd := docker.NewProjectCompose(workdir).CommandContext(ctx, workdir, "exec", "nginx",
 		"sh", "-c", "cat /var/log/nginx/waf_audit.log 2>/dev/null || true",
 	)
 	cmd.Dir = workdir

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/compose"
+	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/lock"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/reconcile"
@@ -119,7 +120,7 @@ the upgrade steps without changing anything, and --yes to apply it.`,
 				ui.Warn("Cannot restart services: no nself project found in current directory")
 			} else {
 				ui.Info("Restarting services...")
-				restartExec := exec.Command("docker", "compose", "restart")
+				restartExec := docker.NewProjectCompose(projectDir).CommandContext(cmd.Context(), projectDir, "restart")
 				restartExec.Dir = projectDir
 				restartExec.Stdout = os.Stdout
 				restartExec.Stderr = os.Stderr

@@ -17,8 +17,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"strings"
+
+	"github.com/nself-org/cli/internal/docker"
 )
 
 // streamFilteredLogs runs docker with composeArgs and streams filtered/formatted output to w.
@@ -46,7 +47,7 @@ const maxLogLineBytes = 4 << 20
 func streamLogLines(parent context.Context, workdir string, composeArgs []string, opts LogsOptions, fn func(line string) error) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	dockerCmd := exec.CommandContext(ctx, "docker", composeArgs...)
+	dockerCmd := docker.NewProjectCompose(workdir).CommandContext(ctx, workdir, composeArgs[1:]...)
 	dockerCmd.Dir = workdir
 	dockerCmd.Stderr = os.Stderr
 
@@ -98,7 +99,7 @@ func streamLogLines(parent context.Context, workdir string, composeArgs []string
 
 // getRunningServices returns the list of service names from docker compose ps --services.
 func getRunningServices(ctx context.Context, workdir string) ([]string, error) {
-	out, err := exec.CommandContext(ctx, "docker", "compose", "ps", "--services").Output()
+	out, err := docker.NewProjectCompose(workdir).CommandContext(ctx, workdir, "ps", "--services").Output()
 	if err != nil {
 		return nil, fmt.Errorf("docker compose ps --services: %w", err)
 	}
