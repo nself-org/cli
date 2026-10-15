@@ -24,7 +24,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
-	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -161,7 +160,7 @@ var approxQuery = func(ctx context.Context, pgURL string) (string, error) {
 	cmd := exec.CommandContext(ctx, "psql", "-X", "-A", "-t", "-F", "\t",
 		"--no-password", "-v", "ON_ERROR_STOP=1", "-c", approxRowsSQL, connURL)
 	if password != "" {
-		cmd.Env = append(os.Environ(), "PGPASSWORD="+password)
+		cmd.Env = pgPasswordEnv(password)
 	}
 	var out, errOut bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errOut
