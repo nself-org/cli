@@ -114,7 +114,7 @@ func TestReservedNamesCoverSharedSchemas(t *testing.T) {
 	}
 	for schema, path := range found {
 		name := strings.ReplaceAll(strings.TrimPrefix(schema, "np_"), "_", "-")
-		if pluginSlugRe.MatchString(name) && ValidateName(name) == nil {
+		if ValidateCommandName(name) == nil && ValidateName(name) == nil {
 			t.Errorf("%s creates schema %s but plugin name %q is not reserved: add it to reservedNames", path, schema, name)
 		}
 	}

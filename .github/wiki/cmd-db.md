@@ -70,6 +70,11 @@ nself db migrate up --migration-dir /path/to/plugin/migrations
 nself db migrate up --migration-dir /path/to/plugin/migrations --dry-run
 ```
 
+Plugin names passed with `--plugin`, including to `db verify-checksums`, must
+start with a lowercase letter and contain only lowercase letters, digits and
+hyphens, up to 55 bytes. Backup names such as `notify.prev` and reserved names
+`bin`, `common` and `status` are rejected with E401 before database access.
+
 ### db migrate apply
 
 Apply a single SQL migration file by path (G-008).

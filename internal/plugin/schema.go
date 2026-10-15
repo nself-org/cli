@@ -42,9 +42,6 @@ func checkSchemaMapsBack(pluginName, schema string) error {
 	if err := ValidateName(pluginName); err != nil {
 		return fmt.Errorf("refusing to drop a schema for %q: %w", pluginName, err)
 	}
-	if _, reserved := reservedNames[pluginName]; reserved {
-		return fmt.Errorf("refusing schema work for plugin %q: %s", pluginName, reservedNames[pluginName])
-	}
 	if schema == invalidSchemaName || schema != "np_"+strings.ReplaceAll(pluginName, "-", "_") {
 		return fmt.Errorf("refusing to drop schema %q: it does not map one-to-one to plugin %q", schema, pluginName)
 	}

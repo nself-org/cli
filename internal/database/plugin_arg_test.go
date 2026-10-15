@@ -14,7 +14,7 @@ import (
 
 func TestPluginArgRefusedBeforeAnyScan(t *testing.T) {
 	cfg := &config.Config{}
-	for _, name := range []string{"../victim", "./x", "a/b", "..", ".", "/etc", `a\b`, "a\x00b"} {
+	for _, name := range []string{"../victim", "./x", "a/b", "..", ".", "/etc", `a\b`, "a\x00b", "notify.prev", "bin", "common"} {
 		if err := validatePluginArg(name); err == nil {
 			t.Errorf("validatePluginArg(%q) = nil", name)
 		}
@@ -22,10 +22,10 @@ func TestPluginArgRefusedBeforeAnyScan(t *testing.T) {
 		if d := errs.Describe(err); d == nil || d.Code != "E401" {
 			t.Errorf("MigrateUp(%q) = %v, want E401", name, err)
 		}
-		if _, err := PendingMigrations(context.Background(), cfg, name); errs.Describe(err) == nil {
+		if _, err := PendingMigrations(context.Background(), cfg, name); errs.Describe(err) == nil || errs.Describe(err).Code != "E401" {
 			t.Errorf("PendingMigrations(%q) = %v, want E401", name, err)
 		}
-		if _, err := VerifyChecksums(context.Background(), cfg, name); errs.Describe(err) == nil {
+		if _, err := VerifyChecksums(context.Background(), cfg, name); errs.Describe(err) == nil || errs.Describe(err).Code != "E401" {
 			t.Errorf("VerifyChecksums(%q) = %v, want E401", name, err)
 		}
 	}

@@ -6,26 +6,16 @@ package database
 // SQL from a sibling directory.
 // Inputs: the --plugin value ("" means the project's own migrations).
 // Outputs: nil, or an E401 error.
-// Constraints: no I/O. This layer only guarantees the name is one path segment.
-// The full plugin-name grammar (plugin.ValidateName) runs at the command layer
-// (validatePluginFlag); importing internal/plugin here would add a same-layer
-// L2 edge that layers.yaml does not allow.
+// Constraints: no I/O. The shared lower-layer validator enforces the complete
+// plugin grammar without importing the plugin orchestration package.
 
-import (
-	"path/filepath"
-	"strings"
-
-	"github.com/nself-org/cli/internal/errs"
-)
+import "github.com/nself-org/cli/internal/pluginname"
 
 // validatePluginArg refuses a non-empty plugin argument that is not exactly one
-// path segment under the plugin directory.
+// plugin slug, including reserved-name and PostgreSQL identifier limits.
 func validatePluginArg(plugin string) error {
 	if plugin == "" {
 		return nil
 	}
-	if plugin == "." || plugin == ".." || strings.ContainsAny(plugin, "/\\\x00") || filepath.VolumeName(plugin) != "" {
-		return errs.Newf("E401", "invalid plugin name %q: must be a single plugin name, not a path", plugin)
-	}
-	return nil
+	return pluginname.ValidateName(plugin)
 }
