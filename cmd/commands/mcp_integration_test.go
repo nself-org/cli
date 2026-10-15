@@ -63,6 +63,9 @@ func TestMCPIntegration_InitBuildVerify(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping binary-build integration test in -short mode")
 	}
+	restoreProcessEnv(t)
+	clearProjectConfigEnv(t)
+	t.Setenv("PROJECT_NAME", "mcp-integration-fixture")
 
 	binDir := t.TempDir()
 	bin := buildNSelfBinary(t, binDir)
@@ -137,6 +140,9 @@ func TestMCPIntegration_StartStatusStop(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping in -short mode")
 	}
+	restoreProcessEnv(t)
+	clearProjectConfigEnv(t)
+	t.Setenv("PROJECT_NAME", "mcp-integration-fixture")
 
 	binDir := t.TempDir()
 	bin := buildNSelfBinary(t, binDir)
