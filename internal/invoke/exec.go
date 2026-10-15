@@ -53,7 +53,7 @@ func SelfExecutable() (string, error) {
 var ownedEnv = map[string]bool{
 	TokenEnv: true, "NSELF_V15": true, "NSELF_NONINTERACTIVE": true, "CI": true,
 	"NO_COLOR": true, InvokedByEnv: true, DeadlineEnv: true, PathEnv: true,
-	SecretsEnv: true,
+	SecretsEnv: true, TransportEnv: true,
 }
 
 // envCaseInsensitive is true where environment names compare case-insensitively
@@ -88,6 +88,7 @@ func childEnv(parent []string, transport, path string, deadline time.Duration) (
 		}
 	}
 	env = append(env, "NSELF_V15=1", "NSELF_NONINTERACTIVE=1", "CI=1", "NO_COLOR=1", InvokedByEnv+"="+invokedBy)
+	env = append(env, TransportEnv+"="+transport)
 	if path != "" {
 		env = append(env, PathEnv+"="+path)
 	}
