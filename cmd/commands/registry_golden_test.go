@@ -14,7 +14,6 @@ package commands
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -33,34 +32,16 @@ const committedRegistry = "../../.github/command-registry.json"
 // compares the document without it.
 var generatedLine = regexp.MustCompile(`(?m)\A\{\n  "_generated": "[^\n]*",\n`)
 
-// goldenChild marks the child process that runs the golden check. Other tests
-// in this package ResetFlags and redeclare flags on the real commands (for
-// example env_target_test.go on `env target add`), so after them the live
-// tree no longer matches what the shipped binary registers. The golden
-// therefore runs the check in a fresh copy of this test binary, whose tree is
-// exactly what init() registered, independent of test order.
-const goldenChild = "NSELF_REGISTRY_GOLDEN_CHILD"
-
-// goldenSentinel is printed by the child only after the byte comparison
-// succeeded. The wrapper requires it, so a child that ran no test (renamed
-// test, wrong -run pattern) cannot pass silently: `go test` exits 0 then.
-const goldenSentinel = "REGISTRY-GOLDEN-CHECKED"
-
 func TestRegistryGolden(t *testing.T) {
-	if os.Getenv(goldenChild) == "" {
-		cmd := exec.Command(os.Args[0], "-test.run=^TestRegistryGolden$", "-test.count=1", "-test.v")
-		cmd.Env = append(os.Environ(), goldenChild+"=1")
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			t.Fatalf("golden check in a fresh process failed: %v\n%s", err, out)
-		}
-		if !bytes.Contains(out, []byte(goldenSentinel)) || !bytes.Contains(out, []byte("--- PASS: TestRegistryGolden")) {
-			t.Fatalf("the fresh process did not run the golden check (no %s and PASS line); output:\n%s", goldenSentinel, out)
-		}
-		return
-	}
 	compattest.Set(t, true)
 	reattachRealTree()
+	// A previous v1.4 preparation may have mounted admin in the account group.
+	// Regenerate builtin mounts in v1.5 mode, then restore the caller's mounts.
+	lifted := detachMounts(RootCmd)
+	t.Cleanup(func() {
+		detachMounts(RootCmd)
+		RootCmd.AddCommand(lifted...)
+	})
 	defer PrepareTreeForGeneration()() // the committed file documents the prepared v1.5 tree
 	reg, err := BuildRegistry(true)
 	if err != nil {
@@ -84,7 +65,6 @@ func TestRegistryGolden(t *testing.T) {
 			"line in internal/canon/canon.yaml (see wiki Command-Registry). First difference:\n%s",
 			committedRegistry, firstDiff(got, want))
 	}
-	t.Log(goldenSentinel)
 }
 
 // firstDiff names the first differing line, for a readable failure.

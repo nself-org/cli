@@ -2,14 +2,12 @@ package commands
 
 // Purpose: prove machineRegistry builds the v1.5 registry in both compat modes,
 // mounts installed plugins, and puts the process tree back.
-// Constraints: the real RootCmd is shared with tests that redeclare flags on
-// real commands, so every case runs in a fresh copy of this test binary (the
-// registry golden pattern); the parent only checks the child's PASS lines.
+// Constraints: checks run on the shared RootCmd in-process. Restore mounted
+// plugins and clear the registry cache so cases do not leak state.
 
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"testing"
 
 	"github.com/nself-org/cli/internal/canon"
@@ -20,26 +18,13 @@ import (
 	"github.com/nself-org/cli/internal/plugin/mount"
 )
 
-const machineChild = "NSELF_MACHINE_REGISTRY_CHILD"
-
-// inFreshProcess re-runs the named test in a child test binary and reports
-// whether this is that child. The parent fails unless the child printed the
-// sentinel after its checks.
-func inFreshProcess(t *testing.T, name string) (child bool) {
+// prepareMachineRegistryTest repairs parent pointers changed by other test
+// harnesses and ensures neither this test nor the next uses a stale cache.
+func prepareMachineRegistryTest(t *testing.T) {
 	t.Helper()
-	if os.Getenv(machineChild) == name {
-		return true
-	}
-	cmd := exec.Command(os.Args[0], "-test.run=^"+name+"$", "-test.count=1", "-test.v")
-	cmd.Env = append(os.Environ(), machineChild+"="+name)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("%s in a fresh process failed: %v\n%s", name, err, out)
-	}
-	if !bytes.Contains(out, []byte("CHECKED-"+name)) || !bytes.Contains(out, []byte("--- PASS: "+name)) {
-		t.Fatalf("the fresh process did not run %s; output:\n%s", name, out)
-	}
-	return false
+	reattachRealTree()
+	resetMachineRegistry()
+	t.Cleanup(resetMachineRegistry)
 }
 
 func marshalOrFatal(t *testing.T, build func() (interface{ Marshal() ([]byte, error) }, error)) []byte {
@@ -56,9 +41,7 @@ func marshalOrFatal(t *testing.T, build func() (interface{ Marshal() ([]byte, er
 }
 
 func TestMachineRegistry(t *testing.T) {
-	if !inFreshProcess(t, "TestMachineRegistry") {
-		return
-	}
+	prepareMachineRegistryTest(t)
 	committed, err := os.ReadFile(committedRegistry)
 	if err != nil {
 		t.Fatal(err)
@@ -95,13 +78,10 @@ func TestMachineRegistry(t *testing.T) {
 			t.Fatalf("%s: the tree was not restored: %s", mode, firstDiff(after, base))
 		}
 	})
-	t.Log("CHECKED-TestMachineRegistry")
 }
 
 func TestMachineRegistryPluginMount(t *testing.T) {
-	if !inFreshProcess(t, "TestMachineRegistryPluginMount") {
-		return
-	}
+	prepareMachineRegistryTest(t)
 	compattest.Both(t, func(t *testing.T) {
 		dir := mountFixture(t)
 		t.Setenv("NSELF_PLUGIN_DIR", dir)
@@ -133,15 +113,17 @@ func TestMachineRegistryPluginMount(t *testing.T) {
 			t.Fatalf("%s: tree not restored: %s", compat.Mode(), firstDiff(after, base))
 		}
 	})
-	t.Log("CHECKED-TestMachineRegistryPluginMount")
 }
 
 // TestMachineRegistryKeepsMountedPlugins covers a server started the normal
 // way, whose invocation already mounted the plugin: the same nodes come back.
 func TestMachineRegistryKeepsMountedPlugins(t *testing.T) {
-	if !inFreshProcess(t, "TestMachineRegistryKeepsMountedPlugins") {
-		return
-	}
+	prepareMachineRegistryTest(t)
+	lifted := detachMounts(RootCmd)
+	t.Cleanup(func() {
+		detachMounts(RootCmd)
+		RootCmd.AddCommand(lifted...)
+	})
 	dir := mountFixture(t)
 	t.Setenv("NSELF_PLUGIN_DIR", dir)
 	specs, problems := mount.Discover(dir, canonTable.Verbs)
@@ -161,24 +143,20 @@ func TestMachineRegistryKeepsMountedPlugins(t *testing.T) {
 	if post, _, _ := RootCmd.Find([]string{"demo"}); post != pre {
 		t.Error("the already-mounted node must be put back unchanged")
 	}
-	t.Log("CHECKED-TestMachineRegistryKeepsMountedPlugins")
 }
 
 func TestMachineRegistryEnvRestored(t *testing.T) {
+	prepareMachineRegistryTest(t)
 	t.Setenv(compat.EnvVar, "")
 	os.Unsetenv(compat.EnvVar)
 	if _, had := os.LookupEnv(compat.EnvVar); had {
 		t.Fatal("setup")
 	}
-	if inFreshProcess(t, "TestMachineRegistryEnvRestored") {
-		resetMachineRegistry()
-		if _, err := machineRegistry(); err != nil {
-			t.Fatal(err)
-		}
-		if _, had := os.LookupEnv(compat.EnvVar); had {
-			t.Error("an unset NSELF_V15 must stay unset")
-		}
-		t.Log("CHECKED-TestMachineRegistryEnvRestored")
+	if _, err := machineRegistry(); err != nil {
+		t.Fatal(err)
+	}
+	if _, had := os.LookupEnv(compat.EnvVar); had {
+		t.Error("an unset NSELF_V15 must stay unset")
 	}
 }
 
