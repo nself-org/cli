@@ -43,10 +43,11 @@ func deployHostPort(spec remote.HostSpec) int {
 }
 
 // deployKeyAlias is the pin alias. A port or an IP literal needs a synthetic
-// alias: the sdk refuses an IP literal as a pin alias.
+// alias: the sdk refuses an IP literal as a pin alias. '+' is allowed in pin
+// aliases but forbidden in host names, keeping the namespaces disjoint.
 func deployKeyAlias(spec remote.HostSpec) string {
 	if spec.Port != 0 || net.ParseIP(spec.Host) != nil {
-		return "nself-" + strings.ReplaceAll(spec.Host, ":", "-") + "-" + strconv.Itoa(deployHostPort(spec))
+		return "nself+" + spec.Host + "+" + strconv.Itoa(deployHostPort(spec))
 	}
 	return spec.Host
 }
@@ -89,6 +90,19 @@ func pinnedFingerprints(ctx context.Context, alias string) (map[string]bool, err
 	return deployTrustedFingerprints(ctx, alias, DeployKnownHostsPath()), nil
 }
 
+// deployPinnedFingerprints reads legacy IP/port pins only when no new pin
+// exists. It returns the alias SSH must check and never rewrites the pin file.
+func deployPinnedFingerprints(ctx context.Context, spec remote.HostSpec) (string, map[string]bool, error) {
+	alias := deployKeyAlias(spec)
+	pinned, err := pinnedFingerprints(ctx, alias)
+	if err != nil || len(pinned) != 0 || alias == spec.Host {
+		return alias, pinned, err
+	}
+	legacy := "nself-" + strings.ReplaceAll(spec.Host, ":", "-") + "-" + strconv.Itoa(deployHostPort(spec))
+	pinned, err = pinnedFingerprints(ctx, legacy)
+	return legacy, pinned, err
+}
+
 // hostKeyPolicy is the unexported spelling of HostKeyPolicy, kept for the
 // callers in this package that predate the export.
 func hostKeyPolicy(ctx context.Context, host, env, server string, strict, shipsSecrets bool) ([]string, error) {
@@ -120,9 +134,8 @@ func HostKeyPolicy(ctx context.Context, host, env, server string, strict, shipsS
 	if spec.Port != 0 {
 		operatorAlias = "[" + spec.Host + "]:" + strconv.Itoa(spec.Port)
 	}
-	alias := deployKeyAlias(spec)
 	operator := deployTrustedFingerprints(ctx, operatorAlias, filepath.Join(home, ".ssh", "known_hosts"))
-	pinned, err := pinnedFingerprints(ctx, alias)
+	alias, pinned, err := deployPinnedFingerprints(ctx, spec)
 	if err != nil {
 		return nil, err
 	}
