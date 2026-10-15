@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/database"
 	"github.com/nself-org/cli/internal/docker/dockertest"
 	"github.com/nself-org/cli/internal/errs"
@@ -292,6 +293,10 @@ func TestDBHasuraApplyRefProdClass(t *testing.T) {
 }
 
 func TestDBHasuraRemotePartialFailure(t *testing.T) {
+	compattest.Both(t, testDBHasuraRemotePartialFailure)
+}
+
+func testDBHasuraRemotePartialFailure(t *testing.T) {
 	// A failed export cannot reach the apply step or mutate the local checkout.
 	old := runSSHStream
 	defer func() { runSSHStream = old }()
