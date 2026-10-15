@@ -1,14 +1,10 @@
 package build
 
-// sink.go — the Sink seam: every file the build pipeline writes goes through
-// a Sink, so one pipeline serves two modes (P7-LIVE-21).
+// sink.go — Sink serves write and plan modes (P7-LIVE-21).
 //
-// Purpose: ModeWrite uses diskSink (today's os calls); ModePlan uses memSink,
-// which records writes and removals in memory and serves reads of planned
-// paths (overlay) before falling back to disk.
-// Inputs: paths are project-relative or absolute; absolute paths under the
-// project root canonicalise to relative ones, and paths under the fronting
-// stack's nginx/sites dir to "@fronting/<name>".
+// Purpose: diskSink writes; memSink records mutations and overlays disk reads.
+// Inputs: project-relative or absolute paths, canonicalised relative to the
+// project root or as "@fronting/<name>" for the fronting nginx/sites directory.
 // Outputs: PlannedBuild (files, modes, removals, effects) from memSink.
 // Constraints: memSink never writes or creates a directory; internal/build must
 // not import internal/reconcile (P7-GUARD), so the store is a plain PlannedFile
@@ -141,6 +137,8 @@ func (m *memSink) WriteFile(p string, data []byte, perm fs.FileMode) error {
 	// Like os.WriteFile: a rewrite keeps the planned mode, an existing file keeps its mode.
 	if file, planned := m.files[m.key(p)]; planned {
 		perm = file.Perm
+	} else if mode, planned := m.modes[m.key(p)]; planned {
+		perm = mode
 	} else if info, err := os.Stat(m.abs(p)); err == nil && info.Mode().IsRegular() {
 		perm = info.Mode().Perm()
 	}
@@ -151,6 +149,7 @@ func (m *memSink) WriteAtomic(p string, data []byte, perm fs.FileMode) error {
 	k := m.key(p)
 	m.files[k] = PlannedFile{Data: append([]byte(nil), data...), Perm: perm}
 	delete(m.removed, k)
+	delete(m.modes, k)
 	return nil
 }
 

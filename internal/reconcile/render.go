@@ -52,6 +52,9 @@ func RenderHuman(w io.Writer, p Plan) error {
 			sb.WriteByte('\n')
 		}
 	}
+	if certificateEffects(&p) {
+		sb.WriteString("Notice: certificate bytes and trust state are runtime effects outside artifact byte confirmation; --plan-id cannot bind this build.\n")
+	}
 	if !p.Empty {
 		renderContainers(&sb, p.Containers)
 	}

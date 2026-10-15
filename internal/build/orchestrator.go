@@ -213,7 +213,7 @@ func Build(workdir string, opts BuildOptions) (*BuildResult, error) {
 		return nil, err
 	}
 	if es, ok := st.sink.(*expectSink); ok {
-		if err := es.verify(); err != nil {
+		if err := es.commit(st.postValidate); err != nil {
 			return nil, err
 		}
 	}

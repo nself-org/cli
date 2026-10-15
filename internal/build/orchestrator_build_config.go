@@ -113,7 +113,7 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 	// ── Step 4: Check cache (skip if not --force and cache fresh) ───
 	// Plan mode always renders: the cache answers "is the disk fresh", and a
 	// plan must show what apply would write.
-	if !st.opts.Force && !st.planning() {
+	if !st.opts.Force && !st.planning() && st.opts.Expect == nil {
 		needsRebuild, err := NeedsRebuild(st.workdir)
 		if err != nil {
 			return nil, fmt.Errorf("checking build cache: %w", err)

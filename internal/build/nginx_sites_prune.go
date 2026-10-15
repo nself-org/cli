@@ -70,6 +70,9 @@ var backupBeforeWrite func()
 // leaves the project between the check and the write (review round 4). checkBackupRoot
 // stays for a clear error.
 func backupNginxSitesVia(sink Sink, workdir, sitesDir string) error {
+	if staged, ok := sink.(*expectSink); ok {
+		return staged.backupSites(sitesDir)
+	}
 	entries, err := os.ReadDir(sitesDir)
 	if err != nil {
 		if os.IsNotExist(err) {

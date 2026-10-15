@@ -5,14 +5,14 @@ package build
 //
 // Purpose: `nself build` shows a plan, asks for confirmation, then writes. The
 // write must be that render and nothing else, even if an input changed after
-// the plan was made. expectSink wraps the disk sink: every write must carry
+// the plan was made. expectSink stages the render: every write must carry
 // exactly the bytes the confirmed render planned for that path, every removal
 // and chmod must be one it planned, and anything else stops the build with an
-// error before the offending write. After the build, verify checks that the
-// disk holds every planned file and that every planned removal is gone.
+// error before publishing any artifact. After the build, verify checks the
+// complete staged render; commit publishes it with rollback on failure.
 // Inputs: the PlannedBuild of the confirmed render (BuildOptions.Expect).
 // Outputs: errors naming the path that deviated.
-// Constraints: write mode only; reads and directory creation pass through.
+// Constraints: write mode only; reads see staged writes before disk.
 // Effects are not asserted here (they run through writeEffects).
 
 import (
@@ -42,13 +42,15 @@ func errDeviated(path, why string) error {
 // expectSink is the checking disk sink.
 type expectSink struct {
 	*diskSink
-	exp  *PlannedBuild
-	keyr *memSink // canonicalises paths exactly as plan mode did
+	exp    *PlannedBuild
+	keyr   *memSink // canonicalises paths exactly as plan mode did
+	dirs   map[string]fs.FileMode
+	atomic map[string]bool
 }
 
 func newExpectSink(root string, exp *PlannedBuild) *expectSink {
 	d := newDiskSink(root)
-	return &expectSink{diskSink: d, exp: exp, keyr: &memSink{diskSink: diskSink{root: root}}}
+	return &expectSink{diskSink: d, exp: exp, keyr: newMemSink(root, ""), dirs: map[string]fs.FileMode{}, atomic: map[string]bool{}}
 }
 
 // setFronting tells the sink where the fronting stack's nginx/sites dir is.
@@ -58,14 +60,16 @@ func (e *expectSink) WriteFile(p string, data []byte, perm fs.FileMode) error {
 	if err := e.check(p, data); err != nil {
 		return err
 	}
-	return e.diskSink.WriteFile(p, data, perm)
+	e.atomic[e.keyr.key(p)] = false
+	return e.keyr.WriteFile(p, data, perm)
 }
 
 func (e *expectSink) WriteAtomic(p string, data []byte, perm fs.FileMode) error {
 	if err := e.check(p, data); err != nil {
 		return err
 	}
-	return e.diskSink.WriteAtomic(p, data, perm)
+	e.atomic[e.keyr.key(p)] = true
+	return e.keyr.WriteAtomic(p, data, perm)
 }
 
 // check requires the planned bytes for p.
@@ -87,24 +91,48 @@ func (e *expectSink) check(p string, data []byte) error {
 func (e *expectSink) Remove(p string) error {
 	k := e.keyr.key(p)
 	if e.backupPath(k) {
-		return e.diskSink.Remove(p)
+		return e.keyr.Remove(p)
 	}
 	if _, rewritten := e.exp.Files[k]; !rewritten && !inSorted(e.exp.Removed, k) {
 		return errDeviated(k, "would be removed but the plan does not remove it")
 	}
-	return e.diskSink.Remove(p)
+	return e.keyr.Remove(p)
 }
 
 func (e *expectSink) Chmod(p string, perm fs.FileMode) error {
 	k := e.keyr.key(p)
 	if f, ok := e.exp.Files[k]; ok && f.Perm == perm {
-		return e.diskSink.Chmod(p, perm)
+		return e.keyr.Chmod(p, perm)
 	}
 	if m, ok := e.exp.Modes[k]; ok && m == perm {
-		return e.diskSink.Chmod(p, perm)
+		return e.keyr.Chmod(p, perm)
 	}
 	return errDeviated(k, fmt.Sprintf("would get mode %04o which the plan does not set", perm))
 }
+
+func (e *expectSink) MkdirAll(p string, perm fs.FileMode) error {
+	e.dirs[e.keyr.key(p)] = perm
+	return e.keyr.MkdirAll(p, perm)
+}
+
+func (e *expectSink) ReadFile(p string) ([]byte, error)       { return e.keyr.ReadFile(p) }
+func (e *expectSink) ReadDir(p string) ([]fs.DirEntry, error) { return e.keyr.ReadDir(p) }
+func (e *expectSink) Stat(p string) (fs.FileInfo, error) {
+	info, err := e.keyr.Stat(p)
+	if err == nil {
+		if mode, ok := e.keyr.modes[e.keyr.key(p)]; ok {
+			return stagedModeInfo{FileInfo: info, mode: mode}, nil
+		}
+	}
+	return info, err
+}
+
+type stagedModeInfo struct {
+	fs.FileInfo
+	mode fs.FileMode
+}
+
+func (i stagedModeInfo) Mode() fs.FileMode { return i.FileInfo.Mode().Type() | i.mode }
 
 // backupPath reports whether k is under the nginx/sites snapshot area
 // (.nself/backups) and the confirmed render carries the nginx-sites-backup
@@ -161,9 +189,8 @@ func inSorted(list []string, s string) bool {
 	return i < len(list) && list[i] == s
 }
 
-// verify checks the disk against the confirmed render after the build: every
-// planned file exists with its planned bytes and mode, every planned chmod
-// holds, every planned removal is gone. Any failure is E452: a build never
+// verify checks staged operations against the complete confirmed render:
+// every planned file, chmod and removal must be present. Any failure is E452: a build never
 // reports as applied a file it did not write.
 func (e *expectSink) verify() error {
 	bad := func(k, why string) error {
@@ -179,25 +206,51 @@ func (e *expectSink) verify() error {
 	sort.Strings(keys)
 	for _, k := range keys {
 		want := e.exp.Files[k]
-		got, err := os.ReadFile(e.abs(k))
-		if err != nil {
+		staged, ok := e.keyr.files[k]
+		if !ok {
 			return bad(k, "is missing")
 		}
-		if !bytes.Equal(got, want.Data) {
+		if !bytes.Equal(staged.Data, want.Data) {
 			return bad(k, "does not hold the planned content")
 		}
-		if info, serr := os.Stat(e.abs(k)); modes && serr == nil && info.Mode().Perm() != want.Perm {
-			return bad(k, fmt.Sprintf("has mode %04o, not the planned %04o", info.Mode().Perm(), want.Perm))
+		if modes && staged.Perm != want.Perm {
+			return bad(k, fmt.Sprintf("has mode %04o, not the planned %04o", staged.Perm, want.Perm))
 		}
 	}
 	for k, m := range e.exp.Modes {
-		if info, err := os.Stat(e.abs(k)); modes && err == nil && info.Mode().Perm() != m {
-			return bad(k, fmt.Sprintf("has mode %04o, not the planned %04o", info.Mode().Perm(), m))
+		if got, ok := e.keyr.modes[k]; !ok || modes && got != m {
+			return bad(k, "does not have its planned permission change staged")
 		}
 	}
 	for _, k := range e.exp.Removed {
-		if _, err := os.Stat(e.abs(k)); err == nil {
+		if !e.keyr.removed[k] {
 			return bad(k, "was planned for removal but still exists")
+		}
+	}
+	return nil
+}
+
+// verifyPublished checks the installed view before rollback data is discarded.
+func (e *expectSink) verifyPublished() error {
+	for k, want := range e.exp.Files {
+		got, err := e.diskSink.ReadFile(k)
+		if err != nil || !bytes.Equal(got, want.Data) {
+			return fmt.Errorf("published artifact %s does not match the confirmed render", k)
+		}
+		info, err := e.diskSink.Stat(k)
+		if err != nil || runtime.GOOS != "windows" && info.Mode().Perm() != want.Perm {
+			return fmt.Errorf("published artifact %s does not have its planned mode", k)
+		}
+	}
+	for k, want := range e.exp.Modes {
+		info, err := e.diskSink.Stat(k)
+		if err != nil || runtime.GOOS != "windows" && info.Mode().Perm() != want {
+			return fmt.Errorf("published artifact %s does not have its planned mode", k)
+		}
+	}
+	for _, k := range e.exp.Removed {
+		if _, err := os.Lstat(e.abs(k)); !os.IsNotExist(err) {
+			return fmt.Errorf("published artifact %s was not removed", k)
 		}
 	}
 	return nil
