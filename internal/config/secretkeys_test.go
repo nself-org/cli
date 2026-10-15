@@ -92,6 +92,10 @@ func TestMaskURLCredentials(t *testing.T) {
 		{"https://h/?pw=FAKE34&x=1", "https://h/?pw=****&x=1"},
 		{"https://h/?signup=true&design=1&country_code=us", "https://h/?signup=true&design=1&country_code=us"},
 		{"https://h/?Sig=FAKE35", "https://h/?Sig=****"},
+		// D-0746: jwt credentials in query, matrix and fragment parameters.
+		{"https://h/?jwt=FAKEJWT1", "https://h/?jwt=****"},
+		{"https://h/p;user_jwt=FAKEJWT2", "https://h/p;user_jwt=****"},
+		{"https://h/#jwt=FAKEJWT3", "https://h/#jwt=****"},
 		// Opus adversarial inputs (cli#724).
 		{"https://h/app/page;jsessionid=ABC?access_token=FAKE23", "https://h/app/page;jsessionid=****"},
 		{"https://h/app/page;v=ABC?access_token=FAKE24", "https://h/app/page;v=ABC?access_token=****"},
