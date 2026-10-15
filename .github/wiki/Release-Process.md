@@ -50,6 +50,33 @@ Every step first checks whether GitHub already shows it finished. If so it print
 | S9 `admin-image` | Tags admin: an annotated `vX.Y.Z` on the S2 merge commit, pushed from the admin clone. Admin's `docker-publish.yml` starts on a `v*` tag push, and admin's release-tag-drift check fails 6 hours after the bump without the tag. The tag push also starts admin's other tag-triggered workflows (`release.yml` and `docker-publish.yml`). The tag goes on the S2 merge commit; if no merged lockstep PR is found, on the commit that set `package.json` to the version, never the tip of main. S9 then waits for that run for up to 60 minutes (it does not dispatch a second publish) and checks `nself/nself-admin:X.Y.Z`. Only if no run publishes the image does it dispatch the workflow once. An admin tag on another commit stops the run. | `--from S9`. |
 | S10 `sdk-publish` | For each `sdk-*publish*.yml` in cli: done if a run on the tag succeeded, otherwise dispatches it on the tag's ref. Only `sdk-publish-go.yml` gets `-f version`; the py, ts and ts-sdk workflows would overwrite their own manifest version with it, so they publish the version committed at the tag. A file without `workflow_dispatch` is printed for a manual run. An API error stops the run. | `--from S10`. Check the npm and PyPI secrets. |
 
+## Completion checks
+
+For a stable release, finish these checks after S10 and after all tag-triggered SDK publishes are green. S2 must merge admin's three version files before S4 tags cli; S6 must merge the Homebrew formula PR with both darwin hashes before rerunning the failed `verify-homebrew-lockstep` job. The tap does not update itself just because the cli tag exists.
+
+The Go SDK workflow creates `sdk/go/v2.M.P` on the same commit as CLI `v1.M.P`. Use the shared mapping script rather than copying the CLI version into a Go module tag. From the cli checkout, replace the example with the release being verified:
+
+```bash
+CLI_TAG=v1.5.0
+SDK_TAG=$(bash sdk/go/scripts/sdk-tag.sh "$CLI_TAG")
+SDK_VERSION=$(bash sdk/go/scripts/sdk-tag.sh --version "$CLI_TAG")
+git fetch origin --tags
+test "$(git rev-parse "$SDK_TAG^{commit}")" = "$(git rev-parse "$CLI_TAG^{commit}")"
+GOPROXY=https://proxy.golang.org GOFLAGS=-mod=mod go list -m "github.com/nself-org/cli/sdk/go/v2@$SDK_VERSION"
+```
+
+If the tag or proxy resolution is missing, inspect `sdk-publish-go.yml` on the CLI tag and resume S10 after fixing its failure. Never move an existing SDK tag: the module proxy caches immutable versions. Pre-release CLI tags do not publish a Go SDK version.
+
+Check the GitHub Latest slot again after the SDK publishes. SDK releases must use `--latest=false`; they must not displace the CLI release used by `install.sh`:
+
+```bash
+gh api repos/nself-org/cli/releases/latest \
+  --jq '.tag_name, (.assets | length)'
+gh release view "$CLI_TAG" -R nself-org/cli --json assets
+```
+
+The Latest tag must equal `$CLI_TAG`, and its assets must include the CLI platform tarballs and `checksums.txt`. Compare the published `checksums.txt` byte for byte with the Build job's `release-checksums` artifact; confirm the formula's two darwin hashes still match. If an SDK publish displaced Latest, restore the CLI release with `gh release edit "$CLI_TAG" -R nself-org/cli --latest`, then repeat the check. Finally, confirm `install.sh` selects that CLI release and the installed `nself version` reports its version and tag commit. Do not apply this stable Latest check to a pre-release.
+
 ## The denylist runs in two places
 
 `.github/release-denylist.json` has five rules. S4 evaluates the three that can be decided at tag time:
