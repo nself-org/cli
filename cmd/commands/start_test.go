@@ -13,10 +13,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// startCmdWithTimeout creates a root+start command tree with a context that
-// times out after d, so docker compose operations fail quickly in tests.
+// startCmdWithTimeout isolates fixture config and creates a root+start command
+// tree with a context that times out after d, so compose operations fail quickly.
 func startCmdWithTimeout(t *testing.T, d time.Duration) *cobra.Command {
 	t.Helper()
+	restoreProcessEnv(t)
+	clearProjectConfigEnv(t)
 	root := newStartCmd()
 	ctx, cancel := context.WithTimeout(context.Background(), d)
 	t.Cleanup(cancel)
