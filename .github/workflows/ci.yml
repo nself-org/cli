@@ -160,7 +160,22 @@ jobs:
 
       - name: Test
         if: matrix.skip_docker_tests != 'true'
-        run: go test -mod=vendor -timeout 10m ./...
+        run: go test -mod=vendor -timeout 10m $(go list -mod=vendor ./... | grep -v '/cmd/commands$')
+
+      # D-0735: cmd/commands approached the 10m package timeout on macOS Intel.
+      # Give disjoint, exhaustive groups separate clocks without raising it.
+      # repoqa verifies that every test/example/fuzz target belongs to one group.
+      - name: Test (commands A-F and examples)
+        if: matrix.skip_docker_tests != 'true'
+        run: go test -mod=vendor -timeout 10m -run '^(Test[A-F]|Example)' ./cmd/commands
+
+      - name: Test (commands G-P)
+        if: matrix.skip_docker_tests != 'true'
+        run: go test -mod=vendor -timeout 10m -run '^Test[G-P]' ./cmd/commands
+
+      - name: Test (commands remaining and fuzz seeds)
+        if: matrix.skip_docker_tests != 'true'
+        run: go test -mod=vendor -timeout 10m -run '^(Test([^A-P]|$)|Fuzz)' ./cmd/commands
 
       # D-0275: the default run above is v1.4 only, so a test that breaks under
       # the v1.5 strict host-key and pipeline paths stayed unseen until the

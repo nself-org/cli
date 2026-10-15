@@ -17,6 +17,9 @@ import (
 // v1.5 envelope registry class.
 func assertFragmentEnvelopeCoverage(t *testing.T, fragment string) {
 	t.Helper()
+	// Earlier command fixtures may reparent the live commands. Do not depend
+	// on an unrelated test repairing the tree before this shard reaches us.
+	reattachRealTree()
 	path := filepath.Join("../../internal/canon/domains", fragment+".yaml")
 	reg, err := buildRegistry(true)
 	if err != nil {
