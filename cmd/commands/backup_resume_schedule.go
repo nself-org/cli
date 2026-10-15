@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/backup"
+	"github.com/nself-org/cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -88,7 +89,7 @@ func validateCronExpression(expr string) error {
 }
 
 func runBackupSchedule(cmd *cobra.Command, _ []string) error {
-	cfg, err := loadProjectConfig()
+	cfg, err := loadProjectConfigWithOptions(config.LoadOptions{SkipMinioCredentialGuard: true})
 	if err != nil {
 		return err
 	}

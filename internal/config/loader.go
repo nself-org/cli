@@ -52,6 +52,10 @@ func Load(projectDir string) (*Config, error) {
 // LoadOptions are the caller's choices for one Load. They are explicit
 // arguments, never read from the environment or kept in process state.
 type LoadOptions struct {
+	// SkipMinioCredentialGuard is for database-only backup operations that do
+	// not use or start MinIO. Defaults still populate MinIO connection fields;
+	// config.Validate always applies its normal enabled-service checks.
+	SkipMinioCredentialGuard bool
 	// RemoteDeploy drops .env.local from the cascade: the build is for a
 	// remote host, and a developer's personal override must not reach it (the
 	// env file pushed to the host omits it too).
@@ -158,7 +162,7 @@ func LoadWithOptions(projectDir string, opts LoadOptions) (*Config, error) {
 	cfg.Passthrough = collectPassthrough(os.Environ())
 
 	// 7. Apply smart defaults (fills every unset field).
-	cfg, err = ApplyDefaults(cfg)
+	cfg, err = applyDefaultsWithOptions(cfg, opts)
 	if err != nil {
 		return nil, fmt.Errorf("applying defaults: %w", err)
 	}

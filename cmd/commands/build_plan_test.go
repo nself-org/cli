@@ -493,7 +493,9 @@ func TestBuildPlanIDBindsContent(t *testing.T) {
 		t.Fatal("identical inputs gave different plan ids")
 	}
 	b, _ := os.ReadFile(filepath.Join(p.project, ".env"))
-	l03Write(t, filepath.Join(p.project, ".env"), strings.Replace(string(b), "MINIO_ROOT_USER=minio-user-Tq8Zk", "MINIO_ROOT_USER=minio-user-Tq8Zj", 1), 0o600)
+	// MinIO is disabled in this fixture, so its unused credentials no longer
+	// reach compose.env. Change the always-used database secret instead.
+	l03Write(t, filepath.Join(p.project, ".env"), strings.Replace(string(b), "POSTGRES_PASSWORD=Kq7vZp3Lw9XnR2tYb8MdQa4s", "POSTGRES_PASSWORD=Kq7vZp3Lw9XnR2tYb8MdQa4t", 1), 0o600)
 	before := p.whole(t)
 	r := p.run(t, true, "build", "--yes", "--plan-id", shown, "--json")
 	if code, exit := errorEnvelope(t, r.stdout); r.code != 1 || code != "E450" || exit != 1 {

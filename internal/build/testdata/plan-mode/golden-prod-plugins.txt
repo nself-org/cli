@@ -22,7 +22,7 @@ d 0755 project/ssl/certificates
 d 0755 project/ssl/certificates/example-org
 f 0600 project/.env a453ab255f1ff28c49aa67169dea59e6ed810549318c1bf13d96b484bc299829
 f 0600 project/.env.computed 2f35a3b9b8f489945a149d23e41588cca4a7a21686ab5e8b365d09b991ed6756
-f 0600 project/.nself/compose.env 71d9ced8339ba6b866a6bd9ee480bbcd9959b3778741e73b8797daaafb4d463b
+f 0600 project/.nself/compose.env 2694d3f78d0e965fc7cef1e35bd08629860d0141633e4be6676ce11e036356e6
 f 0600 project/docker-compose.yml 3b0c42186c3ef4fd16bd5228d3e92a11ef4c631c000faffa30036ce2ffea1e59
 f 0600 project/ssl/certificates/example-org/privkey.pem 4a3ec3730504983f960fb2df35a1d68d640ff55d151fa3128ca0fc707f86882e
 f 0644 plugins/nself-alpha/Dockerfile bb57c7da220a8753d7bdabac0d3afdb6efa742e4c736c5bc93ab40dfd5e23b9b

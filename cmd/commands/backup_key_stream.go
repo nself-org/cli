@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/nself-org/cli/internal/backup"
+	"github.com/nself-org/cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -71,7 +72,7 @@ func init() {
 }
 
 func runBackupStream(cmd *cobra.Command, _ []string) error {
-	cfg, err := loadProjectConfig()
+	cfg, err := loadProjectConfigWithOptions(config.LoadOptions{SkipMinioCredentialGuard: true})
 	if err != nil {
 		return err
 	}
