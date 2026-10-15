@@ -172,10 +172,11 @@ func buildDownloadURL(name, version, repository string) string {
 // plugins.nself.org worker which 302-redirects to R2 (primary) with GitHub
 // Releases as fallback. paid must come from the registry manifest, not the
 // name-only static map — see downloadPluginPackageForTier's doc comment.
+// Name the resolved tier explicitly so a tier-pair slug selects the right row.
 func buildDownloadURLForTier(name, version, repository string, paid bool) string {
 	if paid {
 		base := pingAPIURL()
-		return fmt.Sprintf("%s/plugins/%s/download", base, name)
+		return fmt.Sprintf("%s/plugins/%s/download?tier=licensed", base, name)
 	}
 	// Free plugins: S67-T03 — use plugins.nself.org worker tarball endpoint.
 	// The worker 302-redirects to R2 (primary CDN, free egress) or falls back
@@ -184,7 +185,7 @@ func buildDownloadURLForTier(name, version, repository string, paid bool) string
 	if envURL := os.Getenv("NSELF_PLUGIN_REGISTRY"); envURL != "" {
 		base = strings.TrimRight(envURL, "/")
 	}
-	return fmt.Sprintf("%s/plugins/%s/tarball", base, name)
+	return fmt.Sprintf("%s/plugins/%s/tarball?tier=free", base, name)
 }
 
 // buildFallbackDownloadURL constructs the GitHub Releases fallback URL for a

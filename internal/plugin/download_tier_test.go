@@ -60,7 +60,7 @@ func TestBuildDownloadURLForTier_RoutesRegistryPaidPluginToPingAPI(t *testing.T)
 	t.Setenv("NSELF_PING_API_URL", "https://ping.example.test")
 
 	paidURL := buildDownloadURLForTier("storage", "1.2.0", "", true)
-	if want := "https://ping.example.test/plugins/storage/download"; paidURL != want {
+	if want := "https://ping.example.test/plugins/storage/download?tier=licensed"; paidURL != want {
 		t.Errorf("paid URL = %q, want %q", paidURL, want)
 	}
 

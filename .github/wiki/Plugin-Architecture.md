@@ -2,6 +2,11 @@
 
 ɳSelf's plugin system extends the base stack with additional services, communication tools, AI engines, media pipelines, commerce systems, and more. Free plugins are MIT licensed and install without any key. Pro plugins require a valid license key, but otherwise follow exactly the same architecture. The install pipeline, schema isolation, compose overlay, and Nginx route injection work identically for both tiers; the only difference is a license check gate before the download proceeds.
 
+The installer sends the resolved registry tier with each primary archive request:
+`?tier=free` on the free tarball endpoint and `?tier=licensed` on the licensed
+download endpoint. This selects the correct archive when a `tier_pair` slug has
+both entries, including free installs without a license and explicit free overrides.
+
 ---
 
 ## Plugin Manifest
