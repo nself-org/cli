@@ -43,7 +43,6 @@ final _router = GoRouter(
   routes: [
     GoRoute(path: '/', builder: (_, __) => const MeetingLobbyScreen()),
     GoRoute(path: '/meeting/:id', builder: (ctx, state) => VideoGridScreen(meetingId: state.pathParameters['id']!)),
-    GoRoute(path: '/recordings', builder: (_, __) => const RecordingPlaybackScreen()),
   ],
 );
 
@@ -57,9 +56,6 @@ class MeetingLobbyScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Meetings'),
-        actions: [
-          IconButton(icon: const Icon(Icons.video_library), onPressed: () => context.go('/recordings')),
-        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {},
@@ -98,18 +94,6 @@ class VideoGridScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Meeting')),
       body: Center(child: Text('Video grid for meeting $meetingId')),
-    );
-  }
-}
-
-class RecordingPlaybackScreen extends StatelessWidget {
-  const RecordingPlaybackScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Recordings')),
-      body: const Center(child: Text('Recording list goes here')),
     );
   }
 }

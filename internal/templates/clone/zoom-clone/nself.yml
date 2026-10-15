@@ -4,5 +4,4 @@ template_version: "1.0.0"
 plugins:
   - auth
   - livekit
-  - recording
   - notify

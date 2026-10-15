@@ -17,7 +17,7 @@ import (
 // fixtureCatalog is a synthetic catalog: the Discord plugins are licensed and
 // sit in the family and clawde Bundles, "orphan" is licensed but in no Bundle,
 // "oddtier" has a tier value the catalog never writes, the rest are free, and
-// "recording" is in no registry.
+// "recording" is in no registry (no shipped template may require it, D-0838).
 func fixtureCatalog() Lookup {
 	m := map[string]PluginInfo{
 		"chat":       {Slug: "chat", Tier: "licensed", Bundles: []string{"family"}},
@@ -112,6 +112,7 @@ func TestTemplateEntitlementUnchecked(t *testing.T) {
 	}
 }
 
+// A template that requires a plugin in no registry ends in E137, ahead of E110.
 func TestTemplateEntitlementE137Recording(t *testing.T) {
 	s := &spy{}
 	base := fixtureCatalog()
@@ -121,7 +122,7 @@ func TestTemplateEntitlementE137Recording(t *testing.T) {
 		}
 		return base(slug)
 	}
-	rep := Check(context.Background(), "zoom-clone", required(t, "zoom-clone"), find, s.lic)
+	rep := Check(context.Background(), "x", []string{"livekit", "recording", "auth", "notify"}, find, s.lic)
 	if len(rep.Unknown) != 1 || rep.Unknown[0] != "recording" {
 		t.Fatalf("Unknown = %v, want recording (and auth is licensed, not unknown)", rep.Unknown)
 	}
@@ -135,6 +136,20 @@ func TestTemplateEntitlementE137Recording(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "recording") || !strings.Contains(err.Error(), "notify:") {
 		t.Errorf("message must name recording and the uncovered notify:\n%s", err)
+	}
+}
+
+// D-0838: zoom-clone once required `recording`, a plugin in neither catalog,
+// so the template could never scaffold in v1.5 mode. Every plugin a shipped
+// template requires must resolve in the catalog (no E137).
+func TestZoomCloneRequiresNoUnknownPlugin(t *testing.T) {
+	s := &spy{grant: map[string]bool{"clawde": true}}
+	rep := Check(context.Background(), "zoom-clone", required(t, "zoom-clone"), fixtureCatalog(), s.lic)
+	if len(rep.Unknown) != 0 {
+		t.Fatalf("zoom-clone requires plugins in no registry: %v", rep.Unknown)
+	}
+	if err := rep.Err(); err != nil {
+		t.Fatalf("zoom-clone refused with an entitled licence: %v", err)
 	}
 }
 

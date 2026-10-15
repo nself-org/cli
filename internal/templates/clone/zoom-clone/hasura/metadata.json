@@ -7,11 +7,10 @@
         {
           "table": {"schema": "public", "name": "np_meetings"},
           "array_relationships": [
-            {"name": "participants", "using": {"foreign_key_constraint_on": {"column": "meeting_id", "table": {"schema": "public", "name": "np_participants"}}}},
-            {"name": "recordings", "using": {"foreign_key_constraint_on": {"column": "meeting_id", "table": {"schema": "public", "name": "np_recordings"}}}}
+            {"name": "participants", "using": {"foreign_key_constraint_on": {"column": "meeting_id", "table": {"schema": "public", "name": "np_participants"}}}}
           ],
           "select_permissions": [{"role": "user", "permission": {"columns": "*", "filter": {}}}],
-          "insert_permissions": [{"role": "user", "permission": {"columns": ["title","description","scheduled_at","duration_minutes","is_recording_enabled"], "check": {"host_id": {"_eq": "X-Hasura-User-Id"}}}}],
+          "insert_permissions": [{"role": "user", "permission": {"columns": ["title","description","scheduled_at","duration_minutes"], "check": {"host_id": {"_eq": "X-Hasura-User-Id"}}}}],
           "update_permissions": [{"role": "user", "permission": {"columns": ["title","description","scheduled_at","status","livekit_room"], "filter": {"host_id": {"_eq": "X-Hasura-User-Id"}}}}]
         },
         {
@@ -19,10 +18,6 @@
           "select_permissions": [{"role": "user", "permission": {"columns": "*", "filter": {}}}],
           "insert_permissions": [{"role": "user", "permission": {"columns": ["meeting_id","display_name","email","role"], "check": {}}}],
           "update_permissions": [{"role": "user", "permission": {"columns": ["joined_at","left_at","is_muted","is_video_on"], "filter": {"user_id": {"_eq": "X-Hasura-User-Id"}}}}]
-        },
-        {
-          "table": {"schema": "public", "name": "np_recordings"},
-          "select_permissions": [{"role": "user", "permission": {"columns": "*", "filter": {}}}]
         }
       ]
     }
