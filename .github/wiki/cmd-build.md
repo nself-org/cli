@@ -50,7 +50,7 @@ plugins:
   pro: [ai-gateway]
 ```
 
-`bundle:` and `bundles:` expand through the canonical bundle catalog. For each declared plugin the build checks the plugin install directory, then core-service aliases (`auth`, `storage`), then attempts a best-effort auto-install from the registry (60 second timeout per plugin). Any plugin that still cannot be wired is reported with a per-plugin warning and a printed `nself plugin install ...` fix command. A declared plugin is never silently dropped.
+`bundle:` and `bundles:` expand through the canonical bundle catalog. For each declared plugin the build checks the plugin install directory, then the core-service alias (`auth`; `storage` is the free storage plugin and MinIO does not cover it), then attempts a best-effort auto-install from the registry (60 second timeout per plugin). Any plugin that still cannot be wired is reported with a per-plugin warning and a printed `nself plugin install ...` fix command. A declared plugin is never silently dropped.
 
 | Env var | Default | Effect |
 |---------|---------|--------|
