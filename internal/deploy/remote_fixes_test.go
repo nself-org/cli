@@ -7,12 +7,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/errs"
 )
 
@@ -263,74 +261,5 @@ func TestTarKeepsOddFragmentNames(t *testing.T) {
 	}
 	if !strings.Contains(tarList(t, bk.Tar), "my plugin/docker-compose.plugin.yml") {
 		t.Errorf("tar lacks the fragment:\n%s", tarList(t, bk.Tar))
-	}
-}
-
-// F18 (CR S2): the copied parsers agree with internal/docker's on the same
-// documents, through a stub docker binary.
-func TestCopiedParsersMatchDocker(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("shell stub")
-	}
-	dir := t.TempDir()
-	cfg := `{"name":"p","services":{
-	  "a":{"restart":"no"},
-	  "b":{"restart":"always","healthcheck":{"test":["CMD","true"]}},
-	  "c":{"restart":"no","healthcheck":{"test":["NONE"]}},
-	  "d":{"restart":"no","healthcheck":{"disable":true,"test":["CMD","x"]}},
-	  "e":{"healthcheck":{"test":"curl -f localhost"}}}}`
-	psArray := `[{"ID":"1","Name":"p-a-1","State":"running","Health":"healthy","Labels":{"com.docker.compose.oneoff":"False"}},
-	  {"ID":"2","Name":"p-a-run-x","State":"exited","ExitCode":3,"Labels":"com.docker.compose.oneoff=True,x=y"},
-	  {"ID":"3","Name":"p-a-2","State":"exited","ExitCode":1}]`
-	psLines := strings.ReplaceAll(strings.ReplaceAll(psArray[1:len(psArray)-1], "},\n", "}\n"), "\t", "")
-	writeFile(t, filepath.Join(dir, "cfg.json"), cfg, 0o644)
-	stub := filepath.Join(dir, "docker")
-	script := "#!/bin/sh\ncase \"$*\" in\n*\"config --format json\"*) cat " + dir + "/cfg.json;;\n*\"ps -a --format json\"*) cat \"" + dir + "/ps-$PSFORM.json\";;\nesac\n"
-	writeFile(t, stub, script, 0o755)
-	writeFile(t, filepath.Join(dir, "ps-array.json"), psArray, 0o644)
-	writeFile(t, filepath.Join(dir, "ps-lines.json"), strings.ReplaceAll(psLines, ",\n  {", "\n{"), 0o644)
-	c := docker.NewCompose("f.yml")
-	c.DockerPath = stub
-	specs, err := docker.ComposeServiceSpecs(context.Background(), c, dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	mine, err := parseComposeModel([]byte(cfg))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(specs) != len(mine.Services) {
-		t.Fatalf("service counts differ: %d vs %d", len(specs), len(mine.Services))
-	}
-	for _, sp := range specs {
-		if got := mine.Services[sp.Name].Spec; got != sp {
-			t.Errorf("service %s: docker %+v, copy %+v", sp.Name, sp, got)
-		}
-	}
-	for _, form := range []string{"array", "lines"} {
-		t.Setenv("PSFORM", form)
-		want, err := c.ComposeServiceStates(context.Background(), dir, "a")
-		if err != nil {
-			t.Fatal(err)
-		}
-		raw, _ := os.ReadFile(filepath.Join(dir, "ps-"+form+".json"))
-		all, err := decodeContainerStates(raw)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var got []docker.ContainerState
-		for _, s := range all {
-			if !s.OneOff() {
-				got = append(got, s)
-			}
-		}
-		if len(got) != len(want) {
-			t.Fatalf("%s: %d rows vs docker's %d", form, len(got), len(want))
-		}
-		for i := range got {
-			if got[i].ID != want[i].ID || got[i].State != want[i].State || got[i].ExitCode != want[i].ExitCode || got[i].Health != want[i].Health {
-				t.Errorf("%s row %d: copy %+v, docker %+v", form, i, got[i], want[i])
-			}
-		}
 	}
 }

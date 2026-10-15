@@ -14,8 +14,7 @@ package deploy
 //              `Container <name> Recreate|Creating` lines (stdout and stderr
 //              mixed, so the command merges them). Service order, the
 //              healthcheck and restart facts come from the same JSON document
-//              the local rolling restart reads (docker.ServiceSpec), parsed
-//              here only because internal/docker exports no parser for it.
+//              the local rolling restart reads, through docker.ParseServiceSpecs.
 
 import (
 	"context"
@@ -88,42 +87,26 @@ func ReadComposeModel(ctx context.Context, r Remote, remotePath string, files, e
 }
 
 func parseComposeModel(raw []byte) (ComposeModel, error) {
+	specs, err := docker.ParseServiceSpecs(raw)
+	if err != nil {
+		return ComposeModel{}, err
+	}
 	var doc struct {
 		Name     string `json:"name"`
 		Services map[string]struct {
-			Image         string `json:"image"`
-			ContainerName string `json:"container_name"`
-			Restart       string `json:"restart"`
-			Healthcheck   *struct {
-				Test        json.RawMessage `json:"test"`
-				Disable     bool            `json:"disable"`
-				Interval    json.RawMessage `json:"interval"`
-				Timeout     json.RawMessage `json:"timeout"`
-				StartPeriod json.RawMessage `json:"start_period"`
-				Retries     json.RawMessage `json:"retries"`
-			} `json:"healthcheck"`
-			Volumes  []Mount                    `json:"volumes"`
-			Networks map[string]json.RawMessage `json:"networks"`
+			Image         string                     `json:"image"`
+			ContainerName string                     `json:"container_name"`
+			Volumes       []Mount                    `json:"volumes"`
+			Networks      map[string]json.RawMessage `json:"networks"`
 		} `json:"services"`
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return ComposeModel{}, fmt.Errorf("parsing docker compose config JSON: %w", err)
 	}
 	m := ComposeModel{Project: doc.Name, Services: map[string]ModelService{}}
-	for name, s := range doc.Services {
-		has := false
-		if hc := s.Healthcheck; hc != nil && !hc.Disable {
-			var t []string
-			has = json.Unmarshal(hc.Test, &t) != nil || len(t) == 0 || t[0] != "NONE"
-		}
-		spec := docker.ServiceSpec{Name: name, HasHealthcheck: has, Restart: s.Restart}
-		if has {
-			hc := s.Healthcheck
-			var err error
-			if spec.HealthTimeout, err = docker.HealthTimeout(name, hc.Interval, hc.Timeout, hc.StartPeriod, hc.Retries); err != nil {
-				return ComposeModel{}, err
-			}
-		}
+	for _, spec := range specs {
+		name := spec.Name
+		s := doc.Services[name]
 		m.Services[name] = ModelService{
 			Spec:  spec,
 			Image: s.Image, ContainerName: s.ContainerName, Mounts: s.Volumes, Aliases: networkAliases(s.Networks),

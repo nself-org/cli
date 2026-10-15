@@ -87,7 +87,7 @@ func (c *Compose) serviceStates(ctx context.Context, workdir, service string) ([
 	if err != nil {
 		return nil, err
 	}
-	all, err := parseContainerStates(out)
+	all, err := ParseContainerStates(out)
 	if err != nil {
 		return nil, err
 	}
@@ -227,9 +227,9 @@ func (c *Compose) FreshStates(ctx context.Context, workdir, service string, base
 	return kept, nil
 }
 
-// parseContainerStates accepts both ps JSON shapes: one array or one object per
+// ParseContainerStates accepts both ps JSON shapes: one array or one object per
 // line, depending on the compose release; blank lines and CRLF are tolerated.
-func parseContainerStates(raw []byte) ([]ContainerState, error) {
+func ParseContainerStates(raw []byte) ([]ContainerState, error) {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 {
 		return nil, nil

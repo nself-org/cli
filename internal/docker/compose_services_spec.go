@@ -24,15 +24,15 @@ func ComposeServiceSpecs(ctx context.Context, compose *Compose, workdir string) 
 	if err != nil {
 		return nil, err
 	}
-	return parseServiceSpecs(out)
+	return ParseServiceSpecs(out)
 }
 
 // MaxHealthTimeout caps ServiceSpec.HealthTimeout: a healthcheck declared with
 // a huge retries or interval must not stall a deploy for hours.
 const MaxHealthTimeout = 10 * time.Minute
 
-// parseServiceSpecs decodes the `config --format json` document.
-func parseServiceSpecs(raw []byte) ([]ServiceSpec, error) {
+// ParseServiceSpecs decodes the `config --format json` document.
+func ParseServiceSpecs(raw []byte) ([]ServiceSpec, error) {
 	var doc struct {
 		Services map[string]struct {
 			Restart     string `json:"restart"`
@@ -91,13 +91,6 @@ func healthDuration(name, field string, raw json.RawMessage, def time.Duration) 
 		return def, nil
 	}
 	return min(d, MaxHealthTimeout), nil
-}
-
-// HealthTimeout is healthTimeout for callers that parse the resolved compose
-// config themselves (internal/deploy's copy of this parser), so both compute
-// the same wait.
-func HealthTimeout(name string, interval, timeout, startPeriod, retries json.RawMessage) (time.Duration, error) {
-	return healthTimeout(name, interval, timeout, startPeriod, retries)
 }
 
 // healthTimeout is start_period + retries*(interval+timeout), capped at

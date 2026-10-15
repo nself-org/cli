@@ -26,7 +26,7 @@ func TestComposeServiceSpecs(t *testing.T) {
 	  "echo":{"healthcheck":{"test":["CMD","echo","NONE"]}},
 	  "dbg":{"restart":"no","healthcheck":{"test":["CMD","true"]}},
 	  "init":{"restart":"no"}}}`)
-	got, err := parseServiceSpecs(raw)
+	got, err := ParseServiceSpecs(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestComposeServiceSpecs(t *testing.T) {
 	if !got[3].OneShot() || got[6].OneShot() || got[1].OneShot() {
 		t.Error("only restart \"no\" without a healthcheck is a one-shot; a healthcheck or an absent restart is long-running")
 	}
-	if _, err := parseServiceSpecs([]byte("not json")); err == nil {
+	if _, err := ParseServiceSpecs([]byte("not json")); err == nil {
 		t.Error("malformed config JSON must error, not read as zero services")
 	}
 
@@ -87,15 +87,15 @@ func TestParseContainerStates(t *testing.T) {
 	arr := `[{"Name":"a","State":"exited","ExitCode":3},{"Name":"b","State":"running","Health":"healthy"}]`
 	nd := `{"Name":"a","State":"exited","ExitCode":3}` + "\n" + `{"Name":"b","State":"running","Health":"healthy"}`
 	for name, raw := range map[string]string{"array": arr, "ndjson": nd} {
-		got, err := parseContainerStates([]byte(raw))
+		got, err := ParseContainerStates([]byte(raw))
 		if err != nil || len(got) != 2 || got[0].ExitCode != 3 || got[1].Health != "healthy" {
 			t.Errorf("%s: got %+v, err %v", name, got, err)
 		}
 	}
-	if got, err := parseContainerStates([]byte("  \n")); err != nil || got != nil {
+	if got, err := ParseContainerStates([]byte("  \n")); err != nil || got != nil {
 		t.Errorf("empty output = %v, %v; want nil, nil", got, err)
 	}
-	if _, err := parseContainerStates([]byte("[{")); err == nil {
+	if _, err := ParseContainerStates([]byte("[{")); err == nil {
 		t.Error("truncated JSON must error")
 	}
 }

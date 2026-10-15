@@ -59,7 +59,7 @@ func TestContainerStateOneOff(t *testing.T) {
 		`{"Labels":null}`: false,
 		`{"Name":"no labels at all (old compose): a replica, never dropped"}`: false,
 	} {
-		got, err := parseContainerStates([]byte("[" + raw + "]"))
+		got, err := ParseContainerStates([]byte("[" + raw + "]"))
 		if err != nil || len(got) != 1 || got[0].OneOff() != want {
 			t.Errorf("%s: OneOff = %v (err %v), want %v", raw, len(got) == 1 && got[0].OneOff(), err, want)
 		}
@@ -68,11 +68,11 @@ func TestContainerStateOneOff(t *testing.T) {
 
 func TestParseContainerStatesLines(t *testing.T) {
 	raw := "{\"Name\":\"a\",\"State\":\"running\"}\r\n\r\n{\"Name\":\"b\",\"State\":\"exited\",\"ExitCode\":2}\n\n"
-	got, err := parseContainerStates([]byte(raw))
+	got, err := ParseContainerStates([]byte(raw))
 	if err != nil || len(got) != 2 || got[1].Name != "b" || got[1].ExitCode != 2 {
 		t.Fatalf("CRLF and blank lines: got %+v, err %v", got, err)
 	}
-	if _, err := parseContainerStates([]byte("{\"Name\":\"a\"}\nnot json\n")); err == nil {
+	if _, err := ParseContainerStates([]byte("{\"Name\":\"a\"}\nnot json\n")); err == nil {
 		t.Error("a bad line must error, not be skipped")
 	}
 }
