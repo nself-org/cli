@@ -19,6 +19,10 @@ nself runner <subcommand> [flags]
 <!-- BEGIN PROSE:description -->
 Provision and audit self-hosted GitHub Actions CI runner hosts.
 
+Supply the registration token through `GITHUB_RUNNER_TOKEN`. The `--token`
+flag remains accepted for compatibility but is deprecated and warns on use:
+its value is visible in the local process list and shell history.
+
 Runner hosts were previously hand-built: required system dependencies (gh,
 zip, unzip, Playwright/Chromium's shared libraries, ...) were discovered
 only when a job failed mid-run, and two hosts advertising the identical

@@ -33,6 +33,9 @@ silently breaks actions/checkout's credential injection), and register
 Every step is idempotent: safe to re-run against a host that's already
 partially provisioned.
 
+Set GITHUB_RUNNER_TOKEN to supply the registration token. The deprecated
+--token flag exposes the token in the local process list and shell history.
+
 Examples:
   nself runner provision --github-url https://github.com/nself-org/cli
   nself runner provision --host ci@167.235.x.x --instances 2 --labels nself-ci
@@ -49,6 +52,7 @@ func init() {
 	runnerProvisionCmd.Flags().String("github-url", "", "Repo or org URL runners register against, e.g. https://github.com/nself-org/cli")
 	runnerProvisionCmd.Flags().StringSlice("labels", nil, "Extra labels appended after self-hosted,Linux,X64")
 	runnerProvisionCmd.Flags().String("token", "", "GitHub Actions runner registration token (overrides GITHUB_RUNNER_TOKEN env). Never logged.")
+	_ = runnerProvisionCmd.Flags().MarkDeprecated("token", "use GITHUB_RUNNER_TOKEN instead; --token exposes the token in the local process list and shell history")
 }
 
 func runRunnerProvision(cmd *cobra.Command, args []string) error {
@@ -67,7 +71,7 @@ func runRunnerProvision(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("--github-url is required (the repo or org runners register against)")
 	}
 	if token == "" {
-		return fmt.Errorf("a runner registration token is required: pass --token or set GITHUB_RUNNER_TOKEN")
+		return fmt.Errorf("a runner registration token is required: set GITHUB_RUNNER_TOKEN")
 	}
 	if len(hosts) > 1 {
 		return fmt.Errorf("provision takes at most one --host per invocation; run it once per host")
