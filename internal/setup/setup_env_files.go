@@ -95,7 +95,8 @@ PGVECTOR_HNSW_M=16
 PGVECTOR_HNSW_EF_CONSTRUCTION=64
 
 # ── Hasura GraphQL ────────────────────────────────────────
-HASURA_VERSION=v2.44.0
+# Blank selects the mode default or the existing project lock pin.
+HASURA_VERSION=
 HASURA_GRAPHQL_ADMIN_SECRET=%s
 HASURA_JWT_KEY=%s
 HASURA_JWT_TYPE=HS256
@@ -165,7 +166,8 @@ POSTGRES_USER=postgres
 POSTGRES_PASSWORD=%s
 
 # ── Hasura GraphQL ────────────────────────────────────────
-HASURA_VERSION=v2.44.0
+# Blank selects the mode default or the existing project lock pin.
+HASURA_VERSION=
 HASURA_GRAPHQL_ADMIN_SECRET=%s
 HASURA_JWT_KEY=%s
 HASURA_JWT_TYPE=HS256

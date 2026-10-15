@@ -80,7 +80,7 @@ You do not need to set every variable. ɳSelf ships with sensible defaults so mi
 | `ENV` | `dev` |
 | `BASE_DOMAIN` | `local.nself.org` |
 | `POSTGRES_VERSION` | `16-alpine` |
-| `HASURA_VERSION` | `v2.44.0` |
+| `HASURA_VERSION` | blank (project lock pin or compatibility mode default) |
 
 Password handling varies by environment:
 
