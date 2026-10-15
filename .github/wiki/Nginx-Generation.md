@@ -52,7 +52,7 @@ Before persisting secrets or changing file modes, the build checks the real comp
 
 Fronted mode is nginx-only. E482 refuses traefik when `NGINX_FRONTED_BY` is set. It also refuses a fronting stack whose generated `docker-compose.yml` has no nginx service or whose `.nself/compose-files.txt` lists a traefik fragment. Keep nginx in both projects, or unset `NGINX_FRONTED_BY` and build this project with its own proxy.
 
-On Linux, with traefik selected, the build writes `NSELF_HOST_UID` and `NSELF_HOST_GID` (the ids of the user running the build, who owns the generated 0600 private keys) to `.nself/compose.env`. The traefik fragment runs as that user with every capability dropped except `NET_BIND_SERVICE`, so it can read the keys. Other hosts and nginx projects get no such keys, and the fragment falls back to `0:0`.
+On Linux, with traefik selected, the build writes `NSELF_HOST_UID` and `NSELF_HOST_GID` (the ids of the user running the build, who owns the generated 0600 private keys) to `.nself/compose.env`. The traefik fragment runs as that user with every capability dropped except `NET_BIND_SERVICE`, so it can read the keys. When `docker info` reports rootless or user-namespace remapping, the build omits these exports and preserves the fragment's `0:0` default, since the host IDs would be remapped inside the container. The probe has a two-second timeout; if Docker is unavailable, the build retains the host-ID export. Other hosts and nginx projects get no such keys, and the fragment falls back to `0:0`.
 
 E481 lists every item that prevents a complete route swap:
 

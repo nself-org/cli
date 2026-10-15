@@ -9,13 +9,18 @@ package build
 // capability dropped cannot read them. Elsewhere the fragment's 0:0 default
 // stays, so an nginx project's compose.env is unchanged. The build process
 // issues the keys, so its own ids are their owner.
+// Rootless/userns daemons keep the fragment's default user because the host
+// ids would be remapped. Offline builds retain the existing host-id export.
 
 import (
+	"context"
 	"os"
 	"runtime"
 	"strconv"
+	"time"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/docker"
 )
 
 // proxyHostOwner returns the ids Traefik runs as, or nil when nothing is exported.
@@ -24,6 +29,11 @@ func proxyHostOwner(cfg *config.Config, workdir, pluginDir string) map[string]st
 		return nil
 	}
 	if provider, err := ProxyProvider(cfg, workdir, pluginDir); err != nil || provider != ProviderTraefik {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if remapped, err := docker.UserNamespaceRemapped(ctx); err == nil && remapped {
 		return nil
 	}
 	return map[string]string{

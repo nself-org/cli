@@ -53,3 +53,31 @@ func TestProxyHostOwner(t *testing.T) {
 		}
 	})
 }
+
+func TestProxyHostOwnerRemappedDaemon(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("host owner export is Linux-only")
+	}
+	for _, tc := range []struct {
+		name, response string
+		wantOwner      bool
+	}{
+		{"rootful", `printf '%s' '["name=seccomp,profile=builtin"]'`, true},
+		{"rootless", `printf '%s' '["name=rootless"]'`, false},
+		{"userns", `printf '%s' '["name=userns"]'`, false},
+		{"offline", "exit 1", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := freshProxyFixture(t)
+			installProxy(t, f.plugins)
+			writeFixtureFile(t, filepath.Join(f.root, "stub-bin", "docker"), "#!/bin/sh\n"+tc.response+"\n", 0755)
+			owner := proxyHostOwner(nil, f.workdir, f.plugins)
+			if got := len(owner) != 0; got != tc.wantOwner {
+				t.Fatalf("owner=%v, want export=%v", owner, tc.wantOwner)
+			}
+			if tc.wantOwner && (owner["NSELF_HOST_UID"] != strconv.Itoa(os.Getuid()) || owner["NSELF_HOST_GID"] != strconv.Itoa(os.Getgid())) {
+				t.Fatalf("wrong host ids: %v", owner)
+			}
+		})
+	}
+}
