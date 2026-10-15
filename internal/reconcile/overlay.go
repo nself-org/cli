@@ -102,13 +102,26 @@ const pendingEnvPerm fs.FileMode = 0o600
 // file's bytes differ from the disk (or the file does not exist yet). It reads the disk each time,
 // so a plan recomputed after the line was written sees the same bytes
 // (EnvFileWithLine is idempotent) and an edit made meanwhile is not hidden.
-func pendingEnv(dir string, in map[string]map[string]string) (map[string][]byte, bool, error) {
-	if len(in) == 0 {
+func pendingEnv(dir string, in map[string]map[string]string, removals ...map[string][]string) (map[string][]byte, bool, error) {
+	remove := map[string][]string{}
+	if len(removals) > 0 {
+		remove = removals[0]
+	}
+	files := make(map[string]map[string]string, len(in)+len(remove))
+	for name, kv := range in {
+		files[name] = kv
+	}
+	for name := range remove {
+		if _, ok := files[name]; !ok {
+			files[name] = nil
+		}
+	}
+	if len(files) == 0 {
 		return nil, false, nil
 	}
 	out := make(map[string][]byte, len(in))
 	changed := false
-	for name, kv := range in {
+	for name, kv := range files {
 		if !validEnvName(name) {
 			return nil, false, fmt.Errorf("env overlay: %q is not an env file at the project root", name)
 		}
@@ -118,6 +131,11 @@ func pendingEnv(dir string, in map[string]map[string]string) (map[string][]byte,
 			return nil, false, fmt.Errorf("reading %s for the plan: %w", name, err)
 		}
 		was := string(data)
+		for _, key := range remove[name] {
+			if data, err = EnvFileWithoutLine(data, key); err != nil {
+				return nil, false, fmt.Errorf("scanning %s: %w", name, err)
+			}
+		}
 		keys := make([]string, 0, len(kv))
 		for k := range kv {
 			keys = append(keys, k)

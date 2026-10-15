@@ -43,7 +43,8 @@ type State struct {
 	StoppedServices []string `json:"stopped_services"`
 	// NewVolumeCreated is true once this switch created the new volume (it may remove it).
 	NewVolumeCreated bool `json:"new_volume_created"`
-	// PrevEnv is the raw value of each env key the switch writes, before the switch.
+	// PrevEnv holds previous .env values; missing keys must be removed on rollback.
+	// Legacy states contain both keys, including explicit empty values.
 	PrevEnv   map[string]string `json:"prev_env"`
 	Tolerated []string          `json:"tolerated,omitempty"`
 	Tables    int               `json:"tables,omitempty"`

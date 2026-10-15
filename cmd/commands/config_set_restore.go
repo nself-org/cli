@@ -40,6 +40,11 @@ type envLineWrite struct {
 
 // write holds interrupts, records the current bytes, then writes the line.
 func (w *envLineWrite) write(key, value string) error {
+	return w.writeEnvPresence(key, value, true)
+}
+
+// writeEnvPresence records the file before setting or removing one dotenv statement.
+func (w *envLineWrite) writeEnvPresence(key, value string, present bool) error {
 	w.holdSignals()
 	data, err := os.ReadFile(w.path)
 	switch {
@@ -52,6 +57,9 @@ func (w *envLineWrite) write(key, value string) error {
 		w.danglingTarget = danglingLinkTarget(w.path)
 	}
 	w.written = true // set before the write: a partial write is restored too
+	if !present {
+		return w.removeEnvLine(key)
+	}
 	w.updated, err = setEnvFileLine(w.path, key, value)
 	return err
 }
