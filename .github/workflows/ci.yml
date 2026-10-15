@@ -204,33 +204,6 @@ jobs:
         if: runner.os == 'Linux'
         run: bash scripts/ci/contract-smoke.sh
 
-  # D-0275: exercise the future default before the v1.5 shipping flip.
-  test-v15:
-    name: Test (v1.5)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      CGO_ENABLED: 0
-      AI_AUTO_INSTALL: 'false'
-      NSELF_REQUIRE_AGE: '1'
-      NSELF_V15: '1'
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7.0.1
-
-      - name: Set up Go
-        uses: actions/setup-go@v7.0.0
-        with:
-          go-version-file: go.mod
-
-      - name: Install age and age-keygen
-        run: |
-          go install filippo.io/age/cmd/age@v1.3.2 filippo.io/age/cmd/age-keygen@v1.3.2
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
-      - name: Test
-        run: go test -mod=vendor -timeout 10m ./...
-
   # S49-T06: Apple Silicon (darwin/arm64) smoke test.
   # The darwin/arm64 binary is cross-compiled on ubuntu-latest but never tested natively
   # before this job was added. This job runs on macos-14 (Apple Silicon runner) and
