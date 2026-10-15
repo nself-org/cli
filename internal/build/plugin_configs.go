@@ -8,7 +8,6 @@ import (
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
-	"github.com/nself-org/cli/internal/ssl"
 )
 
 // RenderPluginConfigs walks installed plugins' configs/ directories
@@ -126,10 +125,7 @@ func buildTemplateVars(workdir string, cfg *config.Config) map[string]string {
 
 	pluginDir := expandPluginDir(cfg.PluginSystem.Dir)
 	if pluginDir == "" {
-		home, _ := os.UserHomeDir()
-		if home != "" {
-			pluginDir = filepath.Join(home, ".nself", "plugins")
-		}
+		pluginDir = config.ResolvePluginDir("")
 	}
 
 	return map[string]string{
@@ -155,24 +151,20 @@ func buildTemplateVars(workdir string, cfg *config.Config) map[string]string {
 // certificates/ level. An empty domain falls back to localhost, as the
 // generator does.
 func pluginSSLDir(baseDomain string) string {
-	dir := ssl.DomainToDirName(baseDomain)
-	if dir == "" {
-		dir = "localhost"
-	}
-	return "certificates/" + dir
+	return "certificates/" + config.CertificateDirName(baseDomain)
 }
 
-// expandPluginDir is expandHomeDir under v1.5 only (D-0634). v1.4.13 used
+// expandPluginDir uses the shared resolver under v1.5 only (D-0634). v1.4.13 used
 // PLUGIN_DIR as written, so the default "~/.nself/plugins" never resolved: a
 // default-config project got no plugin nginx snippets, and
 // ${NSELF_PLUGIN_DIR} rendered as "~/.nself/plugins". Expanding it in a patch
 // would publish every installed plugin at <plugin>.<base> on the first
 // rebuild after an upgrade, and fail the build on a snippet the user had
 // copied into nginx/sites by hand, so v1.4 keeps the old value.
-func expandPluginDir(dir string) string {
+func expandPluginDir(dir string, explicit ...string) string {
 	// compat.V15(D-0478): PLUGIN_DIR "~/..." used as written, no plugin snippets on default config -> "~" expanded, installed plugins' snippets injected
 	if compat.V15() {
-		return expandHomeDir(dir)
+		return config.ResolvePluginDir(dir, explicit...)
 	}
 	return dir
 }
@@ -182,12 +174,5 @@ func expandPluginDir(dir string) string {
 // which os.Stat would otherwise read relative to the working dir, so no
 // plugin snippet was ever found. Anything else is returned unchanged.
 func expandHomeDir(dir string) string {
-	if dir != "~" && !strings.HasPrefix(dir, "~/") {
-		return dir
-	}
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return dir
-	}
-	return filepath.Join(home, strings.TrimPrefix(dir, "~"))
+	return config.ExpandHomeDir(dir)
 }

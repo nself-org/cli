@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/nself-org/cli/internal/config"
 )
 
 // applyTrustAndHosts performs the mkcert CA trust and /etc/hosts steps.
@@ -115,12 +117,13 @@ func hostsManualNote(hostnames []string) string {
 	return sb.String()
 }
 
-// DomainToDirName converts a domain to a directory-safe name by replacing dots with dashes.
+// DomainToDirName delegates to the shared certificate-directory rule, including
+// the localhost fallback for an empty domain.
 // Exported so callers outside this package (cmd/commands' ssl_add.go) can assert
 // their own domain-to-directory conversion agrees with this one instead of
 // duplicating the literal replacement rule, which could silently diverge.
 func DomainToDirName(domain string) string {
-	return strings.ReplaceAll(domain, ".", "-")
+	return config.CertificateDirName(domain)
 }
 
 // fileExists returns true if the path exists and is a regular file.

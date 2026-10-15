@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/nginx"
 	"github.com/nself-org/cli/internal/nginx/routemodel"
 	"github.com/nself-org/cli/internal/postgres"
@@ -158,7 +159,7 @@ func (st *buildState) generateSSLAndNginx() error {
 	// declaration alone is sufficient to wire a plugin into the stack.
 	// Declared plugins that cannot be wired are reported loudly (build
 	// warning + BuildResult.MissingPlugins), never silently dropped.
-	st.pluginDir = DefaultPluginDir()
+	st.pluginDir = config.ResolvePluginDir(st.cfg.PluginSystem.Dir)
 	st.missingPlugins = resolveDeclaredPluginsFx(context.Background(), st.fx, st.cfg, st.workdir, st.pluginDir, expectedCoreServices(st.cfg))
 	for _, p := range st.missingPlugins {
 		slog.Warn("declared plugin is NOT wired into the generated stack — install it or remove it from nself.yaml",
@@ -188,7 +189,7 @@ func (st *buildState) generateSSLAndNginx() error {
 	// Idempotent: INSERT ... ON CONFLICT (name) DO NOTHING. Rerunning
 	// `nself build` produces byte-equal SQL on the same install set, so
 	// docker-compose volume hashes don't churn.
-	if _, err := generateNpPluginsSeedVia(st.sink, st.workdir, DefaultPluginDir()); err != nil {
+	if _, err := generateNpPluginsSeedVia(st.sink, st.workdir, st.pluginDir); err != nil {
 		return fmt.Errorf("generating np_plugins seed: %w", err)
 	}
 	st.filesGenerated++
@@ -198,7 +199,7 @@ func (st *buildState) generateSSLAndNginx() error {
 	// mux, cron, notify, push) is installed, set cfg.Redis.Enabled = true so
 	// that both DetectServices and compose.Generator emit a redis block.
 	// Skipped when opts.NoAutoRedis is set (--no-auto-redis flag).
-	if !st.cfg.Redis.Enabled && !st.opts.NoAutoRedis && ShouldAutoEnableRedis(DefaultPluginDir()) {
+	if !st.cfg.Redis.Enabled && !st.opts.NoAutoRedis && ShouldAutoEnableRedis(st.pluginDir) {
 		st.cfg.Redis.Enabled = true
 		slog.Info("Redis auto-enabled", "reason", "BullMQ-backed plugin detected (ai, claw, mux, cron, notify, or push)", "disable_flag", "--no-auto-redis")
 	}

@@ -118,7 +118,7 @@ func (st *buildState) writeFinalArtifacts() (*BuildResult, error) {
 		apiDocsCfg = apidocs.DefaultApiDocsConfig()
 	}
 	if apiDocsCfg.Enabled {
-		pluginDir := DefaultPluginDir()
+		pluginDir := st.pluginDir
 		pluginRoutes, err := apidocs.CollectPluginRoutes(pluginDir)
 		if err != nil {
 			slog.Warn("collecting plugin API routes", "err", err)

@@ -25,7 +25,7 @@ func TestDomainToDirName_Basic(t *testing.T) {
 		{"nself.org", "nself-org"},
 		{"localhost", "localhost"},
 		{"api.nself.org", "api-nself-org"},
-		{"", ""},
+		{"", "localhost"},
 		{"a.b.c.d", "a-b-c-d"},
 	}
 	for _, c := range cases {

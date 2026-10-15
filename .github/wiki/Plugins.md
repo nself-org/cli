@@ -14,6 +14,12 @@ The reason a tier was chosen is one of `installed`, `override`, `entitlement`, `
 
 ## Compose fragment rules
 
+Plugin discovery and migrations resolve `NSELF_PLUGIN_DIR` first, then the
+configured `PLUGIN_DIR`, then `~/.nself/plugins`. A leading `~` or `~/` expands
+to the current user's home. In v1.5 mode, nginx snippets and their template
+variables use the same resolution. In v1.4 mode, nginx keeps `PLUGIN_DIR` as
+written so an upgrade does not publish previously inactive plugin routes.
+
 `nself build` reads each installed plugin's `docker-compose.plugin.yml` and normalises it in place.
 
 - **No fragment (E128).** A plugin that declares a compose service (`service.kind: compose`, or a v1 manifest with a Dockerfile and a port) but ships no fragment fails the build in v1.5 mode and names the plugin. In v1.4 mode it warns and is left out of the stack. Plugins of kind `cli` or `library`, and disabled plugins, are not affected.

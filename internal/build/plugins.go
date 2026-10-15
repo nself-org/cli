@@ -22,6 +22,7 @@ import (
 	"sync"
 
 	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/license/entitlement"
 	"github.com/nself-org/cli/internal/ui"
@@ -45,14 +46,7 @@ var refreshPluginEntitlement = entitlement.RefreshForPlugins
 // default — used for per-project plugin sets, hermetic tests, and CI. Falls
 // back to /tmp/.nself/plugins when the home directory cannot be determined.
 func DefaultPluginDir() string {
-	if dir := strings.TrimSpace(os.Getenv("NSELF_PLUGIN_DIR")); dir != "" {
-		return dir
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return filepath.Join("/tmp", ".nself", "plugins")
-	}
-	return filepath.Join(home, ".nself", "plugins")
+	return config.ResolvePluginDir("")
 }
 
 // DiscoverPluginComposeFiles scans pluginDir for installed plugins that

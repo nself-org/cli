@@ -55,11 +55,7 @@ type MigrationStatus struct {
 // messages point the user at the canonical location.
 func migrationsDir(cfg *config.Config, plugin string) string {
 	if plugin != "" {
-		pluginDir := cfg.PluginSystem.Dir
-		if pluginDir == "" {
-			home, _ := os.UserHomeDir()
-			pluginDir = filepath.Join(home, ".nself", "plugins")
-		}
+		pluginDir := config.ResolvePluginDir(cfg.PluginSystem.Dir)
 		return filepath.Join(pluginDir, plugin, "migrations")
 	}
 

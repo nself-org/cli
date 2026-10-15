@@ -117,9 +117,6 @@ func planSSL(fx Effects, cfg *config.Config, sslDir string, explicitHosts bool) 
 	gen := ssl.NewGenerator(cfg).WithExplicitHosts(explicitHosts)
 	domains := gen.CollectDomains()
 	dirName := ssl.DomainToDirName(cfg.BaseDomain)
-	if dirName == "" {
-		dirName = "localhost"
-	}
 	certDir := filepath.Join(sslDir, "certificates", dirName)
 	if !ssl.CertPairValid(certDir) {
 		detail := "generate a certificate for " + strings.Join(domains, ", ")

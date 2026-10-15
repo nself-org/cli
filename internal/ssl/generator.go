@@ -117,9 +117,6 @@ func (g *Generator) GenerateWithResult(outputDir string) (*GenerateResult, error
 	// Build the certificate directory name from BASE_DOMAIN.
 	// Dots become dashes: nself.org -> nself-org, localhost stays localhost.
 	certDirName := DomainToDirName(g.cfg.BaseDomain)
-	if certDirName == "" {
-		certDirName = "localhost"
-	}
 
 	certDir := filepath.Join(outputDir, "certificates", certDirName)
 	// 0755, not 0750: this directory is bind-mounted into the nginx container,

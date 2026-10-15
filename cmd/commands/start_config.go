@@ -143,9 +143,6 @@ func runPostConfigChecks(ctx context.Context, cmd *cobra.Command, cfg *config.Co
 // ssl/ and warned on every start (D-0503).
 func startCertPath(projectDir, baseDomain string) string {
 	dir := ssl.DomainToDirName(baseDomain)
-	if dir == "" {
-		dir = "localhost"
-	}
 	return filepath.Join(projectDir, "ssl", "certificates", dir, "fullchain.pem")
 }
 

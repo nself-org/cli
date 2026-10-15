@@ -60,7 +60,7 @@ func (st *buildState) checkProxyProvider(m *routemodel.Model) error {
 	// Reuse Step 7.05's resolved directory when set; earlier preflights use the default.
 	pluginDir := st.pluginDir
 	if pluginDir == "" {
-		pluginDir = DefaultPluginDir()
+		pluginDir = config.ResolvePluginDir(st.cfg.PluginSystem.Dir)
 	}
 	provider, err := ProxyProvider(st.cfg, st.workdir, pluginDir)
 	if err != nil {
