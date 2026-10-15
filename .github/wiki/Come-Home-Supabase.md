@@ -15,6 +15,10 @@ the target (set `POSTGRES_VERSION` in the target first if needed).
 - For storage: the API URL (`https://<project-ref>.supabase.co`, or `--project-ref`) and
   the `service_role` key, again in an environment variable.
 
+To import without storage, pass `--skip-storage`. No storage API URL, service key or
+target object store is required. Each source object is listed as an exemption in the
+report; its bytes are not downloaded or loaded.
+
 ```bash
 nself db import supabase --db-url-env SUPA_DB --project-ref abcdefghijkl --service-key-env SUPA_KEY --plan --json
 nself db import supabase --db-url-env SUPA_DB --project-ref abcdefghijkl --service-key-env SUPA_KEY --json
@@ -76,9 +80,10 @@ listed as exemptions (`compat:<name>`); define them in the target before relying
 - Partitioned tables are refused. Foreign keys into Supabase-owned tables other than
   `auth.users` (for example `storage.objects`) are not supported.
 - A bucket name that the object store rejects (uppercase or underscore, for example
-  `user_uploads`) stops the import with a clear message in this version. Supabase cannot
+  `user_uploads`) stops an import that includes storage. Use `--skip-storage` to import
+  the database and users while listing every skipped object as an exemption. Supabase cannot
   rename a bucket, so create a new bucket with a valid name, copy the objects, delete the old
-  bucket and repeat the import. `--skip-storage` does not bypass the check.
+  bucket and repeat the import if you need storage included.
 - Policies on Supabase-owned tables (for example `storage.objects` rules) and user triggers on
   `auth.users` or `storage.objects` (for example a profile trigger) are not moved. They are listed
   in the report (`untranslated_policies`, and exemptions `trigger:<table>#<name>`); recreate them.

@@ -32,6 +32,9 @@ func (r *run) catalogCounts(ctx context.Context, tx pgx.Tx, m *portable.Manifest
 	if !has {
 		return nil
 	}
+	if r.skipStorage {
+		return exemptStorage(ctx, tx, m)
+	}
 	rows, err := tx.Query(ctx, `SELECT bucket_id::text, count(*) FROM storage.objects GROUP BY 1 ORDER BY 1`)
 	if err != nil {
 		return fail
@@ -44,7 +47,7 @@ func (r *run) catalogCounts(ctx context.Context, tx pgx.Tx, m *portable.Manifest
 			return fail
 		}
 		if !s3Bucket.MatchString(bucket) {
-			return errs.New("E520", "storage bucket name not valid for the target object store")
+			return errs.New("E520", "storage bucket name not valid for the target object store; use --skip-storage to exempt all storage objects")
 		}
 		r.catalog[bucket] = n
 		r.total += n
@@ -76,6 +79,29 @@ func (r *run) catalogCounts(ctx context.Context, tx pgx.Tx, m *portable.Manifest
 	}
 	if r.total > 0 {
 		m.SourceCounts = append(m.SourceCounts, portable.SourceCount{Kind: "objects", Count: r.total, Method: "count(*) storage.objects"})
+	}
+	return nil
+}
+
+// exemptStorage records snapshot identities without requiring valid target bucket names.
+// Inputs: snapshot transaction. Outputs: per-object exemptions, no counts or bytes to load.
+// Constraints: explicit --skip-storage only; query failures still fail the import.
+func exemptStorage(ctx context.Context, tx pgx.Tx, m *portable.Manifest) error {
+	fail := errs.New("E520", "source storage lookup failed")
+	rows, err := tx.Query(ctx, `SELECT bucket_id::text, name::text FROM storage.objects ORDER BY bucket_id, name`)
+	if err != nil {
+		return fail
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var bucket, key string
+		if rows.Scan(&bucket, &key) != nil {
+			return fail
+		}
+		m.Exemptions = append(m.Exemptions, portable.Exemption{Kind: "object", ID: bucket + "/" + key, Reason: "--skip-storage"})
+	}
+	if rows.Err() != nil {
+		return fail
 	}
 	return nil
 }

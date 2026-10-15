@@ -25,6 +25,7 @@ import (
 // run carries what the snapshot hooks learn for the later steps.
 type run struct {
 	api          *api
+	skipStorage  bool
 	catalog      map[string]int64 // objects per bucket in storage.objects
 	total        int64
 	names        map[string]map[string]int64 // bucket -> key -> size (-1 when unknown)
@@ -35,6 +36,9 @@ var projectRef = regexp.MustCompile(`^[a-z0-9]{1,40}$`)
 
 // apiFor builds the storage client from --api-url or --project-ref; nil when neither is set.
 func apiFor(in importer.Input) (*api, error) {
+	if in.SkipStorage {
+		return nil, nil
+	}
 	raw := in.Values["api-url"]
 	if raw == "" && in.Values["project-ref"] != "" {
 		if !projectRef.MatchString(in.Values["project-ref"]) {
@@ -67,14 +71,14 @@ func (Source) Extract(ctx context.Context, in importer.Input, stage string) (imp
 		return importer.Extracted{}, err
 	}
 	// Fail before the dump when storage objects exist but no storage API was configured.
-	if n, qerr := storageObjects(ctx, db); qerr != nil || (n > 0 && client == nil) {
+	if n, qerr := storageObjects(ctx, db); qerr != nil || (!in.SkipStorage && n > 0 && client == nil) {
 		_ = db.Close(ctx)
 		if qerr != nil {
 			return importer.Extracted{}, qerr
 		}
 		return importer.Extracted{}, errs.New("E520", "source has storage objects; --api-url (or --project-ref) and --service-key-env are required")
 	}
-	r := &run{api: client}
+	r := &run{api: client, skipStorage: in.SkipStorage}
 	ext, err := postgres.Snapshot(ctx, db, d, in.Target, stage, postgres.Options{Source: "supabase", InTx: r.inTx, Finish: r.finish})
 	ext.UntranslatedPolicies = r.untranslated
 	return ext, err

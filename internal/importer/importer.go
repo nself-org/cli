@@ -17,6 +17,8 @@ type Input struct {
 	Values map[string]string
 	Env    func(string) string
 	Target *config.Config
+	// SkipStorage lets sources record exemptions without fetching object bytes.
+	SkipStorage bool
 }
 type Detection struct {
 	Kind    string   `json:"kind"`

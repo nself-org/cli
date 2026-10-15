@@ -114,6 +114,7 @@ func Run(ctx context.Context, cfg *config.Config, s Source, in Input, opts RunOp
 		defer release()
 	}
 	in.Target = cfg
+	in.SkipStorage = opts.SkipStorage
 	detection, err := s.Detect(ctx, in)
 	if err != nil {
 		return report, publicError(err, "E517", "source detection failed")

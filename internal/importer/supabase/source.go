@@ -87,7 +87,11 @@ func detect(ctx context.Context, db *pgx.Conn, in importer.Input) (importer.Dete
 		return d, err
 	}
 	if len(d.Objects) > 0 {
-		d.Notes = append(d.Notes, "source has storage objects; the storage API is required")
+		if in.SkipStorage {
+			d.Notes = append(d.Notes, "source storage objects will be exempted (--skip-storage)")
+		} else {
+			d.Notes = append(d.Notes, "source has storage objects; the storage API is required")
+		}
 	}
 	return d, nil
 }
