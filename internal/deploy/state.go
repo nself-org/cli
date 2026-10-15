@@ -30,7 +30,7 @@ const (
 // StrategyState records the outcome of the last deploy for a given strategy.
 type StrategyState struct {
 	// SchemaVersion is the version of the StrategyState schema.
-	// Set to 1 on all writes. Readers treat 0 (missing field) as the legacy default.
+	// Set to 1 on all writes. Existing records must declare their schema.
 	SchemaVersion int `json:"schema_version"`
 
 	// Strategy is the deploy strategy used.
@@ -114,6 +114,9 @@ func LoadDeployState(projectRoot string) (StrategyState, error) {
 	var s StrategyState
 	if err := json.Unmarshal(data, &s); err != nil {
 		return StrategyState{}, fmt.Errorf("parsing deploy state: %w", err)
+	}
+	if s.SchemaVersion == 0 {
+		return StrategyState{}, errors.New("parsing deploy state: missing schema_version")
 	}
 	return s, nil
 }

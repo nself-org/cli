@@ -4,6 +4,12 @@ Hasura GraphQL Engine is the primary API layer in every ɳSelf stack. It sits in
 
 ---
 
+Metadata apply recognizes version 3 Hasura CLI projects that omit
+`metadata_directory`, using the default `metadata` directory. A symlink alias
+to that directory is accepted. An nSelf `config.yaml` metadata index still
+uses the built-in include resolver. Metadata export and archive round trips
+preserve trailing blank lines in string values.
+
 ## Environment Variables
 
 All Hasura configuration is driven by `HASURA_*` variables in your `.env` files. Required variables must be set before `nself start`, the CLI will refuse to start if they are missing.

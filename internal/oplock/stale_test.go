@@ -78,8 +78,8 @@ func TestOpLockStaleHolderIsUnknown(t *testing.T) {
 		// Control: a live pid with the same token re-enters, so the refusal
 		// above comes from the stale check alone.
 		{name: "live pid same host", holder: Holder{PID: os.Getpid(), Command: "old", Token: stale, Host: host}, wantKnown: true, wantReent: true},
-		// Another host cannot be checked: the record is taken as is.
-		{name: "dead pid other host", holder: Holder{PID: deadPID, Command: "old", Token: stale, Host: host + "-elsewhere"}, wantKnown: true, wantReent: true},
+		// Another host cannot be checked: name it, but never permit re-entry.
+		{name: "dead pid other host", holder: Holder{PID: deadPID, Command: "old", Token: stale, Host: host + "-elsewhere"}, wantKnown: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -99,7 +99,7 @@ func TestOpLockStaleHolderIsUnknown(t *testing.T) {
 			if he.Known != tc.wantKnown {
 				t.Fatalf("Known = %v, want %v (holder %+v)", he.Known, tc.wantKnown, he.Holder)
 			}
-			if strings.Contains(he.Error(), "999999") {
+			if !tc.wantKnown && strings.Contains(he.Error(), "999999") {
 				t.Errorf("error names the dead pid: %q", he.Error())
 			}
 		})

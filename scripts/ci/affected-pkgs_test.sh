@@ -38,19 +38,20 @@ printf 'module example.invalid/fx\n\ngo %s\n' "$GOV" > "$R/go.mod"
 cat > "$R/a/a.go" <<'EOF'
 package a
 
-import _ "embed"
+import "embed"
 
-//go:embed assets/conf.yaml
-var Conf string
+//go:embed assets/*.yaml
+var Conf embed.FS
 EOF
 printf 'key: one\n' > "$R/a/assets/conf.yaml"
+printf 'key: spare\n' > "$R/a/assets/spare.yaml"
 printf 'package assets\n' > "$R/a/assets/assets.go"
 cat > "$R/b/b.go" <<'EOF'
 package b
 
 import "example.invalid/fx/a"
 
-func Conf() string { return a.Conf }
+func Conf() any { return a.Conf }
 EOF
 printf 'package c\n' > "$R/c/c.go"
 printf 'input\n' > "$R/c/testdata/in.txt"
@@ -70,6 +71,7 @@ func TestGuide(t *testing.T) {
 }
 EOF
 printf 'package e\n' > "$R/e/e.go"
+printf 'package e\n\nvar Asset = "../a/assets/conf.yaml"\n' > "$R/e/asset_test.go"
 cat > "$R/f/f.go" <<'EOF'
 package f
 
@@ -119,6 +121,8 @@ check() {
     case "$c" in
       edit:*) printf '// changed\n' >> "$R/${c#edit:}" ;;
       new:*) mkdir -p "$(dirname "$R/${c#new:}")"; printf 'new\n' > "$R/${c#new:}" ;;
+      delete:*) rm "$R/${c#delete:}" ;;
+      rename:*) mv "$R/${c#rename:}" "$R/${c#rename:}.renamed.txt" ;;
       stage) git -C "$R" add -A ;;
       commit) git -C "$R" add -A && git -C "$R" commit -qm change ;;
     esac
@@ -143,11 +147,13 @@ cases() { # cases <awk> <script>
   check "$w" "$s" go-file 0 "$P/a $P/b" edit:a/a.go commit
   check "$w" "$s" go-file-uncommitted 0 "$P/a $P/b" edit:a/a.go
   check "$w" "$s" go-file-staged 0 "$P/a $P/b" edit:a/a.go stage
-  check "$w" "$s" embedded-yaml 0 "$P/a $P/a/assets $P/b" edit:a/assets/conf.yaml commit
+  check "$w" "$s" embedded-yaml 0 "$P/a $P/a/assets $P/b $P/e" edit:a/assets/conf.yaml commit
+  check "$w" "$s" deleted-embed 0 "$P/a $P/a/assets $P/b $P/e" delete:a/assets/conf.yaml commit
+  check "$w" "$s" renamed-embed 0 "$P/a $P/a/assets $P/b $P/e" rename:a/assets/conf.yaml commit
   check "$w" "$s" testdata 0 "$P/c" new:c/testdata/more.txt
   check "$w" "$s" docs-read-by-test 0 "$P/d" edit:docs/guide.md commit
   check "$w" "$s" go-file-importer 0 "$P/d $P/f" edit:d/d.go
-  check "$w" "$s" two-dirs 0 "$P/a $P/a/assets $P/b $P/c" edit:c/c.go edit:a/assets/conf.yaml commit
+  check "$w" "$s" two-dirs 0 "$P/a $P/a/assets $P/b $P/c $P/e" edit:c/c.go edit:a/assets/conf.yaml commit
   check "$w" "$s" package-free 0 "" edit:notes/todo.txt commit
   check "$w" "$s" nothing-changed 0 ""
   check "$w" "$s" go-mod 0 "./..." edit:go.mod commit
@@ -183,7 +189,7 @@ done
 # copy that merely errors cannot pass the control.
 sed 's/if (f in embedded) {/if (0) {/' "$SCRIPT" > "$WORK/broken.sh"
 cmp -s "$SCRIPT" "$WORK/broken.sh" && { echo "FAIL positive control: the embed check was not found to break" >&2; exit 1; }
-if ! check system "$WORK/broken.sh" embedded-yaml 0 "$P/a/assets" edit:a/assets/conf.yaml commit; then
+if ! check system "$WORK/broken.sh" embedded-yaml 0 "$P/a/assets $P/e" edit:a/assets/conf.yaml commit; then
   echo "FAIL positive control: a script without the embed mapping did not give the expected wrong answer" >&2
   exit 1
 fi

@@ -12,7 +12,8 @@ package database
 // style) instead. The same JSON form is used when the body contains the text
 // "!include", with each "!include" written as "\u0021include", so a string value
 // is never mistaken for an include directive; YAML decodes it back to "!".
-// Multi-line bodies without "!include" stay block YAML.
+// Multi-line bodies without "!include" stay block YAML unless terminal blank
+// lines would be trimmed by the include resolver; those use JSON as well.
 // Pure and deterministic (sorted keys, no clock, no disk) except
 // writeMetadataTree, which only writes the files it is given. A key that is not
 // a safe file name is rejected. The layout is what applyViaIncludeResolver reads.
@@ -68,15 +69,15 @@ func metadataLayout(data []byte) ([]metadataFile, error) {
 }
 
 // marshalMetadataValue encodes one top-level value for its <key>.yaml file:
-// block YAML, except single-line bodies and bodies containing "!include", which
-// become one line of JSON with "!include" escaped (see the header for why).
+// block YAML, except single-line bodies, terminal blank lines and "!include",
+// which become one line of JSON with "!include" escaped (see the header).
 func marshalMetadataValue(v interface{}) ([]byte, error) {
 	body, err := yaml.Marshal(v)
 	if err != nil {
 		return nil, err
 	}
 	oneLine := strings.Count(strings.TrimRight(string(body), "\n"), "\n") == 0
-	if !oneLine && !strings.Contains(string(body), "!include") {
+	if !oneLine && !strings.Contains(string(body), "!include") && !strings.HasSuffix(string(body), "\n\n") {
 		return body, nil
 	}
 	js, err := json.Marshal(v)

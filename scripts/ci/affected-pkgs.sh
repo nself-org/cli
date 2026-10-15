@@ -12,14 +12,17 @@
 #            - the package in its nearest enclosing package directory (its own
 #              .go files, testdata/, data files read beside the code); a root
 #              package only for root files and the root testdata/;
-#            - for a file outside every package directory (docs, scripts,
-#              .github/), every package whose .go files name its directory
+#            - for non-Go files (including owned data files) and files outside
+#              every package directory, every package whose .go files name
+#              its directory
 #              path (`dir/` or `/dir"` for a top-level one), its top-level
 #              directory as a quoted literal, or (for a root file) its file
 #              name: tests that read the wiki or a CI script are found that way.
-#          Seeds from .go and embedded files are closed over reverse imports
-#          (`go list -deps`, test imports included); the other seeds only
-#          feed their own package's tests, so they are listed as they are. Prints `./...` alone when go.mod, go.sum,
+#          Seeds from .go and embedded files are closed over reverse imports.
+#          Missing files also seed enclosing embedding packages, since current
+#          EmbedFiles no longer names deleted or renamed embedded data.
+#          Closure uses `go list -deps`, test imports included; other seeds
+#          feed their own package's tests. Prints `./...` alone when go.mod, go.sum,
 #          vendor/ or anything under internal/errs/ changed (everything
 #          depends on those). Prints nothing only when no file changed or no
 #          package is seeded by the rules above; a note goes to stderr then.
@@ -49,8 +52,8 @@ trap 'rm -rf "$TMP"' EXIT
 
 # core.quotepath=false: a non-ASCII path is printed as is, not "\303\251".
 {
-  git -c core.quotepath=false diff --name-only "$BASE"...HEAD
-  git -c core.quotepath=false diff --name-only HEAD
+  git -c core.quotepath=false diff --no-renames --name-only "$BASE"...HEAD
+  git -c core.quotepath=false diff --no-renames --name-only HEAD
   git -c core.quotepath=false ls-files --others --exclude-standard
 } | sed '/^$/d' | LC_ALL=C sort -u > "$TMP/changed"
 
@@ -77,9 +80,14 @@ CGO_ENABLED=0 go list -mod=vendor -deps -test=false \
 # Pass 1: map each changed file to packages. "P <pkg>": the change reaches
 # importers (a .go file or an embedded file). "D <pkg>": only that package's
 # own tests read it (testdata, a data file beside the code). "U <file>":
-# outside every package directory.
+# a path-reference scan (unowned files and all non-Go files).
+while IFS= read -r f; do
+  [ -e "$f" ] || printf '%s\n' "$f"
+done < "$TMP/changed" > "$TMP/missing"
+
 awk -F'|' -v modpath="$MODPATH" -v moddir="$MODDIR" '
-  FNR == NR { changed[++nc] = $0; next }
+  FILENAME == ARGV[1] { missing[$0] = 1; next }
+  FILENAME == ARGV[2] { changed[++nc] = $0; next }
   {
     pkg = $1
     if (pkg != modpath && index(pkg, modpath "/") != 1) next
@@ -90,12 +98,21 @@ awk -F'|' -v modpath="$MODPATH" -v moddir="$MODDIR" '
     for (j = 1; j <= m; j++) {
       if (emb[j] == "") continue
       embedded[(rel == "." ? "" : rel "/") emb[j]] = pkg
+      embedpkg[rel] = pkg
     }
   }
   END {
     for (i = 1; i <= nc; i++) {
       f = changed[i]; found = 0
       if (f in embedded) { print "P " embedded[f]; found = 1 }
+      if (f in missing) {
+        d = f
+        while (index(d, "/")) {
+          sub(/\/[^\/]*$/, "", d)
+          if (d in embedpkg) print "P " embedpkg[d]
+        }
+        if ("." in embedpkg) print "P " embedpkg["."]
+      }
       d = f; indir = 0
       while (index(d, "/")) {
         sub(/\/[^\/]*$/, "", d)
@@ -106,15 +123,15 @@ awk -F'|' -v modpath="$MODPATH" -v moddir="$MODDIR" '
       if (!indir && (f !~ /\// || f ~ /^testdata\//) && ("." in dirpkg)) {
         print (f ~ /\.go$/ ? "P " : "D ") dirpkg["."]; found = 1
       }
-      if (!found) print "U " f
+      if (!found || f !~ /\.go$/) print "U " f
     }
   }
-' "$TMP/changed" "$TMP/graph" > "$TMP/mapped"
+' "$TMP/missing" "$TMP/changed" "$TMP/graph" > "$TMP/mapped"
 
 sed -n 's/^P //p' "$TMP/mapped" > "$TMP/seeds"
 sed -n 's/^D //p' "$TMP/mapped" > "$TMP/direct"
 
-# Files outside every package: find the module .go files that name them.
+# Find module .go files that name changed data or unowned files.
 sed -n 's/^U //p' "$TMP/mapped" | while IFS= read -r f; do
   case "$f" in
     */*/*)

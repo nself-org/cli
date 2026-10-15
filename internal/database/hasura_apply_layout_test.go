@@ -128,7 +128,8 @@ func TestIsHasuraCLIProject(t *testing.T) {
 		{"cli project", map[string]string{"hasura/config.yaml": "metadata_directory: metadata\n"}, true},
 		{"cli project ./metadata", map[string]string{"hasura/config.yaml": "metadata_directory: ./metadata\n"}, true},
 		{"no project config", map[string]string{"hasura/metadata/tables.yaml": "[]\n"}, false},
-		{"no metadata_directory", map[string]string{"hasura/config.yaml": "version: 3\n"}, false},
+		{"default metadata_directory", map[string]string{"hasura/config.yaml": "version: 3\n"}, true},
+		{"unsupported default", map[string]string{"hasura/config.yaml": "version: 2\n"}, false},
 		{"other metadata_directory", map[string]string{"hasura/config.yaml": "metadata_directory: md\n"}, false},
 		{"unparsable config", map[string]string{"hasura/config.yaml": "metadata_directory: [\n"}, false},
 		{"nself index wins", map[string]string{
@@ -148,5 +149,29 @@ func TestIsHasuraCLIProject(t *testing.T) {
 		if got := isHasuraCLIProject(hasuraDir, filepath.Join(hasuraDir, "metadata")); got != c.expect {
 			t.Errorf("%s: isHasuraCLIProject = %v, want %v", c.name, got, c.expect)
 		}
+	}
+}
+
+func TestApplyHasuraCLIProjectAliases(t *testing.T) {
+	for _, config := range []string{"version: 3\n", "version: 3\nmetadata_directory: md\n"} {
+		t.Run(config, func(t *testing.T) {
+			marker := fakeHasuraOnPath(t)
+			cfg, seen := metadataRecorder(t)
+			project := t.TempDir()
+			writeFixtureFile(t, project, "hasura/config.yaml", config)
+			writeFixtureFile(t, project, "hasura/metadata/version.yaml", "version: 3\n")
+			if err := os.Symlink("metadata", filepath.Join(project, "hasura", "md")); err != nil {
+				t.Fatal(err)
+			}
+			if err := HasuraApplyMetadata(context.Background(), cfg, project); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat(marker); err != nil {
+				t.Fatal("Hasura CLI must handle the default and symlink metadata directories")
+			}
+			if got := seen(); len(got) != 0 {
+				t.Fatalf("unexpected API requests: %v", got)
+			}
+		})
 	}
 }

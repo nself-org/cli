@@ -660,6 +660,10 @@ or place its context on the host.
 - The prune (generated files the new set dropped) is driven by the last recorded deploy in
   `.nself/state/deploy.json`; the host's `deploy-shipped.txt` can only narrow it. With no record
   nothing is pruned.
+- An existing `deploy.json` that is empty, `null`, malformed or lacks `schema_version` is refused;
+  only a missing file counts as no deployment record.
+- Before pulling, image capture skips confirmed absent images; any other Docker inspect error
+  or malformed image ID stops the apply before tags can move.
 
 If any step from the sync to the preview fails, no container has been touched yet. The files this
 deploy shipped are put back from the pre-deploy tar in place, the ones it created are removed, and

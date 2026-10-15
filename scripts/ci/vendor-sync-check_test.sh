@@ -100,6 +100,13 @@ printf 'package real\n' > "${d}/sdk/real/r.go"
 ln -s ../real "${d}/sdk/lib/sub"
 expect sdk-symlinked-dir 1 "${d}" "symlinks in ./sdk"
 
+d="$(case_dir sdk-spaced-path-symlink)"
+mv "${d}/sdk" "${d}/sdk space"
+(cd "${d}" && go mod edit '-replace=github.com/nself-org/vsc-fixture/sdk=./sdk space' && go mod vendor)
+printf 'package lib\n\nfunc Linked() {}\n' > "${d}/sdk space/linked.src"
+ln -s ../linked.src "${d}/sdk space/lib/linked.go"
+expect sdk-spaced-path-symlink 1 "${d}" "symlinks in ./sdk space"
+
 d="$(case_dir go-mod-vendor-fails)"
 printf 'package main\n\nimport _ "github.com/nself-org/vsc-fixture/sdk/missing"\n' > "${d}/broken.go"
 expect go-mod-vendor-fails 2 "${d}" "go mod vendor failed"

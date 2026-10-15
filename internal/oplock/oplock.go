@@ -19,7 +19,8 @@
 //   - Re-entrancy: a process whose NSELF_OPLOCK_TOKEN equals the token in the
 //     holder file of a currently held lock runs without acquiring, so a child
 //     `nself` spawned by the holder never deadlocks. A child that outlives its
-//     parent runs unlocked. The token is exported into the holder's
+//     parent cannot re-enter on its released token. The token is exported
+//     into the holder's
 //     environment, so every child inherits it (docker, hooks, plugins), not
 //     only a child `nself`. It is cooperative, not a secret.
 //   - A waiter that reads a record naming a dead process on this host treats it
@@ -140,12 +141,16 @@ func (l *Lock) Token() string { return l.holder.Token }
 func (l *Lock) Reentrant() bool { return l != nil && l.reentrant }
 
 // Release drops the flock. It is idempotent and safe on a nil Lock. The holder
-// file stays; only the flock means "held".
+// file stays with its token invalidated before unlocking; only the flock means
+// "held".
 func (l *Lock) Release() {
 	if l == nil || l.f == nil {
 		return
 	}
 	l.once.Do(func() {
+		h := l.holder
+		h.Token = ""
+		_ = writeHolder(l.f, h)
 		unlock(l.f)
 		_ = l.f.Close()
 	})
@@ -185,7 +190,8 @@ func Acquire(ctx context.Context, projectDir string, opts Opts) (*Lock, error) {
 		}
 		_ = f.Close()
 		h, known := readHolderSettled(ctx, projectDir, o)
-		if known && token != "" && h.Token == token {
+		host, hostErr := os.Hostname()
+		if known && token != "" && h.Token == token && hostErr == nil && host != "" && h.Host == host {
 			return &Lock{holder: h, reentrant: true}, nil
 		}
 		waited := o.Clock.Now().Sub(start)

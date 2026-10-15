@@ -25,6 +25,8 @@ func TestHasuraLayoutShapesRoundTrip(t *testing.T) {
 		"scalar version":          `{"version":3}`,
 		"string with newline":     `{"note":"line one\nline two\n","version":3}`,
 		"nested newline":          `{"actions":[{"comment":"a\nb"}],"version":3}`,
+		"trailing blank lines":    `{"actions":[{"comment":"a\n\n"}],"version":3}`,
+		"trailing three newlines": `{"note":"a\nb\n\n\n","version":3}`,
 		"include text scalar":     `{"note":"see !include foo.yaml","version":3}`,
 		"include text nested":     `{"actions":[{"comment":"see !include foo.yaml"},{"x":"!include"}],"version":3}`,
 		"include text in list":    `{"allowlist":["see !include foo.yaml"]}`,

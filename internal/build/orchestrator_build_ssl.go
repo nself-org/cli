@@ -22,7 +22,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/nself-org/cli/internal/nginx"
 	"github.com/nself-org/cli/internal/nginx/routemodel"
 	"github.com/nself-org/cli/internal/postgres"
 	"github.com/nself-org/cli/internal/ssl"
@@ -104,10 +103,7 @@ func (st *buildState) generateSSLAndNginx() error {
 		}
 	}
 
-	nginxGen := nginx.NewGenerator(st.cfg, st.workdir)
-	if len(assumedCerts) > 0 {
-		nginxGen.WithAssumedCerts(assumedCerts)
-	}
+	nginxGen := st.nginxGenerator(assumedCerts...)
 	if st.routes == nil {
 		st.routes, err = st.modelRoutes(nginxGen.HasSSL())
 		if err != nil {

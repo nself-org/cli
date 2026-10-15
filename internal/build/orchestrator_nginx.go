@@ -24,7 +24,6 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/config"
-	"github.com/nself-org/cli/internal/nginx"
 	"github.com/nself-org/cli/internal/nginx/routemodel"
 	"github.com/nself-org/cli/internal/nginxtopo"
 )
@@ -32,7 +31,7 @@ import (
 // preflightProxy refuses swaps before secrets persistence or env chmod.
 // An incomplete route model is left for the existing Step 2/2.5 diagnostics.
 func (st *buildState) preflightProxy() error {
-	m, err := routemodel.Build(st.cfg, st.workdir, nginx.NewGenerator(st.cfg, st.workdir).HasSSL())
+	m, err := routemodel.Build(st.cfg, st.workdir, st.nginxGenerator().HasSSL())
 	if err != nil {
 		return nil
 	}

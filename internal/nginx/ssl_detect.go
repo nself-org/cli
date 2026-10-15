@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/nginxtopo"
 	"github.com/nself-org/cli/internal/ssl"
 )
 
@@ -21,8 +22,8 @@ import (
 // HTTP-only site confs with no `listen 443 ssl` block. Reconciling that
 // generated tree onto a serving nginx that already terminates TLS per
 // service would have dropped HTTPS stack-wide.
-// Inputs: cfg (BaseDomain, SSLMode) and workdir (project root — certs live
-// under workdir/ssl/certificates/<dir>/, see internal/ssl.DomainToDirName).
+// Inputs: cfg (BaseDomain, SSLMode, FrontedBy) and workdir (project root).
+// Certificates live in the serving stack's ssl/certificates/<dir>/ tree.
 // Outputs: sslShouldEmit reports whether nginx should emit the 443/
 // ssl_certificate block; sslCertsPresent reports raw cert-file presence.
 // Constraints: see sslShouldEmit's own doc comment for the per-mode rules.
@@ -68,7 +69,7 @@ func sslAssumed(cfg *config.Config, assumed []string) bool {
 
 // sslCertsPresent reports whether a usable certificate pair (fullchain.pem +
 // privkey.pem) already exists on disk for cfg.BaseDomain, at the same path
-// internal/ssl.Generator writes to and RenderServiceRoute reads from.
+// the serving nginx mounts, including the fronting stack for fronted projects.
 // sslDirName converts a domain to the directory-safe name nginx's
 // ssl_certificate directives are rooted at. Delegates to
 // internal/ssl.DomainToDirName — the same function internal/ssl.Generator
@@ -87,7 +88,11 @@ func sslDirName(domain string) string {
 }
 
 func sslCertsPresent(cfg *config.Config, workdir string) bool {
-	certDir := filepath.Join(workdir, "ssl", "certificates", sslDirName(cfg.BaseDomain))
+	sslDir, err := nginxtopo.ServedSSLDir(workdir, cfg.Nginx.FrontedBy)
+	if err != nil {
+		return false
+	}
+	certDir := filepath.Join(sslDir, "certificates", sslDirName(cfg.BaseDomain))
 	if _, err := os.Stat(filepath.Join(certDir, "fullchain.pem")); err != nil {
 		return false
 	}

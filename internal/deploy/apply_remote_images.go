@@ -49,7 +49,16 @@ func saveImageTags(ctx context.Context, r Remote, refs []string) ([]imageTag, er
 	if len(refs) == 0 {
 		return nil, nil
 	}
-	script := fmt.Sprintf(`for img in %s; do id=$(docker image inspect --format '{{.Id}}' "$img" 2>/dev/null) && printf '%%s %%s\n' "$id" "$img"; done; exit 0`, strings.Join(quoteAll(refs), " "))
+	script := fmt.Sprintf(`for img in %s; do
+if id=$(LC_ALL=C docker image inspect --format '{{.Id}}' "$img" 2>&1); then
+printf '%%s %%s\n' "$id" "$img"
+else
+case "$id" in
+"Error response from daemon: No such image: $img"|"Error: No such image: $img") ;;
+*) printf '%%s\n' "$id" >&2; exit 1 ;;
+esac
+fi
+done`, strings.Join(quoteAll(refs), " "))
 	out, err := r.Run(ctx, shScript(script))
 	if err != nil {
 		return nil, fmt.Errorf("reading the image ids on %s before the pull: %w", r.Label(), err)
@@ -60,9 +69,12 @@ func saveImageTags(ctx context.Context, r Remote, refs []string) ([]imageTag, er
 	}
 	var saved []imageTag
 	for _, line := range strings.Split(string(out), "\n") {
+		if line == "" {
+			continue
+		}
 		f := strings.Fields(line)
 		if len(f) != 2 || !imageIDRe.MatchString(f[0]) || !want[f[1]] {
-			continue
+			return nil, fmt.Errorf("invalid image snapshot record from %s: %q", r.Label(), line)
 		}
 		saved = append(saved, imageTag{ID: f[0], Ref: f[1]})
 	}

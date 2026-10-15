@@ -22,12 +22,14 @@ import (
 // hasuraCLIProjectConfig is the part of a Hasura CLI project's config.yaml
 // this check reads.
 type hasuraCLIProjectConfig struct {
+	Version           int    `yaml:"version"`
 	MetadataDirectory string `yaml:"metadata_directory"`
 }
 
 // isHasuraCLIProject reports whether hasuraDir is a Hasura CLI project whose
 // metadata the hasura binary should apply: hasuraDir/config.yaml names a
-// metadata_directory that resolves to metadataDir, and metadataDir carries no
+// metadata_directory (default "metadata" for version 3) identifying metadataDir,
+// including symlink aliases, and metadataDir carries no
 // nself config.yaml index (that index is nself's layout, which the Hasura CLI
 // cannot read).
 func isHasuraCLIProject(hasuraDir, metadataDir string) bool {
@@ -44,10 +46,18 @@ func isHasuraCLIProject(hasuraDir, metadataDir string) bool {
 	}
 	dir := strings.TrimSpace(c.MetadataDirectory)
 	if dir == "" {
-		return false
+		if c.Version != 3 {
+			return false
+		}
+		dir = "metadata"
 	}
 	if !filepath.IsAbs(dir) {
 		dir = filepath.Join(hasuraDir, dir)
 	}
-	return filepath.Clean(dir) == filepath.Clean(metadataDir)
+	configured, err := os.Stat(dir)
+	if err != nil {
+		return false
+	}
+	metadata, err := os.Stat(metadataDir)
+	return err == nil && configured.IsDir() && metadata.IsDir() && os.SameFile(configured, metadata)
 }

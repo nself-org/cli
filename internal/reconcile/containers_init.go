@@ -29,7 +29,7 @@ type composeLabels struct {
 }
 
 // initContainerServices returns the services carrying initContainerLabel in
-// any of files.
+// the effective labels, merging overrides in file order by label key.
 func initContainerServices(files []string) (map[string]bool, error) {
 	out := map[string]bool{}
 	for _, path := range files {
@@ -45,31 +45,46 @@ func initContainerServices(files []string) (map[string]bool, error) {
 			return nil, fmt.Errorf("parsing compose file %s: %w", path, err)
 		}
 		for name, svc := range doc.Services {
-			if hasLabel(&svc.Labels, initContainerLabel) {
-				out[name] = true
+			key, value, _ := strings.Cut(initContainerLabel, "=")
+			if got, present := composeLabelValue(&svc.Labels, key); present {
+				if got == value {
+					out[name] = true
+				} else {
+					delete(out, name)
+				}
 			}
 		}
 	}
 	return out, nil
 }
 
-// hasLabel reports whether a compose labels node (map or list) holds kv.
-func hasLabel(n *yaml.Node, kv string) bool {
-	key, val, _ := strings.Cut(kv, "=")
+// composeLabelValue reads a label from map or list syntax. Absence preserves
+// an earlier file's value; a present empty value overrides it.
+func composeLabelValue(n *yaml.Node, key string) (string, bool) {
+	if n.Kind == yaml.AliasNode {
+		return composeLabelValue(n.Alias, key)
+	}
 	switch n.Kind {
 	case yaml.MappingNode:
 		var m map[string]string
-		return n.Decode(&m) == nil && m[key] == val
+		if n.Decode(&m) == nil {
+			value, present := m[key]
+			return value, present
+		}
 	case yaml.SequenceNode:
 		var l []string
 		if n.Decode(&l) != nil {
-			return false
+			return "", false
 		}
+		var value string
+		var present bool
 		for _, e := range l {
-			if strings.TrimSpace(e) == kv {
-				return true
+			k, v, _ := strings.Cut(strings.TrimSpace(e), "=")
+			if k == key {
+				value, present = v, true
 			}
 		}
+		return value, present
 	}
-	return false
+	return "", false
 }
