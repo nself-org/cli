@@ -88,6 +88,8 @@ func dockerLogs(ctx context.Context, ds DockerSetup, tail int, note func(string)
 	for _, svc := range services {
 		states, serr := c.ComposeServiceStates(ctx, ds.ProjectDir, svc)
 		if serr != nil {
+			// Name only the service: LogNotes are appended unscrubbed.
+			note(fmt.Sprintf("container state for service %s could not be read: its log is missing", svc))
 			continue
 		}
 		var parts []string

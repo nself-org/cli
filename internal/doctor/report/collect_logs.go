@@ -27,7 +27,9 @@ func collectLogs(ctx context.Context, opt Options, src Sources, addRaw func(stri
 	logs, err := src.Logs(ctx, opt.LogLines)
 	var notes []string
 	if src.LogNotes != nil {
-		notes = append(notes, src.LogNotes()...)
+		for _, n := range src.LogNotes() { // a service name may carry a key
+			notes = append(notes, scr.Scrub(n))
+		}
 	}
 	if err != nil {
 		return append(notes, "no running stack: "+scr.Scrub(err.Error()))
@@ -46,7 +48,7 @@ func collectLogs(ctx context.Context, opt Options, src Sources, addRaw func(stri
 	sort.Strings(names)
 	used := map[string]bool{}
 	for _, n := range names {
-		f := uniqueName(used, func(suffix string) string { return scr.entryName("logs/", n+suffix, ".log") })
+		f := uniqueName(used, func(suffix string) string { return scr.entryName("logs/", n, suffix+".log") })
 		clean := scr.Scrub(logs[n]) // scrub first, cap second (S1)
 		text, cut := capTail(clean, limit)
 		if cut {
@@ -58,6 +60,9 @@ func collectLogs(ctx context.Context, opt Options, src Sources, addRaw func(stri
 }
 
 // uniqueName returns the first unused name of build("") then build("-2"), ...
+// build must append the suffix after scrubbing: a suffix inside the scrubbed
+// part (two names that start with a licence key) would be redacted and the
+// name would never change.
 func uniqueName(used map[string]bool, build func(suffix string) string) string {
 	f := build("")
 	for i := 2; used[f]; i++ {

@@ -65,7 +65,7 @@ func (s *Scrubber) scrubUserinfo(text string) string {
 // scrubAssignments is the defense-in-depth pass.
 func (s *Scrubber) scrubAssignments(text string) string {
 	text = s.scrubBlockScalars(text)
-	for _, re := range []*regexp.Regexp{headerRe, nginxAuthRe, queryRe, sasSigRe, sqlPasswordRe, curlUserRe, assignRe, flagRe, flagListRe, nginxRe} {
+	for _, re := range []*regexp.Regexp{headerRe, nginxAuthRe, queryRe, sasSigRe, sqlPasswordRe, curlUserDQRe, curlUserSQRe, curlUserRe, assignRe, flagRe, flagListRe, nginxRe} {
 		text = s.rewriteValue(re, text)
 	}
 	return text

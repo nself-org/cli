@@ -29,7 +29,14 @@ var (
 	// ALTER ROLE x PASSWORD 'v'; IDENTIFIED BY 'v'; WITH ENCRYPTED PASSWORD "v".
 	sqlPasswordRe = regexp.MustCompile(`(?i)(\b(?:PASSWORD|IDENTIFIED[ \t]+BY)[ \t]+)('(?:[^'\r\n]|'')*'|"[^"\r\n]*")`)
 	// curl -u user:value, curl --user user:value, also inside a JSON/YAML list.
-	curlUserRe = regexp.MustCompile(`(\bcurl\b[^\r\n]*?[\s"',\[](?:-u|--user)(?:=|[ \t]+|["']?[ \t]*,[ \t]*["']?)["']?(?:\[REDACTED(?::[^\]\s]*)?\]|[^\s"':,])*:)([^\s"',\]]+)`)
+	// curlUserDQRe and curlUserSQRe hold the quoted forms ("user:a b c", 'user:a b c'): the
+	// password runs to the matching quote, so a space or comma in it does not
+	// leave a tail. curlUserRe is the unquoted form; it runs after them.
+	curlUserHead = `(\bcurl\b[^\r\n]*?[\s"',\[](?:-u|--user)(?:=|[ \t]+|["']?[ \t]*,[ \t]*)`
+	curlUserName = `(?:\[REDACTED(?::[^\]\s]*)?\]|[^\s"':,])*:`
+	curlUserDQRe = regexp.MustCompile(curlUserHead + `"` + curlUserName + `)([^"\r\n]*)`)
+	curlUserSQRe = regexp.MustCompile(curlUserHead + `'` + curlUserName + `)([^'\r\n]*)`)
+	curlUserRe   = regexp.MustCompile(curlUserHead + `["']?` + curlUserName + `)([^\s"',\]]+)`)
 )
 
 // Codex pre-merge items 3, 6 and 7 (all through rewriteValue or extraTokenRe).
