@@ -27,6 +27,15 @@ var healthCmd = &cobra.Command{
 endpoints. Supports continuous watch mode and history viewing.`,
 	// Default action when no subcommand is given: run all checks.
 	RunE: healthCheckRunE,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		if healthRetries < 1 {
+			return fmt.Errorf("--retries must be at least 1")
+		}
+		if RootCmd.PersistentPreRunE != nil {
+			return RootCmd.PersistentPreRunE(cmd, args)
+		}
+		return nil
+	},
 }
 
 var healthCheckCmd = &cobra.Command{

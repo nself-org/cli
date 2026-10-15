@@ -28,6 +28,11 @@ func runDBMigrateStatusDetect(cmd *cobra.Command, cfg *config.Config, migrationD
 	if err != nil {
 		return fmt.Errorf("detect migrations: %w", err)
 	}
+	data := dbMigrateStatusData{Migrations: []dbMigrationRow{}}
+	for _, r := range results {
+		data.Migrations = append(data.Migrations, dbMigrationRow{Name: r.Name, Status: string(r.Class)})
+	}
+	setData(cmd, data)
 	if len(results) == 0 {
 		fmt.Println("No pending migrations to classify.")
 		return nil

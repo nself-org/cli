@@ -79,6 +79,18 @@ Behaviour that would break an existing script is dormant in 1.4.x and becomes th
 | `--json` on a `none` command whose own `json` flag was accepted and ignored (for example `config validate`) | unchanged: accepted and ignored | `E402`, exit 1 |
 | Unknown flag or bad arguments | cobra's message, unchanged | coded `E401`; values you typed (for example after `-x…` or a secret-named flag) are removed from the message |
 
+## Database and health details
+
+In v1.5 mode, `db migrate status --detect --json` returns a `migrations`
+array whose `status` is the detection class (`BASELINE`, `APPLY`, `CONFLICT`
+or `UNKNOWN`). An empty result is `[]`. Remote `db migrate status --json`
+is refused before SSH; run the command on the target host instead.
+
+`db lint --json` and `db lint --format json` emit their findings once and
+exit 1 when violations exist, including with `--rls`. `--metric` cannot be
+combined with JSON output. `status health` and its children require
+`--retries` to be at least 1 in both human and JSON modes.
+
 ## Schemas
 
 Every JSON contract is published as a JSON Schema (draft 2020-12) under `schemas/` in the repository. The files are generated from the Go types by `tools/schemagen`; never edit one by hand. `make schemas` regenerates them and `make schemas-check` (also `go run ./tools/schemagen -check`) fails when a committed file is stale.

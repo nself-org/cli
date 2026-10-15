@@ -180,6 +180,14 @@ type RotateResult struct {
 // This function NEVER reads from or writes to production secrets files — it
 // only generates the key material and records the event in the rotation log.
 func RotateJWTKey(currentKey string) (*RotateResult, error) {
+	return RotateJWTKeyStaged(currentKey, nil)
+}
+
+// RotateJWTKeyStaged generates a key and calls stage before recording rotation.
+// Inputs: the current key and an optional durable-staging callback.
+// Outputs: rotation metadata or an error; a staging failure never updates the log.
+// Constraints: stage must not publish the key until the caller receives success.
+func RotateJWTKeyStaged(currentKey string, stage func(string) error) (*RotateResult, error) {
 	if currentKey == "" {
 		return nil, fmt.Errorf("RotateJWTKey: currentKey is empty — read HASURA_GRAPHQL_JWT_SECRET before rotating")
 	}
@@ -187,6 +195,12 @@ func RotateJWTKey(currentKey string) (*RotateResult, error) {
 	newKey, err := GenerateJWTKey()
 	if err != nil {
 		return nil, err
+	}
+
+	if stage != nil {
+		if err := stage(newKey); err != nil {
+			return nil, err
+		}
 	}
 
 	now := time.Now().UTC()

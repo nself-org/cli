@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/tenant"
 
 	"github.com/spf13/cobra"
@@ -27,6 +28,10 @@ func runDBLint(cmd *cobra.Command, _ []string) error {
 	remediateFlag, _ := cmd.Flags().GetBool("remediate")
 	formatFlag, _ := cmd.Flags().GetString("format")
 
+	if metricFlag && (formatFlag == "json" || jsonEnvelopeOn(cmd)) {
+		return fmt.Errorf("--metric cannot be combined with JSON output")
+	}
+
 	// Legacy path: no --rls flag uses the original tenant_id-only check.
 	if !rlsFlag && !metricFlag {
 		results, err := tenant.LintRLS(cmd.Context(), cfg)
@@ -37,7 +42,15 @@ func runDBLint(cmd *cobra.Command, _ []string) error {
 			if results == nil {
 				results = []tenant.LintResult{}
 			}
-			return emitEnv(cmd, dbLintData{Tables: results}, false)
+			if err := emitEnv(cmd, dbLintData{Tables: results}, false); err != nil {
+				return err
+			}
+			for _, r := range results {
+				if !r.Pass {
+					return errs.Exit(1)
+				}
+			}
+			return nil
 		}
 		if len(results) == 0 {
 			fmt.Println("No tenant-scoped tables found.")
@@ -84,7 +97,13 @@ func runDBLint(cmd *cobra.Command, _ []string) error {
 		if !matrixFlag {
 			report.CoverageMatrix = nil
 		}
-		return emitEnv(cmd, dbLintData{Tables: []tenant.LintResult{}, Report: report}, false)
+		if err := emitEnv(cmd, dbLintData{Tables: []tenant.LintResult{}, Report: report}, false); err != nil {
+			return err
+		}
+		if report.Violations > 0 {
+			return errs.Exit(1)
+		}
+		return nil
 	}
 	if formatFlag == "json" {
 		if !matrixFlag {

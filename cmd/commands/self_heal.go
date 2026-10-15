@@ -168,9 +168,8 @@ func runSelfHealJWT(dryRun bool, toFile string, noPrint bool) error {
 // --json forms of --jwt. It reads the current key from the environment
 // (HASURA_GRAPHQL_JWT_SECRET; RotateJWTKey stores it as OldKey, and the
 // operator builds the JSON envelope for the new key), rotates it, and when
-// toFile is set writes the new key there through writeKeyFile. The target is
-// opened before the rotation, so a bad path fails with E401 and leaves no
-// rotation-log entry for a key nobody received.
+// toFile is set stages and syncs the key before updating the rotation log, then
+// renames it into place. A write or sync failure leaves the log unchanged.
 func rotateJWTToFile(toFile string) (*auth.RotateResult, error) {
 	currentKey := os.Getenv("HASURA_GRAPHQL_JWT_SECRET")
 	if currentKey == "" {
@@ -185,24 +184,40 @@ func rotateJWTToFile(toFile string) (*auth.RotateResult, error) {
 		}
 		defer kf.discard()
 	}
-	result, err := auth.RotateJWTKey(currentKey)
+	return rotateJWTKeyFile(currentKey, kf)
+}
+
+// rotateJWTKeyFile stages a private key before logging, then publishes it.
+// Inputs: current key and an optional file. Outputs: metadata or delivery error.
+// Constraints: failed staging must leave the rotation log unchanged.
+func rotateJWTKeyFile(currentKey string, kf *keyFile) (*auth.RotateResult, error) {
+	var stage func(string) error
+	if kf != nil {
+		stage = func(key string) error { return kf.stage(key + "\n") }
+	}
+	result, err := auth.RotateJWTKeyStaged(currentKey, stage)
 	if err != nil {
 		return nil, err
 	}
 	if kf != nil {
-		if err := kf.commit(result.NewKey + "\n"); err != nil {
-			return nil, fmt.Errorf("write key to file %s: %w (the rotation was logged but the key was not delivered; run the rotation again)", toFile, err)
+		if err := kf.commit(); err != nil {
+			return nil, fmt.Errorf("write key to file %s: %w (the rotation was logged but the key was not delivered; run the rotation again)", kf.target, err)
 		}
 	}
 	return result, nil
 }
 
 // keyFile is a private (0600) temp file in the directory of a --to-file
-// target. commit renames it over the target, so the key file ends 0600 even
+// target. stage writes and syncs it; commit renames it over the target, so the key file ends 0600 even
 // when the target already existed with a wider mode. A symlink target is
 // replaced by a regular file; the file it pointed to is left untouched.
 type keyFile struct {
-	tmp    *os.File
+	tmp interface {
+		WriteString(string) (int, error)
+		Sync() error
+		Close() error
+		Name() string
+	}
 	target string
 	done   bool
 }
@@ -225,8 +240,8 @@ func openKeyFile(target string) (*keyFile, error) {
 	return &keyFile{tmp: tmp, target: target}, nil
 }
 
-// commit writes data, syncs, and renames the temp file over the target.
-func (k *keyFile) commit(data string) error {
+// stage writes and syncs the key before the rotation log is updated.
+func (k *keyFile) stage(data string) error {
 	if _, err := k.tmp.WriteString(data); err != nil {
 		return err
 	}
@@ -236,6 +251,11 @@ func (k *keyFile) commit(data string) error {
 	if err := k.tmp.Close(); err != nil {
 		return err
 	}
+	return nil
+}
+
+// commit publishes the already staged key after the rotation log succeeds.
+func (k *keyFile) commit() error {
 	if err := os.Rename(k.tmp.Name(), k.target); err != nil {
 		return err
 	}

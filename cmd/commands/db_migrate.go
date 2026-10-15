@@ -157,6 +157,16 @@ func runDBMigrateStatus(cmd *cobra.Command, _ []string) error {
 	}
 	detect, _ := cmd.Flags().GetBool("detect")
 
+	if jsonEnvelopeOn(cmd) {
+		target, err := resolveDBRemoteTarget(cmd)
+		if err != nil {
+			return err
+		}
+		if !target.Local {
+			return fmt.Errorf("db migrate status --json is not supported for remote targets; run it on the target host")
+		}
+	}
+
 	// Forward --migration-dir/--detect to the remote CLI: the pre-flight
 	// version-drift check (#162) guarantees the remote binary understands
 	// the flags.

@@ -30,6 +30,10 @@ nself self-heal --jwt
 2. The new key is printed to stdout by default. Use `--to-file <path>` to write
    it to a file at mode 0600 instead. Use `--no-print` to suppress stdout output
    entirely (useful in automated pipelines combined with `--to-file`).
+   With `--to-file`, the key is written and synced in a private temporary file
+   before the rotation log is updated, then renamed over the target. A write
+   or sync failure leaves the log unchanged. If the final rename fails, the
+   command reports that rotation was logged but delivery failed; retry it.
 3. The old key is NOT overwritten automatically. You must apply the new key
    yourself (see steps below).
 4. A 12-hour grace period begins. During this window you should keep both
