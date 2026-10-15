@@ -18,7 +18,7 @@ Templates are full-stack app packages that include a Postgres schema, Hasura met
 
 Use `nself template list` to browse from the CLI, `nself template info <slug>` to inspect a specific template, and `nself init --template <slug>` to install one into a new project directory.
 
-Authors publish via `nself template publish` and receive 80% revenue share on paid templates (requires a KYC-approved author account, see [B55 plugin-author-revenue-share](https://nself.org/docs/developers/revenue-share)).
+Authors publish via `nself template publish` and receive 80% revenue share on paid templates (requires a KYC-approved author account).
 
 ## Bundled Clone Templates
 
@@ -184,7 +184,7 @@ nself template update --force
 - [[cmd-init]], Project initialisation including built-in language scaffolds
 - [[cmd-plugin]], Plugin management
 - [Template Marketplace](https://nself.org/templates), Browse templates in the browser
-- [Publish a template](https://nself.org/docs/templates/publish-template), Author guide
+- [Template overview](https://nself.org/docs/templates/overview), Marketplace guide
 
 [[Home]]
 <!-- END PROSE:description -->

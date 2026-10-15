@@ -7,7 +7,7 @@
 ## This command moved
 
 `audit` was extracted from the core binary into the `audit` plugin as part of
-[CLI-R11](https://github.com/nself-org/cli/blob/main/.claude) (the thin-core
+CLI-R11 (the thin-core
 extraction). The command surface is unchanged — only where the code lives
 changed. Note this is the `nself audit docs` documentation audit; the table
 audit at `nself plugin audit-tables` and the security event log stayed in

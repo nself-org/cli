@@ -50,6 +50,10 @@ func main() {
 	check := flag.Bool("check", false, "verify pages are current; write nothing")
 	report := flag.Bool("report", false, "list pages still carrying placeholder prose")
 	flag.Parse()
+	if err := checkWikiLinks(*dir); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 
 	registry, undo, err := prepareWikiRegistry()
 	if err != nil {

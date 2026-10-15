@@ -7,7 +7,7 @@
 ## This command moved
 
 `watchdog` was extracted from the core binary into the `watchdog` plugin as
-part of [CLI-R11](https://github.com/nself-org/cli/blob/main/.claude) (the
+part of CLI-R11 (the
 thin-core extraction). The command surface is unchanged — only where the
 code lives changed.
 
