@@ -35,7 +35,7 @@ The persistent `--env` flag selects which environment a subcommand operates on (
 
 NAME matches `^[A-Z][A-Z0-9_]{0,127}$`; environments match `^[a-z][a-z0-9-]{0,31}$` and cannot be `ci`, `release`, `team` or begin with `ci-`. Duplicate NAMEs, malformed refs and explicit `--env` are E540. Missing files or keys are E541; unreadable identities and failed decryption are E543. `--json` and a valid `--for-attempt` are required. Values retain input order, include `source: age:<basename>` and have `expires_at: null`.
 
-Resolve and recipient commands refuse symlinked store directories and files with E543. Project stores require a real `.secrets` directory and regular encrypted files; team references require a real `$HOME/.config/nself/secrets` directory and regular `team.age` file.
+Resolve and recipient commands refuse symlinked store directories and files with E543. On Unix they also refuse encrypted files with multiple hard links, so linking a release store as `ci.age` cannot grant its secrets through CI recipient changes. Project stores require a real `.secrets` directory and regular encrypted files; team references require a real `$HOME/.config/nself/secrets` directory and regular `team.age` file.
 
 Every resolver call records exactly one `secret-resolve` audit event with grammar-valid refs, a valid attempt ID, absolute project, user and outcome, including refusals. Invalid refs are represented by their count and SHA-256 prefixes; invalid attempt IDs are represented by a SHA-256 prefix. Values never enter the audit record; an audit failure prevents value delivery. Resolve is CLI-only and refused over MCP and HTTP.
 

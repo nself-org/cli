@@ -19,7 +19,7 @@ import (
 
 var recipientPattern = regexp.MustCompile(`^age1[02-9ac-hj-np-z]{58}$`)
 
-// checkStorePath refuses symlinks and special files without following them.
+// checkStorePath refuses symlinks, special files and multiply linked Unix files.
 // Inputs: expected directory, mapped path and missing-store error.
 // Outputs: nil for a real directory and regular file, otherwise fixed errors.
 // Constraints: age opens by name later; SPORT: P7-TRUST-03, G1.
@@ -41,7 +41,7 @@ func checkStorePath(dir, path string, missing error) error {
 		}
 		return decryptError()
 	}
-	if !info.Mode().IsRegular() {
+	if !info.Mode().IsRegular() || storeHasMultipleLinks(info) {
 		return decryptError()
 	}
 	// Residual TOCTOU: age opens this name after the check. A racing writer

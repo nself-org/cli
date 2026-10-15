@@ -50,8 +50,8 @@ func TestSaveStoreKeepsCiphertextWhenAgeFails(t *testing.T) {
 	}
 }
 
-// TestRecipientsHardlinkLeavesReleaseUntouched proves a ci grant cannot rewrite a linked release store.
-func TestRecipientsHardlinkLeavesReleaseUntouched(t *testing.T) {
+// TestSaveStoreHardlinkLeavesReleaseUntouched proves a save cannot rewrite a linked release store.
+func TestSaveStoreHardlinkLeavesReleaseUntouched(t *testing.T) {
 	root, home, _ := trustFixture(t)
 	trustStore(t, root, "release", "X")
 	release := filepath.Join(root, ".secrets", "release.age")
@@ -64,9 +64,13 @@ func TestRecipientsHardlinkLeavesReleaseUntouched(t *testing.T) {
 		t.Fatal(err)
 	}
 	node := trustKey(t, filepath.Join(home, "node.key"))
-	_, changed, err := Recipients(RecipientsRequest{ProjectRoot: root, File: "ci", Action: "add", Recipient: node}, func(string, map[string]string) error { return nil })
-	if err != nil || !changed {
-		t.Fatal("grant on ci failed", err)
+	store, err := loadStore(root, "ci")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.Recipients = append(store.Recipients, node)
+	if err := saveStore(root, "ci", store); err != nil {
+		t.Fatal("save on ci failed", err)
 	}
 	after, err := os.ReadFile(release)
 	if err != nil || !reflect.DeepEqual(before, after) {
