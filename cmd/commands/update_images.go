@@ -56,8 +56,9 @@ func runUpdateImages(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	// Every core and optional lock entry is a service `nself build` can emit.
-	// The digest is looked up for the reference the project runs by default
-	// (legacy_ref), keyed by the service name ResolveImage uses.
+	// Cache by the inspected reference (legacy_ref), matching ResolveImage.
+	// Entry names are display labels, not service identities: auth versions
+	// and Redis/Valkey can each render under the same service name.
 	for _, locked := range compose.LockedImages() {
 		service, image := locked.Name, locked.LegacyRef
 		// Skip our own image — always uses :latest.
@@ -71,14 +72,14 @@ func runUpdateImages(cmd *cobra.Command, args []string) error {
 			data.Failed = append(data.Failed, service)
 			continue
 		}
-		newDigests[service] = digest
+		newDigests[image] = digest
 
-		changed := oldDigests[service] != digest
+		changed := oldDigests[image] != digest
 		status := "unchanged"
 		if changed {
 			status = "updated"
 		}
-		if _, hadOld := oldDigests[service]; !hadOld {
+		if _, hadOld := oldDigests[image]; !hadOld {
 			status = "new"
 		}
 

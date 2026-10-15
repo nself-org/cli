@@ -69,7 +69,7 @@ func pgvectorImageForVersion(version string) string {
 	return DefaultImage("postgres")
 }
 
-// ImageDigests maps service name to sha256 digest for image pinning.
+// ImageDigests maps an exact image reference to its sha256 digest.
 // When a digest is available, ResolveImage appends @sha256:... to the tag.
 // Populated by LoadImageDigests from the project config directory.
 var ImageDigests = map[string]string{}
@@ -109,8 +109,10 @@ func ResolveImage(service, image string) string {
 	if strings.Contains(resolved, "@sha256:") {
 		return resolved
 	}
-	// Append digest if available for this service.
-	if digest, ok := ImageDigests[service]; ok && digest != "" {
+	// A service can render multiple images (auth versions, Redis or Valkey).
+	// Only append the digest inspected for this exact reference. Old service
+	// keys are ambiguous and deliberately ignored; update images refreshes them.
+	if digest, ok := ImageDigests[resolved]; ok && digest != "" {
 		resolved = resolved + "@sha256:" + digest
 	}
 	return resolved
