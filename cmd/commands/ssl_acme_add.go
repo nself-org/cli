@@ -142,7 +142,11 @@ func writeAndVerifyAdd(ctx context.Context, r *acmeRun, l acme.Lineage, cert []b
 			return e151(installFailed(acmeRefuse("the certificate is installed; fix the conf directory and re-run", "writing nginx conf: %v", err)))
 		}
 	}
-	if r.provider != build.ProviderTraefik {
+	if r.provider == build.ProviderTraefik {
+		if up, _ := r.cmd.Flags().GetString("upstream"); up != "" {
+			ui.Warn("traefik has no route for " + l.Domains[0] + " yet (D-0791): --upstream " + up + " is not applied; the certificate is installed")
+		}
+	} else {
 		if err := reload.Reload(ctx); err != nil {
 			return e151(installFailed(acmeRefuse("fix the nginx error above; the certificate is installed", "%v", err)))
 		}
