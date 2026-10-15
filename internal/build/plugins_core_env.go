@@ -30,6 +30,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/compose"
@@ -189,8 +190,8 @@ func normalizeComposePluginCoreEnv(content []byte, pluginDir, pluginName string)
 		// inject by design, so no warning.
 		if port > 0 {
 			warnOnce(fmt.Sprintf(
-				"plugin %q: %s has several services and none is named %s, nself-%s or plugin-%s, so the core env vars were not injected",
-				pluginName, filepath.Join(pluginDir, pluginName, pluginComposeFilename), pluginName, pluginName, pluginName))
+				"plugin %q: %s has several services and none is named %s, so the core env vars were not injected",
+				pluginName, filepath.Join(pluginDir, pluginName, pluginComposeFilename), strings.Join(pluginServiceCandidates(pluginName, manifestName), ", ")))
 		}
 		return content
 	}
