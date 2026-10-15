@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/nself-org/cli/internal/hostcase"
 )
 
 // headerValue returns the first canonical header value, like Header.Get.
@@ -22,13 +24,13 @@ func headerValue(h http.Header, key string) string {
 
 func (s *Server) authorized(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.hosts[lowerASCII(r.Host)] {
+		if !s.hosts[hostcase.LowerASCII(r.Host)] {
 			s.unauthenticatedFailure(w, "E428", 421)
 			return
 		}
 		origin := headerValue(r.Header, "Origin")
 		_, originPresent := r.Header["Origin"]
-		if len(r.Header.Values("Origin")) > 1 || originPresent && (!strings.HasPrefix(origin, "http://") || !s.hosts[lowerASCII(strings.TrimPrefix(origin, "http://"))]) {
+		if len(r.Header.Values("Origin")) > 1 || originPresent && (!strings.HasPrefix(origin, "http://") || !s.hosts[hostcase.LowerASCII(strings.TrimPrefix(origin, "http://"))]) {
 			s.unauthenticatedFailure(w, "E429", 403)
 			return
 		}

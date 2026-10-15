@@ -35,9 +35,9 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 
 	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/hostcase"
 	"github.com/nself-org/cli/internal/httpapi"
 	"github.com/nself-org/cli/internal/machineauth"
 )
@@ -72,7 +72,7 @@ const mcpHostRefusal = "E428 Host not allowed: use the listener host or pass --a
 
 // mcpHostCheck returns the wrapper that serves only requests whose Host is
 // localhost, 127.0.0.1, [::1] or an allowed host, each with the listener
-// port. The comparison is case-insensitive and exact, as in
+// port. The comparison is ASCII case-insensitive and exact, as in
 // internal/httpapi/server.go. A Host without a port, or a request with no
 // local address, is refused with 421 before any body byte is read.
 func mcpHostCheck(allowed []string) func(http.Handler) http.Handler {
@@ -80,9 +80,9 @@ func mcpHostCheck(allowed []string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if port, ok := mcpListenerPort(r); ok {
-				host := strings.ToLower(r.Host)
+				host := hostcase.LowerASCII(r.Host)
 				for _, n := range names {
-					if host == strings.ToLower(n+":"+port) {
+					if host == hostcase.LowerASCII(n+":"+port) {
 						next.ServeHTTP(w, r)
 						return
 					}

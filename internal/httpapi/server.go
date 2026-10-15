@@ -21,6 +21,7 @@ import (
 
 	"github.com/nself-org/cli/internal/cmdregistry"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/hostcase"
 	"github.com/nself-org/cli/internal/invoke"
 )
 
@@ -157,7 +158,7 @@ func New(o Options) (*Server, error) {
 		s.routes[cmdregistry.RoutePath(c.Path)] = strings.TrimPrefix(c.Path, "nself ")
 	}
 	for _, host := range append([]string{"localhost", "127.0.0.1", "[::1]"}, o.AllowedHosts...) {
-		s.hosts[lowerASCII(fmt.Sprintf("%s:%d", host, o.Port))] = true
+		s.hosts[hostcase.LowerASCII(fmt.Sprintf("%s:%d", host, o.Port))] = true
 	}
 	s.mux.HandleFunc("/", s.route)
 	return s, nil

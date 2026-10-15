@@ -84,7 +84,7 @@ func FuzzRoutePath(f *testing.F) {
 // allowed Host is accepted.
 func FuzzHostHeader(f *testing.F) {
 	for _, seed := range []string{
-		"localhost:3857", "LOCALHOST:3857", "127.0.0.1:3857", "[::1]:3857", "fake.example:3857", "FAKE.example:3857", "fa\u212Ae.example:3857",
+		"localhost:3857", "LOCALHOST:3857", "127.0.0.1:3857", "[::1]:3857", "fake.example:3857", "FAKE.example:3857", "fa\u212Ae.example:3857", "FA\u212AE.EXAMPLE:3857",
 		"", ":3857", "localhost", "localhost.:3857", "localhost.evil.com:3857", "127.0.0.1.evil.com:3857", "a@127.0.0.1:3857",
 		"[::1]", "[0:0:0:0:0:0:0:1]:3857", "evil.example:3857", "localhost:3857 ", " localhost:3857", "localhost:03857", "\x00",
 	} {
