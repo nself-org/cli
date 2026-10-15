@@ -52,8 +52,8 @@ func NewSSHRemote(ctx context.Context, host, keyPath, env, server string) (*SSHR
 	if err != nil {
 		return nil, errs.New("E484", err.Error())
 	}
-	if keyPath != "" && !SSHKeyRe.MatchString(keyPath) {
-		return nil, fmt.Errorf("ssh key path contains unsafe characters (got %q): only [a-zA-Z0-9/_.~-] allowed", keyPath)
+	if err := checkDeployKeyPath(keyPath); err != nil {
+		return nil, err
 	}
 	policy, err := HostKeyOptions(ctx, spec.String(), env, server, true)
 	if err != nil {
@@ -69,7 +69,7 @@ func NewSSHRemote(ctx context.Context, host, keyPath, env, server string) (*SSHR
 func sshOpts(keyPath string, policy []string) []string {
 	var opts []string
 	if keyPath != "" {
-		opts = append(opts, "-i", keyPath)
+		opts = append(opts, "-i", sshKeyPath(keyPath))
 	}
 	opts = append(opts, policy...)
 	return append(opts, "-o", "ForwardAgent=no", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10")
@@ -138,6 +138,14 @@ func rsyncArgv(spec remote.HostSpec, sshOpts, flags []string, filesFrom, srcDir,
 		if !rsyncFlagOK.MatchString(f) {
 			return nil, fmt.Errorf("rsync flag %q is not allowed (no delete, no transport override)", f)
 		}
+	}
+	filesFrom, err = rsyncLocalOperand(filesFrom)
+	if err != nil {
+		return nil, err
+	}
+	srcDir, err = rsyncLocalOperand(srcDir)
+	if err != nil {
+		return nil, err
 	}
 	target := spec.String()
 	if spec.Port != 0 {

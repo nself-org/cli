@@ -443,9 +443,15 @@ SSH key defaults to `~/.ssh/id_ed25519`. Override with `NSELF_DEPLOY_SSH_KEY`.
 
 Agent forwarding is always disabled (`-o ForwardAgent=no`). ssh, scp and rsync get their options as
 separate arguments from one builder; no option, key path or remote path is ever parsed by a shell.
-Before any process starts, the CLI refuses a key path outside `[a-zA-Z0-9/_.~-]` or starting with
-`-`, a remote path with shell metacharacters, a leading `-` or a `..` segment, and any ssh option
-holding whitespace or a quote (rsync re-splits its `-e` string on spaces).
+Before a connection starts, the CLI refuses a key path outside `[a-zA-Z0-9/_.~-]` or starting with
+`-`; absolute Windows drive paths such as `C:/Users/Jane/.ssh/id_ed25519` and backslash separators
+are also accepted. Key paths must have no spaces. Remote paths cannot contain shell metacharacters,
+a leading `-` or a `..` segment. SSH option tokens refuse whitespace and quotes except for the
+canonical quoted pin-file option, which supports home directories containing spaces.
+
+On Windows, rsync requires the matching MSYS/Cygwin `cygpath` on `PATH`. The CLI uses `cygpath -u`
+to map local sources and file lists to that runtime's mount paths, preserving directory trailing
+slashes. A missing or failing converter stops the copy with an error. Native scp retains Windows paths.
 
 **Host keys.** Which policy a deploy uses depends on what it sends:
 
@@ -453,7 +459,8 @@ holding whitespace or a quote (rsync re-splits its `-e` string on spaces).
 |---|---|---|
 | Secrets push (`.env.<target>` copied with scp) | strict | strict |
 | Deploy that ships an env file (inventory deploy, `nself deploy <target>` push) | strict, every connection of the run | strict |
-| Compose file only | `StrictHostKeyChecking=accept-new` | strict |
+| Compose file only, non-production | `StrictHostKeyChecking=accept-new` | `accept-new` (P7-DEPL-29) |
+| Compose file only, production through control-plane | `StrictHostKeyChecking=accept-new` | strict |
 | Read-only commands (probes outside a shipping run, `logs`, `health`) | `StrictHostKeyChecking=accept-new` | `accept-new` with nself's own key file (below) |
 
 Strict means the CLI scans the host's live key and continues only when that key is already trusted,
