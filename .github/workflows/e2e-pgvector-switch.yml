@@ -1,0 +1,51 @@
+name: E2E pgvector image switch
+
+on:
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-pgvector-switch-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  pgvector-switch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ['15', '16', '17']
+    env:
+      POSTGRES_VERSION: ${{ matrix.postgres }}
+      W: /tmp/nself-pgvector-switch
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build CLI from this ref
+        run: |
+          mkdir -p "$W/bin"
+          go build -mod=vendor -o "$W/bin/nself" ./cmd/nself
+          echo "$W/bin" >> "$GITHUB_PATH"
+      - name: Verify Docker
+        run: docker info
+      - name: Switch, verify data, roll back and resume
+        run: bash scripts/e2e/pgvector-switch.sh
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: pgvector-switch-pg${{ matrix.postgres }}
+          path: |
+            ${{ env.W }}/*.log
+            ${{ env.W }}/*.out
+            ${{ env.W }}/*.json
+            ${{ env.W }}/snap.*
+          retention-days: 7

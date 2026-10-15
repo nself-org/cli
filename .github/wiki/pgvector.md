@@ -101,3 +101,13 @@ docker volume rm <project>_postgres_data
 - `POSTGRES_DATA_VOLUME` is written to `.env`. If another env file in the cascade sets `POSTGRES_IMAGE` or `POSTGRES_DATA_VOLUME`, the switch stops and names the problem; the env file is put back.
 
 See [[error-codes]] for E507 to E512.
+
+## Image-switch acceptance coverage
+
+The nightly `E2E pgvector image switch` workflow runs the switch, data checks, rollback
+and interrupted-switch recovery on Postgres 15, 16 and 17. To exercise another
+supported major (12 through 17) on a Linux Docker host, build this ref and run
+`POSTGRES_VERSION=15 W=/path/to/shared-work bash scripts/e2e/pgvector-switch.sh`
+from the repository root. `POSTGRES_VERSION` defaults to 16; the fixture starts
+`postgres:<major>-alpine` and verifies a same-major pgvector target. The work path
+must be visible to Docker and have no existing `e2e-adopt-pgs` project.

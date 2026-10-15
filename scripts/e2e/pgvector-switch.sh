@@ -6,11 +6,14 @@
 # Legs: --plan changes nothing; a restore that fails (E511) and a row committed during the restore
 # (E510) switch nothing; SIGKILL after env is written -> `start` is refused (E512) -> --resume;
 # a second run changes nothing; --rollback; SIGKILL during the restore -> --resume converges.
-# Inputs: W shared host/container path, nself/docker/curl/jq on PATH, run from the repo root.
+# Inputs: W shared host/container path, POSTGRES_VERSION major (default 16),
+# nself/docker/curl/jq on PATH, run from the repo root.
 # Outputs: non-vacuous PASS assertions. Constraints: fake credentials only; cleanup owns only the
 # e2e-adopt-pgs* containers, volumes and project; shared Docker stays running.
 set -euo pipefail
 export NSELF_V15=1
+POSTGRES_VERSION="${POSTGRES_VERSION:-16}"
+case "$POSTGRES_VERSION" in 12|13|14|15|16|17) ;; *) echo "FAIL: unsupported POSTGRES_VERSION: $POSTGRES_VERSION"; exit 1 ;; esac
 command -v openssl >/dev/null || apk add -q openssl >/dev/null
 : "${W:?W must be a host-visible work directory}"
 REPO="$PWD"
@@ -49,6 +52,11 @@ F_JWT=FAKE-SWITCH-JWT-KEY-0000000000000000000000000
 B=24000
 cd "$DIR"
 nself init --non-interactive --name "$P" --no-pgvector >>"$LOG" 2>&1 || fail init
+# Keep image settings in .env: the switch must be able to replace them there.
+awk '!/^POSTGRES_(VERSION|IMAGE)=/' .env > "$W/base.env"
+printf '\nPOSTGRES_VERSION=%s-alpine\nPOSTGRES_IMAGE=postgres:%s-alpine\n' "$POSTGRES_VERSION" "$POSTGRES_VERSION" >> "$W/base.env"
+mv "$W/base.env" .env
+chmod 600 .env
 cat >>.env.local <<ENV
 ENV=dev
 POSTGRES_PASSWORD=$F_PG
@@ -79,7 +87,9 @@ pg() { docker exec "$PGC" psql -X -U postgres -d "${DB:-$PGDB}" -v ON_ERROR_STOP
 pgs() { DB=postgres pg "$1"; }
 test "$(pg "SELECT count(*) FROM public.np_plugins WHERE name='a10-fixture'")" = 1 || fail 'plugin row missing'
 image_of() { docker inspect --format '{{.Config.Image}}' "$PGC"; }
-case "$(image_of)" in *alpine*) ;; *) fail "expected an alpine postgres, got $(image_of)" ;; esac
+case "$(image_of)" in "postgres:${POSTGRES_VERSION}-alpine"|"postgres:${POSTGRES_VERSION}-alpine@sha256:"*) ;; *) fail "expected postgres:${POSTGRES_VERSION}-alpine, got $(image_of)" ;; esac
+test "$(pg 'SHOW server_version_num')" -ge "$((POSTGRES_VERSION * 10000))" &&
+  test "$(pg 'SHOW server_version_num')" -lt "$(((POSTGRES_VERSION + 1) * 10000))" || fail 'wrong source Postgres major'
 files_sha() { cat docker-compose.yml nself.lock.yaml .env | sha; }
 
 # ---- seed -------------------------------------------------------------------------------------
@@ -206,7 +216,7 @@ jq -e '.data.status=="switched"' "$W/resume.json" >/dev/null || fail 'resume rep
 
 # ---- after the switch -------------------------------------------------------------------------
 wait_for 120 running_all || fail 'the stack is not running after the resume'
-case "$(image_of)" in *pgvector*) ;; *) fail "postgres is not a pgvector image: $(image_of)" ;; esac
+case "$(image_of)" in "pgvector/pgvector:pg${POSTGRES_VERSION}"*) ;; *) fail "postgres is not pgvector pg${POSTGRES_VERSION}: $(image_of)" ;; esac
 NEWVOL="$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' "$PGC")"
 test "$NEWVOL" != "$OLDVOL" && test "$NEWVOL" = "$(sed -n 's/^POSTGRES_DATA_VOLUME=//p' .env | tail -1 | tr -d '"')" || fail 'postgres is not on the new volume named in .env'
 grep -q "name: $NEWVOL" docker-compose.yml || fail 'compose does not name the new volume'
@@ -268,4 +278,4 @@ snap >"$W/snap.after2"
 cmp "$W/snap.before" "$W/snap.after2" || { diff "$W/snap.before" "$W/snap.after2" | head -20 || true; fail 'the data differs after a kill during the restore and a resume'; }
 test "$(docker ps -aq --filter "name=^nself-imgswitch-${P}" | wc -l | tr -d ' ')" = 0 || fail 'a one-shot container was left behind'
 pass 'SIGKILL during the restore: --resume converges to the same data, no one-shot container is left'
-echo 'PASS: pgvector-switch e2e'
+echo "PASS: pgvector-switch e2e (Postgres $POSTGRES_VERSION)"
