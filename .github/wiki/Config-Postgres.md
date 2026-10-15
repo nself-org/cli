@@ -6,7 +6,11 @@ PostgreSQL is the foundation of every ɳSelf stack. It stores all application da
 
 ## Environment Variables
 
-All Postgres variables are optional except `POSTGRES_PASSWORD`, which must be set explicitly because ɳSelf will never generate a default database password for you.
+All Postgres variables are optional. When `POSTGRES_PASSWORD` is unset, ɳSelf generates a secure random password. On the first `nself build`, a freshly generated password is saved to `.env.secrets` with permissions `0600` and reused on subsequent builds, provided the key is absent from any env file and no process export supplies it. The same persistence rule applies to `HASURA_GRAPHQL_ADMIN_SECRET`.
+
+`.env.secrets` is shared across environments and takes precedence over `.env` and `.env.<env>`; `.env.local` takes precedence over `.env.secrets`. Env-file values also override process exports. Build does not copy an explicit value into `.env.secrets`. If the key exists only in an inactive environment's file (for example, `.env.prod` during a dev build), build does not persist the dev-generated value, because doing so would shadow the other environment's credential. See [[Configuration-Precedence]].
+
+For stacks built before generated credentials were persisted (D-0506, #710), `nself build` reuses the previous literal value from `.nself/compose.env` when no env file or process export supplies the key. Adopted values are not automatically persisted. To pin these existing credentials, copy the `POSTGRES_PASSWORD` and `HASURA_GRAPHQL_ADMIN_SECRET` values from that file into `.env.secrets` (or the appropriate env file), preserving their literal values and valid env-file quoting. Keep the destination file private (`0600`) and out of version control. Do not substitute a newly generated password for an existing database's password.
 
 | Variable | Default | Required | Description |
 |----------|---------|----------|-------------|
@@ -18,7 +22,7 @@ All Postgres variables are optional except `POSTGRES_PASSWORD`, which must be se
 | `POSTGRES_PORT` | `5432` | No | Port exposed to the host machine. Change this if you have a port conflict with another local Postgres instance (e.g., set to `5433`). |
 | `POSTGRES_DB` | `nself` | No | Name of the default database created on first start. |
 | `POSTGRES_USER` | `postgres` | No | Superuser account name for the database. |
-| `POSTGRES_PASSWORD` | *(none)* | **Yes** | Superuser password. Must be at least 16 characters. ɳSelf enforces a minimum length and rejects common insecure patterns (e.g., `postgres`, `password`, `changeme`). |
+| `POSTGRES_PASSWORD` | *(generated once and persisted when no source supplies it)* | No | Superuser password. `nself build` saves a freshly generated value to `.env.secrets`; see persistence and upgrade guidance above. Explicit passwords must be at least 16 characters; insecure patterns such as `postgres`, `password`, and `changeme` are rejected. |
 | `POSTGRES_EXTENSIONS` | `uuid-ossp` | No | Comma-separated list of extensions to install automatically at startup. The extensions `uuid-ossp`, `pgcrypto`, and `pg_trgm` are always installed regardless of this value. Add additional extensions here as needed. When this list contains `pgvector` and `POSTGRES_IMAGE` is unset, `nself build` selects the `pgvector/pgvector:pg<major>` image instead of plain `postgres:<POSTGRES_VERSION>`. |
 | `POSTGRES_EXPOSE_PORT` | `auto` | No | Controls whether `POSTGRES_PORT` is bound on the host. `auto` exposes the port in dev and hides it in prod. Set to `true` to always expose, or `false` to always hide. |
 | `POSTGRES_MEM_LIMIT` | `2g` | No | Docker memory limit for the Postgres container. Uses Docker format: `512m`, `1g`, `4g`, etc. |

@@ -2,6 +2,11 @@
 
 All notable changes to the ɳSelf CLI are documented in this file. Format loosely
 follows Keep a Changelog, with Conventional Commit classification.
+
+## [Unreleased]
+
+- fix(build): persist freshly generated `POSTGRES_PASSWORD` and `HASURA_GRAPHQL_ADMIN_SECRET` to `.env.secrets` (`0600`) when no env file or process export supplies the key (D-0506, #710). Upgrade: older stacks reuse the previous literal values from `.nself/compose.env`; these adopted values are not automatically persisted. To pin them, copy the existing credentials into `.env.secrets` (or the appropriate env file), preserving env-file quoting, keep the file private and untracked, and do not replace an existing database's password with a new random value. `.env.secrets` overrides `.env` and `.env.<env>`; `.env.local` still wins. See [[Config-Postgres]].
+
 ## [1.4.13] - 2026-10-10
 
 - fix(compose): pull MinIO from the maintained pgsty fork (#476)
