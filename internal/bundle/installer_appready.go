@@ -10,10 +10,12 @@ package bundle
 // the plugins that were on disk before the install (name -> version).
 // Outputs: nil, or E135 (v1.5) / a printed warning (v1.4) for a failed step.
 // Constraints: a ledger write failure does NOT roll the install back (the plugins
-// are on disk); the error says so. Hooks nil: only the ledger step runs.
+// are on disk); the error says so. A failed reconcile does: the fresh members are
+// undone (installer_appready_undo.go, D-0760). Hooks nil: only the ledger step runs.
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -24,6 +26,7 @@ import (
 	"github.com/nself-org/cli/internal/bundle/appready"
 	"github.com/nself-org/cli/internal/bundle/ledger"
 	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
 )
 
@@ -73,6 +76,7 @@ func finishInstall(ctx context.Context, rn *appready.Runner, store *ledger.Store
 		out = os.Stderr
 	}
 	var names []string
+	wasRecorded := false
 	_ = rn.Step(appready.StepLedger, func() (string, error) {
 		members, err := installedMembers(pluginDir, planned)
 		if err != nil {
@@ -82,6 +86,7 @@ func finishInstall(ctx context.Context, rn *appready.Runner, store *ledger.Store
 			return "no installed members to record", nil
 		}
 		if err := store.Update(func(l *ledger.Ledger) error {
+			_, wasRecorded = l.Bundles[strings.ToLower(result.Bundle)]
 			// A member that was on disk before this install and has no ledger
 			// record was installed on its own: record it explicit so a later
 			// bundle remove keeps it. (Errs toward keeping the plugin.)
@@ -114,7 +119,18 @@ func finishInstall(ctx context.Context, rn *appready.Runner, store *ledger.Store
 		appready.Render(out, rep)
 	}
 	if f := rn.Failure(); f != nil {
-		return appReadyVerdict(out, result.Bundle, f)
+		verdict := appReadyVerdict(out, result.Bundle, f)
+		if f.Step == appready.StepReconcile {
+			// D-0760: a failed or refused reconcile leaves no new member behind.
+			cfg := opts.Config
+			if cfg == nil {
+				cfg = &config.Config{}
+			}
+			if uerr := undoFreshMembers(ctx, cfg, opts, store, pluginDir, freshMembers(planned, before), wasRecorded, result.Bundle, result, before, out); uerr != nil {
+				return errors.Join(verdict, uerr)
+			}
+		}
+		return verdict
 	}
 	return nil
 }

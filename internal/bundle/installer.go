@@ -78,6 +78,11 @@ type InstallOpts struct {
 	// these nil and the installer uses plugin.Install / plugin.Remove.
 	installer func(ctx context.Context, cfg *config.Config, name, pluginDir string) error
 	remover   func(ctx context.Context, cfg *config.Config, name, pluginDir string) error
+
+	// undoer reverses a fresh member install after a failed reconcile (D-0760).
+	// Production code leaves it nil and the installer uses plugin.UndoInstall,
+	// which never drops a schema.
+	undoer func(ctx context.Context, cfg *config.Config, name, pluginDir string) error
 }
 
 // InstallResult captures the outcome of a bundle install for callers that
