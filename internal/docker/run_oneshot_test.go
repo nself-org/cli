@@ -90,3 +90,17 @@ func TestBuildRunArgs_Hardening(t *testing.T) {
 		t.Errorf("argv = %q, want %q", got, want)
 	}
 }
+
+func TestBuildRunArgs_CapabilityAllowlist(t *testing.T) {
+	args, err := buildRunArgs(RunSpec{
+		Image: "img:1", Args: []string{"bash", "/stage/restore.sh"},
+		CapDrop: []string{"ALL"}, CapAdd: []string{"CHOWN", "SETUID", "SETGID", "DAC_OVERRIDE", "FOWNER"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "run --rm --cap-drop ALL --cap-add CHOWN --cap-add SETUID --cap-add SETGID --cap-add DAC_OVERRIDE --cap-add FOWNER img:1 bash /stage/restore.sh"
+	if got := strings.Join(args, " "); got != want {
+		t.Errorf("argv = %q, want %q", got, want)
+	}
+}

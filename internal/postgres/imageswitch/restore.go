@@ -77,7 +77,10 @@ func (s *Switch) restore(ctx context.Context) error {
 	uid, gid := hostIDs()
 	spec := docker.RunSpec{
 		Image: s.st.NewImage, Name: s.oneShot("restore"), User: "0:0", Network: "none",
-		Args: []string{"bash", "/stage/restore.sh"},
+		// Root reads the owner-only stage, hands off to postgres via gosu, and returns ownership.
+		CapDrop: []string{"ALL"},
+		CapAdd:  []string{"CHOWN", "SETUID", "SETGID", "DAC_OVERRIDE", "FOWNER"},
+		Args:    []string{"bash", "/stage/restore.sh"},
 		EnvPass: map[string]string{
 			"BOOT_USER": cl.Bootstrap, "NSELF_COLLATE": collate, "NSELF_CTYPE": ctype,
 			"HOST_UID": strconv.Itoa(uid), "HOST_GID": strconv.Itoa(gid),

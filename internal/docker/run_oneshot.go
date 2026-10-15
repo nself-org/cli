@@ -45,6 +45,8 @@ type RunSpec struct {
 	ReadOnly bool
 	// CapDrop lists capabilities to drop (`--cap-drop X`); "ALL" drops every one.
 	CapDrop []string
+	// CapAdd lists capabilities to add back after CapDrop (`--cap-add X`).
+	CapAdd []string
 	// SecurityOpt lists `--security-opt` values, e.g. "no-new-privileges:true".
 	SecurityOpt []string
 	// Name is the container name (`--name`); a caller that sets one can remove a
@@ -86,6 +88,9 @@ func buildRunArgs(spec RunSpec) ([]string, error) {
 	}
 	for _, c := range spec.CapDrop {
 		args = append(args, "--cap-drop", c)
+	}
+	for _, c := range spec.CapAdd {
+		args = append(args, "--cap-add", c)
 	}
 	for _, o := range spec.SecurityOpt {
 		args = append(args, "--security-opt", o)
