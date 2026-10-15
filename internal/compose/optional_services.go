@@ -25,7 +25,7 @@ func (g *Generator) buildMinioService() ServiceConfig {
 		// The minio entry in images.yaml is registry-qualified (docker.io/pgsty/minio);
 		// the Docker Hub minio/minio repository no longer exists (ADR 0028).
 		Image:         ResolveImage("minio", ImageRef("minio", version)),
-		ContainerName: fmt.Sprintf("%s_minio", g.cfg.ProjectName),
+		ContainerName: g.containerName("minio"),
 		Restart:       "unless-stopped",
 		Networks:      []string{g.cfg.DockerNetwork},
 		Environment: map[string]string{
@@ -90,7 +90,7 @@ func (g *Generator) buildMailpitService() ServiceConfig {
 
 	return ServiceConfig{
 		Image:         ResolveImage("mailpit", ImageRef("mailpit", version)),
-		ContainerName: fmt.Sprintf("%s_mailpit", g.cfg.ProjectName),
+		ContainerName: g.containerName("mailpit"),
 		Restart:       "unless-stopped",
 		User:          "1000:1000",
 		Networks:      []string{g.cfg.DockerNetwork},
