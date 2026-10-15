@@ -77,8 +77,15 @@ func (t *SSHTransport) sshArgsContext(ctx context.Context) ([]string, error) {
 		}
 		args = append(args, policy...)
 	} else if compat.V15() { // compat.V15(P7-DEPL-13): accept-new -> strict host key checking for access writes.
-		home, _ := os.UserHomeDir()
-		args = append(args, "-o", "StrictHostKeyChecking=yes", "-o", "GlobalKnownHostsFile="+filepath.Join(home, ".config", "nself", "deploy_known_hosts"))
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
+		option, err := remote.GlobalKnownHostsFileOption(filepath.Join(home, ".config", "nself", "deploy_known_hosts"))
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, "-o", "StrictHostKeyChecking=yes", "-o", option)
 		if spec.Port != 0 {
 			alias := "nself-" + strings.ReplaceAll(spec.Host, ":", "-") + "-" + strconv.Itoa(spec.Port)
 			args = append(args, "-o", "HostKeyAlias="+alias)

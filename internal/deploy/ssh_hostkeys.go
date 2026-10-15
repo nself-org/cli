@@ -30,11 +30,9 @@ func DeployKnownHostsPath() string {
 	return filepath.Join(home, ".config", "nself", "deploy_known_hosts")
 }
 
-// knownHostsOption is the GlobalKnownHostsFile option for the pin file. The
-// path uses forward slashes so a Windows home (C:\Users\...) passes the
-// transport token check (no backslash) and OpenSSH for Windows still reads it.
-func knownHostsOption() string {
-	return "GlobalKnownHostsFile=" + filepath.ToSlash(DeployKnownHostsPath())
+// knownHostsOption quotes the absolute pin path for OpenSSH.
+func knownHostsOption() (string, error) {
+	return remote.GlobalKnownHostsFileOption(DeployKnownHostsPath())
 }
 
 func deployHostPort(spec remote.HostSpec) int {
@@ -109,6 +107,10 @@ func HostKeyPolicy(ctx context.Context, host, env, server string, strict, shipsS
 	if !shipsSecrets && (!compat.V15() || !strict) {
 		return acceptNewPolicy(), nil
 	}
+	pinOption, err := knownHostsOption()
+	if err != nil {
+		return nil, err
+	}
 	keys, err := ScanDeployKeys(ctx, spec)
 	if err != nil {
 		return nil, errs.New("E487", fmt.Sprintf("host key scan for %s failed: %v", spec.Host, err))
@@ -129,7 +131,7 @@ func HostKeyPolicy(ctx context.Context, host, env, server string, strict, shipsS
 			// A client that joins an existing ControlMaster socket does no host-key
 			// check, so a strict connection never shares one (an accept-new probe
 			// could have opened it): ControlMaster=no, ControlPath=none.
-			opts := []string{"-o", "StrictHostKeyChecking=yes", "-o", knownHostsOption(), "-o", "ControlMaster=no", "-o", "ControlPath=none"}
+			opts := []string{"-o", "StrictHostKeyChecking=yes", "-o", pinOption, "-o", "ControlMaster=no", "-o", "ControlPath=none"}
 			if alias != spec.Host && !operator[k.Fingerprint] {
 				opts = append(opts, "-o", "HostKeyAlias="+alias)
 			}

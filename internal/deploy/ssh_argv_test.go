@@ -236,7 +236,10 @@ func TestKnownHostsOptionIsAValidToken(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	opt := knownHostsOption()
+	opt, err := knownHostsOption()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := checkTransportToken(opt); err != nil {
 		t.Fatalf("knownHostsOption %q refused: %v", opt, err)
 	}

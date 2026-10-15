@@ -123,7 +123,7 @@ func TestSecretShippingPinsHostKeyV14(t *testing.T) {
 				t.Fatalf("calls = %#v", calls)
 			}
 			joined := strings.Join(calls[0].args, " ")
-			for _, w := range []string{"StrictHostKeyChecking=yes", "GlobalKnownHostsFile=" + DeployKnownHostsPath(), "HostKeyAlias=" + alias} {
+			for _, w := range []string{"StrictHostKeyChecking=yes", `GlobalKnownHostsFile="` + filepath.ToSlash(DeployKnownHostsPath()) + `"`, "HostKeyAlias=" + alias} {
 				if !strings.Contains(joined, w) {
 					t.Errorf("scp argv lacks %q: %s", w, joined)
 				}
@@ -280,8 +280,8 @@ func TestSecretShippingOperatorKnownHost(t *testing.T) {
 				t.Fatalf("calls = %#v", calls)
 			}
 			for _, c := range []recordedCall{calls[0], calls[len(calls)-1]} {
-				joined := strings.Join(c.args, " ")
-				for _, w := range []string{"StrictHostKeyChecking=yes", "GlobalKnownHostsFile=" + DeployKnownHostsPath()} {
+				joined := strings.ReplaceAll(strings.Join(c.args, " "), `""`, `"`)
+				for _, w := range []string{"StrictHostKeyChecking=yes", `GlobalKnownHostsFile="` + filepath.ToSlash(DeployKnownHostsPath()) + `"`} {
 					if !strings.Contains(joined, w) {
 						t.Errorf("%s argv lacks %q: %s", c.tool, w, joined)
 					}

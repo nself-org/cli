@@ -130,10 +130,9 @@ func rsyncArgv(spec remote.HostSpec, sshOpts, flags []string, filesFrom, srcDir,
 		return nil, err
 	}
 	all := append(append([]string{}, sshOpts...), spec.SSHOptions()...)
-	for _, opt := range all {
-		if strings.ContainsAny(opt, " \t\n\r'\"\\") {
-			return nil, fmt.Errorf("ssh option %q is unsafe in rsync -e", opt)
-		}
+	sshCommand, err := rsyncSSHCommand(all)
+	if err != nil {
+		return nil, err
 	}
 	for _, f := range flags {
 		if !rsyncFlagOK.MatchString(f) {
@@ -145,7 +144,7 @@ func rsyncArgv(spec remote.HostSpec, sshOpts, flags []string, filesFrom, srcDir,
 		target = strings.TrimSuffix(target, ":"+strconv.Itoa(spec.Port))
 	}
 	// --keep-dirlinks: a symlinked nginx/ on the host is followed, never replaced by a real dir.
-	args := []string{"-a", "--keep-dirlinks", "-e", "ssh " + strings.Join(all, " ")}
+	args := []string{"-a", "--keep-dirlinks", "-e", sshCommand}
 	args = append(args, flags...)
 	args = append(args, "--files-from="+filesFrom, "--", strings.TrimSuffix(srcDir, "/")+"/", target+":"+strings.TrimSuffix(destDir, "/")+"/")
 	return args, nil

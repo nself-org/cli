@@ -5,9 +5,10 @@ package deploy
 // Inputs:  a parsed remote.HostSpec, an optional key path and a host-key
 //          policy (the "-o ..." tokens hostKeyPolicy returned).
 // Outputs: argv slices for ssh, rsync and scp; every element is checked.
-// Constraints: argv only, no shell. rsync -e re-splits its value on blanks, so
-//              every option token must be free of blanks, quotes, backslash,
-//              backtick and control bytes. Local operands are made absolute so
+// Constraints: argv only, no shell. rsync -e re-splits its value on blanks.
+//              Only canonical quoted pin-file tokens allow blanks and quotes;
+//              all other tokens exclude blanks, quotes, backslash and backtick.
+//              Local operands are made absolute so
 //              scp and rsync never read them as host:path or as an option.
 
 import (
@@ -47,9 +48,17 @@ func checkDeployKeyPath(p string) error {
 	return nil
 }
 
-// checkTransportToken refuses an empty token, any byte <= ' ', 0x7f, a quote,
-// a backslash or a backtick: the characters rsync -e would re-split or unquote.
+// checkTransportToken permits canonical SDK pin-file options. All other tokens
+// refuse blanks, controls, quotes, backslashes and backticks, which rsync splits.
 func checkTransportToken(tok string) error {
+	if strings.HasPrefix(tok, `GlobalKnownHostsFile="`) && strings.HasSuffix(tok, `"`) {
+		path := strings.TrimSuffix(strings.TrimPrefix(tok, `GlobalKnownHostsFile="`), `"`)
+		canonical, err := remote.GlobalKnownHostsFileOption(path)
+		if err == nil && canonical == tok {
+			return nil
+		}
+		return fmt.Errorf("invalid quoted pin file option %q", tok)
+	}
 	if tok == "" {
 		return fmt.Errorf("ssh option token is empty")
 	}
@@ -119,7 +128,11 @@ func (t sshTransport) rsyncMultiArgv(flags []string, dest string, srcs ...string
 		args = append(args, f)
 	}
 	eOpts := append(append([]string{}, t.opts...), t.spec.SSHOptions()...)
-	args = append(args, "-e", "ssh "+strings.Join(eOpts, " "), "--")
+	sshCommand, err := rsyncSSHCommand(eOpts)
+	if err != nil {
+		return nil, err
+	}
+	args = append(args, "-e", sshCommand, "--")
 	for _, src := range srcs {
 		local, err := localOperand(src)
 		if err != nil {
@@ -128,6 +141,23 @@ func (t sshTransport) rsyncMultiArgv(flags []string, dest string, srcs ...string
 		args = append(args, local)
 	}
 	return append(args, t.operand(dest)), nil
+}
+
+// rsyncSSHCommand validates SSH tokens and preserves canonical pin-file quotes
+// through rsync's second parsing step. It never invokes a shell.
+func rsyncSSHCommand(options []string) (string, error) {
+	eOpts := append([]string{}, options...)
+	// rsync parses -e again. Its parser represents a literal quote by doubling
+	// it inside a quoted word (backslash escaping does not preserve it).
+	for i, option := range eOpts {
+		if err := checkTransportToken(option); err != nil {
+			return "", err
+		}
+		if strings.HasPrefix(option, `GlobalKnownHostsFile="`) {
+			eOpts[i] = `"` + strings.ReplaceAll(option, `"`, `""`) + `"`
+		}
+	}
+	return "ssh " + strings.Join(eOpts, " "), nil
 }
 
 // scpArgv is the scp argv: options, -P port, "--", local, host:dest. The

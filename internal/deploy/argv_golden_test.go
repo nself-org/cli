@@ -181,7 +181,7 @@ func TestGoldenArgv_PushSecrets(t *testing.T) {
 		args: []string{
 			"-i", "/k/id",
 			"-o", "StrictHostKeyChecking=yes",
-			"-o", "GlobalKnownHostsFile=" + DeployKnownHostsPath(),
+			"-o", `GlobalKnownHostsFile="` + filepath.ToSlash(DeployKnownHostsPath()) + `"`,
 			"-o", "ControlMaster=no", "-o", "ControlPath=none",
 			"-o", "HostKeyAlias=nself-203.0.113.7-22",
 			"-o", "ForwardAgent=no",

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/nself-org/cli/internal/compat/compattest"
+	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
 // v15Verify returns the exact v1.5 VerifySSHKey argv up to the destination.
@@ -129,9 +130,16 @@ func TestAdminPinFileOption(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := adminPinFileOption(tc.in)
+			got, err := remote.GlobalKnownHostsFileOption(tc.in)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("err = %v, wantErr %v", err, tc.wantErr)
+			}
+			if tc.want != "" {
+				absolute, absErr := filepath.Abs(tc.in)
+				if absErr != nil {
+					t.Fatal(absErr)
+				}
+				tc.want = `GlobalKnownHostsFile="` + filepath.ToSlash(absolute) + `"`
 			}
 			if got != tc.want {
 				t.Fatalf("got %q, want %q", got, tc.want)

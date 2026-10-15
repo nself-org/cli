@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
@@ -156,7 +155,7 @@ func adminHostKeyOptions(ctx context.Context, spec remote.HostSpec) ([]string, e
 		return nil, err
 	}
 	pinFile := filepath.Join(home, ".config", "nself", "deploy_known_hosts")
-	pinOption, err := adminPinFileOption(pinFile)
+	pinOption, err := remote.GlobalKnownHostsFileOption(pinFile)
 	if err != nil {
 		return nil, err
 	}
@@ -183,20 +182,6 @@ func adminHostKeyOptions(ctx context.Context, spec remote.HostSpec) ([]string, e
 	}
 	fingerprint := keys[0].Fingerprint
 	return nil, errs.New("E487", fmt.Sprintf("unknown host key %s for %s; verify it, then run nself env target add <env> <server> --trust-host-key %s", fingerprint, spec.String(), fingerprint))
-}
-
-// adminPinFileOption returns the ssh GlobalKnownHostsFile option value for the
-// pin file. ssh splits that value on whitespace but reads a double-quoted word as
-// one path, so the path is quoted. Forward slashes keep a Windows path free of
-// backslashes (Windows OpenSSH accepts them). A quote, a backslash left after
-// that conversion (a real POSIX one) or a control character cannot be carried
-// in a quoted word and is refused. The lookup via ssh-keygen -F keeps the raw path.
-func adminPinFileOption(pinFile string) (string, error) {
-	sshPath := filepath.ToSlash(pinFile)
-	if strings.ContainsAny(sshPath, "\"\\") || strings.IndexFunc(sshPath, unicode.IsControl) >= 0 {
-		return "", fmt.Errorf("admin SSH pin file path %q has a quote, backslash or control character", pinFile)
-	}
-	return "GlobalKnownHostsFile=\"" + sshPath + "\"", nil
 }
 
 func adminTrustedFingerprints(ctx context.Context, alias, path string) map[string]bool {
