@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/nginxtopo"
 )
@@ -79,7 +80,11 @@ func Build(cfg *config.Config, workdir string, hasSSL bool) (*Model, error) {
 		port = 4000
 	}
 	add("core:auth", "core", "", "auth.conf", core(cfg.Auth.Route, "auth"), old(cfg.Auth.Route, "auth"), fmt.Sprintf("auth:%d", port), "auth", 5, 5, false)
-	if cfg.Minio.Enabled {
+	// compat.V15(P7-PLUG-60): the core store is SeaweedFS (S3 on 8333, no console), so it owns the
+	// storage route; ActiveStore also keeps this route off when the MinIO plugin is the store.
+	if compose.ActiveStore(cfg, false) == "seaweedfs" {
+		add("core:storage", "core", "", "storage.conf", core(cfg.Minio.StorageRoute, "storage"), old(cfg.Minio.StorageRoute, "storage"), "seaweedfs:8333", "uploads", 2, 5, false)
+	} else if cfg.Minio.Enabled {
 		add("core:storage", "core", "", "storage.conf", core(cfg.Minio.StorageRoute, "storage"), old(cfg.Minio.StorageRoute, "storage"), fmt.Sprintf("minio:%d", cfg.Minio.Port), "uploads", 2, 5, false)
 		p := cfg.Minio.ConsolePort
 		if p == 0 {

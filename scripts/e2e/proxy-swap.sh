@@ -278,7 +278,7 @@ matrix() {
     case $id in
       core:hasura) path=/v1/version ;;
       core:auth) path=/healthz ;;
-      core:storage) path=/minio/health/live ;;
+      core:storage) path=/healthz ;;
       internal:1) ws=1 ;;
     esac
     local args=(--silent --show-error --noproxy '*' --resolve "$host:443:127.0.0.1" -k --max-time 10 -D "$W/headers" -o "$W/body")

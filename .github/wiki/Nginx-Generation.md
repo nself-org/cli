@@ -136,8 +136,8 @@ Each enabled service gets its own subdomain. The base domain is controlled by th
 |---|---|---|
 | Hasura GraphQL | `api.{BASE_DOMAIN}` | WebSocket support, 86400s read timeout |
 | Auth | `auth.{BASE_DOMAIN}` | Strict rate limiting (10 req/min) |
-| MinIO API | `storage.{BASE_DOMAIN}` | 1000M max body size |
-| MinIO Console | `storage-console.{BASE_DOMAIN}` | |
+| Storage API | `storage.{BASE_DOMAIN}` | 1000M max body size; SeaweedFS in v1.5 (`OBJECT_STORAGE_ENABLED`), MinIO in v1.4 or with the minio plugin |
+| MinIO Console | `storage-console.{BASE_DOMAIN}` | MinIO only; SeaweedFS has no console |
 | Admin dashboard | `admin.{BASE_DOMAIN}` | Dev mode: proxies to host machine |
 | Search | `search.{BASE_DOMAIN}` | |
 | Email UI | `mail.{BASE_DOMAIN}` | |
