@@ -157,6 +157,12 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	if err := plugin.ValidateName(name); err != nil {
 		return err
 	}
+	// D-0504: load the project's plugin-directory override before the bundle
+	// ledger lookup. Preserve the plugin route's ability to plan without config.
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	if _, err := loadConfig(); err != nil && !dryRun {
+		return err
+	}
 
 	// P7-PLUG-20: the catalog is not loaded outside `nself bundle`; without it a bundle
 	// name would be treated as a plugin. A load failure keeps today's routing.

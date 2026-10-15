@@ -221,28 +221,5 @@ func Update(ctx context.Context, cfg *config.Config, name string, pluginDir stri
 //
 // SPORT: security-audit; ticket P2-E2-W2-S3-T10
 func checkSigBypassAllowed(env, pluginName string) (bypassed bool, err error) {
-	skipVerify := os.Getenv("NSELF_LICENSE_SKIP_VERIFY") == "1"
-	forceSkip := os.Getenv("NSELF_LICENSE_SKIP_VERIFY_FORCE") == "1"
-
-	if !skipVerify && !forceSkip {
-		// Normal path — no bypass requested.
-		return false, nil
-	}
-
-	// Any bypass var set in prod/staging is a fatal security violation.
-	if env == "prod" || env == "staging" {
-		return false, fmt.Errorf(
-			"SECURITY: NSELF_LICENSE_SKIP_VERIFY and NSELF_LICENSE_SKIP_VERIFY_FORCE are not permitted in %s — remove these env vars",
-			env,
-		)
-	}
-
-	// In dev, both vars must be set together.
-	if !skipVerify || !forceSkip {
-		return false, fmt.Errorf(
-			"NSELF_LICENSE_SKIP_VERIFY requires NSELF_LICENSE_SKIP_VERIFY_FORCE=1; standalone skip is not permitted",
-		)
-	}
-
-	return true, nil
+	return checkSigBypassAllowedWithContext(context.Background(), env, pluginName)
 }

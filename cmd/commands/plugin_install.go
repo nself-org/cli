@@ -105,6 +105,7 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 	// D-0274: this command reconciles after the install loop, so the installer
 	// leaves out its own "run nself build" hint (v1.5).
 	ctx := plugin.WithCallerReconciles(context.Background())
+	ctx = plugin.WithSignatureBypassAcknowledged(ctx, force)
 	registryURL := os.Getenv("NSELF_PLUGIN_REGISTRY")
 	// Third-party-only installs never touch the official registry, so skip
 	// the reachability check when there's nothing official to resolve.
