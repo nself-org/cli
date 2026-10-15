@@ -35,6 +35,12 @@ Before a remote deploy changes a host, the architecture guard checks every image
 
 ## Pinned host key files
 
+Deploy, access and admin SSH connections quote the absolute deploy pin-file path
+as one OpenSSH `GlobalKnownHostsFile` entry, including when `HOME` contains spaces.
+They refuse a path containing a double quote, literal backslash or control character
+before connecting. Windows directory separators are converted to forward slashes.
+The deploy rsync transport preserves these quotes when parsing its SSH options.
+
 The deploy pin file (`~/.config/nself/deploy_known_hosts`) and the backup pin file (`~/.config/nself/backup_known_hosts`, or the path in `NSELF_BACKUP_KNOWN_HOSTS`) follow the same rules. nSelf refuses to read or change a pin file when:
 
 - it holds a line nSelf cannot represent: an `@cert-authority` or `@revoked` marker, a wildcard, negation, host list, `[host]:port` or hashed host, a control character, or a short line. The error names the file and line numbers. Remove those lines by hand.
