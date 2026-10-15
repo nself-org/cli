@@ -19,7 +19,11 @@ import (
 // the trace block never prints the value. In v1.4 mode the panic propagates exactly as before.
 func execute(run func() error, stderr io.Writer) (err error) {
 	// compat.V15(P7-REG-06): a panic crashes the process with the raw Go runtime trace and exit 2 -> the panic is reported as an "internal error" (error envelope in JSON mode, stack trace on stderr only), still exit 2
-	if !compat.V15() {
+	v15 := compat.V15()
+	if err := exportCompatMode(v15); err != nil {
+		return err
+	}
+	if !v15 {
 		return run()
 	}
 	defer func() {

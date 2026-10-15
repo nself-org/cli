@@ -17,6 +17,8 @@ Default: off in 1.4.x. On from v1.5.0, where the CLI stops reading the variable.
 
 The Go side is `internal/compat`: `compat.V15()` reads the environment on every call (never cached), and `compat.Mode()` returns `v1.4` or `v1.5`.
 
+Before running commands, the CLI exports its resolved mode as `NSELF_V15=1` or `0`. In-process Go SDK gates, including the SSH pin store's ancestor checks, therefore follow the CLI's decision even after the CLI default changes. Standalone SDK callers continue to select their mode through the environment.
+
 ## Opt in early
 
 ```bash
