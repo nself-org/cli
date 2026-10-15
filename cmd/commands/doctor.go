@@ -42,6 +42,9 @@ var doctorCmd = &cobra.Command{
 
 Checks infrastructure requirements, Docker health, disk space, memory,
 network connectivity, configuration, running containers, and more.
+In v1.5 mode, reports untracked boot-plugin tables in Hasura. After an offline
+install, run start, then doctor --fix to wait for boot migrations and track them.
+Metadata repair on prod/staging requires --yes or terminal confirmation.
 
 Exit codes:
   0  All checks passed
@@ -127,23 +130,14 @@ in human and --json mode alike:
 		defer cancel()
 
 		cwd, _ := os.Getwd()
-		// `doctor` is intentionally exempt from PersistentPreRunE's monorepo
-		// chdir (see isSourceSafeCommand in root_source_guard.go — doctor must
-		// stay runnable from inside the nself source repo too). But that means
-		// checks below that read <projectDir>/.nself/* (e.g. OPS-DRILL-01) see
-		// the invocation-time directory, while `nself backup drill` — which IS
-		// redirected by that chdir — writes its log under backend/.nself/.
-		// From a monorepo root the two therefore disagree, and OPS-DRILL-01
-		// reports "no drill recorded" even right after a real one ran. Detect
-		// the same layout here, scoped to doctor's own projectDir variable, so
-		// its reads land where backup's writes did without re-enabling the
-		// source-repo guard doctor is deliberately exempt from.
+		// Match backup's monorepo root without changing doctor's source-safe cwd.
 		if backendRoot := config.DetectMonorepoRoot(cwd); backendRoot != "" {
 			cwd = backendRoot
 		}
 		if planOnly {
 			return printDoctorDriftPlan(ctx, cmd, cwd)
 		}
+		selectedEnv, _ := config.ResolveEnv(cwd) // capture before checks overload ENV
 
 		// Deep mode: run all 12 subsystem checks via doctor package
 		if deep {
@@ -157,6 +151,10 @@ in human and --json mode alike:
 			// Apply fix-it engine
 			if fix {
 				deepResults = doctor.FixItEngine(ctx, cwd, deepResults)
+			}
+			deepResults, err := doctorPluginTableDeepChecks(ctx, cmd, cwd, selectedEnv, onlySection, fix, deepResults)
+			if err != nil {
+				return err
 			}
 
 			// Convert to doctorCheckResult
@@ -190,7 +188,6 @@ in human and --json mode alike:
 
 		var checks []doctorCheckResult
 
-		// 1. Infrastructure checks
 		if !jsonOut {
 			ui.Section("Infrastructure")
 		}
@@ -199,7 +196,6 @@ in human and --json mode alike:
 		checks = append(checks, checkDockerComposeVersion(ctx, verbose))
 		checks = append(checks, checkGitInstalled(verbose))
 
-		// 2. Disk space
 		if !jsonOut {
 			ui.Section("Disk Space")
 		}
@@ -277,15 +273,18 @@ in human and --json mode alike:
 			return err
 		}
 		checks = append(checks, drift)
+		tables, err := checkPluginTables(ctx, cmd, cwd, selectedEnv, fix, verbose)
+		if err != nil {
+			return err
+		}
+		checks = append(checks, tables...)
 
-		// Build summary
 		report := buildDoctorReport(checks)
 
 		if jsonOut {
 			return printDoctorJSON(report)
 		}
 
-		// Print summary
 		printDoctorSummary(report)
 
 		// Exit code: 1=failures, 2=warnings only, 0=all pass (10/12 in v1.5 mode)

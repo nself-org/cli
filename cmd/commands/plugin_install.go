@@ -214,8 +214,9 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 		maybeShowFreeUpsell(installedCount)
 	}
 	var reconcileErr error
+	readyNames := stage.readinessNames(installed)
 	// compat.V15(P7-LIVE-06): plugin install leaves generated state for a later build -> reconcile now
-	ferr := finishPluginInstall(compat.V15(), installed, failures, func() error {
+	ferr := finishPluginInstall(compat.V15(), readyNames, failures, func() error {
 		reconcileErr = stage.reconcile(ctx, cfg, os.Stderr, func() error {
 			return reconcileAfterExtension(cmd, reconcile.Trigger{Kind: reconcile.TriggerPlugin, Subject: strings.Join(installSourceIdentities(installed), ",")})
 		})
@@ -225,7 +226,7 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 	// Not after a failed reconcile: the stack would start from stale generated files.
 	var rerr error
 	if reconcileErr == nil {
-		rerr = pluginInstallReadiness(cmd, pluginDir, installed)
+		rerr = pluginInstallReadiness(cmd, pluginDir, readyNames)
 	}
 	if ferr == nil {
 		return rerr

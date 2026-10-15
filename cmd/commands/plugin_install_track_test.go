@@ -181,7 +181,7 @@ func TestPluginInstallTrackSkipsWhenStackDown(t *testing.T) {
 	if err := pluginInstallReadiness(c, pluginDir, []string{"fine"}); err != nil {
 		t.Fatal(err)
 	}
-	if *calls != 0 || *exports != 0 || !strings.Contains(stderr.String(), "not running") || !strings.Contains(stderr.String(), "rerun `nself plugin install fine`") {
+	if *calls != 0 || *exports != 0 || !strings.Contains(stderr.String(), "not running") || !strings.Contains(stderr.String(), "nself doctor --fix") {
 		t.Fatalf("calls=%d exports=%d stderr=%q", *calls, *exports, stderr.String())
 	}
 }

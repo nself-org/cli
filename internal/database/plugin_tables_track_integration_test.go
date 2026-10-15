@@ -11,10 +11,12 @@
 package database
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"strings"
@@ -51,17 +53,56 @@ func trackIntegParse(raw []byte) (map[string]bool, error) {
 
 func trackIntegVersion(t *testing.T, cfg *config.Config) int {
 	t.Helper()
-	raw, err := postMetadataAdmin(context.Background(), cfg, trackIntegSecret, "export_metadata", struct{}{})
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, hasuraMetadataURL(cfg), bytes.NewBufferString(`{"type":"export_metadata","version":2,"args":{}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var doc struct {
-		ResourceVersion int `json:"resource_version"`
-	}
-	if err := json.Unmarshal(raw, &doc); err != nil {
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Hasura-Admin-Secret", trackIntegSecret)
+	resp, err := httptimeout.Default.Do(req)
+	if err != nil {
 		t.Fatal(err)
 	}
-	return doc.ResourceVersion
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("export_metadata v2: HTTP %d", resp.StatusCode)
+	}
+	var doc struct {
+		ResourceVersion *int `json:"resource_version"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
+		t.Fatal(err)
+	}
+	if doc.ResourceVersion == nil || *doc.ResourceVersion <= 0 {
+		t.Fatal("export_metadata v2 did not return a positive resource_version; cannot prove the tracker made no write")
+	}
+	return *doc.ResourceVersion
+}
+
+// Keep the no-write assertion honest without requiring Docker for this test.
+func TestTrackIntegrationVersionUsesV2(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			Type    string `json:"type"`
+			Version int    `json:"version"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Error(err)
+		}
+		if request.Type != "export_metadata" || request.Version != 2 || r.Header.Get("X-Hasura-Admin-Secret") != trackIntegSecret {
+			_, _ = w.Write([]byte(`{"sources":[]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"resource_version":17,"metadata":{"sources":[]}}`))
+	}))
+	defer srv.Close()
+	cfg := &config.Config{}
+	if _, err := fmt.Sscanf(srv.URL[strings.LastIndex(srv.URL, ":")+1:], "%d", &cfg.Hasura.Port); err != nil {
+		t.Fatal(err)
+	}
+	if got := trackIntegVersion(t, cfg); got != 17 {
+		t.Fatalf("resource version = %d, want 17", got)
+	}
 }
 
 func TestTrackPluginTablesIntegration(t *testing.T) {
