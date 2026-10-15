@@ -469,7 +469,7 @@ func TestPlanApplyProperty(t *testing.T) {
 				t.Fatalf("apply changed %v, plan listed %v", sortedKeys(changed), sortedKeys(planned))
 			}
 			again := planOf(t, f, nil)
-			if !again.Empty {
+			if !settledPlan(again) {
 				var sb strings.Builder
 				_ = RenderHuman(&sb, *again)
 				t.Fatalf("plan after apply is not empty:\n%s", sb.String())
@@ -499,7 +499,7 @@ func TestContainerImpactEnvValue(t *testing.T) {
 		return planOf(t, f, func(r *Request) { r.Containers, r.Runtime = true, rt })
 	}
 	base := plan()
-	if !base.Containers.Known || len(base.Containers.Items) != 0 || !base.Empty {
+	if !settledPlan(base) {
 		t.Fatalf("unchanged project: known=%v items=%v empty=%v", base.Containers.Known, base.Containers.Items, base.Empty)
 	}
 	if len(rt.files) < 2 || !strings.Contains(strings.Join(rt.files, " "), "docker-compose.plugin.yml") {
@@ -584,11 +584,11 @@ func TestPlanRemoveOrphans(t *testing.T) {
 	running := append(runningFromDisk(t, f), RunningContainer{Name: "fx_ghost", Service: "ghost", State: "running"})
 	rt := &fakeRuntime{running: running}
 	without := planOf(t, f, func(r *Request) { r.Containers, r.Runtime = true, rt })
-	if !without.Empty {
+	if !settledPlan(without) {
 		t.Fatalf("an orphan alone must not change the plan unless removal is asked: %+v", without.Effects)
 	}
 	with := planOf(t, f, func(r *Request) { r.Containers, r.Runtime, r.RemoveOrphans = true, rt, true })
-	if len(with.Effects) != 1 || with.Effects[0].Kind != EffectOrphanRemove || with.Effects[0].Target != "fx_ghost" || !with.Destructive {
+	if len(with.Effects) != 2 || with.Effects[1].Kind != EffectOrphanRemove || with.Effects[1].Target != "fx_ghost" || !with.Destructive {
 		t.Fatalf("effects %+v destructive=%v", with.Effects, with.Destructive)
 	}
 }

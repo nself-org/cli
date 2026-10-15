@@ -367,6 +367,9 @@ type cascadePlan struct {
 		Kind       string `json:"kind"`
 		HandEdited bool   `json:"hand_edited"`
 	} `json:"artifacts"`
+	Effects []struct {
+		Kind string `json:"kind"`
+	} `json:"effects"`
 	Containers struct {
 		Known bool `json:"known"`
 		Items []struct {
@@ -412,11 +415,15 @@ func cascadeErrCode(stdout string) string {
 	return env.Error.Code
 }
 
-// assertPlanEmpty requires an empty plan with known container state.
+// assertPlanEmpty requires no drift beyond the snapshot of existing sites.
 func (p *cascadeProject) assertPlanEmpty(why string) {
 	p.t.Helper()
 	pl := p.planJSON()
-	if !pl.Empty {
+	settled := len(pl.Artifacts) == 0 && pl.Containers.Known && len(pl.Containers.Items) == 0
+	for _, effect := range pl.Effects {
+		settled = settled && effect.Kind == "nginx-sites-backup"
+	}
+	if !settled {
 		var paths []string
 		for _, a := range pl.Artifacts {
 			paths = append(paths, a.Path)

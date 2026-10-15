@@ -441,7 +441,7 @@ func TestPlanCoversPluginFragmentAndModes(t *testing.T) {
 	if info, _ := os.Stat(g.project + "/.env"); info.Mode().Perm() != 0o600 {
 		t.Fatalf(".env is %v after apply", info.Mode().Perm())
 	}
-	if !planOf(t, g, nil).Empty {
+	if !settledPlan(planOf(t, g, nil)) {
 		t.Fatal("plan after apply is not empty")
 	}
 }
@@ -461,7 +461,7 @@ func TestPlanNeverMutatesProcessEnv(t *testing.T) {
 	var diff strings.Builder
 	planOf(t, f, func(r *Request) { r.DiffOut = &diff })
 	applyFixture(t, f)
-	if !planOf(t, f, nil).Empty {
+	if !settledPlan(planOf(t, f, nil)) {
 		t.Fatalf("plan (env %s) differs from the apply: the plan run leaked its env into the write", p.Env)
 	}
 }
@@ -592,7 +592,7 @@ func TestApplyInstallsDeclaredPluginInOnePass(t *testing.T) {
 	if !strings.Contains(manifest, "fakeplug") {
 		t.Fatalf("the plugin fragment is not wired into the stack:\n%s", manifest)
 	}
-	if left := planOf(t, f, nil); !left.Empty {
+	if left := planOf(t, f, nil); !settledPlan(left) {
 		var sb strings.Builder
 		_ = RenderHuman(&sb, *left)
 		t.Fatalf("plan after the apply is not empty:\n%s", sb.String())
@@ -711,7 +711,7 @@ func TestApplyWritesWhenOnlySecretsFileChanged(t *testing.T) {
 	if !strings.Contains(readFile(t, f.project+"/.nself/compose.env"), pw) {
 		t.Fatal("the planned password change was reported applied but not written (cache skipped the build)")
 	}
-	if !planOf(t, f, nil).Empty {
+	if !settledPlan(planOf(t, f, nil)) {
 		t.Fatal("plan after the apply is not empty")
 	}
 }

@@ -22,13 +22,14 @@ package build
 // Outputs: resolveNginxSitesDir returns the directory to write nginx/sites/
 // *.conf files into, or an error naming both the project's own (unused)
 // directory and the parent directory that was checked and did not resolve.
-// Constraints: delegates to internal/nginxtopo.ServedNginxDir (P7-LIVE-02,
+// Constraints: delegates to internal/nginxtopo.ServedSitesDir (P7-LIVE-02,
 // D-0045) — the one served-dir resolver every nginx/ssl writer shares —
 // rather than inventing a second FrontedBy-to-path mechanism. Only the
 // success path delegates; the refusal text is unchanged (golden).
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"path/filepath"
 
@@ -38,7 +39,8 @@ import (
 // resolveNginxSitesDir returns the directory `nself build` should write
 // generated nginx/sites/*.conf route files into for workdir.
 //
-// When frontedBy is empty, behavior is unchanged: <workdir>/nginx/sites.
+// When frontedBy is empty, the target is <workdir>/nginx/sites; links that
+// resolve outside the project are refused.
 // When frontedBy is set, this project's own nginx/sites/
 // is never read by any running nginx, so the fronting stack's own nginx
 // directory is targeted instead — resolved via the same "this project lives
@@ -50,9 +52,12 @@ func resolveNginxSitesDir(workdir, frontedBy string) (string, error) {
 	// Both answers come from nginxtopo (D-0045): the served resolver for the
 	// fronted success path, and the own-topology answer (frontedBy "") for the
 	// project's unused directory named in the refusal.
-	nginxDir, err := nginxtopo.ServedNginxDir(workdir, frontedBy)
+	sitesDir, err := nginxtopo.ServedSitesDir(workdir, frontedBy)
 	if err == nil {
-		return filepath.Join(nginxDir, "sites"), nil
+		return sitesDir, nil
+	}
+	if !errors.Is(err, nginxtopo.ErrFrontingUnresolved) {
+		return "", err
 	}
 
 	ownNginxDir, _ := nginxtopo.ServedNginxDir(workdir, "")

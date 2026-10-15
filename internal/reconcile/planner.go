@@ -24,7 +24,6 @@ import (
 	"os"
 	"runtime"
 	"sort"
-	"strings"
 
 	nbuild "github.com/nself-org/cli/internal/build"
 )
@@ -115,7 +114,7 @@ func compute(ctx context.Context, req Request) (*computed, error) {
 		Trigger:   req.Trigger,
 		Env:       req.resolvedEnv,
 		Artifacts: arts,
-		Effects:   append(effectsOf(res.Planned.Effects, hasSitesChange(arts)), req.Extra...),
+		Effects:   append(effectsOf(res.Planned.Effects), req.Extra...),
 	}
 	if p.Command == "" {
 		p.Command = CmdBuild
@@ -240,32 +239,17 @@ func artifactSets(ov overlay, pb *nbuild.PlannedBuild) (before, after ArtifactSe
 	return before, after, nil
 }
 
-// effectsOf converts recorded build effects. Two are bookkeeping, not changes,
-// and are dropped: the build lock (how the build excludes other commands) and
-// the nginx/sites snapshot when the build leaves nginx/sites alone (every
-// build takes the snapshot, so listing it would make a plan that changes
-// nothing look non-empty; it matters only when the build rewrites or removes a
-// site conf, which sitesChanged reports).
-func effectsOf(in []nbuild.PlannedEffect, sitesChanged bool) []Effect {
+// effectsOf converts recorded build effects, omitting only the build lock.
+// A recorded snapshot writes a backup even if every site already matches.
+func effectsOf(in []nbuild.PlannedEffect) []Effect {
 	out := []Effect{}
 	for _, e := range in {
-		if e.Kind == nbuild.EffectBuildLock || (e.Kind == nbuild.EffectNginxSitesBackup && !sitesChanged) {
+		if e.Kind == nbuild.EffectBuildLock {
 			continue
 		}
 		out = append(out, Effect{Kind: EffectKind(e.Kind), Target: e.Target, Detail: e.Detail})
 	}
 	return out
-}
-
-// hasSitesChange reports whether the plan changes or removes a file under an
-// nginx/sites directory (the project's or the fronting stack's).
-func hasSitesChange(arts []Artifact) bool {
-	for _, a := range arts {
-		if a.Kind == KindNginx && (a.Action != ActionAdd) && strings.Contains(a.Path, "nginx/sites/") {
-			return true
-		}
-	}
-	return false
 }
 
 // contentPlanID is the plan_id of EPIC D9 as amended 2026-10-05: sha256 over

@@ -45,7 +45,7 @@ func TestLockPlanApply(t *testing.T) {
 		t.Fatalf("plan wrote the lock (stat err %v)", err)
 	}
 	applyFixture(t, f)
-	if again := planOf(t, f, nil); !again.Empty {
+	if again := planOf(t, f, nil); !settledPlan(again) {
 		t.Fatalf("plan after the first apply is not empty: %+v", again.Artifacts)
 	}
 
@@ -86,7 +86,7 @@ func TestLockPlanApply(t *testing.T) {
 	if !strings.Contains(string(got), "v2.41.0") || strings.Contains(string(got), "v2.44.0@") {
 		t.Fatalf("the lock does not record the new hasura version:\n%s", got)
 	}
-	if again := planOf(t, f, nil); !again.Empty {
+	if again := planOf(t, f, nil); !settledPlan(again) {
 		t.Fatalf("plan after the second apply is not empty: %+v", again.Artifacts)
 	}
 }

@@ -274,7 +274,7 @@ func TestApplyWithPendingLine(t *testing.T) {
 	if p.Empty || !hasKind(p, KindCompose) {
 		t.Fatalf("applied plan: %+v", p.Artifacts)
 	}
-	if again := planOf(t, f, nil); !again.Empty {
+	if again := planOf(t, f, nil); !settledPlan(again) {
 		t.Fatalf("plan after the apply is not empty: %+v", again.Artifacts)
 	}
 }
@@ -540,7 +540,7 @@ func TestPlanProdEnvLineOnlyNeedsConfirmation(t *testing.T) {
 	rt := &fakeRuntime{running: runningFromDisk(t, f)}
 	overlay := map[string]map[string]string{".env": {"NSELF_LIVE05_PROBE": "x"}}
 	p := planOf(t, f, func(r *Request) { r.Containers, r.Runtime, r.EnvOverlay = true, rt, overlay })
-	if !p.Empty || !p.PendingEnv || !p.RequiresConfirmation {
+	if !settledPlan(p) || !p.PendingEnv || !p.RequiresConfirmation {
 		t.Fatalf("empty=%v pending_env=%v requires_confirmation=%v", p.Empty, p.PendingEnv, p.RequiresConfirmation)
 	}
 	if err := Confirm(*p, ApplyOptions{}, true, nil); err == nil {
@@ -552,8 +552,8 @@ func TestPlanProdEnvLineOnlyNeedsConfirmation(t *testing.T) {
 		r.Containers, r.Runtime = true, rt
 		r.EnvOverlay = map[string]map[string]string{".env": {"PROJECT_NAME": name}}
 	})
-	if same.PendingEnv || same.RequiresConfirmation {
-		t.Fatalf("a line equal to the file changes nothing: %+v", same)
+	if same.PendingEnv || !settledPlan(same) || same.Empty || !same.RequiresConfirmation {
+		t.Fatalf("an equal line leaves only the confirmed prod snapshot: %+v", same)
 	}
 	req := Request{Runtime: rt, Containers: true, ProjectDir: f.project, Seed: []byte("fixture-seed"), EnvOverlay: overlay}
 	applied, err := Apply(context.Background(), req, ApplyOptions{Yes: true,
@@ -561,7 +561,7 @@ func TestPlanProdEnvLineOnlyNeedsConfirmation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("--yes must apply an env-line-only prod change (stable plan across the write): %v", err)
 	}
-	if !applied.Empty || !applied.RequiresConfirmation {
+	if !settledPlan(applied) || applied.Empty || !applied.RequiresConfirmation {
 		t.Fatalf("the applied plan must be the env-line-only one: empty=%v rc=%v %v", applied.Empty, applied.RequiresConfirmation, applied.Artifacts)
 	}
 }

@@ -19,11 +19,14 @@ import (
 // supported reports whether this platform can take the lock.
 const supported = true
 
+// flockCall is replaceable in tests to exercise filesystem support failures.
+var flockCall = syscall.Flock
+
 // tryLock takes an exclusive, non-blocking flock. held is true when another
 // open file description owns it.
 func tryLock(f *os.File) (held bool, err error) {
 	for {
-		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		err = flockCall(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
 		switch {
 		case err == nil:
 			return false, nil
@@ -31,6 +34,8 @@ func tryLock(f *os.File) (held bool, err error) {
 			continue
 		case errors.Is(err, syscall.EWOULDBLOCK):
 			return true, nil
+		case errors.Is(err, syscall.ENOSYS), errors.Is(err, syscall.EOPNOTSUPP):
+			return false, ErrUnsupported
 		}
 		return false, err
 	}

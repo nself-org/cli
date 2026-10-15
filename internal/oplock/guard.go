@@ -11,14 +11,14 @@ package oplock
 //
 // Outputs: a context carrying the Lock (FromContext, for early release), a
 // release func that is always safe to defer, and an error only when v1.5
-// contention must stop the command (E460).
+// contention or lock I/O failure must stop the command (E460).
 //
 // Constraints:
 //   - Takes the lock only for side_effect write, remote or destructive with
 //     output kind document. read, stream and interactive commands never do.
 //   - v1.5: a held lock fails fast with E460. v1.4: poll up to 30 s, then warn
-//     on stderr and run unlocked. Platform or I/O failures never block a
-//     command: a notice goes to stderr and the command runs unlocked. The
+//     on stderr and run unlocked. I/O failures stop v1.5 with E460; v1.4
+//     warns and runs unlocked. Unsupported flock remains a no-op. The
 //     platform notice (no flock, native Windows) is skipped under --quiet and
 //     when stderr is not a terminal (D-0241).
 //   - Notices go to Stderr, never stdout, so a --json envelope stays one
@@ -121,6 +121,13 @@ func Guard(ctx context.Context, r Request) (context.Context, func(), error) {
 		notef("nself: warning: %s after %s; continuing without the lock\n", holderText(he.Holder, he.Known), he.Waited.Round(time.Second))
 		return ctx, noop, nil
 	default:
+		if v15 {
+			e := errs.New("E460", "project operation lock unavailable: "+err.Error())
+			e.Why = "The project operation lock could not be acquired safely."
+			e.Fix = "check that .nself/op.lock can be opened and written, then run this command again"
+			e.Wrapped = err
+			return ctx, noop, e
+		}
 		notef("nself: warning: project operation lock unavailable (%v); continuing without it\n", err)
 		return ctx, noop, nil
 	}

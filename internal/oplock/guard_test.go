@@ -159,8 +159,8 @@ func TestOpLockGuardV14TimeoutWarns(t *testing.T) {
 	}
 }
 
-func TestOpLockGuardFailsOpenOnIOError(t *testing.T) {
-	compattest.Set(t, true)
+func TestOpLockGuardV14FailsOpenOnIOError(t *testing.T) {
+	compattest.Set(t, false)
 	// The project path is a file, so .nself cannot be created.
 	blocker := filepath.Join(t.TempDir(), "file")
 	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
