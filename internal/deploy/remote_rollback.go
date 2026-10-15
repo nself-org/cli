@@ -42,6 +42,7 @@ type RollbackOptions struct {
 	FrontTar     string
 	FrontChanged []string
 	FrontAbsent  []string
+	FrontNames   map[string][]string
 	StrictHasura bool
 	Clock        docker.Clock
 	Out          io.Writer

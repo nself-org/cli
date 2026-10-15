@@ -58,6 +58,8 @@ type PreDeployBackup struct {
 type RestoreSpec struct {
 	Changed []string
 	Absent  []string
+	// FrontNames enables front-root ownership checks (nil for the main root).
+	FrontNames map[string][]string
 }
 
 // restoreTimeout bounds a restore that runs after the caller gave up.
@@ -194,7 +196,8 @@ func restoreIn(ctx context.Context, r Remote, root, home, tar string, spec Resto
 		}
 	}
 	tmp := path.Join(home, BackupDir, "restore-"+strings.TrimSuffix(path.Base(tar), ".tar.gz"))
-	script := fmt.Sprintf(`set -e; umask 077; tmp=%s; rm -rf "$tmp"; mkdir -p "$tmp"; tar -xzf %s -C "$tmp"`, q(tmp), q(tar))
+	script := frontOwnershipCheck(root, spec.Changed, spec.FrontNames)
+	script += fmt.Sprintf(`set -e; umask 077; tmp=%s; rm -rf "$tmp"; mkdir -p "$tmp"; tar -xzf %s -C "$tmp"`, q(tmp), q(tar))
 	script += fmt.Sprintf(`; rp=%s`, q(remotePath))
 	// One rsync per directory, over bare file names: no directory is ever
 	// transferred, so existing dirs (remote_path included) keep their mode and
@@ -214,6 +217,11 @@ func restoreIn(ctx context.Context, r Remote, root, home, tar string, spec Resto
 	// proven to resolve inside the real remote_path.
 	script += `; base=$(cd -P "$rp" && pwd -P); inrp() { case "$1/" in "$base/"*) return 0;; esac; return 1; }; safe() { case "$1" in *[[:cntrl:]]*) return 1;; esac; return 0; }; refuse() { echo "refusing: a restore directory is outside remote_path or has an unsafe name" >&2; exit 1; }`
 	for _, d := range dirs {
+		var paths []string
+		for _, f := range byDir[d] {
+			paths = append(paths, path.Join(d, f))
+		}
+		script += "; " + frontOwnershipCheck(root, paths, spec.FrontNames) + ":"
 		script += fmt.Sprintf(`; d=%s; src="$tmp/$d"; dst="$rp/$d"; a="$dst"; while [ ! -d "$a" ]; do a=$(dirname "$a"); done; x=$(cd -P "$a" && pwd -P) || refuse; safe "$x" && inrp "$x" || refuse; (umask 022; mkdir -p "$dst"); dst=$(cd -P "$dst" && pwd -P && echo X); dst=${dst%%X}; dst=${dst%%?}; safe "$dst" && inrp "$dst" || refuse; printf '%%s\n' %s > "$tmp.list"; rsync -ac --files-from="$tmp.list" "$src"/ "$dst"/; rm -f "$tmp.list"`,
 			q(d), strings.Join(quoteAll(byDir[d]), " "))
 	}
@@ -221,15 +229,22 @@ func restoreIn(ctx context.Context, r Remote, root, home, tar string, spec Resto
 	if _, err := r.Run(ctx, shScript(script)); err != nil {
 		return fmt.Errorf("restoring %s on %s: %w", tar, r.Label(), err)
 	}
-	return removeCreated(ctx, r, remotePath, spec.Absent)
+	return removeCreatedOwned(ctx, r, remotePath, spec.Absent, spec.FrontNames)
 }
 
 // removeCreated removes the regular files this deploy created, named by the local
 // record. A path with a symlink component refuses the whole batch.
 func removeCreated(ctx context.Context, r Remote, remotePath string, absent []string) error {
+	return removeCreatedOwned(ctx, r, remotePath, absent, nil)
+}
+
+func removeCreatedOwned(ctx context.Context, r Remote, remotePath string, absent []string, names map[string][]string) error {
 	for len(absent) > 0 {
 		n := min(len(absent), 50)
 		body := `if [ -f "$2" ]; then rm -f -- "$2"; fi`
+		if names != nil {
+			body = frontOwnershipShell(names) + `front_owned "$1" "$2" || return 1; ` + body
+		}
 		out, err := r.Run(ctx, shScript(guardedScript(remotePath, absent[:n], body)))
 		if err != nil {
 			return fmt.Errorf("removing files the deploy created on %s: %w", r.Label(), err)

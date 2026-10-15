@@ -89,6 +89,7 @@ func rollbackRemoteV15(cmd *cobra.Command, workdir, target string) (bool, error)
 				Remote: r, RemotePath: srv.RemotePath, Tar: tar, BackupID: backupID,
 				Changed: st.PreDeployChanged[host], Absent: st.PreDeployAbsent[host],
 				FrontTar: st.FrontTars[host], FrontChanged: st.FrontChanged[host], FrontAbsent: st.FrontAbsent[host],
+				FrontNames: st.FrontNames[host],
 				DBRestored: st.DBRestoredAt != "", StrictHasura: hasuraStrictFor(workdir, target),
 				OnDBRestored: func() error {
 					st.DBRestoredAt = time.Now().UTC().Format(time.RFC3339)

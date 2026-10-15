@@ -85,6 +85,18 @@ func finishScratchStage(w io.Writer, set deploy.ArtifactSet, stale []string) (de
 // clearScratch removes the scratch root of env (both layouts).
 func clearScratch(workdir, env string) error {
 	root := scratchDirFor(workdir, env)
+	for _, dir := range []string{filepath.Join(workdir, ".nself"), filepath.Join(workdir, ".nself", "deploy-build")} {
+		info, err := os.Lstat(dir)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("deploy: checking scratch ancestor %s: %w", dir, err)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("deploy: scratch ancestor %s is not a real directory; refusing to clear %s", dir, root)
+		}
+	}
 	if err := os.RemoveAll(root); err != nil {
 		return fmt.Errorf("deploy: clearing %s: %w", root, err)
 	}

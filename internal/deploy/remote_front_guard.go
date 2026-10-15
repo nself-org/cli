@@ -122,7 +122,7 @@ func localServerNames(stage, rel string) ([]string, error) {
 // pruneFrontMarked removes, from the candidates (front paths this host's record
 // says the previous deploy shipped), the files that carry the strict build
 // marker. It returns the files it removed.
-func pruneFrontMarked(ctx context.Context, r Remote, front string, candidates []string) ([]string, error) {
+func pruneFrontMarked(ctx context.Context, r Remote, front string, candidates []string, names map[string][]string) ([]string, error) {
 	var cand []string
 	for _, f := range candidates {
 		if frontPathOK(f) {
@@ -133,7 +133,7 @@ func pruneFrontMarked(ctx context.Context, r Remote, front string, candidates []
 	pat := q("^" + strings.ReplaceAll(BuildNginxMarker, " ", "[ ]"))
 	for len(cand) > 0 {
 		n := min(len(cand), 50)
-		body := fmt.Sprintf(`if [ -f "$2" ] && head -n 5 -- "$2" 2>/dev/null | grep -q %s; then rm -f -- "$2" && printf '%%s\n' "$1"; fi`, pat)
+		body := frontOwnershipShell(names) + fmt.Sprintf(`front_owned "$1" "$2" || return 1; if [ -f "$2" ] && head -n 5 -- "$2" 2>/dev/null | grep -q %s; then rm -f -- "$2" && printf '%%s\n' "$1"; fi`, pat)
 		out, err := r.Run(ctx, shScript(guardedScript(front, cand[:n], body)))
 		if err != nil {
 			return removed, fmt.Errorf("pruning generated files on %s: %w", r.Label(), err)

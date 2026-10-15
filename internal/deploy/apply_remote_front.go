@@ -238,7 +238,7 @@ func (fa *frontApply) sync(ctx context.Context, o ApplyOptions, res *ApplyResult
 	for _, k := range kept {
 		emit(o.Out, "  %s", k)
 	}
-	pruned, err := pruneFrontMarked(ctx, r, front, prune)
+	pruned, err := pruneFrontMarked(ctx, r, front, prune, fa.names)
 	for _, f := range pruned {
 		emit(o.Out, "  [pruned] %s/%s (generated file the new set dropped)", front, f)
 		fa.changed = append(fa.changed, f)
@@ -259,7 +259,11 @@ func (fa *frontApply) restore(ctx context.Context, o ApplyOptions, rerr error) e
 	if fa == nil || !fa.synced {
 		return rerr
 	}
-	err := restoreIn(ctx, o.Remote, fa.fr.RemotePath, o.RemotePath, fa.tar, RestoreSpec{Changed: fa.changed, Absent: fa.absent})
+	names, nerr := stagedFrontNames(fa.fr.StageDir, fa.fr.Files)
+	if nerr != nil {
+		return fmt.Errorf("%v; preparing front restore: %w", rerr, nerr)
+	}
+	err := restoreIn(ctx, o.Remote, fa.fr.RemotePath, o.RemotePath, fa.tar, RestoreSpec{Changed: fa.changed, Absent: fa.absent, FrontNames: names})
 	if err == nil {
 		fa.synced = false
 		emit(o.Out, "  [restored] the fronting stack's nginx/sites; the front root has no lock, so if anything reloaded the fronting nginx since the sync, reload it again")

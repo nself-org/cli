@@ -95,7 +95,9 @@ real_of() { [ -d "$base/$(dirname "$1")" ] || return 2; x=$(cd -P "$base/$(dirna
 refuse=0
 for f in "$@"; do if [ -L "$base/$f" ]; then printf 'REFUSE %%s\n' "$f"; refuse=1; continue; fi; real_of "$f" >/dev/null; [ $? -eq 1 ] && { printf 'REFUSE %%s\n' "$f"; refuse=1; }; done
 if [ "$refuse" = 1 ]; then exit 0; fi
-for f in "$@"; do d=$(real_of "$f") || continue; act "$f" "$d/$(basename "$f")"; done`, q(remotePath), strings.Join(quoteAll(paths), " "), body)
+rc=0
+for f in "$@"; do d=$(real_of "$f") || continue; act "$f" "$d/$(basename "$f")" || rc=1; done
+exit "$rc"`, q(remotePath), strings.Join(quoteAll(paths), " "), body)
 }
 
 // refusedPaths turns the REFUSE lines of a guardedScript into an error.

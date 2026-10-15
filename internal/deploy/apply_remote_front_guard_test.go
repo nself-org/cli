@@ -191,7 +191,7 @@ func TestFrontPrunedIsNotShippedBefore(t *testing.T) {
 func TestFrontRollbackReloadsEvenWhenReapplyFails(t *testing.T) {
 	roll := func(x *frontFx, res ApplyResult) error {
 		return RollbackRemote(context.Background(), RollbackOptions{Remote: x.f, RemotePath: x.rp, Tar: res.PreDeployTar, Changed: res.Changed, Absent: res.Absent,
-			FrontTar: res.FrontTar, FrontChanged: res.FrontChanged, FrontAbsent: res.FrontAbsent, Clock: &fakeClock{now: time.Unix(0, 0)}})
+			FrontTar: res.FrontTar, FrontChanged: res.FrontChanged, FrontAbsent: res.FrontAbsent, FrontNames: res.FrontNames, Clock: &fakeClock{now: time.Unix(0, 0)}})
 	}
 	x := frontFixture(t)
 	res, err := ApplyRemote(context.Background(), x.o)

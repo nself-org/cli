@@ -116,6 +116,9 @@ func (c frontContainer) checkMounts(ctx context.Context, r Remote, front, realFr
 	ok := map[string]bool{}
 	for _, root := range []string{front, realFront} {
 		for _, d := range frontDirs {
+			if real := linked[d]; real != "" {
+				ok[real] = true
+			}
 			if root != "" {
 				ok[path.Join(root, d)] = true
 			}
@@ -130,6 +133,10 @@ func (c frontContainer) checkMounts(ctx context.Context, r Remote, front, realFr
 		}
 		src := path.Clean(parts[1])
 		seen = append(seen, safeText(parts[1])+" -> "+safeText(parts[2]))
+		dest := path.Clean(parts[2])
+		if dest != "/etc/nginx" && !strings.HasPrefix(dest, "/etc/nginx/") {
+			continue
+		}
 		roots = append(roots, src)
 		found = found || ok[src]
 		for _, d := range frontDirs { // a mounted source that is itself a link reaches that link's real dir

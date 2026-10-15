@@ -83,7 +83,11 @@ func (fb *frontRollback) restore(ctx context.Context, o RollbackOptions) error {
 		return nil
 	}
 	emit(o.Out, "  [running] restore %s in place in the fronting stack's %s", path.Base(o.FrontTar), fb.root)
-	return restoreIn(ctx, o.Remote, fb.root, o.RemotePath, o.FrontTar, RestoreSpec{Changed: o.FrontChanged, Absent: o.FrontAbsent})
+	names := o.FrontNames
+	if names == nil {
+		names = map[string][]string{} // old records cannot establish ownership of an existing file
+	}
+	return restoreIn(ctx, o.Remote, fb.root, o.RemotePath, o.FrontTar, RestoreSpec{Changed: o.FrontChanged, Absent: o.FrontAbsent, FrontNames: names})
 }
 
 // reload tests the restored config in the live fronting container, then reloads it.

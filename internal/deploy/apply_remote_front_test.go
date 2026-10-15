@@ -549,7 +549,8 @@ func TestDeployRollbackRestoresFront(t *testing.T) {
 	ro := RollbackOptions{
 		Remote: x.f, RemotePath: x.rp, Tar: res.PreDeployTar, Changed: res.Changed, Absent: res.Absent,
 		FrontTar: res.FrontTar, FrontChanged: res.FrontChanged, FrontAbsent: res.FrontAbsent,
-		Clock: &fakeClock{now: time.Unix(0, 0)},
+		FrontNames: res.FrontNames,
+		Clock:      &fakeClock{now: time.Unix(0, 0)},
 	}
 	if err := RollbackRemote(context.Background(), ro); err != nil {
 		t.Fatal(err)

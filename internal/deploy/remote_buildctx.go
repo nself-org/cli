@@ -7,7 +7,7 @@ package deploy
 // Inputs:  the staged ArtifactSet and a Remote for read-only existence checks.
 // Outputs: nil, or E485 (detail `build context not shippable`) naming the services.
 // Constraints: runs before the first remote write. A context passes when it
-//              resolves (relative to its compose file, with ${VAR} from the staged
+//              resolves (relative to the first compose file, with ${VAR} from the staged
 //              env files) to a directory that already exists on the host. Anything
 //              else, including an unresolved variable, is refused. A service that
 //              also sets image: runs on that image and is not checked (D-0420). The
@@ -54,7 +54,7 @@ func CheckBuildContexts(ctx context.Context, r Remote, set ArtifactSet) error {
 			}
 			dir = expandVars(dir, env)
 			if !path.IsAbs(dir) {
-				dir = path.Join(path.Dir(remote), dir)
+				dir = path.Join(path.Dir(set.Compose[0]), dir)
 			}
 			dir = path.Clean(dir)
 			file := ""

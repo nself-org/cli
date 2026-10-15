@@ -75,8 +75,8 @@ func checkConfDFiles(files []string) error {
 func writeShipped(ctx context.Context, r Remote, set ArtifactSet) error {
 	file := path.Join(set.RemotePath, ShippedFile)
 	lines := append(append([]string{}, set.Files...), set.EnvFiles...)
-	script := fmt.Sprintf(`umask 077; mkdir -p %s; printf '%%s\n' %s > %s && mv -f %s %s`,
-		q(path.Dir(file)), strings.Join(quoteAll(lines), " "), q(file+".new"), q(file+".new"), q(file))
+	script := fmt.Sprintf(`umask 077; mkdir -p %s && rm -f -- %s && printf '%%s\n' %s > %s && mv -f %s %s`,
+		q(path.Dir(file)), q(file+".new"), strings.Join(quoteAll(lines), " "), q(file+".new"), q(file+".new"), q(file))
 	if _, err := r.Run(ctx, shScript(script)); err != nil {
 		return fmt.Errorf("recording the shipped file list on %s: %w", r.Label(), err)
 	}

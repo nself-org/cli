@@ -17,6 +17,14 @@ nself deploy [target] [flags]
 ## Description
 
 <!-- BEGIN PROSE:description -->
+Remote apply resolves relative build contexts from the first Compose file's directory.
+For a fronted stack, the nginx bind mount must target `/etc/nginx` or a directory
+under it. Prune and rollback recheck each front file's generated marker and recorded
+`server_name` set before changing it. Rollback refuses existing front files when an
+older deploy record has no ownership set. Certificate discovery errors stop the
+snapshot; only a missing certificate directory counts as empty. Scratch cleanup
+refuses symlinked `.nself` or `deploy-build` directories.
+
 `nself deploy` builds your stack and deploys it to a target environment using a per-service
 sequenced rolling restart. It chains `nself build` then restarts services in dependency order,
 waiting for each service to pass a health check before restarting the next.
