@@ -47,7 +47,7 @@ done
 for i in 1 2 3 4 5; do
   api POST /databases/main/collections/authors/documents "{\"documentId\":\"a$i\",\"data\":{\"name\":\"Author $i\",\"bio\":\"Bio of \\\"author\\\" $i, with a comma\"},\"permissions\":[]}" >/dev/null
 done
-for i in $(seq 1 25); do
+for i in $(seq 1 250); do
   perms='[]'
   [[ $i == 1 ]] && perms='["read(\"any\")"]'
   api POST /databases/main/collections/books/documents "{\"documentId\":\"b$i\",\"data\":{\"title\":\"Book $i\",\"pages\":$((100 + i)),\"rating\":4.$((i % 10)),\"in_stock\":$([[ $((i % 2)) == 0 ]] && echo true || echo false),\"released\":\"2025-01-$(printf '%02d' $((i % 28 + 1)))T00:00:00.000+00:00\",\"contact\":\"book$i@fixture.invalid\",\"author\":\"a$(((i % 5) + 1))\"},\"permissions\":$perms}" >/dev/null
@@ -64,4 +64,4 @@ for i in 1 2 3; do
   printf 'fixture file %s\n' "$i" > "$OUT/file$i.txt"
   curl -fsS -X POST "$ENDPOINT/storage/buckets/files/files" -H "X-Appwrite-Project: proj1" -H "X-Appwrite-Key: $wkey" -F "fileId=f$i" -F "file=@$OUT/file$i.txt;filename=file$i.txt" >/dev/null
 done
-echo '{"databases":1,"collections":2,"documents":30,"users":4,"buckets":1,"files":3}' > "$OUT/seed.json"
+echo '{"databases":1,"collections":2,"documents":255,"users":4,"buckets":1,"files":3}' > "$OUT/seed.json"

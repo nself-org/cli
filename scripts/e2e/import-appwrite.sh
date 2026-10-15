@@ -46,7 +46,7 @@ jq -e '.data.result=="pass" and .data.detection.kind=="appwrite" and .data.detec
 test ! -d .nself/import
 "${IMPORT[@]}" --json > "$W/import.json"
 jq -e '.data.result=="pass" and (.data.mismatches|length)==0 and (.data.tables|length)==2 and ([.data.tables[].equal]|all)' "$W/import.json"
-jq -e '([.data.tables[]|select(.name=="books")]|.[0].source_rows)==25 and ([.data.tables[]|select(.name=="authors")]|.[0].source_rows)==5' "$W/import.json"
+jq -e '([.data.tables[]|select(.name=="books")]|.[0].source_rows)==250 and ([.data.tables[]|select(.name=="authors")]|.[0].source_rows)==5' "$W/import.json"
 jq -e '.data.users.source==4 and .data.users.target==4 and .data.users.equal==true' "$W/import.json"
 # The two argon2 users keep no password and are listed with the reset path; bcrypt users keep theirs.
 jq -e '(.data.users.reset_required|length)==2 and ([.data.users.reset_required[].email]|sort)==["argon1@fixture.invalid","argon2@fixture.invalid"]' "$W/import.json"
@@ -59,7 +59,7 @@ jq -e '[.data.exemptions[]|select(.reason|test("permissions"))]|length>=1' "$W/i
 jq -e '.data.hasura.equal==true and (.data.hasura.diffs|length)==0' "$W/import.json"
 SECRET=$(sed -n 's/^HASURA_GRAPHQL_ADMIN_SECRET=//p' .env | tail -1)
 curl -fsS -H "x-hasura-admin-secret: $SECRET" -H 'Content-Type: application/json' -d '{"type":"export_metadata","args":{}}' "http://127.0.0.1:$TARGET_HASURA_PORT/v1/metadata" | jq -e '[.sources[].tables[]|select(.table.name=="books")|.object_relationships[]?|select(.name=="author_rel")]|length==1'
-test "$(docker compose exec -T postgres psql -U postgres -d nself -Atc "SELECT count(*) FROM main.books b JOIN main.authors a ON a.id=b.author")" = 25
+test "$(docker compose exec -T postgres psql -U postgres -d nself -Atc "SELECT count(*) FROM main.books b JOIN main.authors a ON a.id=b.author")" = 250
 # A wrong key is refused with a fixed message and no echo.
 export BAD_KEY=wrong-fixture-key
 if nself db import appwrite --endpoint "$ENDPOINT" --project proj1 --api-key-env BAD_KEY --plan --json > "$W/badkey.json" 2> "$W/badkey.err"; then echo 'FAIL: bad key accepted'; exit 1; fi
