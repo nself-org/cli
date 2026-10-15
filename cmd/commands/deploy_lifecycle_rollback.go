@@ -68,13 +68,11 @@ func rollbackRemoteV15(cmd *cobra.Command, workdir, target string) (bool, error)
 		idx := strings.Index(tar, "/"+deploy.BackupDir+"/pre-deploy-")
 		srv, key := controlplane.Server{Name: target + "-app", Host: host, RemotePath: tar[:idx]}, sshKeyPath()
 		if inv != nil {
-			for _, e := range inv.Environments {
-				for _, c := range e.Servers {
-					if spec, err := remote.ParseHostSpec(c.Host); err == nil && spec.String() == host {
-						srv.Name, srv.Host = c.Name, c.Host
-						if v := os.Getenv(c.SSHKeyRef); v != "" {
-							key = v
-						}
+			for _, c := range inv.Environments[target].Servers {
+				if spec, err := remote.ParseHostSpec(c.Host); err == nil && spec.String() == host {
+					srv.Name, srv.Host = c.Name, c.Host
+					if v := os.Getenv(c.SSHKeyRef); v != "" {
+						key = v
 					}
 				}
 			}

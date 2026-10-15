@@ -768,6 +768,12 @@ and the v1.5 deploy ships them as a second artifact root with the same guards as
 
 ### Rollback in v1.5 mode
 
+Rollback resolves each recorded host's server name and `ssh_key_ref` only within the
+target environment, including custom names such as `live`. Another environment
+sharing that host cannot supply its credentials. If the target has no matching server
+or its key variable is unset, rollback keeps the default deploy SSH key. The remote
+path comes from the recorded tar.
+
 `nself deploy rollback <target>` reads `.nself/state/deploy.json`. When it holds a `pre_deploy_tar`
 for the target, it restores the tar on every host in `pre_deploy_tars` in place: extract to a temp
 dir under `.nself/backups/`, `rsync -ac` back only the files the record lists as shipped (no
