@@ -62,6 +62,9 @@ func newL03Project(t *testing.T, fixture string) *l03Project {
 	if runtime.GOOS == "windows" {
 		t.Skip("the docker stub is a POSIX shell script")
 	}
+	// A project's env class comes from its cascade; the runner's own ENV must not decide it.
+	t.Setenv("ENV", "")
+	_ = os.Unsetenv("ENV")
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

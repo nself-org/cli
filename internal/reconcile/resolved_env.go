@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/joho/godotenv"
 	nbuild "github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/config"
 )
@@ -14,7 +13,7 @@ import (
 // It reads no other cascade layer: those layers depend on this selection.
 func resolveBuildEnv(dir string, overlay map[string][]byte) string {
 	if data, ok := overlay[".env"]; ok && os.Getenv("ENV") == "" {
-		if values, err := godotenv.UnmarshalBytes(data); err == nil && values["ENV"] != "" {
+		if values, err := config.ParseEnvBytes("the pending .env", data); err == nil && values["ENV"] != "" {
 			return values["ENV"]
 		}
 		return "dev"
