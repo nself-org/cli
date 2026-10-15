@@ -91,22 +91,9 @@ func (d *fakeDB) handler(project, bucket string) http.Handler {
 		case strings.HasSuffix(rest, ":listCollectionIds"):
 			writeJSON(w, map[string]any{"collectionIds": d.subs[strings.TrimSuffix(rest, ":listCollectionIds")]})
 		case strings.HasSuffix(rest, ":runAggregationQuery"):
-			parent := strings.TrimSuffix(rest, ":runAggregationQuery")
-			var body struct {
-				Q struct {
-					SQ struct {
-						From []struct {
-							CollectionID string `json:"collectionId"`
-						} `json:"from"`
-					} `json:"structuredQuery"`
-				} `json:"structuredAggregationQuery"`
-			}
-			_ = json.NewDecoder(r.Body).Decode(&body)
-			path := body.Q.SQ.From[0].CollectionID
-			if parent != "" {
-				path = parent + "/" + path
-			}
-			writeJSON(w, []any{map[string]any{"result": map[string]any{"aggregateFields": map[string]any{"n": map[string]any{"integerValue": strconv.Itoa(d.existing(path))}}}}})
+			d.serveCount(w, r, strings.TrimSuffix(rest, ":runAggregationQuery"))
+		case rest == ":runQuery":
+			d.serveQuery(w, r, project)
 		default:
 			d.serveDocs(w, r, rest, prefix)
 		}

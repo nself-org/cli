@@ -125,7 +125,7 @@ func TestDetectReportsCollectionsAndUsers(t *testing.T) {
 func TestExtractRefusesEmptyProject(t *testing.T) {
 	stubScratch(t)
 	d := fixtureDB()
-	d.subs[""] = nil
+	d.docs = nil
 	_, _, srv := fakeClient(t, d)
 	if _, err := (Source{}).Extract(context.Background(), extractInput(t, srv.URL, false), filepath.Join(t.TempDir(), "stage")); err == nil {
 		t.Fatal("empty project accepted")

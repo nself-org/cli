@@ -4,7 +4,8 @@ package firebase
 // per-table JSON-lines spool while tracking the types seen per top-level field.
 // Inputs: a Firestore reader and a spool directory. Outputs: tables with the document count from
 // the listing and the independent count from the COUNT aggregation.
-// Constraints: memory is O(one document); the spool lives in the private extract directory.
+// Constraints: document memory is bounded to one query page; table and collection metadata is
+// retained for independent counts. The spool lives in the private extract directory.
 import (
 	"bufio"
 	"context"
@@ -80,44 +81,54 @@ func (c *collector) close() error {
 	return first
 }
 
-// walk reads every collection under parent ("" = root); parentTable is nil at the root.
-func (c *collector) walk(ctx context.Context, parent string, parentTable *tableAcc) error {
-	ids, err := c.fs.collectionIDs(ctx, parent)
+// walk reads all descendant documents at one snapshot and checks database completeness.
+func (c *collector) walk(ctx context.Context, _ string, _ *tableAcc) error {
+	total, err := c.fs.count(ctx, "", "")
 	if err != nil {
 		return err
 	}
-	sort.Strings(ids)
-	for _, id := range ids {
-		if err = checkText(id); err != nil {
-			return err
-		}
-		pattern := id
-		path := id
-		if parent != "" {
-			pattern, path = parentTable.pattern+"/*/"+id, parent+"/"+id
-		}
-		t, err := c.table(pattern, parentTable)
+	seen := map[string]bool{}
+	var listed int64
+	err = c.fs.queryAll(ctx, func(path string, d document) error {
+		t, parentPath, err := c.documentTable(ctx, path, seen)
 		if err != nil {
 			return err
 		}
-		n, err := c.fs.count(ctx, parent, id)
-		if err != nil {
-			return err
-		}
-		t.counted += n
-		_, err = c.fs.listDocs(ctx, path, func(d document) error {
-			if !d.Missing {
-				if err := c.add(t, parent, d); err != nil {
-					return err
-				}
-			}
-			return c.walk(ctx, path+"/"+d.ID, t)
-		})
-		if err != nil {
-			return err
-		}
+		listed++
+		return c.add(t, parentPath, d)
+	})
+	if err == nil && listed != total {
+		return errors.New("firestore database count differs from query; discovery incomplete")
 	}
-	return nil
+	return err
+}
+
+// documentTable reconstructs ancestor tables even when their parent documents were deleted.
+func (c *collector) documentTable(ctx context.Context, path string, seen map[string]bool) (*tableAcc, string, error) {
+	parts := strings.Split(path, "/")
+	var parent *tableAcc
+	pattern := ""
+	for i := 0; i < len(parts); i += 2 {
+		if pattern != "" {
+			pattern += "/*/"
+		}
+		pattern += parts[i]
+		t, err := c.table(pattern, parent)
+		if err != nil {
+			return nil, "", err
+		}
+		collection := strings.Join(parts[:i+1], "/")
+		if !seen[collection] {
+			n, err := c.fs.count(ctx, strings.Join(parts[:i], "/"), parts[i])
+			if err != nil {
+				return nil, "", err
+			}
+			t.counted += n
+			seen[collection] = true
+		}
+		parent = t
+	}
+	return parent, strings.Join(parts[:len(parts)-2], "/"), nil
 }
 
 // add decodes one document and appends it to the table spool.

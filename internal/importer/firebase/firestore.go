@@ -1,7 +1,6 @@
 package firebase
 
-// Purpose: read Firestore through the REST API: collection ids, paginated documents, and the
-// server-side COUNT aggregation that serves as the independent source count.
+// Purpose: probe collection ids and pin independent server-side COUNTs to one snapshot.
 // Inputs: project id and base URL (the emulator and real projects share this interface).
 // Outputs: documents streamed to a callback, counts. Constraints: a parent path is "" for the
 // root or "users/u1"; ids are escaped per path segment; the count uses a different API than the
@@ -11,16 +10,16 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
-	"strconv"
 	"strings"
 )
 
 const pageSize = 40
 
 type firestore struct {
-	c       *client
-	project string
-	base    string
+	c        *client
+	project  string
+	base     string
+	readTime string
 }
 
 func (f *firestore) docsURL(path string) string {
@@ -60,64 +59,24 @@ func (f *firestore) collectionIDs(ctx context.Context, parent string) ([]string,
 type document struct {
 	ID     string
 	Fields map[string]json.RawMessage
-	// Missing is true for a document that holds no data of its own and exists only as the parent of
-	// sub-collections (Firestore keeps those after the parent is deleted). It is listed with
-	// showMissing=true so its sub-collections are still walked; it is never a table row.
-	Missing bool
 }
 
-// listDocs streams every document of a collection path ("users" or "users/u1/orders"), missing
-// parents included, to fn and returns how many existing documents it saw.
-func (f *firestore) listDocs(ctx context.Context, collection string, fn func(document) error) (int64, error) {
-	var n int64
-	token := ""
-	for {
-		u := f.docsURL(collection) + "?showMissing=true&pageSize=" + strconv.Itoa(pageSize)
-		if token != "" {
-			u += "&pageToken=" + url.QueryEscape(token)
-		}
-		var page struct {
-			Documents []struct {
-				Name       string                     `json:"name"`
-				Fields     map[string]json.RawMessage `json:"fields"`
-				CreateTime string                     `json:"createTime"`
-			} `json:"documents"`
-			NextPageToken string `json:"nextPageToken"`
-		}
-		if err := f.c.getJSON(ctx, u, &page); err != nil {
-			return n, err
-		}
-		for _, d := range page.Documents {
-			id := d.Name[strings.LastIndex(d.Name, "/")+1:]
-			if id == "" {
-				return n, errors.New("document name invalid")
-			}
-			if err := checkText(id); err != nil {
-				return n, err
-			}
-			missing := d.CreateTime == "" && len(d.Fields) == 0
-			if err := fn(document{ID: id, Fields: d.Fields, Missing: missing}); err != nil {
-				return n, err
-			}
-			if !missing {
-				n++
-			}
-		}
-		if page.NextPageToken == "" {
-			return n, nil
-		}
-		token = page.NextPageToken
-	}
-}
-
-// count runs a COUNT aggregation over the collection id under parent.
+// count counts a collection, or all descendants at the root when collectionID is empty.
 func (f *firestore) count(ctx context.Context, parent, collectionID string) (int64, error) {
+	selector := map[string]any{"collectionId": collectionID}
+	if collectionID == "" {
+		selector = map[string]any{"allDescendants": true}
+	}
 	body := map[string]any{"structuredAggregationQuery": map[string]any{
-		"structuredQuery": map[string]any{"from": []map[string]any{{"collectionId": collectionID}}},
+		"structuredQuery": map[string]any{"from": []map[string]any{selector}},
 		"aggregations":    []map[string]any{{"alias": "n", "count": map[string]any{}}},
 	}}
+	if f.readTime != "" {
+		body["readTime"] = f.readTime
+	}
 	var out []struct {
-		Result struct {
+		ReadTime string `json:"readTime"`
+		Result   struct {
 			AggregateFields map[string]struct {
 				IntegerValue json.Number `json:"integerValue"`
 			} `json:"aggregateFields"`
@@ -128,8 +87,14 @@ func (f *firestore) count(ctx context.Context, parent, collectionID string) (int
 	}
 	for _, r := range out {
 		if v, ok := r.Result.AggregateFields["n"]; ok {
+			if f.readTime == "" {
+				if r.ReadTime == "" {
+					return 0, errors.New("firestore snapshot readTime missing")
+				}
+				f.readTime = r.ReadTime
+			}
 			n, err := v.IntegerValue.Int64()
-			if err != nil {
+			if err != nil || n < 0 {
 				return 0, errors.New("document count invalid")
 			}
 			return n, nil

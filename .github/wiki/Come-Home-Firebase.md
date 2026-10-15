@@ -26,8 +26,9 @@ and the target and writes nothing; the old `--dry-run` flag means `--plan` in v1
 
 ## What is copied
 
-**Documents.** Firestore is read through its REST API (`documents`, `listCollectionIds`, and the
-`runAggregationQuery` COUNT used as the independent source count). Every top-level collection
+**Documents.** Firestore is read through its REST API with a paginated, all-descendants
+`runQuery` and independent `runAggregationQuery` counts. All document queries and counts share
+the snapshot `readTime` returned by the initial database-wide COUNT. Every top-level collection
 becomes a table in the schema `firebase`:
 
 | Part | Rule |
@@ -69,16 +70,20 @@ pass `--skip-storage`, which lists each object as an exemption.
 
 The report passes only when, for every table, the row count and a content hash match, and the
 independent source counts match: documents per collection from the Firestore COUNT aggregation
-(a different API than the document listing, so a missing page shows up), users from the export
+(a different API than the document query, so a missing page shows up), users from the export
 file's element count, and objects from a second bucket listing. A mismatch is E523 and the exit
-code is 1.
+code is 1. Before building the bundle, a database-wide COUNT also checks that discovery did not
+omit an entire collection.
 
 ## Limits
 
 - Firestore Security Rules and indexes are not translated. Add Hasura permissions after the import.
 - A document that was deleted but still has sub-collections is not a row; its sub-collections are
-  still imported (the listing asks Firestore for such parents).
-- Each document costs one `listCollectionIds` read to find sub-collections.
+  still imported through the all-descendants query.
+- Discovery uses one query per document page, plus one COUNT per concrete collection path and
+  an initial database COUNT. It does not call `listCollectionIds` for each document.
+- Firestore must retain the selected snapshot for the duration of extraction. If the snapshot
+  expires, the import fails; rerun the import to select a fresh snapshot.
 - Objects are copied as stored (a gzip-encoded object stays gzip) and each one is checked against the
   size and MD5 the bucket listing reports. Failed requests are retried with a growing wait.
 - Object versions other than the live one are not copied.

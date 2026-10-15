@@ -13,7 +13,6 @@ import (
 
 	"github.com/nself-org/cli/internal/importer"
 	"github.com/nself-org/cli/internal/importer/verify"
-	"github.com/nself-org/cli/internal/portable"
 )
 
 const authFixture = "../../../test/fixtures/import/firebase/auth-export.json"
@@ -106,9 +105,10 @@ func TestSanitizeAndFit(t *testing.T) {
 func TestTableNameCollisionRenamed(t *testing.T) {
 	d := fixtureDB()
 	d.subs[""] = []string{"Users", "users"}
-	d.docs["Users"] = []fakeDoc{{ID: "a", Fields: map[string]any{}}}
-	d.docs["users"] = []fakeDoc{{ID: "b", Fields: map[string]any{}}}
-	d.subs["users/u1"], d.subs["users/u2"] = nil, nil
+	d.docs = map[string][]fakeDoc{
+		"Users": {{ID: "a", Fields: map[string]any{}}},
+		"users": {{ID: "b", Fields: map[string]any{}}},
+	}
 	col, dir := collectFixture(t, d)
 	_, copies, notes, err := emit(col.sorted(), dir)
 	if err != nil {
@@ -252,32 +252,16 @@ func TestResolveInputs(t *testing.T) {
 	}
 }
 
-// TestPlantedPaginationBugShowsSourceCountMismatch drops the last listing page; the COUNT
-// aggregation still reports every document, so verify reports a source_count mismatch.
+// TestPlantedPaginationBugShowsSourceCountMismatch rejects a truncated query before building.
 func TestPlantedPaginationBugShowsSourceCountMismatch(t *testing.T) {
 	d := fixtureDB()
 	d.dropLast = true
-	col, _ := collectFixture(t, d)
-	m := portable.Manifest{}
-	state := verify.State{Tables: map[string]portable.Table{}, Counts: map[string]int64{}}
-	for _, tb := range col.sorted() {
-		tb.name = sanitize(tb.pattern[strings.LastIndex(tb.pattern, "/")+1:])
-		if tb.parent != nil {
-			tb.name = tb.parent.name + "__" + tb.name
-		}
-		id := schemaName + "." + tb.name
-		m.DB.Tables = append(m.DB.Tables, portable.Table{Schema: schemaName, Name: tb.name, Rows: tb.listed, Hash: "h"})
-		m.SourceCounts = append(m.SourceCounts, portable.SourceCount{Kind: "table", ID: id, Count: tb.counted})
-		state.Tables[id] = portable.Table{Schema: schemaName, Name: tb.name, Rows: tb.listed, Hash: "h"}
-		state.Counts["table\x00"+id] = tb.listed
-	}
-	mismatches := verify.CompareState(state, m, nil, nil)
-	found := false
-	for _, mm := range mismatches {
-		found = found || mm.Kind == "source_count"
-	}
-	if !found {
-		t.Fatalf("a dropped page went unnoticed: %+v", mismatches)
+	fs, _, _ := fakeClient(t, d)
+	col := newCollector(fs, t.TempDir())
+	err := col.walk(context.Background(), "", nil)
+	_ = col.close()
+	if err == nil {
+		t.Fatal("a dropped page went unnoticed")
 	}
 	// The healthy listing reports none.
 	good, _ := collectFixture(t, fixtureDB())
