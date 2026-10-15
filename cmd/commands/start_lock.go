@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/build"
+	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/lock"
@@ -145,14 +146,15 @@ func checkStartLock(root string, frozen bool, w io.Writer) error {
 }
 
 // mirrorImages reads the registry-mirror override file start wrote
-// (docker.ImageOverrideFile): service -> image. Missing or unreadable is empty.
+// (docker.ImageOverrideFile): project-lock pin key -> image. Missing or
+// unreadable is empty.
 func mirrorImages(root string) map[string]string {
 	data, err := os.ReadFile(filepath.Join(root, docker.ImageOverrideFile))
 	if err != nil {
 		return nil
 	}
 	m, _ := lock.ComposeImages(data)
-	return m
+	return compose.CLIOwned(m)
 }
 
 // warnUnpinned prints one warning listing the services whose image is a tag

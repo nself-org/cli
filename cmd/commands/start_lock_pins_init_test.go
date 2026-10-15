@@ -38,6 +38,7 @@ func TestProjectLockPinsSurviveInitDefaults(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			blankImageVars(t)
 			t.Setenv("IMAGE_PINNING", mode)
+			t.Setenv("NSELF_ADMIN_ENABLED", "true")
 			dir := t.TempDir()
 			if _, err := setup.Initialize(setup.Options{WorkDir: dir, Name: "pinproj", Demo: true, NonInteractive: true, Quiet: true}); err != nil {
 				t.Fatalf("nself init: %v", err)
@@ -52,7 +53,7 @@ func TestProjectLockPinsSurviveInitDefaults(t *testing.T) {
 					pins[compose.PinKey(name)] = olderPin(img)
 				}
 			}
-			for _, key := range []string{"postgres", "hasura", "auth", "redis"} {
+			for _, key := range []string{"postgres", "hasura", "auth", "redis", "admin"} {
 				if pins[key] == "" {
 					t.Fatalf("the init stack has no %s to pin: %v", key, plain)
 				}

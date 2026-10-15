@@ -59,6 +59,8 @@ So a CLI upgrade never silently moves an existing project's images. To move one,
 
 A `*_VERSION` that is empty, equal to the CLI default (the version `nself init` writes into `.env`) or equal to the frozen legacy tag the CLI shipped before the lock means "use the default". It is not an override and never drops a pin, even after a CLI upgrade moves that default. The image lock applies the same test when it renders an image, and it holds for every row in the table below. Only a value that differs from both is an override.
 
+The default test starts with the image-lock entry that produced the rendered image. A few directional compatibility aliases match what the generator does: pgvector accepts the plain-Postgres init version, Valkey accepts the Redis init version, current Hasura accepts the v1.4 init version, and the two auth entries accept both recognized auth defaults. No other entry's default is inherited. For example, `pg16` is the pgvector entry's default tag, but `POSTGRES_VERSION=pg16` is an explicit override when the project renders plain `postgres:pg16`; it does not keep an older plain-Postgres pin.
+
 `nself init` writes `*_VERSION` defaults into `.env`. A value that renders to the same image as the pin (`HASURA_VERSION=v2.44.0` against a `hasura/graphql-engine:v2.44.0@sha256:...` pin, with or without the `docker.io/` prefix, in legacy or lock pinning mode) keeps the digest. For postgres the comparison uses the image the generator renders (`POSTGRES_VERSION=16-alpine` matches a `pgvector/pgvector:pg16` pin). A different value drops the pin, and build prints one notice naming the variable, once per run. Only a variable the generator really reads for that image counts, whatever its name looks like. One table in the CLI source (`internal/compose/image_inputs.go`) lists them, and a test fails when it drifts from the generator:
 
 | Service | Variables that feed its image (first wins) |
@@ -86,6 +88,8 @@ A project that already has a `docker-compose.yml` gets a first lock that takes i
 3. Otherwise a tag-only entry under `unpinned`.
 
 A service the old compose lacks takes the CLI default. A project with no compose starts from the CLI defaults.
+
+The admin UI's compose service is `nself-admin`, while its lock key is `admin`. If another compose file also defines a service named `admin`, that service cannot replace the admin UI's lock entry: the generated `nself-admin` service wins the key deterministically.
 
 ## Review a diff
 

@@ -259,14 +259,39 @@ func IsCLIOwned(service string) bool {
 	return owned
 }
 
+// catalogPinPriority ranks the compose service that owns a pin key above a
+// non-catalog service with the same name. An exact catalog name wins over an
+// alias; otherwise ties use the service name so selection stays deterministic.
+func catalogPinPriority(service, key string) int {
+	for _, e := range serviceCatalog {
+		if e.Name != service {
+			continue
+		}
+		if service == key {
+			return 2
+		}
+		return 1
+	}
+	return 0
+}
+
 // CLIOwned keeps the services the CLI image lock names and whose image is a
 // literal reference (no variable). The result is keyed by pin key (PinKey), the
-// key the project lock and ResolveImage use, not by compose service name.
+// key the project lock and ResolveImage use, not by compose service name. When
+// names collapse onto one pin key, the catalog service wins deterministically.
 func CLIOwned(all map[string]string) map[string]string {
 	out := map[string]string{}
+	owners := map[string]string{}
 	for svc, ref := range all {
 		if IsCLIOwned(svc) && !strings.Contains(ref, "$") {
-			out[PinKey(svc)] = ref
+			key := PinKey(svc)
+			owner, exists := owners[key]
+			priority, ownerPriority := catalogPinPriority(svc, key), catalogPinPriority(owner, key)
+			if exists && (priority < ownerPriority || priority == ownerPriority && svc >= owner) {
+				continue
+			}
+			out[key] = ref
+			owners[key] = svc
 		}
 	}
 	return out

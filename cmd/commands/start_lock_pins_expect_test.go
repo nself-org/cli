@@ -1,5 +1,7 @@
 package commands
 
+import "testing"
+
 // start_lock_pins_expect_test.go — the fixed expected outcome of every env state
 // of the project-lock pin matrix (P7-LIVE-09, round 9).
 //
@@ -54,6 +56,9 @@ var expectVersion = map[string]string{
 // expected returns whether the pin must be kept in state and, when it is
 // dropped, the variable the notice names.
 func (r *matrixRow) expected(state string) (kept bool, name string) {
+	if _, known := expectVersion[state]; !known {
+		panic("unknown project-lock pin matrix state: " + state)
+	}
 	table := map[string]string{} // a row that reads no variable keeps its pin in every state
 	switch {
 	case r.feeds(r.iVar) && r.feeds(r.vVar):
@@ -61,12 +66,27 @@ func (r *matrixRow) expected(state string) (kept bool, name string) {
 	case r.feeds(r.vVar):
 		table = expectVersion
 	}
-	switch want := table[state]; want {
-	case "", "kept":
+	want := "kept"
+	if len(table) != 0 {
+		want = table[state]
+	}
+	switch want {
+	case "kept":
 		return true, ""
 	case "drop:IMAGE":
 		return false, r.iVar
-	default:
+	case "drop:VERSION":
 		return false, r.vVar
+	default:
+		panic("unknown project-lock pin matrix expectation: " + want)
 	}
+}
+
+func TestProjectLockPinMatrixRejectsUnknownExpectationState(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("an unknown matrix state must not silently default to kept")
+		}
+	}()
+	(&matrixRow{}).expected("misspelled-state")
 }

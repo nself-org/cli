@@ -73,6 +73,78 @@ func TestProjectPinsExplicitNames(t *testing.T) {
 	}
 }
 
+// TestCLIOwnedPrefersCatalogServiceOnPinKeyCollision proves that a user
+// service named like a catalog pin key cannot replace the catalog service in
+// the project lock. The admin UI is rendered as nself-admin but pinned as
+// "admin", so both names otherwise collapse onto the same map key.
+func TestCLIOwnedPrefersCatalogServiceOnPinKeyCollision(t *testing.T) {
+	const catalogRef = "nself/nself-admin:catalog"
+	all := map[string]string{
+		"admin":          "example.com/user/admin:custom",
+		AdminServiceName: catalogRef,
+	}
+	for i := 0; i < 256; i++ {
+		if got := CLIOwned(all)["admin"]; got != catalogRef {
+			t.Fatalf("iteration %d: admin pin = %q, want catalog service %q", i, got, catalogRef)
+		}
+	}
+}
+
+// TestProjectPinOtherEntryDefaultIsAnOverride covers a service with multiple
+// image-lock entries. pg16 is pgvector's default tag, but when plain postgres
+// is rendered it is an explicit postgres version and must drop the old pin.
+func TestProjectPinOtherEntryDefaultIsAnOverride(t *testing.T) {
+	t.Setenv(EnvImagePinning, PinningLegacy)
+	t.Setenv("POSTGRES_VERSION", "pg16")
+	pin := "postgres:15-alpine@" + pinDigest
+	defer SetProjectPins(map[string]string{"postgres": pin})()
+	var notices bytes.Buffer
+	defer PinNoticeSink(&notices)()
+
+	rendered := ResolvePostgresImage(config.PostgresConfig{Version: "pg16"})
+	got := ResolveImage("postgres", rendered)
+	if got == pin || CanonicalRef(got) != "postgres:pg16" {
+		t.Fatalf("POSTGRES_VERSION=pg16 must drop the plain-postgres pin: got %q", got)
+	}
+	if n := strings.Count(notices.String(), "notice:"); n != 1 || !strings.Contains(notices.String(), "POSTGRES_VERSION is set") {
+		t.Fatalf("want one notice naming POSTGRES_VERSION, got %q", notices.String())
+	}
+}
+
+// TestImageInputDefaultCompatibilityIsDirectional keeps the explicit
+// generator mappings narrow. A selected row may accept a compatibility default
+// that the generator translates to it, but the reverse direction is not
+// implied just because both rows belong to one compose service.
+func TestImageInputDefaultCompatibilityIsDirectional(t *testing.T) {
+	rows := map[string]ImageInput{}
+	for _, in := range ImageInputs() {
+		rows[in.Entry] = in
+	}
+	postgres, _ := LockedRef("postgres")
+	pgvector, _ := LockedRef("pgvector")
+	redis, _ := LockedRef("redis")
+	valkey, _ := LockedRef("valkey")
+	v14, _ := LockedRef("hasura-v14")
+	current, _ := LockedRef("hasura")
+	for _, tc := range []struct {
+		name, entry, value string
+		want               bool
+	}{
+		{"pgvector accepts postgres init default", "pgvector", postgres.Version, true},
+		{"postgres rejects pgvector default", "postgres", pgvector.Version, false},
+		{"valkey accepts redis init default", "valkey", redis.Version, true},
+		{"redis rejects valkey default", "redis", valkey.Version, false},
+		{"current hasura accepts init default", "hasura", v14.Version, true},
+		{"current hasura remains explicit", "hasura", current.Version, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := rows[tc.entry].isDefault(tc.value); got != tc.want {
+				t.Fatalf("%s.isDefault(%q) = %v, want %v", tc.entry, tc.value, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestProjectPinsLoad(t *testing.T) {
 	dir := t.TempDir()
 	if err := LoadProjectPins(dir); err != nil || len(ProjectPins()) != 0 {
