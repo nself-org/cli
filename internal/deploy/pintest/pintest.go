@@ -20,9 +20,9 @@ import (
 )
 
 // Home returns a fresh directory suitable as $HOME for a pin-store test.
-// It uses t.TempDir() when that location's ancestors are sealed (the normal
-// case, byte-for-byte the old behaviour) and otherwise a directory under
-// /tmp, removed when the test ends. When no location is sealed the test is
+// It uses t.TempDir() with mode 0700 when that location's ancestors are sealed
+// and otherwise a directory under /tmp, removed when the test ends.
+// When no location is sealed the test is
 // skipped with the reason instead of failing on the host's layout.
 func Home(t testing.TB) string {
 	t.Helper()
@@ -30,7 +30,12 @@ func Home(t testing.TB) string {
 		return t.TempDir() // the production check is skipped on windows
 	}
 	if Sealed(os.TempDir()) {
-		return t.TempDir()
+		dir := t.TempDir()
+		// TempDir follows umask; 0002 otherwise leaves HOME group writable.
+		if err := os.Chmod(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		return dir
 	}
 	for _, base := range []string{"/tmp", "/private/tmp"} {
 		if !Sealed(base) {

@@ -11,7 +11,7 @@ func TestSealedRefusesWritableParent(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX modes")
 	}
-	root := t.TempDir()
+	root := Home(t)
 	loose := filepath.Join(root, "loose")
 	if err := os.Mkdir(loose, 0o775); err != nil {
 		t.Fatal(err)
@@ -81,5 +81,38 @@ func TestHomeIsFreshAndEmpty(t *testing.T) {
 	ents, err := os.ReadDir(h)
 	if err != nil || len(ents) != 0 {
 		t.Fatalf("Home must be an empty dir: %v %v", ents, err)
+	}
+}
+
+// writableTempTB models t.TempDir under umask 0002 without changing the
+// process-wide umask while other tests may be running.
+type writableTempTB struct{ *testing.T }
+
+func (t writableTempTB) TempDir() string {
+	dir := t.T.TempDir()
+	if err := os.Chmod(dir, 0o775); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func TestHomeSealsWritableTempDir(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX modes")
+	}
+	// Choose a sealed parent so Home exercises its t.TempDir path, including
+	// on hosts whose default TMPDIR has writable ancestors.
+	base := Home(t)
+	if err := os.Chmod(base, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TMPDIR", base)
+	home := Home(writableTempTB{t})
+	info, err := os.Stat(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o700 {
+		t.Fatalf("HOME mode = %04o, want 0700", got)
 	}
 }
