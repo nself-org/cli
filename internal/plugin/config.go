@@ -106,6 +106,7 @@ func isOwnPluginDir(dirName, newPluginName string) bool {
 // (e.g. "np_chat_messages" → prefix "np_chat_"). The newPluginName parameter
 // is used to skip the plugin being installed (allowing reinstalls/updates),
 // including its own ".prev" update-backup directory — see isOwnPluginDir.
+// Dot-prefixed staging directories are not installed plugins.
 func checkTablePrefixConflict(pluginDir, newPluginName string, newTables []string) error {
 	if len(newTables) == 0 {
 		return nil
@@ -130,7 +131,7 @@ func checkTablePrefixConflict(pluginDir, newPluginName string, newTables []strin
 	}
 
 	for _, entry := range entries {
-		if !entry.IsDir() {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
 		if isOwnPluginDir(entry.Name(), newPluginName) {
@@ -158,6 +159,7 @@ func checkTablePrefixConflict(pluginDir, newPluginName string, newTables []strin
 // catches broader namespace conflicts). Like checkTablePrefixConflict, it
 // skips newPlugin's own directory and its ".prev" update-backup — see
 // isOwnPluginDir.
+// Dot-prefixed staging directories are not installed plugins.
 func checkTableConflicts(pluginDir string, newPlugin *PluginManifest) error {
 	if len(newPlugin.Tables) == 0 {
 		return nil
@@ -169,7 +171,7 @@ func checkTableConflicts(pluginDir string, newPlugin *PluginManifest) error {
 	}
 
 	for _, entry := range entries {
-		if !entry.IsDir() || isOwnPluginDir(entry.Name(), newPlugin.Name) {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") || isOwnPluginDir(entry.Name(), newPlugin.Name) {
 			continue
 		}
 		existing, err := parseManifest(filepath.Join(pluginDir, entry.Name(), "plugin.json"))

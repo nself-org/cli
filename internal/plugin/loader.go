@@ -238,6 +238,7 @@ var baseServiceRoutes = []nginx.NginxRoute{
 // being installed, so reinstalls are permitted). Base service routes (Hasura,
 // Auth, Storage) are seeded first so plugins that claim those paths are
 // rejected with a clear conflict message naming the base service as owner.
+// Dot-prefixed staging directories are not installed plugins.
 func collectInstalledPluginRoutes(pluginDir, skipPlugin string) []nginx.NginxRoute {
 	// Seed with always-on base service routes. This prevents false-positive
 	// "clean install succeeded" for plugins that try to claim /api, /auth, or
@@ -251,7 +252,7 @@ func collectInstalledPluginRoutes(pluginDir, skipPlugin string) []nginx.NginxRou
 	}
 
 	for _, entry := range entries {
-		if !entry.IsDir() {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
 		// isOwnPluginDir also skips "<skipPlugin>.prev", the backup Update()
