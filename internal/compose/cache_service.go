@@ -90,14 +90,15 @@ func existingCacheEngine() string {
 }
 
 // ExistingCacheEngine reads the cache engine out of an existing docker-compose.yml:
-// EngineValkey when the `redis` service image names valkey, EngineRedis when that
-// service exists in any other form (a literal or ${VAR:-default} image, a build)
+// The interpolated image names the engine; an opaque image uses its /data mount.
+// EngineRedis is the fallback when the service exists in any other form (a build)
 // or a redis_data volume is declared, EngineValkey for a valkey_data volume alone,
 // "" when the file shows no cache at all. An unparseable file shows nothing.
 func ExistingCacheEngine(composeYAML []byte) string {
 	var doc struct {
 		Services map[string]struct {
-			Image string `yaml:"image"`
+			Image   string      `yaml:"image"`
+			Volumes []yaml.Node `yaml:"volumes"`
 		} `yaml:"services"`
 		Volumes map[string]interface{} `yaml:"volumes"`
 	}
@@ -105,8 +106,13 @@ func ExistingCacheEngine(composeYAML []byte) string {
 		return ""
 	}
 	if svc, ok := doc.Services["redis"]; ok {
-		if strings.Contains(strings.ToLower(svc.Image), "valkey") {
-			return EngineValkey
+		if engine := cacheImageEngine(cacheInterpolate(svc.Image)); engine != "" {
+			return engine
+		}
+		for _, mount := range svc.Volumes {
+			if engine := cacheMountEngine(mount); engine != "" {
+				return engine
+			}
 		}
 		return EngineRedis
 	}
