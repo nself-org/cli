@@ -144,6 +144,8 @@ func runStep(ctx context.Context, b Backend, j *Journal, name string) error {
 	if name != "backup" {
 		return b.Run(ctx, name, j)
 	}
+	ctx, cancel := context.WithTimeout(ctx, stepTimeout("migrate"))
+	defer cancel()
 	if j.BackupID == "" {
 		if err := b.Backup(ctx, j); err != nil {
 			return resetBackupEvidence(j, fmt.Errorf("create update backup: %w", err))

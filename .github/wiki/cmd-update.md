@@ -58,7 +58,8 @@ and bound to the journal by its digest. Build uses the reconcile preview and
 apply path; production and staging show the planned changes before applying.
 Production class comes from `reconcile.EnvClass`, the same classifier used by
 build and update: `prod`, `production`, `staging`, and `stage` all count as
-production, on the safe side. Pull and migrate each have a 30-minute timeout;
+production, on the safe side. Backup creation, verification, and row counts share
+a 30-minute timeout. Pull and migrate each have a 30-minute timeout;
 the other dispatched steps have a 10-minute timeout, with health checks capped
 at five minutes. All these bounds also respect the caller's context.
 Core database migrations use the `db migrate` API. Plugins apply their own SQL
