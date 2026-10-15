@@ -21,6 +21,8 @@ func proxyFixture(t *testing.T) *planFixture {
 	t.Helper()
 	v15 := os.Getenv("NSELF_V15")
 	f := newPlanFixture(t, "dev-minimal")
+	// Traefik publishes on every address; these fixtures opt into that binding.
+	t.Setenv("NGINX_BIND_IP", "0.0.0.0")
 	t.Setenv("NSELF_V15", v15)
 	f.plugins = filepath.Join(f.workdir, ".nself", "plugins")
 	t.Setenv("NSELF_PLUGIN_DIR", f.plugins)

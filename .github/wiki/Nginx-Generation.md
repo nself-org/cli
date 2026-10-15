@@ -52,6 +52,7 @@ E481 lists every item that prevents a complete route swap:
 - Route directives in `unmodelled`, routes with `shadowed_by`, and entries in `unmodelled_global`.
 - Generated upstream URLs that cannot be parsed, have a path other than `/`, or have a query. Schemeless upstreams are checked as HTTP URLs. The version 1 contract cannot carry paths or queries (D-0310).
 - Foreign files in `nginx/sites/`, including hand-written files and marked files from another build that this build will not write.
+- Custom `NGINX_HTTP_PORT`, `NGINX_HTTPS_PORT`/`NGINX_SSL_PORT`, or a specific `NGINX_BIND_IP`. The Traefik fragment publishes host ports 80 and 443 on every address; it cannot preserve those nginx bindings. This includes the default dev bind of `127.0.0.1`. Keep nginx for custom bindings. To opt into Traefik's public binding, use ports 80/443 and explicitly set `NGINX_BIND_IP=0.0.0.0` before adding it. The refusal runs before writes or declared-plugin installation, including in check and plan mode.
 
 Remove or model the named items, or keep nginx with `nself remove traefik`. Both `nginx/` and `.nself/generated/routes.json` are always generated. With traefik selected, compose omits the nginx service. The plugin owns Traefik configuration and serves ports 80 and 443 through its file provider.
 

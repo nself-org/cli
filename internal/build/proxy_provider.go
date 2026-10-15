@@ -181,6 +181,7 @@ func checkProviderRoutes(m *routemodel.Model, provider string, cfg *config.Confi
 			WithFix("Keep nginx here, change the provider in the fronting project, or unset NGINX_FRONTED_BY.")
 	}
 	items, names := proxyRouteLimitations(m)
+	items = append(items, proxyBindingLimitations(cfg)...)
 	if proxyAPIDocsEnabled(cfg) {
 		names["api-docs.conf"] = true
 	}
