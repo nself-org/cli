@@ -66,9 +66,18 @@ func execute(ctx context.Context, o Options, b Backend) (*Journal, error) {
 				}
 				// This run could not re-verify the dump: never offer it for restore.
 				e := errs.Wrap("E403", "Stack update backup verification failed on resume", err)
-				return j, e.WithFix(fmt.Sprintf("The step-one backup can no longer be trusted. Check it with: %s. Restore only a backup that verifies. To leave this state, either verify and restore by hand, or archive the journal by moving %s to %s.", VerifyCommand(j.BackupID), ".nself/state/update-stack.json", ".nself/state/update-stack."+j.RunID+".json"))
+				return j, e.WithFix(untrustedBackupFix(j))
 			}
-			return j, backupError(false, err)
+			if !stateMayHaveChanged(j) {
+				err = resetBackupEvidence(j, err)
+				// Rewind the whole prefix so the journal remains contiguous.
+				for i := range j.Steps {
+					j.Steps[i].Result, j.Steps[i].DurationMS = "pending", 0
+				}
+				j.Steps[0].Result = "failed"
+				return j, failedStep(ctx, o, b, j, 0, err)
+			}
+			return j, backupError(false, err).WithFix(untrustedBackupFix(j))
 		}
 		if j.BeforeRows == nil || j.PreviousCompose == "" {
 			return j, errs.New("E139", "Stack update journal lacks pre-update recovery evidence")
@@ -204,7 +213,7 @@ func verifyProof(ctx context.Context, b Backend, j *Journal) error {
 // backupError classifies a failed production safety prerequisite.
 // Inputs: production classification and underlying error. Outputs: coded error.
 // Constraints: a production run fails E403 before the pull step.
-func backupError(prod bool, err error) error {
+func backupError(prod bool, err error) *errs.CLIError {
 	code := "E139"
 	if prod {
 		code = "E403"

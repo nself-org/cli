@@ -25,6 +25,13 @@ func RestoreCommand(backupID string) string {
 // Inputs: backup id. Outputs: executable verify guidance.
 func VerifyCommand(backupID string) string { return "nself backup verify " + quoteShellWord(backupID) }
 
+// untrustedBackupFix names verification and journal archival without offering an unverified restore.
+// Inputs: retained journal evidence. Outputs: operator reconciliation guidance.
+// Constraints: used when resume cannot prove the original backup is still usable.
+func untrustedBackupFix(j *Journal) string {
+	return fmt.Sprintf("The step-one backup can no longer be trusted. Check it with: %s. Restore only a backup that verifies. To leave this state, either verify and restore by hand, or archive the journal by moving %s to %s.", VerifyCommand(j.BackupID), ".nself/state/update-stack.json", ".nself/state/update-stack."+j.RunID+".json")
+}
+
 // RestartCommand restarts the pinned previous images and removes orphans, never volumes.
 // Inputs: snapshot path. Outputs: executable compose command.
 func RestartCommand(snapshot string) string {

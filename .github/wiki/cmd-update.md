@@ -126,6 +126,13 @@ If step-one verification fails, the journal's backup evidence is cleared (the
 dump file stays on disk) and the message names the backup, so the next
 `nself update stack --yes` takes a fresh dump.
 
+If a non-production resume cannot re-verify its backup, it returns E139. When
+neither `start` nor `migrate` has begun, it clears the backup evidence and rewinds
+the steps so the next retry takes a fresh dump. Once either step has begun, it
+retains the evidence and prints the backup verification command and the journal
+archive paths for operator reconciliation. It never suggests restoring an
+unverified backup.
+
 The run backup is tagged `keep-stack-<run_id>-<nonce>`. `nself backup prune`
 never deletes a backup tagged `keep` or `keep-*`, so it survives while a journal
 references it. nself never deletes it. To release it after a complete run, rename
