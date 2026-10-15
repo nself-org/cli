@@ -73,9 +73,14 @@ set -euo pipefail
 # WATCHDOG_DEADLINE >= 3x RELAX_WINDOW_SECONDS to allow CI startup overhead.
 RELAX_WINDOW_SECONDS=60
 WATCHDOG_MAX=$(( RELAX_WINDOW_SECONDS * 3 ))  # 180s
+# The digit check keeps `$(( ))` from aborting on text; `10#` keeps 08/09 from being
+# read as bad octal (the same bash 3.2 exit-0 hazard, and the watchdog adds it to an epoch).
 case "${WATCHDOG_DEADLINE:-}" in
   ''|*[!0-9]*) WATCHDOG_DEADLINE="${WATCHDOG_MAX}" ;;
-  *) [ "${WATCHDOG_DEADLINE}" -le "${WATCHDOG_MAX}" ] || WATCHDOG_DEADLINE="${WATCHDOG_MAX}" ;;
+  *)
+    WATCHDOG_DEADLINE=$(( 10#${WATCHDOG_DEADLINE} ))
+    [ "${WATCHDOG_DEADLINE}" -le "${WATCHDOG_MAX}" ] || WATCHDOG_DEADLINE="${WATCHDOG_MAX}"
+    ;;
 esac
 DEFAULT_WAIT_MINUTES=20
 CI_POLL_SECONDS="${CI_POLL_SECONDS:-30}"
@@ -85,11 +90,16 @@ CI_POLL_SECONDS="${CI_POLL_SECONDS:-30}"
 # so both are checked here (digits only, poll >= 1, verify capped at the relax window).
 case "${MERGE_VERIFY_SECONDS:-}" in
   ''|*[!0-9]*) MERGE_VERIFY_SECONDS="${RELAX_WINDOW_SECONDS}" ;;
-  *) [ "${MERGE_VERIFY_SECONDS}" -le "${RELAX_WINDOW_SECONDS}" ] || MERGE_VERIFY_SECONDS="${RELAX_WINDOW_SECONDS}" ;;
+  *)
+    MERGE_VERIFY_SECONDS=$(( 10#${MERGE_VERIFY_SECONDS} ))
+    [ "${MERGE_VERIFY_SECONDS}" -le "${RELAX_WINDOW_SECONDS}" ] || MERGE_VERIFY_SECONDS="${RELAX_WINDOW_SECONDS}"
+    ;;
 esac
 case "${MERGE_POLL_SECONDS:-}" in
-  ''|*[!0-9]*|0|00*) MERGE_POLL_SECONDS=5 ;;
+  ''|*[!0-9]*) MERGE_POLL_SECONDS=5 ;;
+  *) MERGE_POLL_SECONDS=$(( 10#${MERGE_POLL_SECONDS} )) ;;
 esac
+[ "${MERGE_POLL_SECONDS}" -ge 1 ] || MERGE_POLL_SECONDS=5
 AUDIT_LOG="${HOME}/.nself/admin-merge-audit.log"
 export AUDIT_LOG
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -411,9 +421,22 @@ fi
 
 # ── Merge PR ──────────────────────────────────────────────────────────────────
 MERGE_SUCCESS=0
+AUTO_OFF=1
 MERGE_RESULT=merged   # merged | failed | closed | auto_merge_only (decides the exit code)
 # pr_state <n>: prints the PR state (OPEN, MERGED, CLOSED), or nothing when unreadable.
 pr_state() { gh pr view "$1" --repo "${TARGET_REPO}" --json state --jq .state 2>/dev/null || true; }
+# disable_auto_merge: turn auto-merge off, then read autoMergeRequest back. Returns 0
+# only when GitHub reports none armed; a failed call or an unreadable PR returns 1 and
+# is audited, so a PR that may still merge later is never reported as safe.
+disable_auto_merge() {
+  gh pr merge "${PR_NUMBER}" --repo "${TARGET_REPO}" --disable-auto >/dev/null 2>&1 || true
+  if [ "$(gh pr view "${PR_NUMBER}" --repo "${TARGET_REPO}" --json autoMergeRequest --jq '.autoMergeRequest == null' 2>/dev/null || true)" = "true" ]; then
+    return 0
+  fi
+  error "Could not confirm auto-merge is off: it may still be armed on PR #${PR_NUMBER}. Run: gh pr merge ${PR_NUMBER} --repo ${TARGET_REPO} --disable-auto"
+  audit "MERGE  pr=${PR_NUMBER}  auto_merge_still_armed"
+  return 1
+}
 if [ "${DRY_RUN}" -eq 0 ]; then
   info "Merging PR #${PR_NUMBER}..."
   if gh pr merge "${PR_NUMBER}" \
@@ -434,7 +457,7 @@ if [ "${DRY_RUN}" -eq 0 ]; then
     if [ "${MERGE_SUCCESS}" -eq 0 ]; then
       # Do not leave auto-merge armed behind a restored protection, then look once
       # more: it may have fired between the last read and now.
-      gh pr merge "${PR_NUMBER}" --repo "${TARGET_REPO}" --disable-auto >/dev/null 2>&1 || true
+      if disable_auto_merge; then AUTO_OFF=1; else AUTO_OFF=0; fi
       PR_STATE=$(pr_state "${PR_NUMBER}")
       if [ "${PR_STATE}" = "MERGED" ]; then MERGE_SUCCESS=1; fi
     fi
@@ -447,7 +470,8 @@ if [ "${DRY_RUN}" -eq 0 ]; then
       audit "MERGE  pr=${PR_NUMBER}  result=closed"
     else
       MERGE_RESULT=auto_merge_only
-      error "PR #${PR_NUMBER} is ${PR_STATE:-unreadable}, not MERGED, ${MERGE_VERIFY_SECONDS}s after the merge call: GitHub only set auto-merge (non-required checks still pending?). Auto-merge was disabled again."
+      error "PR #${PR_NUMBER} is ${PR_STATE:-unreadable}, not MERGED, ${MERGE_VERIFY_SECONDS}s after the merge call: GitHub only set auto-merge (non-required checks still pending?)."
+      if [ "${AUTO_OFF}" -eq 1 ]; then info "Auto-merge was disabled again."; fi
       error "Not waiting for CI. Protection is restored below."
       audit "MERGE  pr=${PR_NUMBER}  result=auto_merge_only  state=${PR_STATE:-unreadable}"
     fi
@@ -458,10 +482,19 @@ if [ "${DRY_RUN}" -eq 0 ]; then
       ok "PR #${PR_NUMBER} merged (the merge call reported an error, the PR reads MERGED)."
       audit "MERGE  pr=${PR_NUMBER}  result=success_after_error"
     else
-      MERGE_RESULT=failed
-      error "PR merge failed."
-      audit "MERGE  pr=${PR_NUMBER}  result=failed"
-      # Still restore even on failure
+      # The call may have armed auto-merge before it failed: turn it off before
+      # protection is restored, then look once more in case it fired meanwhile.
+      disable_auto_merge || true
+      if [ "$(pr_state "${PR_NUMBER}")" = "MERGED" ]; then
+        MERGE_SUCCESS=1
+        ok "PR #${PR_NUMBER} merged (the merge call reported an error, the PR reads MERGED)."
+        audit "MERGE  pr=${PR_NUMBER}  result=success_after_error"
+      else
+        MERGE_RESULT=failed
+        error "PR merge failed."
+        audit "MERGE  pr=${PR_NUMBER}  result=failed"
+        # Still restore even on failure
+      fi
     fi
   fi
 else
