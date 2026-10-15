@@ -19,6 +19,10 @@ The `seaweedfs` and `seaweedfs-init` services use the pinned image lock. `SEAWEE
 
 `OBJECT_STORAGE_BUCKETS` is a comma-separated list. The one-shot `seaweedfs-init` service waits for SeaweedFS health, creates missing buckets and leaves existing buckets intact. An empty list creates none. Names must follow S3 bucket naming: 3–63 characters, lowercase letters, digits, hyphens or dots.
 
+In v1.5, custom services receive `S3_BUCKET` as the configured `S3_BUCKET` value, or the first bucket in the active store's list when unset. For SeaweedFS the list is `OBJECT_STORAGE_BUCKETS`; for the MinIO plugin it is `MINIO_DEFAULT_BUCKETS`. For example, `uploads,archives` selects `uploads`; set `S3_BUCKET=archives` to select the other bucket. An empty list with no explicit selection produces an empty `S3_BUCKET`. This selection does not create a bucket.
+
+`S3_BUCKETS` contains the full comma-separated list for applications that use multiple buckets. Both variables follow the active store and are omitted when there is no store or the profile excludes object storage. In v1.4, custom services keep receiving the full `MINIO_DEFAULT_BUCKETS` list as `S3_BUCKET`, and `S3_BUCKETS` is not injected.
+
 ## Endpoints and active store
 
 Custom services receive `S3_ENDPOINT=http://seaweedfs:8333` and the S3 credential references when core object storage is enabled. If core object storage is disabled, the `minio` plugin is installed and the project still declares MinIO (`MINIO_ENABLED=true`, or `MINIO_ROOT_*` credentials), they receive `S3_ENDPOINT=http://minio:9000` with the existing MinIO key mapping. An installed plugin alone does nothing for a project that does not use MinIO, because the plugin is machine-wide. With neither store, no `S3_*` variable is injected. Profiles without object storage, such as `ops`, never inject them.

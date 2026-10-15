@@ -224,22 +224,32 @@ func (g *Generator) buildSeaweedInit() ServiceConfig {
 
 // Purpose: add S3_* connection vars for the active store to a custom service.
 // Inputs: the env map being built and the loaded config.
-// Outputs: S3_ENDPOINT, S3_ACCESS_KEY, S3_SECRET_KEY, S3_BUCKET; nothing with no store.
+// Outputs: S3_ENDPOINT, S3_ACCESS_KEY, S3_SECRET_KEY, S3_BUCKET and S3_BUCKETS;
+// nothing with no store. S3_BUCKET selects the explicit bucket or the first listed one.
 // Constraints: v1.5 only. ActiveStore names the plugin only with MinIO intent
 // (cfg.Minio.Enabled), so a machine-wide plugin never injects empty keys into an unrelated
 // project. Secrets are env refs.
 func addActiveStoreEnvVars(env map[string]string, cfg *config.Config) {
+	var buckets string
 	switch ActiveStore(cfg, minioPluginInstalled()) {
 	case "seaweedfs":
 		env["S3_ENDPOINT"] = "http://seaweedfs:8333"
 		env["S3_ACCESS_KEY"] = secretRef("S3_ACCESS_KEY", cfg.Minio.S3AccessKey)
 		env["S3_SECRET_KEY"] = secretRef("S3_SECRET_KEY", cfg.Minio.S3SecretKey)
-		env["S3_BUCKET"] = os.Getenv("OBJECT_STORAGE_BUCKETS")
+		buckets = os.Getenv("OBJECT_STORAGE_BUCKETS")
 	case "minio-plugin":
 		env["S3_ENDPOINT"] = "http://minio:9000"
 		env["S3_ACCESS_KEY"] = cfg.Minio.RootUser
 		env["S3_SECRET_KEY"] = secretRef("MINIO_ROOT_PASSWORD", cfg.Minio.RootPassword)
-		env["S3_BUCKET"] = cfg.Minio.DefaultBuckets
+		buckets = cfg.Minio.DefaultBuckets
+	default:
+		return
+	}
+	env["S3_BUCKETS"] = buckets
+	env["S3_BUCKET"] = cfg.Minio.S3Bucket
+	if env["S3_BUCKET"] == "" {
+		first, _, _ := strings.Cut(buckets, ",")
+		env["S3_BUCKET"] = strings.TrimSpace(first)
 	}
 }
 
@@ -251,7 +261,7 @@ func dropStoreEnvVars(env map[string]string) {
 	if !compat.V15() {
 		return
 	}
-	for _, key := range []string{"S3_ENDPOINT", "S3_ACCESS_KEY", "S3_SECRET_KEY", "S3_BUCKET"} {
+	for _, key := range []string{"S3_ENDPOINT", "S3_ACCESS_KEY", "S3_SECRET_KEY", "S3_BUCKET", "S3_BUCKETS"} {
 		delete(env, key)
 	}
 }

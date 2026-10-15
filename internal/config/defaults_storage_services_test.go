@@ -10,11 +10,14 @@ package config
 import (
 	"strings"
 	"testing"
+
+	"github.com/nself-org/cli/internal/compat/compattest"
 )
 
 // TestApplyDefaultsMinioDisabledProdLoads: a prod project with MinIO off and
 // no MinIO credentials must still load, and its defaults are still applied.
 func TestApplyDefaultsMinioDisabledProdLoads(t *testing.T) {
+	compattest.Set(t, false) // v1.4 retains the synthetic S3 bucket default.
 	cfg := &Config{Env: "prod"}
 	if err := applyDefaultsMinio(cfg); err != nil {
 		t.Fatalf("MinIO disabled must not fail the credential guard: %v", err)

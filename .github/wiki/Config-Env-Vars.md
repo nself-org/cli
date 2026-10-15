@@ -350,6 +350,8 @@ These variables configure core SeaweedFS in v1.5 mode (`NSELF_V15=1`). Core obje
 | `SEAWEEDFS_VERSION` | string | *(image lock default)* | No | Override the SeaweedFS image version for both the server and bucket bootstrap services. Empty uses the image lock. |
 | `S3_ACCESS_KEY` | string | *(unset)* | Yes, with core object storage | S3 identity access key. Keep in `.env.secrets`; must be nonempty and contain neither double quotes nor backslashes. |
 | `S3_SECRET_KEY` | string | *(unset)* | Yes, with core object storage | S3 identity secret key. Keep in `.env.secrets`; must be nonempty and contain neither double quotes nor backslashes. |
+| `S3_BUCKET` | string | *(first listed bucket in v1.5)* | No | Custom-service bucket selection in v1.5: an explicit value wins; otherwise the first `OBJECT_STORAGE_BUCKETS` entry for SeaweedFS or `MINIO_DEFAULT_BUCKETS` entry for the MinIO plugin. Empty when both the selection and list are empty. Does not create buckets. In v1.4 the config default remains `nself`, and custom services receive the full `MINIO_DEFAULT_BUCKETS` list regardless of this setting. |
+| `S3_BUCKETS` | string | *(active store's full list)* | No | Injected into custom services in v1.5 from `OBJECT_STORAGE_BUCKETS` (SeaweedFS) or `MINIO_DEFAULT_BUCKETS` (MinIO plugin). Generated output, not a project configuration input. Omitted in v1.4, without an active store, or for profiles without object storage. |
 
 ---
 

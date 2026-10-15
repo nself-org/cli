@@ -10,6 +10,8 @@ package config
 import (
 	"fmt"
 	"log/slog"
+
+	"github.com/nself-org/cli/internal/compat"
 )
 
 // applyDefaultsRedis sets Redis connection, memory, and pool defaults.
@@ -103,7 +105,9 @@ func applyDefaultsMinioStorage(cfg *Config) {
 		cfg.Minio.Region = "us-east-1"
 		slog.Debug("default", "key", "MINIO_REGION", "value", cfg.Minio.Region)
 	}
-	if cfg.Minio.S3Bucket == "" {
+	// compat.V15(D-0691): preserve unset so custom services can select the first
+	// bucket from the active store's list instead of a synthetic "nself" bucket.
+	if cfg.Minio.S3Bucket == "" && !compat.V15() {
 		cfg.Minio.S3Bucket = "nself"
 		slog.Debug("default", "key", "MINIO_S3_BUCKET", "value", cfg.Minio.S3Bucket)
 	}
