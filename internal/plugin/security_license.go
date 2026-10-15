@@ -48,10 +48,16 @@ func checkLicense(ctx context.Context, name string) error {
 
 	cacheDir := licenseCacheDir()
 
+	// A fresh cached entitlement list that omits this plugin, for a tier that is
+	// not all-access, is a denial. A cached-valid key must not override it (the
+	// server refuses the download), so such a denial is confirmed live below
+	// instead of trusting the key cache or the offline fallback (D-0474).
+	cachedDenial := false
 	if allowed, found := checkEntitlements(cacheDir, name); found {
 		if allowed {
 			return nil
 		}
+		cachedDenial = !license.IsAllAccessTier(cachedEntitlementTier(cacheDir))
 	}
 
 	var lastErr error
@@ -61,10 +67,12 @@ func checkLicense(ctx context.Context, name string) error {
 		}
 
 		if valid, found := checkLicenseCache(key, cacheDir); found {
-			if valid {
+			if !valid {
+				continue
+			}
+			if !cachedDenial {
 				return nil
 			}
-			continue
 		}
 
 		valid, lvr, err := validateLicenseRemoteWithEntitlements(ctx, key, pingAPIURL())
@@ -73,7 +81,7 @@ func checkLicense(ctx context.Context, name string) error {
 				lastErr = fmt.Errorf("plugin %q: %w", name, errs.ErrLicenseExpired)
 				continue
 			}
-			if offlineValid, offlineFound := checkLicenseCacheOffline(key, cacheDir); offlineFound && offlineValid {
+			if offlineValid, offlineFound := checkLicenseCacheOffline(key, cacheDir); offlineFound && offlineValid && !cachedDenial {
 				return nil
 			}
 			lastErr = fmt.Errorf("plugin %q: %w", name, errs.ErrLicenseNetworkUnavailable)
