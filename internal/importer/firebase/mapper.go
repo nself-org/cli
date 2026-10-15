@@ -162,7 +162,7 @@ func ddl(t *tableAcc, cols []column) (string, []string, error) {
 	schema, _ := q(schemaName)
 	name, err := q(t.name)
 	if err != nil {
-		return "", nil, errors.New("mapped table name invalid")
+		return "", nil, safe("mapped table name invalid")
 	}
 	order := []string{"id", "data"}
 	defs := []string{`"id" text NOT NULL`, `"data" jsonb NOT NULL`}
@@ -175,7 +175,7 @@ func ddl(t *tableAcc, cols []column) (string, []string, error) {
 	for _, c := range cols {
 		col, err := q(c.Name)
 		if err != nil {
-			return "", nil, errors.New("mapped column name invalid")
+			return "", nil, safe("mapped column name invalid")
 		}
 		defs = append(defs, col+" "+sqlTypes[c.K])
 		order = append(order, c.Name)
@@ -190,12 +190,12 @@ func csvField(s string) string { return `"` + strings.ReplaceAll(s, `"`, `""`) +
 func writeCSV(t *tableAcc, cols []column, out string) error {
 	in, err := os.Open(t.spool)
 	if err != nil {
-		return errors.New("firestore spool unreadable")
+		return safe("firestore spool unreadable")
 	}
 	defer func() { _ = in.Close() }()
 	f, err := os.OpenFile(out, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
-		return errors.New("firestore COPY file unavailable")
+		return safe("firestore COPY file unavailable")
 	}
 	w := bufio.NewWriterSize(f, 1<<20)
 	dec := json.NewDecoder(in)
@@ -207,12 +207,12 @@ func writeCSV(t *tableAcc, cols []column, out string) error {
 				break
 			}
 			_ = f.Close()
-			return errors.New("firestore spool invalid")
+			return safe("firestore spool invalid")
 		}
 		data, merr := json.Marshal(r.Data)
 		if merr != nil {
 			_ = f.Close()
-			return errors.New("document JSON encoding failed")
+			return safe("document JSON encoding failed")
 		}
 		fields := []string{csvField(r.ID), csvField(string(data))}
 		if t.parent != nil {
@@ -227,12 +227,12 @@ func writeCSV(t *tableAcc, cols []column, out string) error {
 		}
 		if _, err = w.WriteString(strings.Join(fields, ",") + "\n"); err != nil {
 			_ = f.Close()
-			return errors.New("firestore COPY write failed")
+			return safe("firestore COPY write failed")
 		}
 	}
 	if err = w.Flush(); err != nil {
 		_ = f.Close()
-		return errors.New("firestore COPY write failed")
+		return safe("firestore COPY write failed")
 	}
 	return f.Close()
 }

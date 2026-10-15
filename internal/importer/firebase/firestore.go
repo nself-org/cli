@@ -9,7 +9,6 @@ package firebase
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/url"
 	"strconv"
 	"strings"
@@ -90,7 +89,7 @@ func (f *firestore) listDocs(ctx context.Context, collection string, fn func(doc
 		for _, d := range page.Documents {
 			id := d.Name[strings.LastIndex(d.Name, "/")+1:]
 			if id == "" {
-				return n, errors.New("document name invalid")
+				return n, safe("document name invalid")
 			}
 			if err := checkText(id); err != nil {
 				return n, err
@@ -130,10 +129,10 @@ func (f *firestore) count(ctx context.Context, parent, collectionID string) (int
 		if v, ok := r.Result.AggregateFields["n"]; ok {
 			n, err := v.IntegerValue.Int64()
 			if err != nil {
-				return 0, errors.New("document count invalid")
+				return 0, safe("document count invalid")
 			}
 			return n, nil
 		}
 	}
-	return 0, errors.New("document count missing")
+	return 0, safe("document count missing")
 }

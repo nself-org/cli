@@ -8,14 +8,12 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 
-	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/importer"
 	"github.com/nself-org/cli/internal/importer/scratch"
 	"github.com/nself-org/cli/internal/portable"
@@ -23,8 +21,6 @@ import (
 
 // scratchBuild is replaced in tests so no container is needed.
 var scratchBuild = scratch.Build
-
-func fail(msg string) error { return errs.New("E520", msg) }
 
 func (Source) Extract(ctx context.Context, in importer.Input, stage string) (importer.Extracted, error) {
 	s, err := resolve(in)
@@ -52,7 +48,7 @@ func (Source) Extract(ctx context.Context, in importer.Input, stage string) (imp
 		walkErr = err
 	}
 	if walkErr != nil {
-		return importer.Extracted{}, fail("firestore read failed: " + walkErr.Error())
+		return importer.Extracted{}, failWith("firestore read failed", walkErr)
 	}
 	tables := col.sorted()
 	if len(tables) == 0 {
@@ -60,7 +56,7 @@ func (Source) Extract(ctx context.Context, in importer.Input, stage string) (imp
 	}
 	script, copies, notes, err := emit(tables, work)
 	if err != nil {
-		return importer.Extracted{}, fail(err.Error())
+		return importer.Extracted{}, failWith("firestore mapping failed", err)
 	}
 	built, err := scratchBuild(ctx, in.Target, script, copies, filepath.Join(work, "db-bundle"))
 	if err != nil {
@@ -79,12 +75,12 @@ func (Source) Extract(ctx context.Context, in importer.Input, stage string) (imp
 	}
 	userExempt, err := addUsers(w, &m, s.AuthExport, work)
 	if err != nil {
-		return importer.Extracted{}, fail(err.Error())
+		return importer.Extracted{}, failWith("auth export failed", err)
 	}
 	m.Exemptions = append(notes, userExempt...)
 	if store != nil {
 		if err = addObjects(ctx, w, &m, store); err != nil {
-			return importer.Extracted{}, fail("storage read failed: " + err.Error())
+			return importer.Extracted{}, failWith("storage read failed", err)
 		}
 	}
 	if _, err = w.Finish(m); err != nil {
@@ -119,11 +115,11 @@ func copyDBMembers(scratchDir string, w *portable.Writer) error {
 func addUsers(w *portable.Writer, m *portable.Manifest, exportPath, work string) ([]portable.Exemption, error) {
 	spool, err := os.OpenFile(filepath.Join(work, "users.jsonl"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
-		return nil, errors.New("auth users spool unavailable")
+		return nil, safe("auth users spool unavailable")
 	}
 	a, err := readAuthExport(exportPath, spool)
 	if cerr := spool.Close(); err == nil && cerr != nil {
-		err = errors.New("auth users write failed")
+		err = safe("auth users write failed")
 	}
 	if err != nil {
 		return nil, err
@@ -139,11 +135,11 @@ func addUsers(w *portable.Writer, m *portable.Manifest, exportPath, work string)
 	}
 	f, err := os.Open(filepath.Join(work, "users.jsonl"))
 	if err != nil {
-		return nil, errors.New("auth users spool unreadable")
+		return nil, safe("auth users spool unreadable")
 	}
 	defer func() { _ = f.Close() }()
 	if _, err = w.WriteFile("auth/users.jsonl", f); err != nil {
-		return nil, errors.New("auth users write failed")
+		return nil, safe("auth users write failed")
 	}
 	return notes, nil
 }
@@ -152,10 +148,10 @@ func addUsers(w *portable.Writer, m *portable.Manifest, exportPath, work string)
 // truncated or re-encoded download cannot pass as the stored object. A composite object has no MD5.
 func checkObject(it objectInfo, written int64, md5sum []byte) error {
 	if n, err := strconv.ParseInt(it.Size, 10, 64); it.Size != "" && (err != nil || n != written) {
-		return errors.New("object size differs from the bucket listing")
+		return safe("object size differs from the bucket listing")
 	}
 	if it.MD5Hash != "" && it.MD5Hash != base64.StdEncoding.EncodeToString(md5sum) {
-		return errors.New("object checksum differs from the bucket listing")
+		return safe("object checksum differs from the bucket listing")
 	}
 	return nil
 }
@@ -180,20 +176,20 @@ func addObjects(ctx context.Context, w *portable.Writer, m *portable.Manifest, s
 		member, merr := portable.StorageMember(store.bucket, it.Name)
 		if merr != nil {
 			_ = rc.Close()
-			return errors.New("object name unsupported")
+			return safe("object name unsupported")
 		}
 		sum := md5.New()
 		f, werr := w.WriteFile(member, io.TeeReader(rc, sum))
 		_ = rc.Close()
 		if werr != nil {
-			return errors.New("object write failed")
+			return safe("object write failed")
 		}
 		if err = checkObject(it, f.Bytes, sum.Sum(nil)); err != nil {
 			return err
 		}
 		o, oerr := portable.NewObject(store.bucket, it.Name, f)
 		if oerr != nil {
-			return errors.New("object record invalid")
+			return safe("object record invalid")
 		}
 		m.Storage.Objects = append(m.Storage.Objects, o)
 		bucket.Objects++

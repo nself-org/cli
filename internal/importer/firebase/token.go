@@ -14,7 +14,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
-	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -45,27 +44,27 @@ func loadKey(path string) (*rsa.PrivateKey, serviceKey, error) {
 	var sk serviceKey
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() || info.Size() > maxKey {
-		return nil, sk, errors.New("credentials file unreadable")
+		return nil, sk, safe("credentials file unreadable")
 	}
 	b, err := os.ReadFile(path)
 	if err != nil || json.Unmarshal(b, &sk) != nil || sk.Type != "service_account" || sk.ClientEmail == "" {
-		return nil, sk, errors.New("credentials file is not a service-account key")
+		return nil, sk, safe("credentials file is not a service-account key")
 	}
 	block, _ := pem.Decode([]byte(sk.PrivateKey))
 	if block == nil {
-		return nil, sk, errors.New("credentials private key invalid")
+		return nil, sk, safe("credentials private key invalid")
 	}
 	parsed, perr := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if perr != nil {
 		rsaKey, e := x509.ParsePKCS1PrivateKey(block.Bytes)
 		if e != nil {
-			return nil, sk, errors.New("credentials private key invalid")
+			return nil, sk, safe("credentials private key invalid")
 		}
 		return rsaKey, sk, nil
 	}
 	rsaKey, ok := parsed.(*rsa.PrivateKey)
 	if !ok {
-		return nil, sk, errors.New("credentials private key is not RSA")
+		return nil, sk, safe("credentials private key is not RSA")
 	}
 	return rsaKey, sk, nil
 }
@@ -80,7 +79,7 @@ func mintJWT(key *rsa.PrivateKey, issuer, audience, scope string, now time.Time)
 	sum := sha256.Sum256([]byte(input))
 	sig, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, sum[:])
 	if err != nil {
-		return "", errors.New("credentials signing failed")
+		return "", safe("credentials signing failed")
 	}
 	return input + "." + b64(sig), nil
 }
@@ -119,7 +118,7 @@ func newKeyToken(path, endpoint string) (*keyToken, error) {
 	}
 	u, err := url.Parse(endpoint)
 	if err != nil || u.Scheme != "https" || (u.Hostname() != "googleapis.com" && !strings.HasSuffix(u.Hostname(), ".googleapis.com")) {
-		return nil, errors.New("credentials token endpoint is not a googleapis.com https URL")
+		return nil, safe("credentials token endpoint is not a googleapis.com https URL")
 	}
 	return &keyToken{key: key, issuer: sk.ClientEmail, endpoint: endpoint, client: httptimeout.NoProxy(30 * time.Second), now: time.Now}, nil
 }
@@ -138,12 +137,12 @@ func (k *keyToken) Token(ctx context.Context) (string, error) {
 	form := url.Values{"grant_type": {"urn:ietf:params:oauth:grant-type:jwt-bearer"}, "assertion": {assertion}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, k.endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
-		return "", errors.New("token request invalid")
+		return "", safe("token request invalid")
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := k.client.Do(req)
 	if err != nil {
-		return "", errors.New("token endpoint unreachable")
+		return "", safe("token endpoint unreachable")
 	}
 	defer func() { _ = resp.Body.Close() }()
 	var out struct {
@@ -151,7 +150,7 @@ func (k *keyToken) Token(ctx context.Context) (string, error) {
 		ExpiresIn   int    `json:"expires_in"`
 	}
 	if resp.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out) != nil || out.AccessToken == "" {
-		return "", errors.New("token endpoint refused the credentials")
+		return "", safe("token endpoint refused the credentials")
 	}
 	k.token, k.expires = out.AccessToken, now.Add(time.Duration(out.ExpiresIn)*time.Second)
 	return k.token, nil

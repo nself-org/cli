@@ -236,6 +236,10 @@ var (
 
 func publicError(err error, code, message string) error {
 	// Preserve only known source failure codes, with fresh credential-free text.
+	var safe *SafeError
+	if errors.As(err, &safe) && passesText(safe.Code) && plainText(safe.What) {
+		return errs.New(safe.Code, safe.What)
+	}
 	var cli *errs.CLIError
 	if errors.As(err, &cli) {
 		// A portable bundle error names a member path or manifest value; keep it unless it could garble a terminal.

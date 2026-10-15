@@ -6,7 +6,6 @@ package firebase
 // independent source count; object bytes stream straight into the bundle, never into memory.
 import (
 	"context"
-	"errors"
 	"io"
 	"net/url"
 	"strconv"
@@ -67,7 +66,7 @@ func (g *gcs) count(ctx context.Context, maxResults int) (int64, error) {
 // open streams one object's bytes.
 func (g *gcs) open(ctx context.Context, name string) (io.ReadCloser, error) {
 	if name == "" || strings.IndexByte(name, 0) >= 0 {
-		return nil, errors.New("object name invalid")
+		return nil, safe("object name invalid")
 	}
 	resp, err := g.c.send(ctx, g.c.bulk, "GET", g.base+"/storage/v1/b/"+url.PathEscape(g.bucket)+"/o/"+url.PathEscape(name)+"?alt=media", nil)
 	if err != nil {

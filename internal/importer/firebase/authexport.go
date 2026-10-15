@@ -8,7 +8,6 @@ package firebase
 // a UUIDv5 of the Firebase uid, and the uid stays in metadata.firebase.uid.
 import (
 	"encoding/json"
-	"errors"
 	"io"
 	"os"
 	"strconv"
@@ -59,16 +58,16 @@ type authResult struct {
 func openUsers(path string) (*os.File, *json.Decoder, error) {
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() || info.Size() > maxExport {
-		return nil, nil, errors.New("auth export unreadable")
+		return nil, nil, safe("auth export unreadable")
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, nil, errors.New("auth export unreadable")
+		return nil, nil, safe("auth export unreadable")
 	}
 	dec := json.NewDecoder(f)
 	if tok, e := dec.Token(); e != nil || tok != json.Delim('{') {
 		_ = f.Close()
-		return nil, nil, errors.New("auth export is not a JSON object")
+		return nil, nil, safe("auth export is not a JSON object")
 	}
 	for dec.More() {
 		tok, e := dec.Token()
@@ -88,7 +87,7 @@ func openUsers(path string) (*os.File, *json.Decoder, error) {
 		}
 	}
 	_ = f.Close()
-	return nil, nil, errors.New("auth export has no users array")
+	return nil, nil, safe("auth export has no users array")
 }
 
 // countExportUsers counts the raw elements of the users array without interpreting them.
@@ -102,7 +101,7 @@ func countExportUsers(path string) (int64, error) {
 	for dec.More() {
 		var raw json.RawMessage
 		if err = dec.Decode(&raw); err != nil {
-			return 0, errors.New("auth export user invalid")
+			return 0, safe("auth export user invalid")
 		}
 		n++
 	}
@@ -129,7 +128,7 @@ func readAuthExport(path string, out io.Writer) (authResult, error) {
 	for dec.More() {
 		var e exportUser
 		if err = dec.Decode(&e); err != nil || e.LocalID == "" {
-			return res, errors.New("auth export user invalid")
+			return res, safe("auth export user invalid")
 		}
 		u, err := mapUser(e)
 		if err != nil {
@@ -158,7 +157,7 @@ func readAuthExport(path string, out io.Writer) (authResult, error) {
 			res.Anonymous++
 		}
 		if err = enc.Encode(u); err != nil {
-			return res, errors.New("auth users write failed")
+			return res, safe("auth users write failed")
 		}
 		res.Algorithms[u.HashAlgorithm]++
 		res.Written++
@@ -216,7 +215,7 @@ func mapUser(e exportUser) (verify.User, error) {
 	if e.CustomAttributes != "" {
 		var attrs map[string]any
 		if json.Unmarshal([]byte(e.CustomAttributes), &attrs) != nil {
-			return u, errors.New("auth export customAttributes is not a JSON object")
+			return u, safe("auth export customAttributes is not a JSON object")
 		}
 		if len(attrs) > 0 {
 			meta["custom_attributes"] = attrs
@@ -238,7 +237,7 @@ func epochMillis(raw json.RawMessage) (string, error) {
 	}
 	ms, err := strconv.ParseInt(lit, 10, 64)
 	if err != nil || ms < 0 {
-		return "", errors.New("auth export timestamp is not epoch milliseconds")
+		return "", safe("auth export timestamp is not epoch milliseconds")
 	}
 	if ms == 0 {
 		return epochZero, nil

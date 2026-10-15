@@ -6,7 +6,6 @@ package firebase
 // cannot be stored in Postgres text or jsonb, so it is refused instead of altered.
 import (
 	"encoding/json"
-	"errors"
 	"strconv"
 	"strings"
 )
@@ -29,7 +28,7 @@ const (
 
 const maxDepth = 60
 
-var errNul = errors.New("document holds a NUL character")
+var errNul = safe("document holds a NUL character")
 
 func checkText(s string) error {
 	if strings.IndexByte(s, 0) >= 0 {
@@ -41,16 +40,16 @@ func checkText(s string) error {
 // decodeValue converts one typed REST value. Exactly one type key is expected.
 func decodeValue(raw json.RawMessage, depth int) (any, kind, error) {
 	if depth > maxDepth {
-		return nil, "", errors.New("document nesting too deep")
+		return nil, "", safe("document nesting too deep")
 	}
 	var typed map[string]json.RawMessage
 	if json.Unmarshal(raw, &typed) != nil || len(typed) != 1 {
-		return nil, "", errors.New("document value invalid")
+		return nil, "", safe("document value invalid")
 	}
 	for key, v := range typed {
 		return decodeTyped(key, v, depth)
 	}
-	return nil, "", errors.New("document value invalid")
+	return nil, "", safe("document value invalid")
 }
 
 func decodeTyped(key string, v json.RawMessage, depth int) (any, kind, error) {
@@ -61,30 +60,30 @@ func decodeTyped(key string, v json.RawMessage, depth int) (any, kind, error) {
 	case "booleanValue":
 		var b bool
 		if json.Unmarshal(v, &b) != nil {
-			return nil, "", errors.New("document boolean invalid")
+			return nil, "", safe("document boolean invalid")
 		}
 		return b, kBoolean, nil
 	case "integerValue":
 		// REST sends int64 as a JSON string; a bare number is also accepted.
 		lit := strings.Trim(string(v), `"`)
 		if _, err := strconv.ParseInt(lit, 10, 64); err != nil {
-			return nil, "", errors.New("document integer invalid")
+			return nil, "", safe("document integer invalid")
 		}
 		return json.Number(lit), kInteger, nil
 	case "doubleValue":
 		if json.Unmarshal(v, &s) == nil { // "NaN", "Infinity", "-Infinity"
 			if s != "NaN" && s != "Infinity" && s != "-Infinity" {
-				return nil, "", errors.New("document double invalid")
+				return nil, "", safe("document double invalid")
 			}
 			return s, kDouble, nil
 		}
 		if _, err := strconv.ParseFloat(string(v), 64); err != nil {
-			return nil, "", errors.New("document double invalid")
+			return nil, "", safe("document double invalid")
 		}
 		return json.Number(string(v)), kDouble, nil
 	case "timestampValue", "stringValue", "bytesValue", "referenceValue":
 		if json.Unmarshal(v, &s) != nil {
-			return nil, "", errors.New("document string invalid")
+			return nil, "", safe("document string invalid")
 		}
 		if err := checkText(s); err != nil {
 			return nil, "", err
@@ -93,7 +92,7 @@ func decodeTyped(key string, v json.RawMessage, depth int) (any, kind, error) {
 	case "geoPointValue":
 		var g map[string]any
 		if json.Unmarshal(v, &g) != nil {
-			return nil, "", errors.New("document geopoint invalid")
+			return nil, "", safe("document geopoint invalid")
 		}
 		return g, kGeoPoint, nil
 	case "arrayValue":
@@ -101,7 +100,7 @@ func decodeTyped(key string, v json.RawMessage, depth int) (any, kind, error) {
 			Values []json.RawMessage `json:"values"`
 		}
 		if json.Unmarshal(v, &a) != nil {
-			return nil, "", errors.New("document array invalid")
+			return nil, "", safe("document array invalid")
 		}
 		out := make([]any, 0, len(a.Values))
 		for _, item := range a.Values {
@@ -117,12 +116,12 @@ func decodeTyped(key string, v json.RawMessage, depth int) (any, kind, error) {
 			Fields map[string]json.RawMessage `json:"fields"`
 		}
 		if json.Unmarshal(v, &m) != nil {
-			return nil, "", errors.New("document map invalid")
+			return nil, "", safe("document map invalid")
 		}
 		out, _, err := decodeFields(m.Fields, depth+1)
 		return out, kMap, err
 	}
-	return nil, "", errors.New("document value type unknown")
+	return nil, "", safe("document value type unknown")
 }
 
 // decodeFields decodes a field map; keys are checked for NUL like strings. kinds maps each field

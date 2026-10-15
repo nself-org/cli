@@ -9,7 +9,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -58,7 +57,7 @@ func (c *collector) table(pattern string, parent *tableAcc) (*tableAcc, error) {
 	spool := filepath.Join(c.dir, "spool-"+strconv.Itoa(len(c.tables))+".jsonl")
 	f, err := os.OpenFile(spool, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
-		return nil, errors.New("firestore spool unavailable")
+		return nil, safe("firestore spool unavailable")
 	}
 	w := bufio.NewWriterSize(f, 1<<20)
 	t := &tableAcc{pattern: pattern, parent: parent, kinds: map[string]map[kind]bool{}, present: map[string]int{}, unsafe: map[string]bool{}, spool: spool, file: f, w: w, enc: json.NewEncoder(w)}
@@ -71,10 +70,10 @@ func (c *collector) close() error {
 	var first error
 	for _, t := range c.tables {
 		if err := t.w.Flush(); err != nil && first == nil {
-			first = errors.New("firestore spool write failed")
+			first = safe("firestore spool write failed")
 		}
 		if err := t.file.Close(); err != nil && first == nil {
-			first = errors.New("firestore spool write failed")
+			first = safe("firestore spool write failed")
 		}
 	}
 	return first
@@ -127,7 +126,7 @@ func (c *collector) add(t *tableAcc, parentPath string, d document) error {
 		return err
 	}
 	if hasDotLine(d.ID) || hasDotLine(parentPath) {
-		return errors.New("document id holds a line that psql would read as end of data")
+		return safe("document id holds a line that psql would read as end of data")
 	}
 	r := record{ID: d.ID, ParentPath: parentPath, Data: data, Scalars: map[string]string{}}
 	if parentPath != "" {
@@ -149,7 +148,7 @@ func (c *collector) add(t *tableAcc, parentPath string, d document) error {
 		}
 	}
 	if err = t.enc.Encode(r); err != nil {
-		return errors.New("firestore spool write failed")
+		return safe("firestore spool write failed")
 	}
 	t.listed++
 	return nil

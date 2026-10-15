@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -62,7 +61,7 @@ func (c *client) send(ctx context.Context, hc *http.Client, method, url string, 
 	if body != nil {
 		var err error
 		if payload, err = json.Marshal(body); err != nil {
-			return nil, errors.New("request body invalid")
+			return nil, safe("request body invalid")
 		}
 	}
 	for attempt := 1; ; attempt++ {
@@ -72,7 +71,7 @@ func (c *client) send(ctx context.Context, hc *http.Client, method, url string, 
 		}
 		req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(payload))
 		if err != nil {
-			return nil, errors.New("request invalid")
+			return nil, safe("request invalid")
 		}
 		req.Header.Set("Authorization", "Bearer "+token)
 		if hc == c.bulk {
@@ -91,7 +90,7 @@ func (c *client) send(ctx context.Context, hc *http.Client, method, url string, 
 				return nil, ctx.Err()
 			}
 			if attempt >= maxAttempts {
-				return nil, errors.New("source API unreachable")
+				return nil, safe("source API unreachable")
 			}
 		case resp.StatusCode/100 == 2:
 			return resp, nil
@@ -125,7 +124,7 @@ func (c *client) doJSON(ctx context.Context, method, url string, body, out any) 
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if err = json.NewDecoder(io.LimitReader(resp.Body, maxPage)).Decode(out); err != nil {
-		return errors.New("source API response invalid")
+		return safe("source API response invalid")
 	}
 	return nil
 }

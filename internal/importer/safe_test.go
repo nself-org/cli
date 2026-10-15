@@ -21,3 +21,17 @@ func TestAllowMessagesSurfaceOnlyRegisteredText(t *testing.T) {
 		t.Fatalf("only E517/E518/E520/E521 may pass text through: %v", got)
 	}
 }
+
+func TestSafeErrorKeepsItsFixedText(t *testing.T) {
+	const fixed = "project has no Firestore collections"
+	got := publicError(NewSafe("E520", fixed), "E520", "generic")
+	if !strings.Contains(got.Error(), fixed) || strings.Contains(got.Error(), "generic") {
+		t.Fatalf("safe text must pass through: %v", got)
+	}
+	if got = publicError(NewSafe("E519", fixed), "E520", "generic"); strings.Contains(got.Error(), fixed) {
+		t.Fatalf("only E517/E518/E520/E521 may pass text through: %v", got)
+	}
+	if got = publicError(NewSafe("E520", "bad\x1b[31m text"), "E520", "generic"); strings.Contains(got.Error(), "\x1b") {
+		t.Fatalf("control characters must not reach the terminal: %v", got)
+	}
+}

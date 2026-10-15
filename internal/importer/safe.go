@@ -4,7 +4,10 @@ package importer
 // Inputs: static strings from a source package's init. Outputs: membership checks for publicError.
 // Constraints: only constant text; a message built from input (a URL, a key, a table) must not be
 // registered, because publicError otherwise replaces every source error with a generic one.
-import "sync"
+import (
+	"fmt"
+	"sync"
+)
 
 var allowed = struct {
 	sync.RWMutex
@@ -29,4 +32,17 @@ func isSafeMessage(what string) bool {
 	allowed.RLock()
 	defer allowed.RUnlock()
 	return allowed.set[what]
+}
+
+// SafeError is a source failure whose text is fixed by the source and carries no input. publicError
+// keeps its text, so a source can tell the user what failed without a registry entry per message.
+type SafeError struct{ Code, What string }
+
+// NewSafe returns a SafeError. code is one of E517, E518, E520 or E521; any other code is shown generically.
+func NewSafe(code, what string) error { return &SafeError{Code: code, What: what} }
+
+func (e *SafeError) Error() string { return fmt.Sprintf("%s: %s", e.Code, e.What) }
+
+func passesText(code string) bool {
+	return code == "E517" || code == "E518" || code == "E520" || code == "E521"
 }
