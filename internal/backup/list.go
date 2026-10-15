@@ -88,7 +88,7 @@ func List(cfg *config.Config, opts ListOptions) ([]BackupEntry, error) {
 // newBackupEntry builds the entry for one backup file name.
 func newBackupEntry(name string, size int64, mod time.Time) BackupEntry {
 	be := BackupEntry{
-		ID:        strings.TrimSuffix(strings.TrimSuffix(name, ".age"), filepath.Ext(strings.TrimSuffix(name, ".age"))),
+		ID:        backupID(name),
 		Date:      mod,
 		Size:      size,
 		Type:      inferBackupType(name),
@@ -96,6 +96,20 @@ func newBackupEntry(name string, size int64, mod time.Time) BackupEntry {
 	}
 	be.Tag = parseBackupTag(be.ID)
 	return be
+}
+
+// backupID returns the ID of a backup file name: the name without ".age" and
+// without the backup extension (".tar.gz" or ".dump", else the last extension).
+// Inputs: a file base name. Outputs: the ID shared by the plain and encrypted
+// copies of one backup. Constraints: pure; prune matches files through it.
+func backupID(name string) string {
+	name = strings.TrimSuffix(name, ".age")
+	for _, ext := range []string{".tar.gz", ".dump"} {
+		if strings.HasSuffix(name, ext) {
+			return strings.TrimSuffix(name, ext)
+		}
+	}
+	return strings.TrimSuffix(name, filepath.Ext(name))
 }
 
 // backupTagPattern matches "<project>_<type>_<YYYYMMDD>_<HHMMSS>[_<tag>]" as
