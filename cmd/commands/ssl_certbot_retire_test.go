@@ -205,6 +205,7 @@ func TestSystemctlRunReal(t *testing.T) {
 // found; other keys, comments, scripts certbot skips, other projects and
 // longer paths are not.
 func TestCertbotHooks(t *testing.T) {
+	isolateCertbotUserConfigs(t)
 	tmp, _ := filepath.EvalSymlinks(t.TempDir()) // macOS: /var is a symlink
 	le, workdir := t.TempDir(), filepath.Join(tmp, "proj")
 	sslDir := filepath.Join(workdir, "ssl")

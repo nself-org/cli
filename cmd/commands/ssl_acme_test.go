@@ -80,6 +80,7 @@ func acmeResetFlags(c *cobra.Command) {
 
 func newACMEFix(t *testing.T) *acmeFix {
 	t.Helper()
+	isolateCertbotUserConfigs(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("ACME fixtures use POSIX symlinks and paths")
 	}

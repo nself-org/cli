@@ -21,7 +21,7 @@ import (
 	"strings"
 )
 
-// certbotHookFiles lists where certbot reads hooks under dir: cli.ini and
+// certbotHookFiles lists where certbot reads hooks: per-user configs, dir/cli.ini and
 // renewal/*.conf (confs), and the files it runs from renewal-hooks/{pre,deploy,post}
 // (scripts: regular, executable, no trailing '~', dot files included). Names
 // certbot ignores are dropped before they are opened.
@@ -51,10 +51,15 @@ func certbotHookFiles(dir string) (confs, scripts []string, err error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	for _, p := range append([]string{filepath.Join(dir, "cli.ini")}, renewal...) {
+	configs, err := certbotUserConfigs()
+	if err != nil {
+		return nil, nil, err
+	}
+	configs = append(configs, filepath.Join(dir, "cli.ini"))
+	for _, p := range append(configs, renewal...) {
 		if _, ok, err := regular(p); err != nil {
 			return nil, nil, err
-		} else if ok {
+		} else if ok && !slices.Contains(confs, p) {
 			confs = append(confs, p)
 		}
 	}
