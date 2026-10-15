@@ -19,8 +19,8 @@
 #            6. rollback, unsupported path: pin back to v2.44.0 WITHOUT restoring the backup;
 #               the observed outcome is asserted (a catalog refusal, or a clean start that
 #               passes the functional checks, with the catalog versions in the message)
-#            7. rollback, supported path: restore the pre-switch backup (after
-#               nself db reset --yes when the plain restore fails), keep the v2.44.0 pin,
+#            7. rollback, supported path: restore the pre-switch backup over the
+#               migrated database (plain restore, no db reset), keep the v2.44.0 pin,
 #               start cleanly; rows and metadata are the pre-switch ones, functional checks pass
 #          NSELF_V15 unset (baseline): steps 1 to 3 on v2.44.0 plus the metadata
 #          apply/export round trip; no switch.
@@ -530,29 +530,7 @@ nsf backup restore "$BID" --only pg --yes
 if [ "$RC" -eq 0 ]; then
   pass "restore: nself backup restore --only pg --yes exits 0 on the migrated database"
 else
-  # Observed limit (debt D-0663): a restore over a migrated database can fail on
-  # dependencies the newer catalog added. The plain failure is asserted as observed, not
-  # hidden. Only then is the database reset with the CLI (nself db reset --yes: drop,
-  # create, re-initialise schemas and extensions; no migrations or seeds) and the restore
-  # repeated.
-  RESTORE_E="$(grep -o 'E207' "$WORK/err" | head -1)"
-  RESTORE_WHY="$(grep -o 'cannot drop [a-z ]*[a-z._]* because other objects depend on it' "$WORK/err" | head -1)"
-  if [ -z "$RESTORE_E" ] || [ -z "$RESTORE_WHY" ]; then
-    fatal "plain restore failed for the expected reason (E207, cannot drop)" "rc=$RC observed: $(nsf_tail)"
-  fi
-  # The reset target must be this run's own postgres.
-  if [ "$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "${PROJECT}_postgres" 2>/dev/null)" != "$PROJECT" ]; then
-    fatal "db reset target ${PROJECT}_postgres carries this run's compose project label" "refusing to run nself db reset"
-  fi
-  pass "db reset target ${PROJECT}_postgres carries this run's compose project label"
-  nsf db reset --yes
-  if [ "$RC" -eq 0 ]; then pass "restore: nself db reset --yes exits 0"; else fail "restore: nself db reset --yes exits 0" "rc=$RC $(nsf_tail)"; fi
-  nsf backup restore "$BID" --only pg --yes
-  if [ "$RC" -eq 0 ]; then
-    pass "restore-over-migrated-db-needs-a-db-reset (plain restore failed $RESTORE_E: $RESTORE_WHY; after nself db reset --yes the restore exits 0)"
-  else
-    fail "restore after nself db reset --yes exits 0" "rc=$RC $(nsf_tail)"
-  fi
+  fail "restore: nself backup restore --only pg --yes exits 0 on the migrated database" "rc=$RC $(nsf_tail)"
 fi
 build_start "restore" || true
 if [ "$(compose_hasura_image)" = "$REF_V14" ] && [ "$(running_hasura_image)" = "$REF_V14" ]; then
