@@ -37,7 +37,7 @@ NAME matches `^[A-Z][A-Z0-9_]{0,127}$`; environments match `^[a-z][a-z0-9-]{0,31
 
 Resolve and recipient commands refuse symlinked store directories and files with E543. Project stores require a real `.secrets` directory and regular encrypted files; team references require a real `$HOME/.config/nself/secrets` directory and regular `team.age` file.
 
-Every resolver call records exactly one `secret-resolve` audit event with grammar-valid refs, a valid attempt ID, absolute project, user and outcome, including refusals. Invalid refs are represented by their count and SHA-256 prefixes; invalid attempt IDs are represented by a SHA-256 prefix. Values never enter the audit record; an audit failure prevents value delivery. Resolve is CLI-only and refused over MCP and HTTP.
+Every resolver call records exactly one `secret-resolve` audit event with grammar-valid refs, a valid attempt ID, absolute project, user and outcome, including refusals. Refusals in the inherited root pre-run hook, including the CLI source-directory guard, record outcome `E401` and preserve the original refusal unless the audit itself fails. Invalid refs are represented by their count and SHA-256 prefixes; invalid attempt IDs are represented by a SHA-256 prefix. Values never enter the audit record; an audit failure prevents value delivery. Resolve is CLI-only and refused over MCP and HTTP.
 
 ### Manage recipients
 

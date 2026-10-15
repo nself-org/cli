@@ -57,6 +57,24 @@ func auditResolveFlagError(cmd *cobra.Command, _ error) error {
 
 func init() { secretsCmd.AddCommand(secretsResolveCmd) }
 
+// auditSecretsResolvePreRun records inherited root-hook refusals once.
+// Inputs: the invoked leaf, parsed refs and root-hook result.
+// Outputs: the original refusal, or a value-free audit failure.
+// Constraints: successful pre-runs leave auditing to RunE; canon moves the same leaf.
+// SPORT: contract:cli.secret-resolve/v1, D-0581.
+func auditSecretsResolvePreRun(cmd *cobra.Command, args []string, runErr error) error {
+	if cmd != secretsResolveCmd || runErr == nil {
+		return runErr
+	}
+	project, _ := cmd.Flags().GetString("project")
+	attempt, _ := cmd.Flags().GetString("for-attempt")
+	req := secrets.ResolveRequest{ProjectRoot: project, AttemptID: attempt, Refs: args}
+	if err := secrets.AuditResolve(audit.Write, req, "E401"); err != nil {
+		return err
+	}
+	return runErr
+}
+
 // runSecretsResolveCommand emits value-free error envelopes in both modes.
 // The v1.4 registry does not advertise the moved envelope, so the command
 // owns its error document as well as its successful value document.
