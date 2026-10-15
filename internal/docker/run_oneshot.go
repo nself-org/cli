@@ -17,12 +17,19 @@ package docker
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
 	"sort"
 	"strings"
+	"time"
 )
+
+// cancelCleanupTimeout bounds the `docker rm -f` that runs after a cancelled
+// run; the run's own context is already done, so the cleanup gets a fresh one.
+const cancelCleanupTimeout = 30 * time.Second
 
 // RunSpec describes one `docker run --rm` invocation.
 type RunSpec struct {
@@ -47,8 +54,8 @@ type RunSpec struct {
 	CapDrop []string
 	// SecurityOpt lists `--security-opt` values, e.g. "no-new-privileges:true".
 	SecurityOpt []string
-	// Name is the container name (`--name`); a caller that sets one can remove a
-	// container a killed run left behind (RemoveContainer).
+	// Name is the container name (`--name`). RunOneShot generates one when it is
+	// empty, so a cancelled run can always force-remove its container.
 	Name string
 	// Labels are `--label key=value` pairs, rendered in key order.
 	Labels map[string]string
@@ -114,13 +121,27 @@ func buildRunArgs(spec RunSpec) ([]string, error) {
 
 // RunOneShot runs spec to completion (`docker run --rm`) and returns what the
 // container wrote to stdout and stderr. A non-zero exit returns the captured
-// output together with an error that quotes the last stderr line.
+// output together with an error that quotes the last stderr line. The container
+// always has a name; when ctx is cancelled the docker client is killed and the
+// container is force-removed, so it does not keep running after the caller gave
+// up (killing only the client leaves it running).
 func RunOneShot(ctx context.Context, spec RunSpec) (stdout, stderr string, err error) {
+	if spec.Name == "" {
+		spec.Name = oneShotName()
+	}
 	args, err := buildRunArgs(spec)
 	if err != nil {
 		return "", "", err
 	}
 	cmd := exec.CommandContext(ctx, "docker", args...)
+	// Own process group: a terminal Ctrl-C reaches nself only, which then removes
+	// the container, instead of racing the client's own signal proxy.
+	setProcGroupAttr(cmd)
+	cmd.Cancel = func() error {
+		killProcessGroup(cmd)
+		return cmd.Process.Kill()
+	}
+	cmd.WaitDelay = 5 * time.Second
 	cmd.Env = os.Environ()
 	for n, v := range spec.EnvPass {
 		cmd.Env = append(cmd.Env, n+"="+v)
@@ -128,9 +149,25 @@ func RunOneShot(ctx context.Context, spec RunSpec) (stdout, stderr string, err e
 	var so, se bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &so, &se
 	if runErr := cmd.Run(); runErr != nil {
+		if ctx.Err() != nil {
+			rmCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cancelCleanupTimeout)
+			defer cancel()
+			if rmErr := RemoveContainer(rmCtx, spec.Name); rmErr != nil {
+				runErr = fmt.Errorf("%w (removing container %s: %v)", runErr, spec.Name, rmErr)
+			}
+		}
 		return so.String(), se.String(), fmt.Errorf("docker run %s: %w: %s", spec.Image, runErr, lastLine(se.String()))
 	}
 	return so.String(), se.String(), nil
+}
+
+// oneShotName returns a unique container name for a one-shot run.
+func oneShotName() string {
+	var b [6]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("nself-oneshot-%d", time.Now().UnixNano())
+	}
+	return "nself-oneshot-" + hex.EncodeToString(b[:])
 }
 
 // lastLine returns the last non-empty line of s, for error messages.
