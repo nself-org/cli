@@ -30,7 +30,7 @@ func DefaultFor(key string) string {
 		"POSTGRES_EXTENSIONS":  "uuid-ossp",
 
 		// Hasura
-		"HASURA_VERSION":   "v2.44.0",
+		"HASURA_VERSION":   "",
 		"HASURA_JWT_TYPE":  "HS256", // JWT-ALGO-01: HS256 default — matches auto-generated JWTKey; RS256 requires user-supplied key material
 		"HASURA_ROUTE":     "api",
 		"HASURA_PORT":      "8080",

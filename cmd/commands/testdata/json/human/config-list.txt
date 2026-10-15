@@ -28,7 +28,7 @@ PGVECTOR_ENABLED                              (unset)                        uns
 PGVECTOR_DIMENSIONS                           (unset)                        unset
 PGVECTOR_HNSW_M                               (unset)                        unset
 PGVECTOR_HNSW_EF_CONSTRUCTION                 (unset)                        unset
-HASURA_VERSION                                (default: v2.44.0)             default
+HASURA_VERSION                                (unset)                        unset
 HASURA_GRAPHQL_ADMIN_SECRET                   (unset)                        unset
 HASURA_ADMIN_SECRET                           (unset)                        unset
 HASURA_JWT_KEY                                (unset)                        unset

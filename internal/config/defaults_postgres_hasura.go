@@ -75,10 +75,7 @@ func applyDefaultsHasura(cfg *Config) error {
 
 // applyDefaultsHasuraCreds generates Hasura admin secret and JWT key when missing.
 func applyDefaultsHasuraCreds(cfg *Config) error {
-	if cfg.Hasura.Version == "" {
-		cfg.Hasura.Version = "v2.44.0"
-		slog.Debug("default", "key", "HASURA_VERSION", "value", cfg.Hasura.Version)
-	}
+	// Preserve blank: compose selects the mode default or an existing lock pin.
 	if cfg.Hasura.AdminSecret == "" {
 		// Generated for the first build only: build persists it to .env.secrets
 		// (internal/build/orchestrator_secrets.go) so later loads read it back.

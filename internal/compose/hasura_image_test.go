@@ -49,9 +49,9 @@ func TestHasuraImageByMode(t *testing.T) {
 		{"v1.4 lock default", "v2.44.0", false, PinningLock, v14.String()},
 		{"v1.4 lock blank version", "", false, PinningLock, v14.String()},
 		{"v1.4 legacy default", "v2.44.0", false, PinningLegacy, "hasura/graphql-engine:v2.44.0"},
-		{"v1.5 lock default", "v2.44.0", true, PinningLock, cur.String()}, // the config default nself init writes
+		{"v1.5 explicit v1.4 release", "v2.44.0", true, PinningLock, v14.String()},
 		{"v1.5 lock blank version", "", true, PinningLock, cur.String()},
-		{"v1.5 legacy default", "v2.44.0", true, PinningLegacy, "hasura/graphql-engine:v2.51.0"},
+		{"v1.5 explicit v1.4 legacy release", "v2.44.0", true, PinningLegacy, "hasura/graphql-engine:v2.44.0"},
 		{"explicit current release in v1.4", "v2.51.0", false, PinningLock, cur.String()},
 		{"explicit current release in v1.4 legacy", "v2.51.0", false, PinningLegacy, "hasura/graphql-engine:v2.51.0"},
 		{"explicit older release in v1.4", "v2.43.0", false, PinningLock, "hasura/graphql-engine:v2.43.0"},
@@ -89,8 +89,7 @@ func TestHasuraLockPinKept(t *testing.T) {
 		var notices bytes.Buffer
 		defer PinNoticeSink(&notices)()
 		defer SetProjectPins(map[string]string{"hasura": pin})()
-		// What nself init writes into .env (v2.44.0) and a blank value are CLI defaults and
-		// not overrides: the pin stays.
+		// Blank keeps the pin; an explicit version matching the pin keeps its digest.
 		for _, v := range []string{"", v14.Version} {
 			t.Setenv("HASURA_VERSION", v)
 			if got := hasuraImageFor(t, v); got != pin {
@@ -100,8 +99,7 @@ func TestHasuraLockPinKept(t *testing.T) {
 		if notices.Len() != 0 {
 			t.Errorf("a kept pin printed a notice: %q", notices.String())
 		}
-		// Any other version is explicit and wins over the pin, with one notice: the
-		// current release (init never writes it) and a tag the lock does not know.
+		// A different explicit version wins over the pin with one notice.
 		for v, want := range map[string]string{cur.Version: cur.String(), "v2.45.0": "hasura/graphql-engine:v2.45.0"} {
 			notices.Reset()
 			resetPinNotices(t)
@@ -118,18 +116,18 @@ func TestHasuraLockPinKept(t *testing.T) {
 		setMode(t, PinningLock)
 		defer SetProjectPins(nil)()
 		compattest.Set(t, false)
-		if got := hasuraImageFor(t, "v2.44.0"); got != v14.String() {
+		if got := hasuraImageFor(t, ""); got != v14.String() {
 			t.Errorf("v1.4 without a pin: %q, want %q", got, v14.String())
 		}
 		compattest.Set(t, true)
-		if got := hasuraImageFor(t, "v2.44.0"); got != cur.String() {
+		if got := hasuraImageFor(t, ""); got != cur.String() {
 			t.Errorf("v1.5 without a pin: %q, want %q", got, cur.String())
 		}
 	})
 }
 
 // TestHasuraLockPinKeptAfterUpdate: a project `nself update` moved to v2.51.0 keeps
-// that pin whether .env still holds the init default or names the release.
+// that pin whether .env leaves the version blank or names the same release.
 func TestHasuraLockPinKeptAfterUpdate(t *testing.T) {
 	cur, _ := LockedRef("hasura")
 	compattest.Both(t, func(t *testing.T) {
@@ -137,7 +135,7 @@ func TestHasuraLockPinKeptAfterUpdate(t *testing.T) {
 		var notices bytes.Buffer
 		defer PinNoticeSink(&notices)()
 		defer SetProjectPins(map[string]string{"hasura": cur.String()})()
-		for _, v := range []string{"", "v2.44.0", cur.Version} {
+		for _, v := range []string{"", cur.Version} {
 			t.Setenv("HASURA_VERSION", v)
 			if got := hasuraImageFor(t, v); got != cur.String() {
 				t.Errorf("HASURA_VERSION=%q: hasura image = %q, want the pin %q", v, got, cur.String())
