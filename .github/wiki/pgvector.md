@@ -88,7 +88,7 @@ The old volume is never mounted read-write by the switch, never renamed and neve
 docker volume rm <project>_postgres_data
 ```
 
-`nself reset`, `nself uninstall` and `nself stop --volumes` remove only the volumes of the current compose file, which names the new volume. The kept old volume (a full copy of the data, with password hashes) survives them, as does the new volume after a rollback. Remove them by hand.
+`nself reset`, `nself uninstall --purge` (and `reset --purge`) and `nself stop --volumes` also remove the volumes a switch kept: the old volume, the new volume (after a rollback too) and any volume labelled `org.nself.image-switch` for the project. They do so after the same confirmation as the data wipe. `nself uninstall` without `--purge` keeps them.
 
 ### Limits
 

@@ -264,7 +264,15 @@ func runDockerComposeDown(ctx context.Context, _, _ io.Writer, projectDir string
 	if _, err := os.Stat(composeFile); os.IsNotExist(err) {
 		return false, nil // nothing to stop
 	}
-	return true, docker.NewCompose(composeFile).ComposeDown(ctx, projectDir, docker.DownOptions{RemoveVolumes: purge})
+	if err := docker.NewCompose(composeFile).ComposeDown(ctx, projectDir, docker.DownOptions{RemoveVolumes: purge}); err != nil {
+		return true, err
+	}
+	if purge {
+		// The compose file names only the current postgres volume; a kept
+		// image-switch volume survives `down --volumes` (D-0802).
+		return true, removeSwitchVolumes(ctx, projectDir)
+	}
+	return true, nil
 }
 
 // confirmPrompt prints the given prompt and returns true if the user typed

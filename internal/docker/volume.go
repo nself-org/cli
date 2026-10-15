@@ -111,3 +111,19 @@ func VolumeLabels(ctx context.Context, name string) (labels map[string]string, e
 	}
 	return labels, true, nil
 }
+
+// VolumesByLabel returns the names of the volumes that carry every given label
+// filter ("key" or "key=value"), sorted. None is an empty list, not an error.
+func VolumesByLabel(ctx context.Context, filters ...string) ([]string, error) {
+	args := []string{"volume", "ls", "--quiet"}
+	for _, f := range filters {
+		args = append(args, "--filter", "label="+f)
+	}
+	out, err := runCapture(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	names := strings.Fields(string(out))
+	sort.Strings(names)
+	return names, nil
+}

@@ -187,6 +187,12 @@ func runStopFlow(cmd *cobra.Command, args []string) error {
 	if err := compose.ComposeDown(ctx, workdir, downOpts); err != nil {
 		return fmt.Errorf("compose down failed: %w", err)
 	}
+	if volumes {
+		// Volumes a postgres image switch kept are not in the compose file (D-0802).
+		if err := removeSwitchVolumes(ctx, workdir); err != nil {
+			return fmt.Errorf("removing image switch volumes: %w", err)
+		}
+	}
 
 	// Summary. When psErr != nil we could not determine the running container
 	// count beforehand, so report "stopped" generically. When psErr == nil but

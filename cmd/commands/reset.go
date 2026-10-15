@@ -188,7 +188,11 @@ func runReset(cmd *cobra.Command, args []string) error {
 // fronted project detaches the shared proxy's nginx). A package variable so
 // tests can make it fail without Docker.
 var resetComposeDown = func(ctx context.Context, projectDir string) error {
-	return docker.NewCompose().ComposeDown(ctx, projectDir, docker.DownOptions{RemoveVolumes: true, RemoveOrphans: true})
+	if err := docker.NewCompose().ComposeDown(ctx, projectDir, docker.DownOptions{RemoveVolumes: true, RemoveOrphans: true}); err != nil {
+		return err
+	}
+	// Volumes a postgres image switch kept are not in the compose file (D-0802).
+	return removeSwitchVolumes(ctx, projectDir)
 }
 
 // recordIfExists runs remove on project-relative rel when it exists and

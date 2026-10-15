@@ -141,3 +141,19 @@ func TestVolumeLabels(t *testing.T) {
 		t.Errorf("a volume with no labels: %v %v %v", got, ok, err)
 	}
 }
+
+func TestVolumesByLabel(t *testing.T) {
+	log := fakeVolumeDocker(t, "b_vol\na_vol\n", "")
+	got, err := VolumesByLabel(context.Background(), "org.nself.image-switch", "com.docker.compose.project=shop")
+	if err != nil || strings.Join(got, ",") != "a_vol,b_vol" {
+		t.Errorf("names = %v err %v", got, err)
+	}
+	want := "volume ls --quiet --filter label=org.nself.image-switch --filter label=com.docker.compose.project=shop"
+	if call := lastCall(t, log); call != want {
+		t.Errorf("call = %q, want %q", call, want)
+	}
+	fakeVolumeDocker(t, "", "")
+	if got, err := VolumesByLabel(context.Background(), "x"); err != nil || len(got) != 0 {
+		t.Errorf("no volumes: %v %v", got, err)
+	}
+}
