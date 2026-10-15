@@ -788,6 +788,11 @@ marker is not set and a retry runs it again. A record already rolled back is ref
 `success` covers every server of the env, with each server's outcome in `host_outcomes`. Without such
 a record the older promote rollback below runs.
 
+If the hosts were rolled back but saving `.nself/state/deploy.json` fails, the command
+returns an error stating both outcomes and the filesystem cause. The local record
+does not mark the rollback complete; a database restore already stamped in
+`db_restored_at` remains recorded and is skipped on a retry.
+
 ## Rollback
 
 `nself deploy rollback` is wired to the last `nself promote` tag. Every `nself promote <src> <target>`
