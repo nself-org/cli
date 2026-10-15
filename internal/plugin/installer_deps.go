@@ -38,6 +38,13 @@ func installDependencies(ctx context.Context, cfg *config.Config, name string, m
 	if len(deps) > 0 {
 		fmt.Fprintf(os.Stderr, "Installing %s (requires: %s)\n", name, strings.Join(deps, ", "))
 	}
+	// --tier names the tier of the plugin the operator asked for. A dependency
+	// resolves by its own installed tier and entitlement, so the override is
+	// lifted while the dependencies install (D-0827).
+	if prev, had := os.LookupEnv("NSELF_PLUGIN_INSTALL_TIER"); had {
+		_ = os.Unsetenv("NSELF_PLUGIN_INSTALL_TIER")
+		defer os.Setenv("NSELF_PLUGIN_INSTALL_TIER", prev)
+	}
 	for _, dep := range deps {
 		depDir := filepath.Join(pluginDir, dep)
 		if _, err := os.Stat(depDir); err == nil {
