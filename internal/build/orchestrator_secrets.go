@@ -26,8 +26,13 @@ import (
 	"github.com/nself-org/cli/internal/config"
 )
 
+type secretEntry struct {
+	envKey string
+	value  string
+}
+
 func persistGeneratedSecrets(workdir string, cfg *config.Config) error {
-	return persistGeneratedSecretsFx(workdir, cfg, writeEffects{}, newDiskSink(workdir))
+	return persistGeneratedSecretsFx(workdir, cfg, writeEffects{}, newDiskSink(workdir), false)
 }
 
 // persistGeneratedSecretsFx is persistGeneratedSecrets with the .env.secrets
@@ -35,12 +40,7 @@ func persistGeneratedSecrets(workdir string, cfg *config.Config) error {
 // existing bytes plus the appended lines, written through sink in both modes so
 // a plan carries the exact planned bytes of .env.secrets (and its plan_id binds
 // them). The secrets-persist effect still records the key names, never values.
-func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects, sink Sink) error {
-	type secretEntry struct {
-		envKey string
-		value  string
-	}
-
+func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects, sink Sink, remoteDeploy bool) error {
 	candidates := []secretEntry{
 		{"PLUGIN_INTERNAL_SECRET", cfg.PluginSystem.InternalSecret},
 		{"NOTIFY_INTERNAL_SECRET", cfg.PluginConfig.NotifySecret},
@@ -50,6 +50,9 @@ func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects, s
 	// Collect env keys already present in any .env file on disk (or pending
 	// in a plan's env overlay, P7-LIVE-05).
 	onDisk := scanEnvFiles(workdir, cfg.Env, sink)
+	if err := persistInactiveSecretsFx(workdir, cfg, onDisk, fx, sink, remoteDeploy); err != nil {
+		return err
+	}
 
 	// Determine which secrets need persisting.
 	var toWrite []secretEntry
@@ -108,6 +111,14 @@ func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects, s
 		}
 	}
 
+	return appendGeneratedSecretsFx(workdir, ".env.secrets", toWrite, fx, sink)
+}
+
+// appendGeneratedSecretsFx appends generated values through the build seam.
+// Inputs: destination filename, generated entries, effects and sink.
+// Outputs: an owner-only env file, or a planned write; errors propagate.
+// Constraints: only key names enter logs and effect descriptions.
+func appendGeneratedSecretsFx(workdir, name string, toWrite []secretEntry, fx Effects, sink Sink) error {
 	if len(toWrite) == 0 {
 		return nil
 	}
@@ -116,7 +127,7 @@ func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects, s
 	for _, s := range toWrite {
 		keys = append(keys, s.envKey)
 	}
-	secretsPath := filepath.Join(workdir, ".env.secrets")
+	secretsPath := filepath.Join(workdir, name)
 	if err := fx.Do(EffectSecretsPersist, secretsPath, "append keys: "+strings.Join(keys, ", "), nil); err != nil {
 		return err
 	}
@@ -126,10 +137,13 @@ func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects, s
 	}
 	var buf bytes.Buffer
 	buf.Write(existing)
+	if len(existing) > 0 && existing[len(existing)-1] != '\n' {
+		buf.WriteByte('\n')
+	}
 	for _, s := range toWrite {
 		fmt.Fprintf(&buf, "%s=%s\n", s.envKey, config.QuoteEnvValue(s.value))
 		if !fx.Planning() {
-			slog.Info("Persisted auto-generated secret to .env.secrets", "key", s.envKey)
+			slog.Info("Persisted auto-generated secret", "file", name, "key", s.envKey)
 		}
 	}
 	if err := sink.WriteFile(secretsPath, buf.Bytes(), 0600); err != nil {

@@ -176,7 +176,7 @@ func TestPersistGeneratedSecrets_PlanModeWritesNothingToDisk(t *testing.T) {
 	sink := newMemSink(dir, "")
 	fx := &planEffects{}
 	cfg := genCfg()
-	if err := persistGeneratedSecretsFx(dir, cfg, fx, sink); err != nil {
+	if err := persistGeneratedSecretsFx(dir, cfg, fx, sink, false); err != nil {
 		t.Fatal(err)
 	}
 	planned, err := sink.ReadFile(filepath.Join(dir, ".env.secrets"))

@@ -57,7 +57,7 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 	// reads them — a validate-only invocation must never mutate the
 	// project it is inspecting.
 	if !st.opts.Check {
-		if err := persistGeneratedSecretsFx(st.workdir, st.cfg, st.fx, st.sink); err != nil {
+		if err := persistGeneratedSecretsFx(st.workdir, st.cfg, st.fx, st.sink, st.opts.RemoteDeploy); err != nil {
 			return nil, fmt.Errorf("persisting generated secrets: %w", err)
 		}
 

@@ -173,10 +173,9 @@ func TestPersistGeneratedSecrets_LoadKeysInActiveEnvFileNotPersisted(t *testing.
 }
 
 // Pins the lead ruling: a key defined only in an inactive env's file (.env.prod
-// while ENV=dev) is NOT persisted. .env.secrets is shared by every env and
+// while ENV=dev) is NOT persisted to .env.secrets, which is shared by every env and
 // loads after .env.<env>, so a dev-generated value written there would shadow
-// prod's real value on the next prod build. The dev build regenerates instead,
-// which is the safe side.
+// prod's real value on the next prod build. D-0707 persists into .env.dev instead.
 func TestPersistGeneratedSecrets_LoadKeysOnlyInInactiveEnvNotPersisted(t *testing.T) {
 	clearSecretEnv(t)
 	dir := t.TempDir()
