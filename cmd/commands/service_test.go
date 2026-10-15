@@ -320,6 +320,22 @@ func TestCanonicalServiceName_Invalid(t *testing.T) {
 	}
 }
 
+// TestCanonicalServiceName_StoragePlugin guards D-0451: once the project's
+// compose file declares the storage plugin, `storage` no longer toggles MinIO.
+func TestCanonicalServiceName_StoragePlugin(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/docker-compose.yml", []byte("services:\n  storage:\n    image: nself/storage\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	if _, _, err := canonicalServiceName("storage"); err == nil || !strings.Contains(err.Error(), "storage plugin") {
+		t.Fatalf("storage with a declared plugin must be refused, got %v", err)
+	}
+	if name, _, err := canonicalServiceName("minio"); err != nil || name != "minio" {
+		t.Fatalf("minio must still resolve, got %q, %v", name, err)
+	}
+}
+
 // TestSetEnvKeyInFile_NewFile verifies that setEnvKeyInFile creates a file and
 // writes the key=value line when the file does not exist.
 func TestSetEnvKeyInFile_NewFile(t *testing.T) {

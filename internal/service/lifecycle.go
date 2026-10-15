@@ -47,10 +47,10 @@ var serviceAlias = map[string]string{
 	"meilisearch": "search",
 }
 
-// composeDeclaresService reports whether the project's docker-compose.yml in
+// ComposeDeclaresService reports whether the project's docker-compose.yml in
 // dir declares a service called name. An unreadable or unparsable file reports
 // false, so the compose call that follows surfaces the real error.
-func composeDeclaresService(dir, name string) bool {
+func ComposeDeclaresService(dir, name string) bool {
 	data, err := os.ReadFile(filepath.Join(dir, "docker-compose.yml"))
 	if err != nil {
 		return false
@@ -72,7 +72,7 @@ func composeDeclaresService(dir, name string) bool {
 func resolveService(name, dir string) (string, error) {
 	lower := strings.ToLower(strings.TrimSpace(name))
 	if lower == "storage" {
-		if composeDeclaresService(dir, "storage") {
+		if ComposeDeclaresService(dir, "storage") {
 			return "storage", nil
 		}
 		lower = "minio"
