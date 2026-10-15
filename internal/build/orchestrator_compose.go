@@ -12,7 +12,6 @@ import (
 	"github.com/nself-org/cli/internal/nginxtopo"
 	"github.com/nself-org/cli/internal/version"
 	"gopkg.in/yaml.v3"
-	"log/slog"
 	"maps"
 	"os"
 	"path"
@@ -20,38 +19,6 @@ import (
 	"slices"
 	"strings"
 )
-
-func (st *buildState) applyProxyProvider(g *compose.Generator) error {
-	pluginDir := st.pluginDir
-	provider, err := ProxyProvider(st.cfg, st.workdir, pluginDir)
-	if err != nil {
-		return err
-	}
-	if err := proxyComposeDiscoverable(st.workdir, pluginDir, provider); err != nil {
-		return err
-	}
-	if provider == ProviderNginx && st.planning() && proxyDeclaredTraefik(st.cfg, st.workdir, pluginDir) {
-		provider = ProviderTraefik
-	}
-	if provider != ProviderNginx {
-		if err := checkProviderRoutes(st.withSnippetRoutes(st.routes), provider, st.cfg, st.workdir); err != nil {
-			return err
-		}
-		g.OmitNginx()
-		if proxyAPIDocsEnabled(st.cfg) {
-			slog.Warn("docs." + st.cfg.BaseDomain + " is not served by traefik (D-0310); api-docs is an accepted difference (API_DOCS_* parsing debt D-0455)")
-		}
-	} else {
-		if err := proxyFrontingStack(st.cfg, st.workdir); err != nil {
-			return err
-		}
-		if err := st.guardDockerSocket(g); err != nil {
-			return err
-		}
-		return cleanupProviderOutput(st.sink, st.workdir, provider)
-	}
-	return st.guardDockerSocket(g)
-}
 
 func proxyFrontingStack(cfg *config.Config, workdir string) error {
 	if cfg.Nginx.FrontedBy == "" {
