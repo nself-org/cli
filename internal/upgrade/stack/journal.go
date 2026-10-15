@@ -69,7 +69,7 @@ func loadJournal(project string) (*Journal, error) {
 // Constraints: successful steps are a contiguous prefix in the shared order.
 func validateJournal(j *Journal) error {
 	steps := ExecutionPlan()
-	if j.RunID == "" || j.StartedAt.IsZero() || len(j.Steps) != len(steps) {
+	if !runtimeRunID.MatchString(j.RunID) || j.StartedAt.IsZero() || len(j.Steps) != len(steps) {
 		return fmt.Errorf("stack update journal lacks run identity or ordered steps")
 	}
 	switch j.Status {
