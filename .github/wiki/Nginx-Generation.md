@@ -281,6 +281,8 @@ A file nginx would refuse to load would stop nginx, and with it every route, so 
 
 A skipped file is also listed in `routes.json` under `unmodelled_global`. Run `nself build` again after updating the plugin or issuing the certificate.
 
+For `NGINX_FRONTED_BY`, CLI sites and plugin snippets check the fronting stack's `ssl/certificates/<domain-dir>/` for both certificate files. The domain directory still comes from the fronted project's `BASE_DOMAIN`. A pair under the fronted project's own `ssl/`, or a local-mode plan to generate it there, does not enable TLS in the serving stack. Registered shared-proxy builds can also use pairs their existing certificate-copy pipeline publishes to the owner before the build succeeds.
+
 A plugin file whose `server_name` is already claimed on the same port by another file in `nginx/sites` fails the build, naming both files, because nginx would silently serve only one of them.
 
 ---

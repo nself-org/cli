@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/nginx"
 	"github.com/nself-org/cli/internal/nginx/routemodel"
 	"github.com/nself-org/cli/internal/nginxtopo"
 )
@@ -106,7 +107,11 @@ func checkServerNameConflict(sink Sink, sitesDir, destName, content string) erro
 // the base domain's certificate pair is served; the build passes its own
 // TLS decision to injectPluginNginxRoutesVia.
 func InjectPluginNginxRoutes(workdir, pluginDir string, cfg *config.Config) (int, error) {
-	return injectPluginNginxRoutesVia(newDiskSink(workdir), workdir, pluginDir, cfg, true)
+	hasSSL := true
+	if cfg.Nginx.FrontedBy != "" {
+		hasSSL = nginx.NewGenerator(cfg, workdir).HasSSL()
+	}
+	return injectPluginNginxRoutesVia(newDiskSink(workdir), workdir, pluginDir, cfg, hasSSL)
 }
 
 // placeholderRE matches a ${NAME} template variable buildTemplateVars does

@@ -103,6 +103,9 @@ func (st *buildState) sharedBegin(m *routemodel.Model) error {
 		return nil
 	}
 	sp.container = st.sharedServices()
+	if sp.active() {
+		routemodel.SetSSL(m, st.sharedTLS(m.DefaultServer.HTTP.RedirectHTTPS))
+	}
 	routemodel.QualifyUpstreams(m, sp.qualify)
 	set := &snippetSet{}
 	set.plugins(st.workdir, st.cfg, m.DefaultServer.HTTP.RedirectHTTPS)

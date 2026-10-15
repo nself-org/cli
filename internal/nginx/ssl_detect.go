@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/nginxtopo"
 	"github.com/nself-org/cli/internal/ssl"
 )
 
@@ -46,6 +47,11 @@ import (
 //     create but has not (WithAssumedCerts): a pair for cfg.BaseDomain among
 //     them counts as present, so a plan keeps the TLS blocks apply produces.
 func sslShouldEmit(cfg *config.Config, workdir, mode string, assumed []string) bool {
+	// Project-local generation and plan assumptions do not populate another
+	// stack's mount. Fronted TLS requires the served pair, even in local mode.
+	if cfg.Nginx.FrontedBy != "" {
+		return mode != "none" && sslCertsPresent(cfg, workdir)
+	}
 	switch mode {
 	case "none":
 		return false
@@ -87,12 +93,16 @@ func sslDirName(domain string) string {
 }
 
 func sslCertsPresent(cfg *config.Config, workdir string) bool {
-	certDir := filepath.Join(workdir, "ssl", "certificates", sslDirName(cfg.BaseDomain))
-	if _, err := os.Stat(filepath.Join(certDir, "fullchain.pem")); err != nil {
+	sslDir, err := nginxtopo.ServedSSLDir(workdir, cfg.Nginx.FrontedBy)
+	if err != nil {
 		return false
 	}
-	if _, err := os.Stat(filepath.Join(certDir, "privkey.pem")); err != nil {
-		return false
+	certDir := filepath.Join(sslDir, "certificates", sslDirName(cfg.BaseDomain))
+	for _, name := range []string{"fullchain.pem", "privkey.pem"} {
+		info, err := os.Stat(filepath.Join(certDir, name))
+		if err != nil || !info.Mode().IsRegular() {
+			return false
+		}
 	}
 	return true
 }

@@ -114,7 +114,7 @@ func (st *buildState) generateSSLAndNginx() error {
 			return fmt.Errorf("building proxy routes: %w", err)
 		}
 	}
-	routemodel.SetSSL(st.routes, nginxGen.HasSSL())
+	routemodel.SetSSL(st.routes, st.sharedTLS(nginxGen.HasSSL()))
 	nginxGen.WithModel(st.routes)
 	nginxFiles, err := nginxGen.Generate()
 	if err != nil {
