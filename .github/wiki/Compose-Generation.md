@@ -49,12 +49,14 @@ After a build, `.nself/compose-files.txt` lists the generated Compose files in m
 When plugins are installed, each one provides a `docker-compose.plugin.yml` overlay file. During `nself build`, these overlay files are merged into the final `docker-compose.yml` in a well-defined order:
 
 1. **Base compose**, core required services
-2. **Optional service sections**, Redis, MinIO, mailpit, and other optional services if enabled
+2. **Optional service sections**, Redis, mailpit, and other optional services if enabled; object storage is core `minio` (with an init container) in v1.4 mode, or `seaweedfs` + `seaweedfs-init` in v1.5 mode
 3. **Monitoring bundle**, Prometheus, Grafana, Loki, and the rest of the monitoring stack (if `MONITORING_ENABLED=true`)
 4. **Custom services**, `CS_1` through `CS_10` as defined in your env
 5. **Plugin overlay files**, one per installed plugin, applied in install order
 
 Plugin overlays can add new services and volumes. They cannot remove or rename services that already exist in the base compose. This ensures the core stack remains stable regardless of which plugins are installed.
+
+In v1.5 mode (`NSELF_V15=1`), `OBJECT_STORAGE_ENABLED=true` enables core SeaweedFS. MinIO is provided through the plugin overlay after `nself add minio`, rather than through the optional core section. Explicit MinIO intent without the plugin fails storage-enabled profiles with **E138: MinIO moved to a plugin** before generated project files change. See [[Object-Storage]] for credentials, bucket initialization, and existing MinIO data.
 
 Networks follow the fragment rules in [[Plugins#compose-fragment-rules]]. In v1.5 mode a plugin service joins the project network, `${DOCKER_NETWORK}`: a service with no `networks:` is attached to it, and the legacy `nself_network` is folded into it. A fragment that uses any other external network, that has more than one YAML document, or that sets a `network_mode` other than `none` or `service:<a service of the same fragment>` fails the build with [[error-codes#e129]]. A compose plugin that ships no fragment fails with [[error-codes#e128]]. In v1.4 mode the foreign-network, multi-document and `network_mode` cases print a warning and the build goes on, and a compose plugin with no fragment is left out of the stack with a warning.
 
@@ -65,10 +67,10 @@ Networks follow the fragment rules in [[Plugins#compose-fragment-rules]]. In v1.
 The compose file is assembled in this order. Services later in the list can depend on services earlier in the list.
 
 1. **Core**, `postgres`, `hasura`, `auth`, `nginx`
-2. **Optional**, `minio` (with init container), `redis`, `mailpit`, `admin`, `functions`, `mlflow`, `search`
+2. **Optional**, object storage (`minio` with an init container in v1.4 mode; `seaweedfs` + `seaweedfs-init` in v1.5 mode), `redis`, `mailpit`, `admin`, `functions`, `mlflow`, `search`
 3. **Monitoring**, `prometheus`, `grafana`, `loki`, `promtail`, `tempo`, `alertmanager`, `cadvisor`, `node-exporter`, `postgres-exporter`, `redis-exporter`
 4. **Custom**, `CS_1` through `CS_10`
-5. **Plugins**, loaded from `~/.nself/plugins/`, in install order
+5. **Plugins**, loaded from `~/.nself/plugins/`, in install order, including MinIO installed with `nself add minio` in v1.5 mode
 
 ---
 
