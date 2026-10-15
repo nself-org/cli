@@ -63,6 +63,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | D-0327 | no Host check on mcp sse/http | Host must be localhost/127.0.0.1/[::1] or an --allowed-host, with the listener port | `cmd/commands/mcp_auth.go` |
 | D-0330 | remove <plugin> drops plugin data unless --keep-data | keeps it unless --delete-data, confirmed by --yes or a terminal | `cmd/commands/plugin_remove_data.go` |
 | D-0430 | "Error: trust warnings present (exit code 2)" and exit 1 | silent exit 2, the canon's warning class | `cmd/commands/trust_status_detailed.go` |
+| D-0437 | doctor only repairs generated files | diagnoses and repairs deferred boot-plugin table tracking | `cmd/commands/doctor_plugin_tables.go` |
 | D-0478 | PLUGIN_DIR "~/..." used as written, no plugin snippets on default config | "~" expanded, installed plugins' snippets injected | `internal/build/plugin_configs.go` |
 | D-0484 | pin store ancestor walk warns once and continues | refuses | `sdk/go/remote/knownhosts_compat.go` |
 | D-0676 | bare stream path streams as path:// with a notice | refused | `internal/backup/stream_dest_compat.go` |

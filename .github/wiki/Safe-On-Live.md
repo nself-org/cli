@@ -136,14 +136,14 @@ A command that changes a setting, a plugin or a bundle used to leave the generat
 | `nself plugin remove` | Removes, then reconciles once. | Removes. The generated files change on the next `nself build`. |
 | `nself bundle install` | Installs, reconciles, starts the stack and waits for app-ready. | Installs, then reconciles once. Does not start the stack. |
 | `nself bundle remove` | Removes, then reconciles once. | Removes, then reconciles once. |
-| `nself doctor --fix` | Repairs generated-file drift through the same engine. A second `--fix` changes nothing. | Same repair. A hand-edited file is overwritten with the v1.4 warning instead of the refusal. |
+| `nself doctor --fix` | Repairs generated-file drift through the same engine, then waits for boot migrations and tracks missing plugin tables in Hasura. Metadata repair requires prod/staging confirmation even without file drift. A second `--fix` changes nothing. | Repairs generated-file drift only. A hand-edited file is overwritten with the v1.4 warning instead of the refusal. |
 
 ### Flags
 
 - `--preview` (config set): prints the plan and writes nothing, not even the env line.
 - `--yes`: confirms a change on a prod-class env (`ENV` is `prod` or `staging`). Also accepted by plugin and bundle install and remove, and by `doctor --fix`.
 - `--force`: allows overwriting a hand-edited generated file (config set, bundle remove, doctor, build). `plugin install --force` also overrides the hand-edit refusal. On `plugin remove`, `--force` also keeps its older meaning, so check the plan first.
-- `nself doctor --fix --plan` prints the repair plan and writes nothing.
+- `nself doctor --fix --plan` prints the generated-file repair plan and writes nothing. It does not inspect or plan live Hasura table tracking.
 
 ### The two gates
 

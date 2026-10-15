@@ -137,6 +137,8 @@ The CLI never applies plugin SQL. It verifies that the plugin did, through `inte
 reports E120 for every installed plugin that ships `migrations/` without boot apply. A compliant plugin that is not running
 produces no finding.
 
+In v1.5 mode, both standard and deep doctor checks also report missing Hasura tracking for installed boot plugins' manifest tables. An install while the stack is down defers tracking: after `nself start`, run `nself doctor --fix`. It waits for boot migrations of plugins with untracked tables, uses targeted table tracking, and verifies metadata. Newly installed dependencies participate in the install readiness and tracking checks too. `nself start` itself does not track these tables.
+
 ## Verification
 
 Tests run against a real `postgres:16` container: fresh apply, re-run, concurrent replicas, kill

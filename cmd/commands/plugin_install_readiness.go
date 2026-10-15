@@ -243,7 +243,7 @@ func pluginInstallTracking(cmd *cobra.Command, pluginDir string, installed []str
 		return trackIssue(plugins, fmt.Errorf("checking whether the stack is running: %w", serr))
 	}
 	if !up {
-		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "note: the stack is not running, so the tables of "+strings.Join(memberNames(tracked), ", ")+" are not tracked yet; once it is up, rerun `nself plugin install "+strings.Join(memberNames(tracked), " ")+"` (`nself start` does not track)")
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "note: the stack is not running, so the tables of "+strings.Join(memberNames(tracked), ", ")+" are not tracked yet; after `nself start`, run `nself doctor --fix` to track them")
 		return nil
 	}
 	if _, err := bundleTrackTables(ctx, cfg, plugins); err != nil {

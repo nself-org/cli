@@ -27,6 +27,8 @@ The `Generated files` section compares recorded file hashes in `.nself/state/gen
 
 Deep mode's automatic fixes run only validated `nself` commands and `docker restart` for containers whose Compose project label matches this project. Suggestions with shell syntax, system commands, and Docker prune are shown as manual steps. The human and JSON reports show which fixes ran or failed.
 
+In v1.5 mode, standard and deep diagnostics report untracked manifest tables for installed plugins that declare `migrations.apply: boot`. For an offline install, run `nself start`, then `nself doctor --fix`: the repair waits for the affected plugins' boot migrations, tracks missing tables on Hasura's default source, and verifies the result. It never starts the stack. Already tracked plugins need no readiness wait or metadata write. Metadata repairs on prod or staging require `--yes` or terminal confirmation even when generated files have no drift. `--fix --plan` remains an offline generated-file plan; it does not inspect or repair live Hasura metadata. Deep mode includes this check with `--only plugins` or no section filter.
+
 ## Exit Codes
 
 ### Standard mode (`nself doctor`)

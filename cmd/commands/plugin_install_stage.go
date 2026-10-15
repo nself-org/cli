@@ -78,6 +78,23 @@ func (s *installStage) created() []string {
 	return out
 }
 
+// readinessNames includes fresh dependencies, keeping explicit names first.
+// The ledger still records only the explicit installs supplied by the caller.
+func (s *installStage) readinessNames(installed []string) []string {
+	out := append([]string(nil), installed...)
+	seen := make(map[string]bool, len(out))
+	for _, name := range out {
+		seen[name] = true
+	}
+	for _, name := range s.created() {
+		if name != "bin" && !seen[name] {
+			out = append(out, name)
+			seen[name] = true
+		}
+	}
+	return out
+}
+
 // reconcile runs reconcileFn. When it fails, every plugin this run created is
 // removed again (files and command binary; never the schema) and dropped from
 // the bundle ledger, so a refused build does not leave a half-added plugin
