@@ -40,8 +40,11 @@ var (
 
 // secretScan collects the secret values hidden during one pass.
 type secretScan struct {
-	vals    []string
-	literal bool // the open scope is a block scalar: its lines are literal text
+	vals         []string
+	literal      bool   // the open scope is a block scalar: its lines are literal text
+	marker       string // inserted redactions, absent from every original input side
+	scalarIndent int    // column of a YAML block scalar header, -1 outside a scalar
+	continuation bool   // a secret span reached the end of a block scalar line
 }
 
 // note records a hidden value: quotes and spaces trimmed, at least
@@ -52,7 +55,7 @@ func (sc *secretScan) note(v string) {
 	case "true", "false", "null":
 		return
 	}
-	if len(v) >= minSecretValueLen && !strings.Contains(v, redactedValue) {
+	if len(v) >= minSecretValueLen && !strings.Contains(v, sc.marker) {
 		sc.vals = append(sc.vals, v)
 	}
 }
@@ -113,18 +116,20 @@ func scalarText(v string) string {
 // redactSecretLines renders the lines of one non-env artifact so no secret
 // value survives (scan, then replace the collected values in the same lines).
 func redactSecretLines(lines []string) []string {
-	out, vals := scanSecretLines(lines)
-	return applySecretValues(out, vals)
+	marker := redactionSentinel(lines)
+	out, vals := scanSecretLines(lines, marker)
+	return applySecretValues(out, vals, marker)
 }
 
 // redactSecretSides redacts the before and after lines of one artifact. The
 // values hidden on either side are replaced on both, so a secret that changed
 // does not survive as the old copy on the other side.
 func redactSecretSides(al, bl []string) ([]string, []string) {
-	ao, av := scanSecretLines(al)
-	bo, bv := scanSecretLines(bl)
+	marker := redactionSentinel(al, bl)
+	ao, av := scanSecretLines(al, marker)
+	bo, bv := scanSecretLines(bl, marker)
 	vals := append(av, bv...)
-	return applySecretValues(ao, vals), applySecretValues(bo, vals)
+	return applySecretValues(ao, vals, marker), applySecretValues(bo, vals, marker)
 }
 
 // scanSecretLines is the first pass: it returns the lines with secret values
@@ -133,8 +138,8 @@ func redactSecretSides(al, bl []string) ([]string, []string) {
 // scalar, a value that continues on deeper lines, or a quote that stays open
 // redacts those lines); then --flag values, then KEY=value and KEY: value pairs
 // anywhere in the line are masked in place; last, config.MaskURLCredentials.
-func scanSecretLines(lines []string) ([]string, []string) {
-	sc := &secretScan{}
+func scanSecretLines(lines []string, marker string) ([]string, []string) {
+	sc := &secretScan{marker: marker, scalarIndent: -1}
 	out := make([]string, len(lines))
 	block := -1       // key column of an open secret scope, -1 when none
 	quote := byte(0)  // open quote character of a multi-line value
@@ -144,6 +149,10 @@ func scanSecretLines(lines []string) ([]string, []string) {
 		if strings.HasSuffix(line, "\n") {
 			nl, line = "\n", strings.TrimSuffix(line, "\n")
 		}
+		if quote != 0 {
+			sc.continuation = false // the quote pass must see the original closing quote
+		}
+		line = sc.blockLine(line)
 		t := strings.TrimSpace(line)
 		ind := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
 		skip := t == "" || strings.HasPrefix(t, "#")
@@ -155,7 +164,7 @@ func scanSecretLines(lines []string) ([]string, []string) {
 			} else {
 				sc.note(t)
 			}
-			out[i] = ind + redactedValue + nl
+			out[i] = ind + sc.marker + nl
 			continue
 		case block >= 0 && (t == "" || len(ind) > block):
 			if text := strings.TrimPrefix(t, "- "); sc.literal {
@@ -166,7 +175,7 @@ func scanSecretLines(lines []string) ([]string, []string) {
 			if t == "" {
 				out[i] = line + nl // a blank line stays blank
 			} else {
-				out[i] = ind + redactedValue + nl
+				out[i] = ind + sc.marker + nl
 			}
 			continue
 		case flagNext && !skip:
@@ -177,7 +186,8 @@ func scanSecretLines(lines []string) ([]string, []string) {
 				t = strings.TrimPrefix(t, "- ")
 			}
 			sc.note(stripComment(t))
-			out[i] = ind + dash + redactedValue + nl
+			out[i] = ind + dash + sc.marker + nl
+			sc.continuation = sc.scalarIndent >= 0
 			continue
 		}
 		text, nb, nq, nf := sc.line(line)
@@ -219,7 +229,7 @@ func (sc *secretScan) secretEntry(line string, m []string) (string, int, byte, b
 	case v[0] == '&' || v[0] == '!' || blockScalar.MatchString(v):
 		sc.note(scalarText(v))
 		sc.literal = blockScalar.MatchString(strings.TrimSpace(stripAnnotations(v)))
-		return head + ": " + redactedValue, col, 0, false
+		return head + ": " + sc.marker, col, 0, false
 	}
 	var open byte
 	if v[0] == '"' || v[0] == '\'' {
@@ -230,5 +240,5 @@ func (sc *secretScan) secretEntry(line string, m []string) (string, int, byte, b
 	if strings.HasSuffix(v, ",") && open == 0 {
 		tail = ","
 	}
-	return head + ": " + redactedValue + tail, col, open, false
+	return head + ": " + sc.marker + tail, col, open, false
 }

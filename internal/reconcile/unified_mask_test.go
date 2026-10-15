@@ -6,7 +6,7 @@ import "testing"
 // just the leftmost match ("link" and "ink-supersecret123" in one word).
 func TestApplySecretValuesOverlap(t *testing.T) {
 	got := applySecretValues([]string{"link-supersecret123\n", "x link y ink-supersecret123 z\n", "[REDACTED]link\n", "none\n"},
-		[]string{"link", "ink-supersecret123"})
+		[]string{"link", "ink-supersecret123"}, "\x00redacted\x00")
 	want := []string{"[REDACTED]\n", "x [REDACTED] y [REDACTED] z\n", "[REDACTED][REDACTED]\n", "none\n"}
 	for i := range want {
 		if got[i] != want[i] {

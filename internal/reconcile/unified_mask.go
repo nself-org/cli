@@ -100,17 +100,15 @@ func (t *valueTrie) mask(s string) string {
 
 // applySecretValues is the second pass: it hides every literal copy of the
 // collected values (and their YAML-quoted spellings) in lines. Text already
-// redacted is left alone: each line is split on [REDACTED] first.
-func applySecretValues(lines, vals []string) []string {
-	if len(vals) == 0 {
-		return lines
-	}
+// redacted by the scanner is left alone: each line is split on the sentinel
+// chosen to be absent from the original inputs, then rendered as [REDACTED].
+func applySecretValues(lines, vals []string, marker string) []string {
 	uniq := append([]string(nil), vals...)
 	sort.Strings(uniq)
 	t := newValueTrie(uniq)
 	out := make([]string, len(lines))
 	for i, line := range lines {
-		parts := strings.Split(line, redactedValue)
+		parts := strings.Split(line, marker)
 		for j, p := range parts {
 			parts[j] = t.mask(p)
 		}

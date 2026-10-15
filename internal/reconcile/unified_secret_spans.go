@@ -89,8 +89,9 @@ func (sc *secretScan) flags(line string) (string, byte) {
 			continue
 		}
 		sb.WriteString(line[pos:vs])
-		sb.WriteString(redactedValue)
+		sb.WriteString(sc.marker)
 		sc.note(line[vs:ve])
+		sc.continueAfter(line, ve)
 		pos = ve
 	}
 	sb.WriteString(line[pos:])
@@ -157,8 +158,9 @@ func (sc *secretScan) pairs(line string) (string, byte) {
 			continue
 		}
 		sb.WriteString(line[pos:start])
-		sb.WriteString(redactedValue)
+		sb.WriteString(sc.marker)
 		sc.note(line[start:end])
+		sc.continueAfter(line, end)
 		pos = end
 		if q != 0 {
 			open = q
@@ -228,7 +230,7 @@ func (sc *secretScan) directive(line string) string {
 				sc.note(line[start+a[0] : start+a[1]])
 			}
 			sb.WriteString(line[pos : start+loc[1]])
-			sb.WriteString(" " + redactedValue)
+			sb.WriteString(" " + sc.marker)
 			pos = semi
 			break
 		}
