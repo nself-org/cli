@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
 )
@@ -81,7 +82,7 @@ func Restore(ctx context.Context, cfg *config.Config, opts RestoreOptions) error
 		}
 	}
 
-	if restoreComponents["minio"] && cfg.Minio.Enabled {
+	if restoreComponents["minio"] && compose.CurrentStore(cfg) != "none" {
 		if err := restoreMinio(ctx, cfg, backupDir, opts.BackupID); err != nil { //nolint:staticcheck // SA4023: restoreMinio always errors by design (not automated); see its doc comment
 			slog.Warn("minio restore failed", "error", err)
 		}

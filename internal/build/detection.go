@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
 )
 
@@ -54,8 +55,8 @@ func DetectServices(cfg *config.Config) []string {
 	}
 
 	// ── Remaining optional services ───────────────────────────────────
-	if cfg.Minio.Enabled {
-		services = append(services, "minio")
+	if svc := compose.StoreService(compose.CurrentStore(cfg)); svc != "" { // D-0683
+		services = append(services, svc)
 	}
 	if cfg.Mailpit.Enabled {
 		services = append(services, "mailpit")

@@ -9,6 +9,9 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/nself-org/cli/internal/compat/compattest"
+	"github.com/nself-org/cli/internal/config"
 )
 
 func TestNeedsCerts(t *testing.T) {
@@ -90,4 +93,32 @@ func TestCertPairValid(t *testing.T) {
 			t.Error("an empty dir must not be valid")
 		}
 	})
+}
+
+// TestCollectDomainsSeaweedStore: v1.5 SeaweedFS needs the storage domain but has no console
+// domain; v1.4 MinIO keeps both (D-0683).
+func TestCollectDomainsSeaweedStore(t *testing.T) {
+	t.Setenv("NSELF_PLUGIN_DIR", t.TempDir())
+	has := func(domains []string, want string) bool {
+		for _, d := range domains {
+			if d == want {
+				return true
+			}
+		}
+		return false
+	}
+	compattest.Set(t, true)
+	t.Setenv("OBJECT_STORAGE_ENABLED", "true")
+	got := NewGenerator(&config.Config{BaseDomain: "x.test"}).CollectDomains()
+	if !has(got, "storage.x.test") || has(got, "storage-console.x.test") {
+		t.Fatalf("seaweedfs domains = %v", got)
+	}
+	compattest.Set(t, false)
+	t.Setenv("OBJECT_STORAGE_ENABLED", "false")
+	cfg := &config.Config{BaseDomain: "x.test"}
+	cfg.Minio.Enabled = true
+	got = NewGenerator(cfg).CollectDomains()
+	if !has(got, "storage.x.test") || !has(got, "storage-console.x.test") {
+		t.Fatalf("minio domains = %v", got)
+	}
 }

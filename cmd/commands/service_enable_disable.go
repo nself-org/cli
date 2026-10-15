@@ -16,6 +16,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/spf13/cobra"
 )
 
@@ -46,6 +47,10 @@ func runServiceEnable(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("enabling %s: %w", canonName, err)
 	}
 
+	if canonName == "minio" && compat.V15() {
+		// compat.V15(D-0683): core MinIO -> plugin; point at the core store toggle
+		fmt.Fprintln(os.Stderr, "Note: in v1.5 MinIO is the minio plugin (run `nself add minio`). For the core object store run `nself service enable object-storage`.")
+	}
 	fmt.Printf("%s enabled. Run `nself build` to apply changes.\n", canonName)
 	return nil
 }
@@ -68,7 +73,7 @@ func runServiceDisable(cmd *cobra.Command, args []string) error {
 		values, _ := readEnvValues(envFile)
 		var activeDeps []string
 		for _, dep := range deps {
-			for _, depSvc := range knownServices {
+			for _, depSvc := range optionalServices() {
 				if depSvc.Name == dep {
 					if v, ok := values[depSvc.EnvVar]; ok && strings.ToLower(strings.TrimSpace(v)) == "true" {
 						activeDeps = append(activeDeps, dep)

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/spf13/cobra"
 )
 
@@ -465,5 +466,26 @@ func TestServiceList_NoEnvFile(t *testing.T) {
 
 	if err != nil {
 		t.Fatalf("expected 'service list' to succeed without a .env file, got: %v", err)
+	}
+}
+
+// TestServiceObjectStorageV15: v1.5 lists and accepts `object-storage` (OBJECT_STORAGE_ENABLED);
+// v1.4 does not know it (D-0683).
+func TestServiceObjectStorageV15(t *testing.T) {
+	compattest.Set(t, true)
+	name, svc, err := canonicalServiceName("object-storage")
+	if err != nil || name != "object-storage" || svc.EnvVar != "OBJECT_STORAGE_ENABLED" {
+		t.Fatalf("v1.5 lookup = %q %+v %v", name, svc, err)
+	}
+	found := false
+	for _, s := range optionalServices() {
+		found = found || s.Name == "object-storage"
+	}
+	if !found {
+		t.Fatal("v1.5 service list must include object-storage")
+	}
+	compattest.Set(t, false)
+	if _, _, err := canonicalServiceName("object-storage"); err == nil {
+		t.Fatal("v1.4 must not know object-storage")
 	}
 }

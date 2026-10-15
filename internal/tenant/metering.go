@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
 )
 
@@ -92,9 +93,14 @@ ON CONFLICT (tenant_id, day, metric) DO UPDATE SET value = EXCLUDED.value;`, day
 		slog.Warn("failed to collect active_users metric", "error", err)
 	}
 
-	// Collect MinIO storage bytes per tenant bucket (when MinIO is enabled).
-	if cfg.Minio.Enabled {
+	// Collect storage bytes per tenant bucket from the active object store (D-0683).
+	switch compose.CurrentStore(cfg) {
+	case "minio-core", "minio-plugin":
 		if err := collectMinIOStorage(ctx, cfg, container, user, db, day, tenantFilter); err != nil {
+			slog.Warn("failed to collect storage_bytes metric", "error", err)
+		}
+	case "seaweedfs":
+		if err := collectS3Storage(ctx, cfg, container, user, db, day, tenantFilter); err != nil {
 			slog.Warn("failed to collect storage_bytes metric", "error", err)
 		}
 	}

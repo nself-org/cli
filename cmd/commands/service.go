@@ -3,6 +3,7 @@ package commands
 import (
 	"regexp"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/spf13/cobra"
 )
 
@@ -27,6 +28,16 @@ var knownServices = []serviceEntry{
 	{Name: "search", EnvVar: "SEARCH_ENABLED", Port: 7700},
 	{Name: "monitoring", EnvVar: "MONITORING_ENABLED", Port: 0},
 	{Name: "admin", EnvVar: "NSELF_ADMIN_ENABLED", Port: 3021},
+}
+
+// optionalServices returns knownServices plus, in v1.5, the core object store toggle.
+// compat.V15(D-0683): MinIO is a plugin there, so OBJECT_STORAGE_ENABLED needs its own entry.
+func optionalServices() []serviceEntry {
+	if !compat.V15() {
+		return knownServices
+	}
+	out := append([]serviceEntry{}, knownServices...)
+	return append(out, serviceEntry{Name: "object-storage", EnvVar: "OBJECT_STORAGE_ENABLED", Port: 8333})
 }
 
 // serviceAliases maps alternate names to canonical service names.

@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/plugin"
 )
@@ -144,8 +145,8 @@ func expectedCoreServices(cfg *config.Config) []string {
 	if cfg.Nginx.FrontedBy == "" {
 		services = append(services, "nginx")
 	}
-	if cfg.Minio.Enabled {
-		services = append(services, "minio")
+	if svc := compose.StoreService(compose.CurrentStore(cfg)); svc != "" { // D-0683
+		services = append(services, svc)
 	}
 	if cfg.Redis.Enabled {
 		services = append(services, "redis")

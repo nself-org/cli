@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/nself-org/cli/internal/compat"
@@ -151,13 +150,9 @@ func minioWithoutPlugin(cfg *config.Config, installed bool) error {
 // Constraints: image comes from the lock; credentials are ${...} refs only; S3 publishes on
 // 127.0.0.1 alone; the identity file lives on tmpfs and never reaches a project file.
 func (g *Generator) buildSeaweedService() (ServiceConfig, error) {
-	port := 8333
-	if raw := os.Getenv("SEAWEEDFS_PORT"); raw != "" {
-		parsed, err := strconv.Atoi(raw)
-		if err != nil || parsed < 1 || parsed > 65535 {
-			return ServiceConfig{}, fmt.Errorf("SEAWEEDFS_PORT must be an integer from 1 to 65535")
-		}
-		port = parsed
+	port, err := SeaweedPort()
+	if err != nil {
+		return ServiceConfig{}, err
 	}
 	for _, key := range []struct{ name, value string }{
 		{"S3_ACCESS_KEY", g.cfg.Minio.S3AccessKey}, {"S3_SECRET_KEY", g.cfg.Minio.S3SecretKey},

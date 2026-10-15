@@ -3,6 +3,7 @@ package ssl
 import (
 	"strings"
 
+	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
 )
 
@@ -72,13 +73,16 @@ func (g *Generator) collectDomains() []string {
 			add(strings.TrimPrefix(config.BuildServiceURL("auth", bd), "https://"))
 		}
 
-		// Storage (MinIO + nhost-storage)
-		if g.cfg.Minio.Enabled {
+		// Storage (MinIO + nhost-storage, or SeaweedFS in v1.5 with no console). D-0683.
+		store := compose.CurrentStore(g.cfg)
+		if store != "none" {
 			if route := g.cfg.Minio.StorageRoute; route != "" {
 				add(resolveRoute(route, bd))
 			} else {
 				add(strings.TrimPrefix(config.BuildServiceURL("storage", bd), "https://"))
 			}
+		}
+		if store == "minio-core" || store == "minio-plugin" {
 			if route := g.cfg.Minio.ConsoleRoute; route != "" {
 				add(resolveRoute(route, bd))
 			} else {

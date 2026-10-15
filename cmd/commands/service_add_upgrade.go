@@ -197,15 +197,15 @@ func canonicalServiceName(input string) (string, serviceEntry, error) {
 		lower = canonical
 	}
 
-	for _, svc := range knownServices {
+	for _, svc := range optionalServices() {
 		if svc.Name == lower {
 			return lower, svc, nil
 		}
 	}
 
 	// Build list of valid names including aliases.
-	validNames := make([]string, 0, len(knownServices)+len(serviceAliases))
-	for _, svc := range knownServices {
+	validNames := make([]string, 0, len(optionalServices())+len(serviceAliases))
+	for _, svc := range optionalServices() {
 		validNames = append(validNames, svc.Name)
 	}
 	for alias := range serviceAliases {

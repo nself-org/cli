@@ -97,10 +97,7 @@ func Create(ctx context.Context, cfg *config.Config, opts CreateOptions) error {
 
 	types := []BackupType{opts.Type}
 	if opts.Type == BackupTypeAll {
-		types = []BackupType{BackupTypeFull, BackupTypeMetadata}
-		if cfg.Minio.Enabled {
-			types = append(types, BackupTypeMinio)
-		}
+		types = allBackupTypes(cfg)
 	}
 
 	for _, bt := range types {

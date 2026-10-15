@@ -290,7 +290,7 @@ func TestServicesBodies(t *testing.T) {
 		}
 		var d serviceListData
 		extendData(t, out, "config services list", &d)
-		if len(d) != len(knownServices) || d[0].Service != "redis" || d[0].Enabled == nil || !*d[0].Enabled {
+		if len(d) != len(optionalServices()) || d[0].Service != "redis" || d[0].Enabled == nil || !*d[0].Enabled {
 			t.Fatalf("rows: %+v", d)
 		}
 	})

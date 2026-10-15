@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
 )
 
@@ -35,8 +36,12 @@ func checkRouteConsistency(projectDir string, verbose bool) []doctorCheckResult 
 		{"HASURA_ROUTE", cfg.Hasura.Route},
 		{"AUTH_ROUTE", cfg.Auth.Route},
 	}
-	if cfg.Minio.Enabled {
+	// D-0683: the active store decides which routes exist (SeaweedFS has no console).
+	store := compose.CurrentStore(cfg)
+	if store != "none" {
 		routes = append(routes, namedRoute{"STORAGE_ROUTE", cfg.Minio.StorageRoute})
+	}
+	if store == "minio-core" || store == "minio-plugin" {
 		routes = append(routes, namedRoute{"STORAGE_CONSOLE_ROUTE", cfg.Minio.ConsoleRoute})
 	}
 	if cfg.Admin.Enabled {
@@ -130,7 +135,7 @@ func checkPortRangeSanity(projectDir string, verbose bool) []doctorCheckResult {
 	if cfg.Redis.Enabled {
 		ports = append(ports, namedPort{"REDIS_PORT", cfg.Redis.Port})
 	}
-	if cfg.Minio.Enabled {
+	if store := compose.CurrentStore(cfg); store == "minio-core" || store == "minio-plugin" {
 		ports = append(ports, namedPort{"MINIO_PORT", cfg.Minio.Port})
 		ports = append(ports, namedPort{"MINIO_CONSOLE_PORT", cfg.Minio.ConsolePort})
 	}

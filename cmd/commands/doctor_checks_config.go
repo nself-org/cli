@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/build"
+	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/doctor"
@@ -162,7 +163,11 @@ func checkPasswordStrength(projectDir string, verbose, fix bool) []doctorCheckRe
 	if cfg.Redis.Enabled {
 		fields = append(fields, pwField{"REDIS_PASSWORD", cfg.Redis.Password, 16})
 	}
-	if cfg.Minio.Enabled {
+	// D-0683: check the secret of the store that runs.
+	switch compose.CurrentStore(cfg) {
+	case "seaweedfs":
+		fields = append(fields, pwField{"S3_SECRET_KEY", cfg.Minio.S3SecretKey, 16})
+	case "minio-core", "minio-plugin":
 		fields = append(fields, pwField{"MINIO_ROOT_PASSWORD", cfg.Minio.RootPassword, 16})
 	}
 

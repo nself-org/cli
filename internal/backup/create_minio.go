@@ -14,21 +14,53 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/objstore"
 )
 
+// Purpose: list the backup types `backup all` runs. Inputs: config. Outputs: full and
+// metadata, plus the object type when a store (MinIO or v1.5 SeaweedFS) is active.
+func allBackupTypes(cfg *config.Config) []BackupType {
+	types := []BackupType{BackupTypeFull, BackupTypeMetadata}
+	if compose.CurrentStore(cfg) != "none" {
+		types = append(types, BackupTypeMinio)
+	}
+	return types
+}
+
+// Purpose: build the S3 client for the active object store.
+// Inputs: config, SEAWEEDFS_PORT. Outputs: client and true; false when no store is active.
+// Constraints: MinIO keeps its root credentials; SeaweedFS uses the S3 identity on 127.0.0.1.
+func objectStoreClient(cfg *config.Config) (*objstore.Client, bool, error) {
+	switch compose.CurrentStore(cfg) {
+	case "seaweedfs":
+		port, err := compose.SeaweedPort()
+		if err != nil {
+			return nil, false, err
+		}
+		return &objstore.Client{Endpoint: fmt.Sprintf("http://127.0.0.1:%d", port),
+			AccessKey: cfg.Minio.S3AccessKey, SecretKey: cfg.Minio.S3SecretKey, Region: cfg.Minio.Region}, true, nil
+	case "minio-core", "minio-plugin":
+		port := cfg.Minio.Port
+		if port == 0 {
+			port = 9000
+		}
+		return &objstore.Client{Endpoint: fmt.Sprintf("http://127.0.0.1:%d", port),
+			AccessKey: cfg.Minio.RootUser, SecretKey: cfg.Minio.RootPassword, Region: cfg.Minio.Region}, true, nil
+	}
+	return nil, false, nil
+}
+
 func createMinioBackup(ctx context.Context, cfg *config.Config, backupDir, ts, tag string) error {
-	if !cfg.Minio.Enabled {
-		slog.Info("MinIO not enabled, skipping MinIO backup")
+	client, ok, err := objectStoreClient(cfg)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		slog.Info("object storage not enabled, skipping object backup")
 		return nil
 	}
-	port := cfg.Minio.Port
-	if port == 0 {
-		port = 9000
-	}
-	client := &objstore.Client{Endpoint: fmt.Sprintf("http://127.0.0.1:%d", port),
-		AccessKey: cfg.Minio.RootUser, SecretKey: cfg.Minio.RootPassword, Region: cfg.Minio.Region}
 	buckets, err := client.ListBuckets(ctx)
 	if err != nil {
 		return fmt.Errorf("minio backup: %w", err)

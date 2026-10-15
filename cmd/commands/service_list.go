@@ -71,8 +71,8 @@ func runServiceList(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(os.Stderr, "Then remove MLFLOW_ENABLED from your .env")
 	}
 
-	rows := make([]serviceStatusRow, 0, len(knownServices))
-	for _, svc := range knownServices {
+	rows := make([]serviceStatusRow, 0, len(optionalServices()))
+	for _, svc := range optionalServices() {
 		enabled := false
 		if v, ok := values[svc.EnvVar]; ok && strings.ToLower(strings.TrimSpace(v)) == "true" {
 			enabled = true

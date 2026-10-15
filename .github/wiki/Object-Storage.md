@@ -19,6 +19,10 @@ The `seaweedfs` and `seaweedfs-init` services use the pinned image lock. `SEAWEE
 
 `OBJECT_STORAGE_BUCKETS` is a comma-separated list. The one-shot `seaweedfs-init` service waits for SeaweedFS health, creates missing buckets and leaves existing buckets intact. An empty list creates none. Names must follow S3 bucket naming: 3–63 characters, lowercase letters, digits, hyphens or dots.
 
+## What follows the active store
+
+The same store choice drives the rest of the CLI. With SeaweedFS active, `nself build` adds a `storage` route to `seaweedfs:8333` (no console route) and its SSL domain. `nself backup create` (and `backup all`) mirror the buckets over the S3 API using `S3_ACCESS_KEY` and `S3_SECRET_KEY`, and `nself doctor` checks the S3 secret instead of `MINIO_ROOT_PASSWORD`. Tenant storage metering sums object sizes per bucket. `nself service list` and `nself service enable object-storage` toggle `OBJECT_STORAGE_ENABLED`; `nself service enable minio` points you at the plugin. The Prometheus `minio` scrape job and the start/urls summaries still assume MinIO.
+
 ## Endpoints and active store
 
 Custom services receive `S3_ENDPOINT=http://seaweedfs:8333` and the S3 credential references when core object storage is enabled. If core object storage is disabled, the `minio` plugin is installed and the project still declares MinIO (`MINIO_ENABLED=true`, or `MINIO_ROOT_*` credentials), they receive `S3_ENDPOINT=http://minio:9000` with the existing MinIO key mapping. An installed plugin alone does nothing for a project that does not use MinIO, because the plugin is machine-wide. With neither store, no `S3_*` variable is injected. Profiles without object storage, such as `ops`, never inject them.
