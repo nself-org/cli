@@ -418,9 +418,13 @@ Compare the fingerprint with the one your provider shows (console or `ssh-keygen
 `--trust-host-key`, or ssh to the host once and accept the key. Before P7-DEPL-28 and P7-DEPL-29 the v1.4
 secrets push and env-shipping deploys accepted any key on first contact (`accept-new`).
 
-IP-address hosts are pinned under the alias `nself-<ip>-<port>` (for example
-`nself-203.0.113.10-22`) and ssh gets a matching `HostKeyAlias`; hosts on a non-default port use
-`nself-<host>-<port>`. A pin file holding a line the CLI did not write (a wildcard,
+IP-address hosts are pinned under the alias `nself+<ip>+<port>` (for example
+`nself+203.0.113.10+22`) and ssh gets a matching `HostKeyAlias`; hosts with an explicit port use
+`nself+<host>+<port>`, preserving IPv6 colons. These aliases cannot equal a real hostname.
+Existing `nself-<host>-<port>` pins remain readable when no new alias pin exists;
+lookup never rewrites them. Re-enroll verified keys with `--trust-host-key` to use
+the new namespace. Ordinary `nself-*` hostnames remain valid.
+A pin file holding a line the CLI did not write (a wildcard,
 `@cert-authority` or hashed entry) or with group- or world-writable permissions is refused with
 `E487`; fix or remove that line and pin again.
 

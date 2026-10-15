@@ -220,9 +220,9 @@ func TestPinnedLookupRefusesForeignLine(t *testing.T) {
 func TestDeployKeyAliasIPHost(t *testing.T) {
 	requireKeygen(t)
 	for in, want := range map[string]string{
-		"u@203.0.113.7":        "nself-203.0.113.7-22",
-		"u@[2001:db8::1]:2222": "nself-2001-db8--1-2222",
-		"u@host.example:2222":  "nself-host.example-2222",
+		"u@203.0.113.7":        "nself+203.0.113.7+22",
+		"u@[2001:db8::1]:2222": "nself+2001:db8::1+2222",
+		"u@host.example:2222":  "nself+host.example+2222",
 		"u@host.example":       "host.example",
 	} {
 		if got := deployKeyAlias(mustSpec(t, in)); got != want {
@@ -244,7 +244,7 @@ func TestDeployKeyAliasIPHost(t *testing.T) {
 	if err != nil {
 		t.Fatalf("HostKeyOptions: %v", err)
 	}
-	if got := strings.Join(opts, " "); !strings.Contains(got, "HostKeyAlias=nself-203.0.113.7-22") {
+	if got := strings.Join(opts, " "); !strings.Contains(got, "HostKeyAlias=nself+203.0.113.7+22") {
 		t.Errorf("options = %q", got)
 	}
 }
