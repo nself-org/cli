@@ -36,6 +36,7 @@ func TestRunOneShot_SecretOnlyInEnv(t *testing.T) {
 	dir := installRecordingDocker(t)
 	const secret = "s3cr3t-token-value"
 	stdout, stderr, err := RunOneShot(context.Background(), RunSpec{
+		Name:    "secret-env-test",
 		Image:   "example/img:1@sha256:abc",
 		Args:    []string{"run", "--domains", "a.example.org"},
 		EnvPass: map[string]string{"SECRET_VAL": secret, "B_NAME": "x"},
@@ -50,7 +51,7 @@ func TestRunOneShot_SecretOnlyInEnv(t *testing.T) {
 		t.Errorf("output not captured: %q / %q", stdout, stderr)
 	}
 	argv, _ := os.ReadFile(filepath.Join(dir, "argv"))
-	want := "run --rm --user 1000:1000 --network acme-net -v /srv/ssl:/ssl -v /x/s.sh:/s.sh:ro -e B_NAME -e SECRET_VAL example/img:1@sha256:abc run --domains a.example.org"
+	want := "run --rm --name secret-env-test --user 1000:1000 --network acme-net -v /srv/ssl:/ssl -v /x/s.sh:/s.sh:ro -e B_NAME -e SECRET_VAL example/img:1@sha256:abc run --domains a.example.org"
 	if got := strings.TrimSpace(string(argv)); got != want {
 		t.Errorf("argv = %q, want %q", got, want)
 	}

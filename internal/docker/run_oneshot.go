@@ -17,11 +17,14 @@ package docker
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"sort"
 	"strings"
+	"time"
 )
 
 // RunSpec describes one `docker run --rm` invocation.
@@ -47,8 +50,8 @@ type RunSpec struct {
 	CapDrop []string
 	// SecurityOpt lists `--security-opt` values, e.g. "no-new-privileges:true".
 	SecurityOpt []string
-	// Name is the container name (`--name`); a caller that sets one can remove a
-	// container a killed run left behind (RemoveContainer).
+	// Name is the container name (`--name`); empty generates a unique name.
+	// RunOneShot force-removes this container when its context is cancelled.
 	Name string
 	// Labels are `--label key=value` pairs, rendered in key order.
 	Labels map[string]string
@@ -115,7 +118,12 @@ func buildRunArgs(spec RunSpec) ([]string, error) {
 // RunOneShot runs spec to completion (`docker run --rm`) and returns what the
 // container wrote to stdout and stderr. A non-zero exit returns the captured
 // output together with an error that quotes the last stderr line.
+// Cancellation removes the named container before returning, using a separate
+// ten-second timeout. Cleanup errors are returned alongside the context error.
 func RunOneShot(ctx context.Context, spec RunSpec) (stdout, stderr string, err error) {
+	if spec.Name == "" {
+		spec.Name = "nself-oneshot-" + rand.Text()
+	}
 	args, err := buildRunArgs(spec)
 	if err != nil {
 		return "", "", err
@@ -127,7 +135,18 @@ func RunOneShot(ctx context.Context, spec RunSpec) (stdout, stderr string, err e
 	}
 	var so, se bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &so, &se
-	if runErr := cmd.Run(); runErr != nil {
+	runErr := cmd.Run()
+	if ctx.Err() != nil {
+		runErr = errors.Join(runErr, ctx.Err())
+		if cmd.Process != nil {
+			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+			defer cancel()
+			if cleanupErr := RemoveContainer(cleanupCtx, spec.Name); cleanupErr != nil {
+				runErr = errors.Join(runErr, fmt.Errorf("remove cancelled one-shot %s: %w", spec.Name, cleanupErr))
+			}
+		}
+	}
+	if runErr != nil {
 		return so.String(), se.String(), fmt.Errorf("docker run %s: %w: %s", spec.Image, runErr, lastLine(se.String()))
 	}
 	return so.String(), se.String(), nil
