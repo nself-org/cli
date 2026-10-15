@@ -66,7 +66,13 @@ column is NULL and the report lists the attribute and the number of documents un
 `exemptions` (id ending `#missing:<attribute>`); check those before you trust the data.
 Buckets are created in nSelf only for the objects they hold, so an empty bucket is listed in
 the report instead. A file name containing `/` or `\` has it replaced by `_`, and the file is
-listed in the report. Each downloaded file must match Appwrite's `sizeOriginal`.
+listed in the report. Each downloaded file must match Appwrite's `sizeOriginal`
+and its MD5 `signature` when the server supplies one.
+
+List pages start at 100 items and shrink on responses exceeding 64 MiB, down to
+one item. A single item larger than this limit stops the import. The plan uses a
+one-user count query; when its total reaches Appwrite's 5000-user cap, it walks
+the user list to count users, so planning large projects requires more requests.
 
 ## Passwords
 
