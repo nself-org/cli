@@ -75,6 +75,15 @@ Limits of the definition: the hash covers the row text in column order, so a tar
 
 ## Round trip: import an exported bundle
 
+Source adapters can return `importer.NewSafeError(code, what)` for a reviewed,
+credential-free fixed message under E517, E518, E520 or E521. This implements
+`importer.SafeError` and supports structured inspection with `errors.As`.
+Never interpolate source values (including identifiers, URLs or keys) into
+`what`. The import boundary preserves only the code and message, rebuilds
+registered guidance, and discards wrapper text and source error context.
+Control characters, invalid UTF-8 and messages over 300 bytes are rejected.
+Unmarked source errors retain the existing message allowlist and redaction.
+
 `nself db import nself <dir> [--plan] [--keep-stage] [--skip-storage] [--json]` reads a bundle written by `nself db export` into a fresh started project. It is the shared importer (see [[Leaving-nSelf]] for the other direction) with one thin source:
 
 1. The whole bundle is verified first (`portable.Open`): an unknown format or major is E515, a changed, missing, extra or unsafe file is E516 and names the member. This happens in `--plan` too, before the target is touched, and also on a target that already holds data.

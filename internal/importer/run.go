@@ -235,6 +235,14 @@ var (
 )
 
 func publicError(err error, code, message string) error {
+	var safe SafeError
+	if errors.As(err, &safe) {
+		cli := safe.SafeCLIError()
+		if cli != nil && sourceErrorCode(cli.Code) && plainText(cli.What) {
+			return errs.New(cli.Code, cli.What)
+		}
+		return errs.New(code, message)
+	}
 	// Preserve only known source failure codes, with fresh credential-free text.
 	var cli *errs.CLIError
 	if errors.As(err, &cli) {
