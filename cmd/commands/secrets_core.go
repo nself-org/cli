@@ -45,7 +45,8 @@ var secretsSetCmd = &cobra.Command{
 VALUE is optional. When it is omitted, or is "-", the value is read from stdin:
 a terminal gets a no-echo prompt on stderr, a pipe is read to the end (up to
 1 MiB, one trailing newline removed). Prefer that over typing VALUE in the
-command line, where the shell history and the process list can show it.`,
+command line, where the shell history and the process list can show it.
+To store a literal "-", pipe it on stdin: printf '%s' '-' | nself secrets set KEY -`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, err := os.Getwd()

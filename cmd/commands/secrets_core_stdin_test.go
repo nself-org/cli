@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/secrets"
 	"github.com/spf13/cobra"
 )
@@ -18,6 +19,15 @@ func stdinCmd(in string) *cobra.Command {
 	c.SetIn(strings.NewReader(in))
 	c.SetErr(&strings.Builder{})
 	return c
+}
+
+func TestSecretStdinErrorsCoded(t *testing.T) {
+	for _, in := range []string{"", strings.Repeat("x", maxSecretStdinBytes+1)} {
+		_, err := readSecretValue(stdinCmd(in), "KEY")
+		if d := errs.Describe(err); d == nil || d.Code != "E401" {
+			t.Errorf("want E401, got %v (%+v)", err, d)
+		}
+	}
 }
 
 func TestReadSecretValue(t *testing.T) {

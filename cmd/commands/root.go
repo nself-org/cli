@@ -29,6 +29,10 @@ var deprecationRegistry *deprecation.Registry
 // PreRunE → RunE → PostRunE cobra lifecycle so spans are not flushed early.
 var tracerShutdown func(context.Context) error
 
+// finishCommandLog survives the pre-run hook until Execute returns, including
+// errors that bypass Cobra's post-run hooks. Execute clears it after use.
+var finishCommandLog func(int, error)
+
 // contextKey is an unexported type for context keys in this package.
 type contextKey int
 
@@ -131,8 +135,7 @@ func init() {
 		} else {
 			logDir = filepath.Join(os.TempDir(), "nself", "logs")
 		}
-		finishLog := cmdlog.New(logDir).Begin(os.Args, commandSecretValues(cmd, args)...)
-		defer func() { finishLog(0, nil) }()
+		finishCommandLog = cmdlog.New(logDir).Begin(os.Args, commandSecretValues(cmd, args)...)
 
 		// `nself --version` prints and stops. Returning a silent exit-0 error
 		// rather than calling os.Exit keeps the single-exit-point rule and lets

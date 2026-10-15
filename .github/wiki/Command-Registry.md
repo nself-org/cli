@@ -92,6 +92,8 @@ Fields are in this order. Consumers must ignore fields they do not know: new fie
 
 Declare `confirm`, `surface: cli-only`, and `secret_args` on the command row in its canon fragment. `confirm.flags` lists local or inherited boolean flags; an empty list is valid for nonce confirmation. A plan form names its boolean `flag` and string `id_flag`. A flag override may declare `cli_only: true` or `secret: true`, alongside the existing `output: stream` override for a follow-style flag. A deprecated shim receives none of these declarations. Installed plugin commands carry the same facts through their mount annotations. Invalid plugin confirmation is omitted with one E437 warning per plugin.
 
+`secret_args` identifies values to redact; command-specific argument rules still apply. For `secrets set`, an omitted VALUE or the exact string `-` reads stdin. Machine callers cannot pass a literal dash as VALUE through argv; pipe `-` on stdin from a terminal invocation to store it.
+
 `cmdregistry.ToolName(path)` replaces spaces and hyphens with underscores and prefixes `nself_`; names must be unique, at most 64 characters, and contain only lowercase letters, digits, and underscores. `RoutePath(path)` separates path words under `/v1/commands/`. `EffectiveSideEffect` takes the highest class from the command and set flag overrides. `EffectiveOutput` returns `stream` when a set flag declares `output: stream`, otherwise the command output.
 
 ### Canon status

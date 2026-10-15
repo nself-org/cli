@@ -54,7 +54,14 @@ func invokedCommandPath(cmd *cobra.Command) string {
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main().
-func Execute() error {
+func Execute() (result error) {
+	finishCommandLog = nil
+	defer func() {
+		if finishCommandLog != nil {
+			finishCommandLog(errs.ExitCodeFor(result), result)
+			finishCommandLog = nil
+		}
+	}()
 	// Secret values arrive by environment, not argv (D-0468): restore them first.
 	if err := restoreSecretArgv(); err != nil {
 		return err

@@ -442,6 +442,8 @@ fi
 ---
 
 <!-- BEGIN PROSE:related -->
+E426 also refuses a token owned by anyone other than the effective user. Running `sudo nself` with HOME pointing to your user-owned token therefore fails, even when root can read the file. Run as the token owner, or configure a separate token for the effective user with `NSELF_MCP_TOKEN` or that user's own HOME. A group-writable `~/.nself` (for example, under umask `002`) is refused too: lookup is read-only, so run `chmod go-w ~/.nself` and retry.
+
 ## Related pages
 
 - [[Exit-Codes]], exit status classes and what changes in v1.5.0
