@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -91,6 +92,7 @@ func (st *buildState) installImagePins() (func(), error) {
 func (st *buildState) bootstrapPins() (map[string]string, error) {
 	data, err := st.sink.ReadFile(filepath.Join(st.workdir, "docker-compose.yml"))
 	if errors.Is(err, fs.ErrNotExist) {
+		st.noticeNoPinSource()
 		return nil, nil
 	}
 	if err != nil {
@@ -106,6 +108,43 @@ func (st *buildState) bootstrapPins() (map[string]string, error) {
 		images[k] = v
 	}
 	return images, nil
+}
+
+// postgresVolumeExists reports whether the named docker volume exists. It is a
+// variable so tests can fake it; "cannot tell" (no docker) counts as absent.
+var postgresVolumeExists = func(name string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ok, err := docker.VolumeExists(ctx, name)
+	return err == nil && ok
+}
+
+// bootstrapNoticeW receives the no-pin-source notice. Tests replace it.
+var bootstrapNoticeW io.Writer = os.Stderr
+
+// noticeNoPinSource prints one notice when a v1.5 first build has neither a lock
+// nor a docker-compose.yml to take pins from but the project's postgres volume
+// exists: hasura then renders the current release instead of the version the
+// project ran (D-0719). A new project has no volume and gets no notice.
+func (st *buildState) noticeNoPinSource() {
+	// compat.V15(D-0719): hasura moves v2.44.0 -> v2.51.0 only when v1.5 selects the current entry
+	if !compat.V15() || compose.HasuraEntry() != "hasura" || st.cfg == nil || bootstrapNoticeW == nil {
+		return
+	}
+	vol := strings.TrimSpace(st.cfg.Postgres.DataVolume)
+	if vol == "" {
+		vol = st.cfg.ProjectName + "_postgres_data"
+	}
+	if !postgresVolumeExists(vol) {
+		return
+	}
+	if k := "bootstrap-notice"; !st.lockWarned[k] {
+		if st.lockWarned == nil {
+			st.lockWarned = map[string]bool{}
+		}
+		st.lockWarned[k] = true
+		_, _ = fmt.Fprintf(bootstrapNoticeW, "notice: %s has no %s and no docker-compose.yml to take image pins from, so hasura starts on the current release; if this project ran an older hasura, run `nself backup create` first, then pin the old version in %s\n", st.workdir, lock.FileName, lock.FileName)
+	}
 }
 
 // mergedComposeImages reads the compose files `nself start` runs (lock.MergeDetailed
