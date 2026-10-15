@@ -42,15 +42,17 @@ func errDeviated(path, why string) error {
 // expectSink is the checking disk sink.
 type expectSink struct {
 	*diskSink
-	exp    *PlannedBuild
-	keyr   *memSink // canonicalises paths exactly as plan mode did
-	dirs   map[string]fs.FileMode
-	atomic map[string]bool
+	exp        *PlannedBuild
+	keyr       *memSink // canonicalises paths exactly as plan mode did
+	dirs       map[string]fs.FileMode
+	atomic     map[string]bool
+	chmods     map[string]fs.FileMode
+	writeModes map[string]fs.FileMode
 }
 
 func newExpectSink(root string, exp *PlannedBuild) *expectSink {
 	d := newDiskSink(root)
-	return &expectSink{diskSink: d, exp: exp, keyr: newMemSink(root, ""), dirs: map[string]fs.FileMode{}, atomic: map[string]bool{}}
+	return &expectSink{diskSink: d, exp: exp, keyr: newMemSink(root, ""), dirs: map[string]fs.FileMode{}, atomic: map[string]bool{}, chmods: map[string]fs.FileMode{}, writeModes: map[string]fs.FileMode{}}
 }
 
 // setFronting tells the sink where the fronting stack's nginx/sites dir is.
@@ -61,6 +63,9 @@ func (e *expectSink) WriteFile(p string, data []byte, perm fs.FileMode) error {
 		return err
 	}
 	e.atomic[e.keyr.key(p)] = false
+	if mode, ok := e.chmods[e.keyr.key(p)]; ok {
+		e.writeModes[e.keyr.key(p)] = mode
+	}
 	return e.keyr.WriteFile(p, data, perm)
 }
 
@@ -102,9 +107,11 @@ func (e *expectSink) Remove(p string) error {
 func (e *expectSink) Chmod(p string, perm fs.FileMode) error {
 	k := e.keyr.key(p)
 	if f, ok := e.exp.Files[k]; ok && f.Perm == perm {
+		e.chmods[k] = perm
 		return e.keyr.Chmod(p, perm)
 	}
 	if m, ok := e.exp.Modes[k]; ok && m == perm {
+		e.chmods[k] = perm
 		return e.keyr.Chmod(p, perm)
 	}
 	return errDeviated(k, fmt.Sprintf("would get mode %04o which the plan does not set", perm))

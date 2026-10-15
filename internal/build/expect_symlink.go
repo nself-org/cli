@@ -29,3 +29,25 @@ func (p *artifactPublisher) followDestination(k string) (string, error) {
 	}
 	return filepath.EvalSymlinks(abs)
 }
+
+// checkWritable preserves os.WriteFile's access check before atomic promotion:
+// replacing a directory entry alone would bypass a read-only existing file.
+func (p *artifactPublisher) checkWritable(key, dest string) error {
+	root, rel, err := p.target(dest)
+	if err != nil {
+		return err
+	}
+	if mode, ok := p.sink.writeModes[key]; ok {
+		if err := root.Chmod(rel, mode); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	f, err := root.OpenFile(rel, os.O_WRONLY, 0)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return f.Close()
+}

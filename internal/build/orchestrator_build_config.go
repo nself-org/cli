@@ -113,7 +113,7 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 	// ── Step 4: Check cache (skip if not --force and cache fresh) ───
 	// Plan mode always renders: the cache answers "is the disk fresh", and a
 	// plan must show what apply would write.
-	if !st.opts.Force && !st.planning() && st.opts.Expect == nil {
+	if !st.opts.Force && !st.planning() {
 		needsRebuild, err := NeedsRebuild(st.workdir)
 		if err != nil {
 			return nil, fmt.Errorf("checking build cache: %w", err)
@@ -132,8 +132,8 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 			// files outstanding: reconcile.Apply forces a rebuild for a
 			// non-empty plan; this is the backstop.
 			if es, ok := st.sink.(*expectSink); ok {
-				if err := es.verify(); err != nil {
-					return nil, err
+				if err := es.verifyPublished(); err != nil {
+					return nil, nil // staged changes still need the complete render
 				}
 			}
 			return &BuildResult{

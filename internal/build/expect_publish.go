@@ -131,6 +131,11 @@ func (p *artifactPublisher) publish() error {
 		if err := p.remember(dest); err != nil {
 			return err
 		}
+		if !p.sink.atomic[k] {
+			if err := p.checkWritable(k, dest); err != nil {
+				return err
+			}
+		}
 		data, err := os.ReadFile(p.files[k])
 		if err != nil {
 			return err
