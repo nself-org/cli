@@ -120,12 +120,7 @@ func runUnitTests(pluginPath string, hostMode bool) error {
 	} else {
 		// Inside container if available — fall back to host when Docker not running.
 		if isDockerAvailable() {
-			testCmd = exec.Command("docker", "run", "--rm",
-				"-v", pluginPath+":/workspace",
-				"-w", "/workspace",
-				"golang:1.22-alpine",
-				"sh", "-c", "go test ./... -v -count=1",
-			)
+			testCmd = pluginUnitTestDockerCmd(pluginPath)
 		} else {
 			ui.Warn("Docker not available; running unit tests on host.")
 			testCmd = exec.Command("go", "test", "./...", "-v", "-count=1")
