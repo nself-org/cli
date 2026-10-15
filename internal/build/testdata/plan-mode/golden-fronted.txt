@@ -27,14 +27,14 @@ f 0644 fronted-stack/backend/.nself/compose-env-files.txt c5cc831deacff2b9ea7dc6
 f 0644 fronted-stack/backend/.nself/compose-files.txt 7d77a6f6014dd7dcb6edddc669ced57180e36e04300b0e6f0206631b935bfaab
 f 0644 fronted-stack/backend/.nself/dist/openapi.json 930f5017f004813b05d87fa8bf3d7e9a689fed9ef384fbf873095a8a89985a4d
 f 0644 fronted-stack/backend/.nself/dist/scalar.html 650a899517b6771cb32ebacf366efb67e25583b475fa9de342b04dadff732c44
-f 0644 fronted-stack/backend/.nself/generated/routes.json 46e2fb4d39909ecb1a12deae4943917624c1d9953679d8a7bcfd20f87df991ec
+f 0644 fronted-stack/backend/.nself/generated/routes.json bb6e0283d89f9bf4dea385283fc5336eb886adfebdf2eb5dc0a6a9ee90a6d732
 f 0644 fronted-stack/backend/nginx/conf.d/default.conf ccc13780ced1a64b10360394d4b32693efc374590b9522b1988088dba5408f13
 f 0644 fronted-stack/backend/nginx/includes/rate-limits.conf 77e62d250a8c27ae3e563d4a9cdb7bd1ab999c5514fa972b498d30817d128f2a
 f 0644 fronted-stack/backend/nginx/nginx.conf 94095060d8a1226fd2b477f6fefbd3b588ed380f9d3ffcfbdf2b41937e507fac
 f 0644 fronted-stack/backend/postgres/init/01-init.sql 0238a6519fd10168af604249e45bf5234d3e6cec6ff9b927410a74ad90127637
 f 0644 fronted-stack/backend/postgres/init/04-np-plugins.sql 6d2f7e0d1a984fe96b69df552bfd7ec37ae7ceef46b757aa078f8c44809b53ab
 f 0644 fronted-stack/backend/postgres/init/05-np-plugins-seed.sql 30949e128d86d27eb1db142ea98273de6d7251fae143b6ecdc9ef28ae0eb318a
-f 0644 fronted-stack/nginx/sites/api-docs.conf e9c123c507404b40c062e15369038e9af46eb17841fa7135035675e702b6a4fb
 f 0644 fronted-stack/nginx/sites/auth.conf 5e44d49fd8d1b8a6c998aaae1028cc834e5c9d12deedd3a471b0086cd7e6d666
+f 0644 fronted-stack/nginx/sites/golden.api-docs.conf b5ba3ca7d31dc69015d3292131df6fa4efadf545a2648a8a34e333328e5551bb
 f 0644 fronted-stack/nginx/sites/hasura.conf 1f4dcdb4a34770e4ff0ccb4b463e81ed700e7736de90008502a20da70e55fe83
 f 0644 fronted-stack/nginx/sites/other-project.conf 012f7ce49b83c2fb9aee560c08ba2dd70dfa5121a1bc1fb19e73b37aade5a0e2
