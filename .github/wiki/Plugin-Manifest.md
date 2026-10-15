@@ -26,6 +26,12 @@ Released 1.4.x CLIs decode `plugin.json` permissively, so v2 never reuses a v1 k
 
 Add the generated compatibility keys with `manifestv2migrate -compat -write` (below).
 
+Command binaries share `~/.nself/plugins/bin/`. Publication refuses a binary
+claimed by another installed plugin with E141 before replacing any target.
+Removal skips binaries another installed plugin also claims, preserving that
+plugin's command even if the removed plugin's manifest was edited. Ownership
+comes from readable installed manifests; upgrades may replace their own binaries.
+
 ## Keys
 
 Three groups share one flat object:

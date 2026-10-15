@@ -126,6 +126,12 @@ func linkCLIBinary(destDir, name string, m *PluginManifest) error {
 	if err := validateCLIBinaries(name, m); err != nil {
 		return err
 	}
+	// Check at the shared publication boundary too, before replacing any target.
+	// Owners are read from the plugin directory this plugin was extracted into,
+	// the same one the install-time check used.
+	if err := checkCLIBinaries(filepath.Dir(destDir), name, m); err != nil {
+		return err
+	}
 
 	binDir := pluginBinDir()
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
@@ -162,12 +168,27 @@ func linkCLIBinary(destDir, name string, m *PluginManifest) error {
 // unlinkCLIBinary removes a plugin's published binary. A missing file is not an
 // error — the plugin may never have shipped one.
 func unlinkCLIBinary(name string, m *PluginManifest) error {
+	return unlinkCLIBinaryIn(filepath.Dir(pluginBinDir()), name, m)
+}
+
+// unlinkCLIBinaryIn is unlinkCLIBinary with the plugin directory whose installed
+// manifests decide ownership: a binary another plugin there also provides stays.
+func unlinkCLIBinaryIn(pluginDir, name string, m *PluginManifest) error {
 	binNames := cliBinaryNames(name, m)
 	if len(binNames) == 0 {
 		binNames = []string{"nself-" + name} // best effort on an unreadable manifest
 	}
+	owners, err := installedCLIBinaryOwners(pluginDir, name)
+	if err != nil {
+		return err
+	}
 
 	for _, binName := range binNames {
+		// An edited or legacy manifest must not unpublish another plugin's command.
+		if other, claimed := owners[binName]; claimed {
+			fmt.Fprintf(os.Stderr, "warning: not unpublishing %q: installed plugin %q also provides it\n", binName, other)
+			continue
+		}
 		// The manifest is on disk and untrusted: a binary name that is not one plain
 		// file name is skipped (never removed), and the plugin itself still goes.
 		dst, err := safePublishedBinaryPath(binName)
