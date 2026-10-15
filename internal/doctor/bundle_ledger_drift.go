@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"syscall"
 
 	"github.com/nself-org/cli/internal/errs"
 )
@@ -26,10 +27,11 @@ import (
 // (BUNDLE-LEDGER-UNRECORDED-<slug>, the command to run in its message). No ledger file, or a consistent ledger,
 // gives no result at all. An unreadable or invalid ledger file gives one
 // warning naming it.
-// Constraints: internal/doctor may not import internal/bundle (layers.yaml), so
-// this file reads the ledger as a contract consumer: it decodes only
-// {"plugins": {<slug>: {...}}} and the bundle names, capped at 4 MiB. The path
-// constants mirror ledger.Store.Path (internal/bundle/ledger/store.go).
+// Constraints: internal/doctor may not import internal/bundle (layers.yaml; the
+// ledger package is in that layer), so this file reads the ledger as a contract
+// consumer: parseLedgerShape (D-0474) checks the same shape ledger.Parse
+// requires of the one key it reads, "plugins", capped at 4 MiB. The path constants mirror
+// ledger.Store.Path (internal/bundle/ledger/store.go).
 
 const (
 	ledgerStateDir   = ".nself-state" // ledger.StateDirName
@@ -75,13 +77,9 @@ func BundleLedgerDriftChecks(_ context.Context, pluginDir string) []CheckResult 
 	if err != nil || len(data) > ledgerReadCap {
 		return []CheckResult{driftWarn(fmt.Sprintf("cannot read the bundle ledger %s (unreadable or over %d bytes)", path, ledgerReadCap))}
 	}
-	var doc struct {
-		Plugins map[string]struct {
-			InstalledBy []string `json:"installed_by"`
-		} `json:"plugins"`
-	}
-	if err := json.Unmarshal(data, &doc); err != nil {
-		return []CheckResult{driftWarn(fmt.Sprintf("the bundle ledger %s is not valid JSON: %v", path, err))}
+	doc, err := parseLedgerShape(data)
+	if err != nil {
+		return []CheckResult{driftWarn(fmt.Sprintf("the bundle ledger %s is not valid: %v", path, err))}
 	}
 	slugs := make([]string, 0, len(doc.Plugins))
 	for slug := range doc.Plugins {
@@ -93,7 +91,8 @@ func BundleLedgerDriftChecks(_ context.Context, pluginDir string) []CheckResult 
 		if filepath.Base(slug) != slug || slug == "." || slug == ".." {
 			continue // not a plugin slug; never join it into a path
 		}
-		if _, err := os.Stat(filepath.Join(pluginDir, slug, "plugin.json")); !errors.Is(err, os.ErrNotExist) {
+		// ENOTDIR (the plugin directory was replaced by a file) is as gone as ENOENT.
+		if _, err := os.Stat(filepath.Join(pluginDir, slug, "plugin.json")); !errors.Is(err, os.ErrNotExist) && !errors.Is(err, syscall.ENOTDIR) {
 			continue // present (or unreadable for another reason: not drift)
 		}
 		e := errs.Newf("E136", "bundle ledger lists plugin %s but %s is gone", slug, filepath.Join(pluginDir, slug, "plugin.json"))
@@ -182,4 +181,36 @@ func readPluginIdentity(path string) (pluginIdentity, bool) {
 
 func driftWarn(msg string) CheckResult {
 	return CheckResult{Section: "plugins", Name: "BUNDLE-LEDGER-DRIFT-ledger", Status: "warn", Message: msg}
+}
+
+// ledgerDoc is the part of the ledger this check reads.
+type ledgerDoc struct {
+	Plugins map[string]struct {
+		InstalledBy []string `json:"installed_by"`
+	} `json:"plugins"`
+}
+
+// parseLedgerShape decodes the ledger and refuses what the writers' strict
+// parser (ledger.Parse) would refuse among the keys read here: a document that
+// is not an object (null, an array), a missing or null "plugins"
+// (so {} and {"plugins":null} are damage, not a clean ledger), a "plugins" that
+// is not an object, and a plugin key that is not a valid slug.
+func parseLedgerShape(data []byte) (ledgerDoc, error) {
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(data, &root); err != nil || root == nil {
+		return ledgerDoc{}, errors.New("not a JSON object")
+	}
+	if v := strings.TrimSpace(string(root["plugins"])); v == "" || v == "null" {
+		return ledgerDoc{}, errors.New(`"plugins" is missing or null`)
+	}
+	var doc ledgerDoc
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return ledgerDoc{}, err
+	}
+	for slug := range doc.Plugins {
+		if !ledgerSlugRE.MatchString(slug) {
+			return ledgerDoc{}, fmt.Errorf("plugin key %q is not a valid slug", slug)
+		}
+	}
+	return doc, nil
 }

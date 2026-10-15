@@ -123,6 +123,24 @@ func checkEntitlements(cacheDir string, pluginName string) (allowed bool, found 
 	return false, true
 }
 
+// cachedEntitlementTier returns the tier stored in a fresh entitlements.json,
+// or "" when the file is missing, unparsable or older than the TTL.
+func cachedEntitlementTier(cacheDir string) string {
+	data, err := os.ReadFile(filepath.Join(cacheDir, "entitlements.json"))
+	if err != nil {
+		return ""
+	}
+	var c entitlementCache
+	if json.Unmarshal(data, &c) != nil {
+		return ""
+	}
+	cachedAt, err := time.Parse(time.RFC3339, c.CachedAt)
+	if err != nil || time.Since(cachedAt) > entitlementCacheTTL {
+		return ""
+	}
+	return c.Tier
+}
+
 // LicenseValidateResponse is the JSON body returned by the license validation
 // endpoint on HTTP 200. The Tier and Plugins fields are used to populate the
 // local entitlement cache.

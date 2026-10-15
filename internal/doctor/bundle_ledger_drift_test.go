@@ -83,8 +83,9 @@ func TestLedgerDriftDamagedAndHostile(t *testing.T) {
 		t.Fatalf("damaged ledger: %+v", res)
 	}
 	writeLedger(t, dir, `{"plugins":{"../escape":{},"a/b":{}}}`)
-	if res := BundleLedgerDriftChecks(context.Background(), dir); len(res) != 0 {
-		t.Fatalf("path-like slugs must be ignored, got %+v", res)
+	res = BundleLedgerDriftChecks(context.Background(), dir)
+	if len(res) != 1 || res[0].Status != "warn" || strings.Contains(res[0].Name, "escape") {
+		t.Fatalf("path-like slugs must give one warning and no per-slug check, got %+v", res)
 	}
 }
 
@@ -177,5 +178,40 @@ func TestLedgerUnrecordedSkipsStateDir(t *testing.T) {
 	}
 	if res := BundleLedgerDriftChecks(context.Background(), dir); len(res) != 0 {
 		t.Fatalf("want no result, got %+v", res)
+	}
+}
+
+// TestLedgerDriftPluginDirReplacedByFile (D-0474): a plugin directory replaced
+// by a plain file makes the stat return ENOTDIR, which is "gone", not "unreadable".
+func TestLedgerDriftPluginDirReplacedByFile(t *testing.T) {
+	dir := t.TempDir()
+	writeLedger(t, dir, driftLedger)
+	installPlain(t, dir, "notifications")
+	if err := os.WriteFile(filepath.Join(dir, "jobs"), []byte("not a directory"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res := BundleLedgerDriftChecks(context.Background(), dir)
+	if len(res) != 1 || res[0].Name != "BUNDLE-LEDGER-DRIFT-jobs" || res[0].Status != "fail" {
+		t.Fatalf("results = %+v, want one BUNDLE-LEDGER-DRIFT-jobs failure", res)
+	}
+}
+
+// TestLedgerDriftRejectsShapelessLedgers (D-0474): a ledger the strict parser
+// refuses (empty object, null, null plugins) is a warning, never clean.
+func TestLedgerDriftRejectsShapelessLedgers(t *testing.T) {
+	for name, body := range map[string]string{
+		"empty object":  `{}`,
+		"null":          `null`,
+		"null plugins":  `{"_generated":"x","schema_version":1,"bundles":{},"plugins":null}`,
+		"no plugins":    `{"_generated":"x","schema_version":1,"bundles":{}}`,
+		"plugins array": `{"_generated":"x","schema_version":1,"bundles":{},"plugins":[]}`,
+		"path-like key": `{"bundles":{},"plugins":{"../escape":{},"a/b":{}}}`,
+	} {
+		dir := t.TempDir()
+		writeLedger(t, dir, body)
+		res := BundleLedgerDriftChecks(context.Background(), dir)
+		if len(res) != 1 || res[0].Status != "warn" || !strings.Contains(res[0].Message, "bundles.json") {
+			t.Errorf("%s: results = %+v, want one warning naming bundles.json", name, res)
+		}
 	}
 }
