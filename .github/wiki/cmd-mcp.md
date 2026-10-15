@@ -45,7 +45,7 @@ can plan without probing.
 | `nself_backup_list` | List local backups with id, date, size, and type |
 | `nself_build` | Regenerate docker-compose.yml and nginx config from the project's env files. Overwrites prior generated output. |
 | `nself_config_get` | Read one config key from the project's env file. Secret values are always redacted. |
-| `nself_config_set` | Set one config key in the project's env file |
+| `nself_config_set` | Set one non-secret config key in the project's env file |
 | `nself_config_show` | List every config key/value in the project's env file. Secret values are always redacted. |
 | `nself_db_migrate_status` | List database migrations and whether each has been applied |
 | `nself_deploy_status` | Fast local deploy-state read (postgres container presence + control-plane inventory). Not a full SSH-probed remote status — use the CLI for that. |
@@ -82,6 +82,12 @@ registers.
 | `nself://env` | Effective env cascade inputs |
 | `nself://services` | Service inventory |
 | `nself://urls` | Service URLs |
+
+In v1.4 mode, the legacy `nself_config_set` refuses secret keys with `E421`
+before writing any file. It uses the same secret-key classification as config
+redaction, including password, token, key, secret and DSN names. Set these from
+a terminal with `nself config set`, or use the v1.5 generated MCP tool and its
+confirmation round trip.
 
 `nself://env` lists every env file present in the project (secrets redacted) but
 deliberately does not compute which file wins for a given key — that precedence is being

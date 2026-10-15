@@ -29,6 +29,8 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/plugin"
 )
 
@@ -86,6 +88,12 @@ func mcpConfigSetHandler() server.ToolHandlerFunc {
 		}
 		if err := validateMCPEnvName(envFlag); err != nil {
 			return mcpErrorResult("Error: %v", err)
+		}
+		// compat.V15(D-0737): legacy secret writes refused -> generated tool uses invoke.Gate confirmation
+		if config.IsSecretKey(key) {
+			return mcp.NewToolResultError(errs.New("E421", "legacy nself_config_set cannot write secret keys").
+				WithWhy("The legacy tool has no confirmation round trip.").
+				WithFix("Use nself config set from a terminal, or the v1.5 generated MCP tool with its confirmation round trip.").Error()), nil
 		}
 
 		projectDir, err := resolveProjectDir()

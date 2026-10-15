@@ -176,7 +176,7 @@ func registerCoreMCPTools(s *server.MCPServer) {
 	), mcpConfigShowHandler())
 
 	s.AddTool(mcp.NewTool("nself_config_set",
-		mcp.WithDescription("Set one config key in the project's env file"),
+		mcp.WithDescription("Set one non-secret config key in the project's env file. Secret keys are refused; use a terminal or the v1.5 generated tool with confirmation."),
 		mcp.WithString("key", mcp.Required(), mcp.Description("Config key, uppercase letters/digits/underscore only")),
 		mcp.WithString("value", mcp.Required(), mcp.Description("Value to set")),
 		mcp.WithString("env", mcp.Description("Env suffix (dev/staging/prod); empty = plain .env")),
