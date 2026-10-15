@@ -115,18 +115,11 @@ jobs:
 
       - name: Tag as latest
         if: steps.version.outputs.latest == 'true'
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: nself/nself:latest
-          build-args: |
-            VERSION=${{ steps.version.outputs.version }}
-            COMMIT=${{ steps.source.outputs.commit }}
-            BUILD_DATE=${{ steps.source.outputs.date }}
-            NSELF_LICENSE_PUBKEY_HEX=${{ secrets.NSELF_LICENSE_PUBKEY_HEX }}
-          cache-from: type=gha
+        # Copy the existing index, including attestations, to preserve its digest.
+        # A second build creates new provenance even when all layers are cached.
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: docker buildx imagetools create -t nself/nself:latest "nself/nself:${VERSION}"
 
       - name: Summary
         run: |
