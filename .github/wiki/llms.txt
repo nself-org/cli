@@ -26,6 +26,7 @@ nself add <name> [name...] [flags]
 
 Flags:
 
+- `--allow-downgrade` (default false) — Install a registry version older than the installed one (v1.5 refuses by default)
 - `--allow-eol` (default false) — Allow installing an EOL plugin (not recommended)
 - `--channel` (default stable) — Release channel: stable | beta | canary
 - `--checksum` (default "") — Expected SHA-256 checksum of the downloaded archive (third-party URL installs only)

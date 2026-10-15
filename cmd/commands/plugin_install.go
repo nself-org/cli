@@ -39,6 +39,9 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 	yes, _ := cmd.Flags().GetBool("yes")
 	checksum, _ := cmd.Flags().GetString("checksum")
 	tier, _ := cmd.Flags().GetString("tier")
+	if allow, _ := cmd.Flags().GetBool("allow-downgrade"); allow {
+		_ = os.Setenv("NSELF_PLUGIN_ALLOW_DOWNGRADE", "1") // D-0843, read by plugin.installLocked
+	}
 
 	// --tier overrides entitlement-based resolution for a slug served as both
 	// free and pro (OWNER-ACTIONS.md item 15). Threaded via env var, matching
