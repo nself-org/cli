@@ -45,6 +45,7 @@ func invoke(ctx context.Context, reg *cmdregistry.Registry, path string, req Req
 	var cmd *cmdregistry.Command
 	if reg != nil {
 		cmd, _ = reg.Lookup(command)
+		cmd = reg.WithInheritedFlags(cmd)
 	}
 	res := Result{RequestID: RequestID(path, cmd, req)}
 	if cmd == nil {

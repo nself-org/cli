@@ -31,6 +31,43 @@ func (r *Registry) Lookup(path string) (*Command, bool) {
 	return nil, false
 }
 
+// WithInheritedFlags returns cmd with the persistent flags of its non-root
+// ancestors appended to Flags, so a machine request can set a flag the command
+// only inherits (config get --env). The nearest declaring ancestor wins, a flag
+// the command declares itself is kept as is, and root flags are left out (they
+// are the invoker's switches). cmd is not modified; a command with nothing to
+// inherit is returned as is.
+func (r *Registry) WithInheritedFlags(cmd *Command) *Command {
+	if r == nil || cmd == nil {
+		return cmd
+	}
+	have := map[string]bool{}
+	for _, f := range cmd.Flags {
+		have[f.Name] = true
+	}
+	var extra []Flag
+	seen := map[string]bool{}
+	for p := cmd.Parent; p != ""; {
+		parent, ok := r.Lookup(p)
+		if !ok || parent.Path == cmd.Path {
+			break
+		}
+		for _, f := range parent.Flags {
+			if f.Persistent && !have[f.Name] && !seen[f.Name] {
+				seen[f.Name] = true
+				extra = append(extra, f)
+			}
+		}
+		p = parent.Parent
+	}
+	if len(extra) == 0 {
+		return cmd
+	}
+	out := *cmd
+	out.Flags = append(append([]Flag{}, cmd.Flags...), extra...)
+	return &out
+}
+
 // Subtree returns a registry holding the command at path and every descendant
 // (nil when the path is unknown). Counts are recomputed over the subset except
 // core_missing, which stays registry-wide. The result shares no slice with r.

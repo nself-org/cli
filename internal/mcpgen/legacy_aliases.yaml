@@ -26,26 +26,26 @@ rows:
     target: config get
     params:
       - {name: key, type: string, description: "Config key, e.g. BASE_DOMAIN. Use args [key]."}
-      - {name: env, type: string, description: "Env suffix (dev/staging/prod); not available on machine surfaces in v1.5."}
+      - {name: env, type: string, description: "Env suffix (dev/staging/prod). Use flags.env."}
     required: [key]
     args: [key]
-    unsupported: [env]
+    flags: [{flag: env, param: env}]
   - name: nself_config_show
     kind: merged
     target: config show
     params:
-      - {name: env, type: string, description: "Env suffix (dev/staging/prod); not available on machine surfaces in v1.5."}
-    unsupported: [env]
+      - {name: env, type: string, description: "Env suffix (dev/staging/prod). Use flags.env."}
+    flags: [{flag: env, param: env}]
   - name: nself_config_set
     kind: merged
     target: config set
     params:
       - {name: key, type: string, description: "Config key, uppercase letters, digits and underscore only. Use args [key, value]."}
       - {name: value, type: string, allow_empty: true, description: "Value to set; an empty string clears the value. Use args [key, value]."}
-      - {name: env, type: string, description: "Env suffix (dev/staging/prod); not available on machine surfaces in v1.5."}
+      - {name: env, type: string, description: "Env suffix (dev/staging/prod). Use flags.env."}
     required: [key, value]
     args: [key, value]
-    unsupported: [env]
+    flags: [{flag: env, param: env}]
   - {name: nself_build, kind: merged, target: build}
   - {name: nself_start, kind: merged, target: start}
   - {name: nself_stop, kind: merged, target: stop}

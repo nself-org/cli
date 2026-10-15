@@ -92,6 +92,9 @@ func TestLegacyAliasTable(t *testing.T) {
 		{"nself_logs", `{"service":"db"}`, `{"args":["db"],"flags":{"tail":50}}`},
 		{"nself_config_get", `{"key":"A"}`, `{"args":["A"]}`},
 		{"nself_config_show", `{}`, `{}`},
+		{"nself_config_show", `{"env":"prod"}`, `{"flags":{"env":"prod"}}`}, // D-0835: inherited persistent flag
+		{"nself_config_get", `{"key":"A","env":"prod"}`, `{"args":["A"],"flags":{"env":"prod"}}`},
+		{"nself_config_set", `{"key":"A","value":"b","env":"dev"}`, `{"args":["A","b"],"flags":{"env":"dev"}}`},
 		{"nself_config_set", `{"key":"A","value":"b"}`, `{"args":["A","b"]}`},
 		{"nself_urls", `{}`, `{}`},
 		{"nself_service_list", `{}`, `{}`},
@@ -138,7 +141,6 @@ func TestLegacyAliasTable(t *testing.T) {
 	for _, c := range []struct{ name, in, mention string }{
 		{"nself_config_get", `{"env":"prod"}`, "key"},
 		{"nself_config_set", `{"key":"A"}`, "value"},
-		{"nself_config_get", `{"key":"A","env":"prod"}`, "env"},
 		{"nself_logs", `{"lines":"many"}`, "lines"},
 		{"nself_logs", `{"lines":1.5}`, "lines"},
 		{"nself_logs", `{"lines":9223372036854775808}`, "lines"},
@@ -197,7 +199,7 @@ func TestMergedToolShapes(t *testing.T) {
 		t.Error("the machine shape carries a deprecation")
 	}
 	// Mixing shapes, a missing required member, an unsupported one: E420.
-	for _, in := range []string{`{"key":"A","args":["A"]}`, `{"key":"A","flags":{}}`, `{"env":"prod"}`, `{"key":"A","env":"prod"}`} {
+	for _, in := range []string{`{"key":"A","args":["A"]}`, `{"key":"A","flags":{}}`, `{"env":"prod"}`} {
 		res := h.call("nself_config_get", in)
 		if errCode(t, res) != "E420" {
 			t.Errorf("%s returned %s", in, errCode(t, res))

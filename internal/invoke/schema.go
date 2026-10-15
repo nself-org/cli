@@ -172,6 +172,7 @@ func ParamsSchema(cmd *cmdregistry.Command) map[string]any { return ParamsSchema
 // member is offered only on a leaf command (FreeFormArgv). A nil reg takes
 // the command as a leaf.
 func ParamsSchemaIn(reg *cmdregistry.Registry, cmd *cmdregistry.Command) map[string]any {
+	cmd = reg.WithInheritedFlags(cmd) // flags a non-root parent declares persistent (D-0835)
 	props := map[string]any{}
 	if cmd != nil && FreeFormArgv(reg, cmd) {
 		props["argv"] = map[string]any{"type": "array", "items": map[string]any{"type": "string"},

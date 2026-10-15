@@ -190,7 +190,7 @@ func (g *gen) generated(cmd *cmdregistry.Command, name string, row *Row) (server
 		return server.ServerTool{}, err
 	}
 	t := mcp.NewToolWithRawSchema(name, describe(cmd), raw)
-	t.Annotations = annotations("nself "+barePath(cmd.Path), worstSideEffect(cmd))
+	t.Annotations = annotations("nself "+barePath(cmd.Path), worstSideEffect(g.Registry.WithInheritedFlags(cmd)))
 	t.RawOutputSchema = g.outputSchema(cmd)
 	return server.ServerTool{Tool: t, Handler: g.handler(cmd.Path, row)}, nil
 }
@@ -218,7 +218,7 @@ func (g *gen) legacyTool(row *Row) (server.ServerTool, error) {
 	}
 	side := row.SideEffect
 	if cmd != nil {
-		side = worstSideEffect(cmd)
+		side = worstSideEffect(g.Registry.WithInheritedFlags(cmd))
 	}
 	desc := g.aliasDescription(row, cmd)
 	t := mcp.NewToolWithRawSchema(row.Name, desc, raw)
