@@ -237,31 +237,36 @@ func initializeDatabasePhase(ctx context.Context, cfg *config.Config, opts start
 
 	if err := database.InitializeDatabase(dbCtx, cfg); err != nil {
 		dbSp.Fail("Database initialization failed")
-		// An invalid-identifier failure (e.g. POSTGRES_DB derived from a
-		// hyphenated project directory name) is a config problem, not a
-		// connectivity/credentials one — the generic hints below actively
-		// misdirect for this case, so name the real problem instead.
-		hints := []string{
-			"Check PostgreSQL logs: nself logs postgres",
-			"Verify POSTGRES_USER and POSTGRES_PASSWORD in .env",
-			"Try restarting: nself restart",
-		}
-		if errors.Is(err, database.ErrInvalidIdentifier) {
-			hints = []string{
-				"The name is not a valid SQL identifier: it must start with a letter or underscore and contain only letters, digits, and underscores",
-				"Fix the offending value (commonly POSTGRES_DB) in .env directly",
-				"Or regenerate .env: nself init --force --name <valid-name>",
-			}
-		}
 		ui.UXError(
 			"Database initialization failed",
 			err.Error(),
-			hints,
+			databaseInitHints(err),
 		)
 		return fmt.Errorf("database init: %w", err)
 	}
 	dbSp.Success("Database initialized (schemas, extensions, grants)")
 	return nil
+}
+
+// databaseInitHints returns the recovery hints for a failed database init.
+// An invalid-identifier failure (e.g. POSTGRES_DB derived from a hyphenated
+// project directory name) is a config problem, not a connectivity/credentials
+// one, so it gets its own hints. For credentials the hint names .env.secrets:
+// nself build persists generated passwords there and it loads after .env, so
+// editing .env alone changes nothing once a value is saved.
+func databaseInitHints(err error) []string {
+	if errors.Is(err, database.ErrInvalidIdentifier) {
+		return []string{
+			"The name is not a valid SQL identifier: it must start with a letter or underscore and contain only letters, digits, and underscores",
+			"Fix the offending value (commonly POSTGRES_DB) in .env directly",
+			"Or regenerate .env: nself init --force --name <valid-name>",
+		}
+	}
+	return []string{
+		"Check PostgreSQL logs: nself logs postgres",
+		"Verify POSTGRES_USER and POSTGRES_PASSWORD in .env.secrets (it overrides .env, so a value saved there by nself build wins)",
+		"Try restarting: nself restart",
+	}
 }
 
 // startRemainingServicesPhase runs `docker compose up` for the rest of the

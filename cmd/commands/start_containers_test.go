@@ -22,7 +22,13 @@ package commands
 //              value ("healthy", "unhealthy", "starting", "none",
 //              "not_found") plus an empty string for the zero value.
 
-import "testing"
+import (
+	"errors"
+	"strings"
+	"testing"
+
+	"github.com/nself-org/cli/internal/database"
+)
 
 func TestPostgresAlreadyRunning(t *testing.T) {
 	tests := []struct {
@@ -44,5 +50,18 @@ func TestPostgresAlreadyRunning(t *testing.T) {
 				t.Errorf("postgresAlreadyRunning(%q) = %v, want %v", tt.healthStatus, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestDatabaseInitHintsNameEnvSecrets pins D-0708: the generic credential hint
+// must name .env.secrets, because a value persisted there beats .env.
+func TestDatabaseInitHintsNameEnvSecrets(t *testing.T) {
+	joined := strings.Join(databaseInitHints(errors.New("password authentication failed")), "\n")
+	if !strings.Contains(joined, ".env.secrets") {
+		t.Errorf("generic hints %q do not name .env.secrets", joined)
+	}
+	bad := strings.Join(databaseInitHints(database.ErrInvalidIdentifier), "\n")
+	if !strings.Contains(bad, "POSTGRES_DB") {
+		t.Errorf("invalid-identifier hints %q lost the POSTGRES_DB guidance", bad)
 	}
 }

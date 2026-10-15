@@ -47,6 +47,10 @@ var knownPlaceholderSecrets = []string{
 	"change-in-prod",
 }
 
+// secretsFile is where nself build persists generated credentials. It loads
+// after .env, so a value saved there beats the same key in .env (D-0708).
+const secretsFile = ".env.secrets"
+
 // placeholderSecretField pairs an env-var name with its resolved value for
 // placeholder/empty checking.
 type placeholderSecretField struct {
@@ -74,12 +78,12 @@ func validateNoPlaceholderSecrets(cfg *Config) error {
 	}
 	for _, f := range required {
 		if f.value == "" {
-			return fmt.Errorf("%s is empty in %s environment — set a unique value in .env: %w",
-				f.name, cfg.Env, errs.ErrPlaceholderSecret)
+			return fmt.Errorf("%s is empty in %s environment — set a unique value in %s (it overrides .env): %w",
+				f.name, cfg.Env, secretsFile, errs.ErrPlaceholderSecret)
 		}
 		if isPlaceholderSecret(f.value) {
-			return fmt.Errorf("%s is a known placeholder value in %s environment — set a unique value in .env: %w",
-				f.name, cfg.Env, errs.ErrPlaceholderSecret)
+			return fmt.Errorf("%s is a known placeholder value in %s environment — set a unique value in %s (it overrides .env): %w",
+				f.name, cfg.Env, secretsFile, errs.ErrPlaceholderSecret)
 		}
 	}
 
@@ -103,8 +107,8 @@ func validateNoPlaceholderSecrets(cfg *Config) error {
 	}
 	for _, f := range optional {
 		if isPlaceholderSecret(f.value) {
-			return fmt.Errorf("%s is a known placeholder value in %s environment — set a unique value in .env: %w",
-				f.name, cfg.Env, errs.ErrPlaceholderSecret)
+			return fmt.Errorf("%s is a known placeholder value in %s environment — set a unique value in %s (it overrides .env): %w",
+				f.name, cfg.Env, secretsFile, errs.ErrPlaceholderSecret)
 		}
 	}
 

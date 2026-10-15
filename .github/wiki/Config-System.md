@@ -53,6 +53,8 @@ This is the most important rule in the config system: **never put secrets in `.e
 - Auth provider client secrets
 - Any credential that must not appear in version control
 
+A value saved in `.env.secrets` beats the same key in `.env` and in the process environment, because env files override exported variables. The first `nself build` persists any credential it has to generate (for example `POSTGRES_PASSWORD`) there. To change one later, edit `.env.secrets`, not `.env`. In CI, export the real secrets (`POSTGRES_PASSWORD`, `HASURA_GRAPHQL_ADMIN_SECRET`) before the first build; a build run without them saves a random value that then beats every later export.
+
 If `.env.secrets` does not yet exist on a server or local machine, ɳSelf will tell you which required secrets are missing when you run `nself doctor` or `nself build`. Populate the file manually or with your team's secret management tool.
 
 ---

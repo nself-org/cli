@@ -185,3 +185,23 @@ func TestValidateNoPlaceholderSecretsWiredIntoRunAll(t *testing.T) {
 		t.Errorf("runAll error %q does not name HASURA_GRAPHQL_ADMIN_SECRET", err.Error())
 	}
 }
+
+// TestValidateNoPlaceholderSecretsPointsAtEnvSecrets pins D-0708: nself build
+// persists generated credentials to .env.secrets, which loads after .env, so a
+// hint that says "set it in .env" sends the user to a file that cannot win.
+func TestValidateNoPlaceholderSecretsPointsAtEnvSecrets(t *testing.T) {
+	for _, mutate := range []func(*Config){
+		func(c *Config) { c.Postgres.Password = "" },
+		func(c *Config) { c.Postgres.Password = "change_me" },
+	} {
+		cfg := validPlaceholderTestConfig("prod")
+		mutate(cfg)
+		err := validateNoPlaceholderSecrets(cfg)
+		if err == nil {
+			t.Fatal("expected an error, got nil")
+		}
+		if !strings.Contains(err.Error(), ".env.secrets") {
+			t.Errorf("error %q does not point at .env.secrets", err.Error())
+		}
+	}
+}
