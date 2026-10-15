@@ -2,11 +2,11 @@ package commands
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 	"regexp"
 	"strings"
 
+	"github.com/nself-org/cli/internal/docker"
 	"github.com/spf13/cobra"
 )
 
@@ -65,52 +65,25 @@ func runPluginLogs(cmd *cobra.Command, args []string) error {
 	}
 
 	if grepPattern == "" {
-		// Simple passthrough.
-		dockerCmd := exec.Command("docker", dockerArgs...)
-		dockerCmd.Stdout = os.Stdout
-		dockerCmd.Stderr = os.Stderr
-		if err := dockerCmd.Run(); err != nil {
+		if err := docker.NewCompose().StreamLogs(cmd.Context(), "", dockerArgs, cmd.OutOrStdout(), cmd.ErrOrStderr()); err != nil {
 			return fmt.Errorf("docker logs: %w", err)
 		}
 		return nil
 	}
 
 	// Validate the grep pattern before use so we get a helpful error on invalid regex.
-	if _, err := regexp.Compile(grepPattern); err != nil {
+	pattern, err := regexp.Compile(grepPattern)
+	if err != nil {
 		return fmt.Errorf("invalid --grep pattern %q: %w", grepPattern, err)
 	}
 
-	// With grep: pipe docker logs output through grep.
-	dockerCmd := exec.Command("docker", dockerArgs...)
-	grepCmd := exec.Command("grep", "-E", grepPattern)
-
-	dockerOut, err := dockerCmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("creating docker stdout pipe: %w", err)
-	}
-	dockerCmd.Stderr = os.Stderr
-	grepCmd.Stdin = dockerOut
-	grepCmd.Stdout = os.Stdout
-	grepCmd.Stderr = os.Stderr
-
-	if err := dockerCmd.Start(); err != nil {
-		return fmt.Errorf("starting docker logs: %w", err)
-	}
-	if err := grepCmd.Start(); err != nil {
-		return fmt.Errorf("starting grep: %w", err)
-	}
-
-	// Wait for docker to finish, then grep will EOF.
-	_ = dockerCmd.Wait()
-	// grep exits 1 on "no match" (normal) and 2+ on error. Only surface errors.
-	if err := grepCmd.Wait(); err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
-			// No lines matched — not an error.
-			return nil
+	return docker.NewCompose().StreamLogLines(cmd.Context(), "", dockerArgs, cmd.ErrOrStderr(), func(line string) error {
+		if pattern.MatchString(line) {
+			_, err := fmt.Fprintln(cmd.OutOrStdout(), line)
+			return err
 		}
-		return fmt.Errorf("grep error: %w", err)
-	}
-	return nil
+		return nil
+	})
 }
 
 // resolvePluginContainer resolves the Docker container name for a plugin.

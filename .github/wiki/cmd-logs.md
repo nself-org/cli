@@ -21,6 +21,8 @@ nself logs [SERVICE] [flags]
 
 Output is colorized by level: errors in red, warnings in yellow, info in green. Use `--follow` for live streaming; press Ctrl+C to exit cleanly. Use `--quiet` to suppress healthcheck noise and focus on application-level events. Use `--plain` or redirect stdout to a file when piping output to other tools.
 
+Live logs continue streaming when piped to tools such as `tee`. Ctrl+C or SIGTERM ends the Docker log client and its Compose child processes without stopping the service containers. The same cancellation handling applies to deploy, function, and plugin log streams.
+
 The `--status`, `--summary`, and `--top` flags provide aggregate views without raw log output, useful for quick operational checks.
 
 ## Exit Codes
