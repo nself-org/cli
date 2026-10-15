@@ -107,9 +107,14 @@ The steps are resolve, confirm, verify, preflight, source-health, capture, build
 compare, snapshot, save, apply, migrate, health, and record. Builds use the target
 cascade in a scratch directory. Production values never enter the operator's tree.
 
+Local model resolution requires a POSIX `sh` on `PATH`. Local promotion on Windows
+has not been verified end to end; the model runner does not preserve `SYSTEMROOT`.
+
 Compare proves per-platform image digest equality before taking a snapshot or
 changing the target. It resolves every staged compose fragment with the target's
-environment files and captures the source using its compose manifest. Each service's
+environment files and captures the source images and container-to-service mapping
+together using its compose manifest. Compare reuses that mapping if containers
+are recreated or renamed after capture. Each service's
 `platform` override selects its manifest; a source platform mismatch is drift.
 `linux/arm64/v8` and `linux/arm64` select the same platform. Other variants,
 including `linux/arm/v6` and `linux/arm/v7`, remain distinct.

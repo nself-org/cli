@@ -248,7 +248,7 @@ func runPromoteEnvironments(cmd *cobra.Command, source, target string) error {
 
 // resolveModel isolates Compose interpolation from the operator's shell values.
 func (r localPromoteRemote) resolveModel(ctx context.Context, command string) ([]byte, error) {
-	c := exec.CommandContext(ctx, "sh", "-c", command) //nolint:gosec // fixed command and validated, quoted paths
+	c := exec.CommandContext(ctx, "sh", "-c", command) //nolint:gosec // fixed command and shell-quoted local paths
 	c.Dir = r.root
 	c.Env = []string{"PATH=" + os.Getenv("PATH")}
 	for _, key := range []string{"HOME", "DOCKER_CONFIG", "XDG_CONFIG_HOME"} {
