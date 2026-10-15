@@ -95,7 +95,7 @@ func Stream(ctx context.Context, cfg *config.Config, opts StreamOptions) (*Strea
 		if cfg.Backup.Remote != "" {
 			opts.To = cfg.Backup.Remote
 		} else {
-			return nil, fmt.Errorf("destination required: use --to <url> or set NSELF_BACKUP_DESTINATION")
+			return nil, fmt.Errorf("destination required: use --to <url> or set BACKUP_REMOTE")
 		}
 	}
 

@@ -309,6 +309,9 @@ func TestStream_DryRun_NoDestination(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when no destination set")
 	}
+	if !strings.Contains(err.Error(), "set BACKUP_REMOTE") || strings.Contains(err.Error(), "NSELF_BACKUP_DESTINATION") {
+		t.Errorf("missing destination guidance must name the configured default BACKUP_REMOTE: %v", err)
+	}
 }
 
 // ── StreamResult JSON serialisation ──────────────────────────────────
