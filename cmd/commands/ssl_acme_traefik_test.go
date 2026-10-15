@@ -162,8 +162,9 @@ func TestAcmeTraefikVerifyRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := acmeServed(t, f)
+	oldWait := acmeVerifyWait
 	acmeVerifyWait = time.Millisecond
-	t.Cleanup(func() { acmeVerifyWait = 500 * time.Millisecond })
+	t.Cleanup(func() { acmeVerifyWait = oldWait })
 	acmeD.probe = func(context.Context, string, string, time.Duration) (ssl.ServedCert, error) {
 		return ssl.ServedCert{SHA256: "deadbeef"}, nil
 	}

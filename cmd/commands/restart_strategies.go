@@ -58,7 +58,7 @@ func restartFull(ctx context.Context, comp *docker.Compose, workdir string, cfg 
 	if verbose {
 		ui.Info("Waiting 2 seconds before restart...")
 	}
-	time.Sleep(2 * time.Second)
+	time.Sleep(restartStopDelay)
 
 	ui.Step(stepNum, totalSteps, "Starting all services")
 

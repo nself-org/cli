@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nself-org/cli/internal/bundle"
 
@@ -57,6 +58,12 @@ func TestMain(m *testing.M) {
 	// the intermittent "Test I/O incomplete" / WaitDelay failures in
 	// cmd/commands on ubuntu-24.04-arm. No test in this package should ever
 	// make a real network install; this is the package-wide guard against it.
+	// D-0736: production waits must not run in wall-clock time in unit tests
+	// (they took ~60 s of this package's run); wait_budget_test.go guards it.
+	acmeVerifyWait = time.Millisecond
+	restartSettleDelay = time.Millisecond
+	restartStopDelay = time.Millisecond
+
 	_ = os.Setenv("AI_AUTO_INSTALL", "false")
 
 	// No test in this package may reach GitHub's release endpoints. The error

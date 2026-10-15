@@ -17,6 +17,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// restartSettleDelay is the pause before the post-restart health check, and
+// restartStopDelay the pause between stopping and starting the stack in the
+// full-restart strategy. Variables so tests do not wait wall-clock time (D-0736).
+var (
+	restartSettleDelay = 5 * time.Second
+	restartStopDelay   = 2 * time.Second
+)
+
 var restartCmd = &cobra.Command{
 	Use:   "restart [SERVICES...]",
 	Short: "Smart restart with config change detection",
@@ -153,7 +161,7 @@ func runRestartFlow(cmd *cobra.Command, args []string) error {
 	if verbose {
 		ui.Info("Waiting 5 seconds for services to stabilize...")
 	}
-	time.Sleep(5 * time.Second)
+	time.Sleep(restartSettleDelay)
 
 	report, err := health.RunAllChecks(ctx, cfg, workdir)
 	if err != nil {

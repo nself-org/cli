@@ -283,9 +283,6 @@ func TestLifecycleJSON(t *testing.T) {
 	})
 
 	t.Run("restart reports what compose restarted, not what is configured", func(t *testing.T) {
-		if testing.Short() {
-			t.Skip("restart waits 5s for the stack to settle")
-		}
 		// The stub lists two containers but three configured services: redis
 		// was enabled after the stack came up and has no container.
 		dir := lifecycleProject(t)

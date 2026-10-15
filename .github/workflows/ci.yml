@@ -160,7 +160,10 @@ jobs:
 
       - name: Test
         if: matrix.skip_docker_tests != 'true'
-        run: go test -mod=vendor -timeout 10m ./...
+        # cmd/commands alone ran ~550 s of the old 10m limit on macos-15-intel
+        # (D-0736); the test waits were cut, and 15m keeps headroom for a slow
+        # runner. A timeout here is a real hang: never .skip.
+        run: go test -mod=vendor -timeout 15m ./...
 
       - name: Test (Windows — pure-Go packages; Docker integration tests skipped)
         if: matrix.skip_docker_tests == 'true'
