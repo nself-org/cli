@@ -408,7 +408,7 @@ func TestPilotJSONDoctor(t *testing.T) {
 	})
 
 	t.Run("live", func(t *testing.T) {
-		proj := pilotProject(t)
+		proj := pilotDoctorProject(t)
 		for _, args := range [][]string{{"doctor", "--json"}, {"doctor", "--format", "json"}, {"doctor", "--json", "--deep"}} {
 			r := runPilot(t, proj, true, nil, args...)
 			data := validateEnvelope(t, r.stdout, "doctor")
