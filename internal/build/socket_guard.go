@@ -160,6 +160,9 @@ func AnalyzeSocket(workdir, pluginDir string, env SocketEnv, core []byte) (*Sock
 		if err == nil {
 			err = add(f[0], data)
 		}
+		if err == nil && strings.HasPrefix(f[0], "plugin:") {
+			err = checkFragmentPolicy(docs[len(docs)-1].top, f[0], docs[0].top, env)
+		}
 		if err != nil {
 			return nil, err
 		}

@@ -26,7 +26,7 @@ The reason a tier was chosen is one of `installed`, `override`, `entitlement`, `
   - A fragment that decodes as YAML but not as compose values, so the policy could not be checked.
   - A legacy project network written in a form the build cannot rewrite in place (see Networks).
 - **PORT.** In v1.5 mode every fragment gets `PORT` equal to `SERVICE_PORT` when the plugin declares a port. A `PORT` the fragment sets itself wins.
-- **Policy (E130).** E130, "plugin compose fragment violates policy (ADR 0027)", is reserved for the fragment checks that forbid host-level access such as the Docker socket.
+- **Policy (E130).** The decoded fragment policy rejects Docker socket access, `extends`, top-level `include`, `build.network: host` (including interpolated values), and a build network it cannot resolve. Services may reference only networks declared by their own fragment or the project network, and may not redefine a service in the generated core stack. YAML aliases and merge keys are resolved before these checks; socket exceptions cannot waive them. Existing network normalization checks retain E129 and their version compatibility behavior.
 
 ## Updating pulls new images
 

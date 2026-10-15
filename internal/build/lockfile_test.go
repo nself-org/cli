@@ -19,6 +19,7 @@ import (
 	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/docker"
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/lock"
 	"github.com/nself-org/cli/internal/version"
 )
@@ -568,29 +569,21 @@ func TestLockMirrorOverride(t *testing.T) {
 	}
 }
 
-// TestLockUsesRediscoveredComposeFiles: the lock is written after the compose
-// file list is rediscovered in the same build, so a plugin fragment added in
-// this build is in the lock and `start --frozen` agrees (CR/lens should-fix).
-func TestLockUsesRediscoveredComposeFiles(t *testing.T) {
+// A newly discovered fragment cannot override a core image or change its lock.
+func TestLockRejectsPluginCoreServiceOverride(t *testing.T) {
 	f := newPlanFixture(t, "dev-minimal")
 	compattest.Set(t, true)
 	lockBuild(t, f)
+	before := readLock(t, f)
 	frag := filepath.Join(f.plugins, "tweak")
 	writeFixtureFile(t, filepath.Join(frag, "plugin.json"), `{"name":"tweak","port":3999,"language":"go"}`, 0o644)
 	writeFixtureFile(t, filepath.Join(frag, pluginComposeFilename), "services:\n  hasura:\n    image: hasura/graphql-engine:v2.51.0\n", 0o644)
-	lockBuild(t, f)
-	l := readLock(t, f)
-	if got := l.Unpinned["hasura"] + l.Images["hasura"]; got != "hasura/graphql-engine:v2.51.0" {
-		t.Fatalf("a fragment added in this build is missing from the lock: hasura %q", got)
+	_, err := Build(f.workdir, BuildOptions{Force: true})
+	if e := errs.Describe(err); e == nil || e.Code != "E130" || !strings.Contains(err.Error(), "hasura") {
+		t.Fatalf("want E130 naming the core service, got %v", err)
 	}
-	cur, err := CurrentLock(f.workdir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, m := range lock.CompareStrict(l, cur) {
-		if m.Kind == lock.KindImage {
-			t.Fatalf("build and start --frozen disagree: %s", m)
-		}
+	if diff := lock.CompareStrict(before, readLock(t, f)); len(diff) != 0 {
+		t.Fatalf("refused fragment changed the lock: %v", diff)
 	}
 }
 
