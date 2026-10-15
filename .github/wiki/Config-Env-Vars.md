@@ -331,6 +331,15 @@ These boolean flags enable optional bundled services. Each defaults to `false`. 
 
 ## Object Storage
 
+MinIO credential checks apply only when MinIO is enabled. In staging and
+production, enabled MinIO requires a non-default root user and a root password
+of at least 16 characters. `backup stream` and `backup schedule` load the same
+environment cascade but skip this service credential check because they stream
+PostgreSQL data without starting or accessing MinIO. Commands that access MinIO,
+and `config validate`, retain the check. Builds omit `MINIO_ROOT_*` credentials
+from `.nself/compose.env` when MinIO is disabled; shared `S3_*` credentials
+remain available for other object storage services.
+
 These variables configure core SeaweedFS in v1.5 mode (`NSELF_V15=1`). Core object storage wins over an installed MinIO plugin. See [[Object-Storage]] for bucket bootstrap, credentials and migration.
 
 | Variable | Type | Default | Required | Description |

@@ -19,6 +19,11 @@ nself backup <subcommand> [flags]
 <!-- BEGIN PROSE:description -->
 Backup, restore, verify, and schedule ɳSelf project data.
 
+`backup stream` and `backup schedule` do not require MinIO credentials, even
+when MinIO is enabled in staging or production: the stream contains PostgreSQL
+data only. They still load the project's normal environment cascade. Operations
+that access MinIO retain the enabled-service credential check.
+
 ---
 ## Destination kinds
 

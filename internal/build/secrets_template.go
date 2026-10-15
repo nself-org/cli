@@ -52,8 +52,10 @@ func SecretEnvMap(cfg *config.Config) map[string]string {
 	if jwtJSON, err := config.BuildJWTSecret(cfg); err == nil {
 		add("HASURA_GRAPHQL_JWT_SECRET", jwtJSON)
 	}
-	add("MINIO_ROOT_USER", cfg.Minio.RootUser)
-	add("MINIO_ROOT_PASSWORD", cfg.Minio.RootPassword)
+	if cfg.Minio.Enabled {
+		add("MINIO_ROOT_USER", cfg.Minio.RootUser)
+		add("MINIO_ROOT_PASSWORD", cfg.Minio.RootPassword)
+	}
 	add("S3_ACCESS_KEY", cfg.Minio.S3AccessKey)
 	add("S3_SECRET_KEY", cfg.Minio.S3SecretKey)
 	add("REDIS_PASSWORD", cfg.Redis.Password)

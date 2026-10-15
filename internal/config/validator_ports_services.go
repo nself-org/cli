@@ -85,8 +85,11 @@ func init() {
 //   - MINIO_ROOT_USER must not be empty or "minioadmin".
 //   - MINIO_ROOT_PASSWORD must not be "minioadmin" and must be >=16 chars.
 //
-// Returns nil for dev environments unconditionally.
+// Returns nil when MinIO is disabled or the environment is dev.
 func ValidateMinioCredentials(cfg *Config) error {
+	if !cfg.Minio.Enabled {
+		return nil
+	}
 	if cfg.Env != "prod" && cfg.Env != "staging" {
 		return nil
 	}

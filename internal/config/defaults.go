@@ -12,6 +12,12 @@ import (
 // Environment-specific overrides (Console, DevMode, CORS, BindIP, SSL) are
 // applied after all static defaults.
 func ApplyDefaults(cfg *Config) (*Config, error) {
+	return applyDefaultsWithOptions(cfg, LoadOptions{})
+}
+
+// applyDefaultsWithOptions fills defaults while respecting the loader's
+// explicit credential scope. Ordinary ApplyDefaults callers keep every guard.
+func applyDefaultsWithOptions(cfg *Config, opts LoadOptions) (*Config, error) {
 	applyDefaultsCore(cfg)
 	if err := applyDefaultsPostgres(cfg); err != nil {
 		return nil, err
@@ -25,7 +31,7 @@ func ApplyDefaults(cfg *Config) (*Config, error) {
 	applyDefaultsNginx(cfg)
 	applyDefaultsSSL(cfg)
 	applyDefaultsRedis(cfg)
-	if err := applyDefaultsMinio(cfg); err != nil {
+	if err := applyDefaultsMinioWithOptions(cfg, opts); err != nil {
 		return nil, err
 	}
 	applyDefaultsMailpit(cfg)

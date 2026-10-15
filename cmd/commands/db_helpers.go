@@ -68,11 +68,16 @@ func parseAllowlistYAML(data []byte) []tenant.AllowlistEntry {
 
 // loadProjectConfig loads the nSelf configuration from the current working directory.
 func loadProjectConfig() (*config.Config, error) {
+	return loadProjectConfigWithOptions(config.LoadOptions{})
+}
+
+// loadProjectConfigWithOptions loads the same cascade with explicit caller scope.
+func loadProjectConfigWithOptions(opts config.LoadOptions) (*config.Config, error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		return nil, fmt.Errorf("getting working directory: %w", err)
 	}
-	cfg, err := config.Load(dir)
+	cfg, err := config.LoadWithOptions(dir, opts)
 	if err != nil {
 		return nil, fmt.Errorf("loading config: %w", err)
 	}

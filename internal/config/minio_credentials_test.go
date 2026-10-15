@@ -19,10 +19,23 @@ import (
 	"testing"
 )
 
+func TestValidateMinioCredentialsDisabled(t *testing.T) {
+	for _, env := range []string{"prod", "staging"} {
+		cfg := &Config{Env: env, Minio: MinioConfig{RootUser: "minioadmin", RootPassword: "minioadmin"}}
+		if err := ValidateMinioCredentials(cfg); err != nil {
+			t.Errorf("disabled MinIO in %s: %v", env, err)
+		}
+		if err := Validate(cfg); err != nil && strings.Contains(err.Error(), "MINIO_") {
+			t.Errorf("registered validators rejected disabled MinIO in %s: %v", env, err)
+		}
+	}
+}
+
 func TestValidateMinioCredentials_ProdMinioadmin_ReturnsError(t *testing.T) {
 	cfg := &Config{
 		Env: "prod",
 		Minio: MinioConfig{
+			Enabled:      true,
 			RootUser:     "minioadmin",
 			RootPassword: "minioadmin",
 		},
@@ -40,6 +53,7 @@ func TestValidateMinioCredentials_StagingMinioadmin_ReturnsError(t *testing.T) {
 	cfg := &Config{
 		Env: "staging",
 		Minio: MinioConfig{
+			Enabled:      true,
 			RootUser:     "minioadmin",
 			RootPassword: "minioadmin",
 		},
@@ -54,6 +68,7 @@ func TestValidateMinioCredentials_DevMinioadmin_ReturnsNil(t *testing.T) {
 	cfg := &Config{
 		Env: "dev",
 		Minio: MinioConfig{
+			Enabled:      true,
 			RootUser:     "minioadmin",
 			RootPassword: "minioadmin",
 		},
@@ -68,6 +83,7 @@ func TestValidateMinioCredentials_ProdStrongCredentials_ReturnsNil(t *testing.T)
 	cfg := &Config{
 		Env: "prod",
 		Minio: MinioConfig{
+			Enabled:      true,
 			RootUser:     "prod-minio-user",
 			RootPassword: "v3ryStr0ngP@ssw0rd!!",
 		},
@@ -82,6 +98,7 @@ func TestValidateMinioCredentials_ProdShortPassword_ReturnsError(t *testing.T) {
 	cfg := &Config{
 		Env: "prod",
 		Minio: MinioConfig{
+			Enabled:      true,
 			RootUser:     "prod-minio-user",
 			RootPassword: "short",
 		},
@@ -99,6 +116,7 @@ func TestValidateMinioCredentials_ProdEmptyUser_ReturnsError(t *testing.T) {
 	cfg := &Config{
 		Env: "prod",
 		Minio: MinioConfig{
+			Enabled:      true,
 			RootUser:     "",
 			RootPassword: "v3ryStr0ngP@ssw0rd!!",
 		},
@@ -113,6 +131,7 @@ func TestValidateMinioCredentials_ProdMinioadminPassword_StrongUser_ReturnsError
 	cfg := &Config{
 		Env: "prod",
 		Minio: MinioConfig{
+			Enabled:      true,
 			RootUser:     "prod-minio-user",
 			RootPassword: "minioadmin",
 		},
