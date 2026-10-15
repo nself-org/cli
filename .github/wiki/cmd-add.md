@@ -31,6 +31,14 @@ Once installed, the plugin's commands are available directly:
 
   nself add waf
   nself waf status
+
+Use `nself add waf --plan` to preview generated files, host effects and
+container changes before installation, including on production environments.
+The registry package and dependencies are verified in temporary staging, then
+discarded. The project, installed plugins, database and running stack stay unchanged.
+With `--json`, the response has `dry_run: true` and a `plan` member.
+Plans currently support individual registry plugins. URL installs, bundles,
+builtin toggles, `--version` and non-stable channels are refused before changes.
 <!-- END PROSE:description -->
 
 ## Flags
@@ -45,6 +53,7 @@ Once installed, the plugin's commands are available directly:
 | `--dry-run` |  | `bool` | `false` |  |  |  | Show what would be installed without making changes |
 | `--force` |  | `bool` | `false` |  |  |  | Reinstall even when the plugin is already present |
 | `--key` |  | `string` | `""` |  |  |  | License key for Licensed plugins |
+| `--plan` |  | `bool` | `false` |  |  |  | Stage registry plugins temporarily and show regeneration without installing |
 | `--preview` |  | `bool` | `false` |  |  |  | Preview the dependency tree without installing |
 | `--show-graph` |  | `bool` | `false` |  |  |  | Show dependency graph with topological sort order |
 | `--skip-sbom-check` |  | `bool` | `false` |  |  |  | Skip SBOM verification (air-gapped installs only — sets NSELF_SKIP_SBOM_CHECK=1) |

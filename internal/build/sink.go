@@ -32,10 +32,11 @@ type PlannedFile struct {
 
 // PlannedBuild is what a plan-mode build would do, without having done it.
 type PlannedBuild struct {
-	Files   map[string]PlannedFile // canonical path -> bytes and mode the build would write
-	Removed []string               // canonical paths the build would delete (sorted)
-	Modes   map[string]fs.FileMode // permission changes to files the build does not itself write
-	Effects []PlannedEffect        // host effects the build would perform, in order
+	PluginTargetDir string                 // Installed alias for staged plugin reads during container planning.
+	Files           map[string]PlannedFile // canonical path -> bytes and mode the build would write
+	Removed         []string               // canonical paths the build would delete (sorted)
+	Modes           map[string]fs.FileMode // permission changes to files the build does not itself write
+	Effects         []PlannedEffect        // host effects the build would perform, in order
 	// PluginDir is the plugin directory the build resolved from the project's
 	// env cascade (D-0607): the plan maps "@plugins/" paths against it, not the
 	// process env, which a plan-mode build restores on return.

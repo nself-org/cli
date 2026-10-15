@@ -25,6 +25,13 @@ Remove an installed plugin or bundle by name.
 
 This is the short form of `nself plugin remove`. As with install, a bundle
 name removes the whole bundle.
+
+Use `nself remove waf --plan` to preview regeneration and container changes
+without removing plugin files, data or running containers. The preview uses a
+temporary copy of the installed plugin tree and honors reverse dependencies
+(or `--force`). With `--json`, `dry_run` is true and `plan` contains the change plan.
+Plans currently support individual registry plugins; bundles and builtin toggles
+are refused. `--plan` cannot be combined with `--delete-data` or `--dry-run`.
 <!-- END PROSE:description -->
 
 ## Flags
@@ -37,6 +44,7 @@ name removes the whole bundle.
 | `--dry-run` |  | `bool` | `false` |  |  |  | Print the planned actions without removing |
 | `--force` |  | `bool` | `false` |  |  |  | Remove even if other plugins depend on this one |
 | `--keep-data` |  | `bool` | `false` |  |  |  | Preserve database data on remove |
+| `--plan` |  | `bool` | `false` |  |  |  | Show regeneration without removing plugins or data |
 | `--yes` |  | `bool` | `false` |  |  |  | Skip confirmation prompts |
 | `--help` | `-h` | `bool` | `false` | | | | Show help |
 <!-- END GENERATED:flags -->

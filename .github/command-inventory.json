@@ -11,6 +11,7 @@
       "--dry-run",
       "--force",
       "--key",
+      "--plan",
       "--preview",
       "--show-graph",
       "--skip-sbom-check",
@@ -1149,6 +1150,7 @@
       "--dry-run",
       "--force",
       "--keep-data",
+      "--plan",
       "--yes"
     ]
   },

@@ -21,17 +21,18 @@ import (
 // overlay reads project files as the planned build would leave them: planned
 // bytes first, a planned removal as absent, else the file on disk.
 type overlay struct {
-	dir      string
-	fronting string
-	files    map[string]nbuild.PlannedFile
-	removed  map[string]bool
-	plugins  string            // the build's plugin directory; "" falls back to DefaultPluginDir
-	env      map[string][]byte // pending env files by project-relative name
+	pluginTarget string // Installed alias of the temporary plugin source.
+	dir          string
+	fronting     string
+	files        map[string]nbuild.PlannedFile
+	removed      map[string]bool
+	plugins      string            // the build's plugin directory; "" falls back to DefaultPluginDir
+	env          map[string][]byte // pending env files by project-relative name
 }
 
 // newOverlay indexes a planned build.
 func newOverlay(dir, fronting string, pb *nbuild.PlannedBuild) overlay {
-	ov := overlay{dir: dir, fronting: fronting, files: pb.Files, removed: map[string]bool{}, plugins: pb.PluginDir}
+	ov := overlay{dir: dir, fronting: fronting, files: pb.Files, removed: map[string]bool{}, plugins: pb.PluginDir, pluginTarget: pb.PluginTargetDir}
 	for _, k := range pb.Removed {
 		ov.removed[k] = true
 	}
@@ -87,6 +88,11 @@ func (o overlay) read(key string) ([]byte, bool, error) {
 // readAbs is read for an absolute path: it is looked up under the key the
 // build uses (project-relative inside the project, absolute outside).
 func (o overlay) readAbs(path string) ([]byte, bool, error) {
+	if o.pluginTarget != "" {
+		if rel, err := filepath.Rel(o.pluginTarget, path); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+			path = filepath.Join(o.plugins, rel)
+		}
+	}
 	if rel, err := filepath.Rel(o.dir, path); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
 		return o.read(filepath.ToSlash(rel))
 	}

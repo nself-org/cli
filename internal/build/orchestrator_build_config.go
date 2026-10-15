@@ -40,6 +40,12 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("loading config: %w", err)
 	}
+	if st.opts.PlanPluginDir != "" {
+		st.cfg.PluginSystem.Dir = st.opts.PlanPluginDir
+		if err := os.Setenv("NSELF_PLUGIN_DIR", st.opts.PlanPluginDir); err != nil {
+			return nil, err
+		}
+	}
 	// ── Step 1.2: v1.5 object storage preflight (E138) before any write ──
 	if err := compose.ObjectStoragePreflight(st.cfg, st.opts.Profile); err != nil {
 		return nil, err

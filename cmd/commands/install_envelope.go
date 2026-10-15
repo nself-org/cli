@@ -25,11 +25,13 @@ import (
 	"github.com/nself-org/cli/internal/bundle"
 	"github.com/nself-org/cli/internal/output"
 	"github.com/nself-org/cli/internal/plugin"
+	"github.com/nself-org/cli/internal/reconcile"
 	"github.com/spf13/cobra"
 )
 
 // addData is the data of `add` and `config bundles install`.
 type addData struct {
+	Plan *reconcile.Plan `json:"plan,omitempty"`
 	// Installed are the plugins installed by this run, in install order.
 	Installed []string `json:"installed"`
 	// Skipped are the plugins a bundle install left out (missing from the registry, non-strict).
@@ -42,6 +44,7 @@ type addData struct {
 
 // removeData is the data of `remove` (a plugin, a builtin or a bundle).
 type removeData struct {
+	Plan *reconcile.Plan `json:"plan,omitempty"`
 	// Removed are the plugins removed by this run.
 	Removed []string `json:"removed"`
 	// Kept are the bundle members that stay (another bundle or an explicit install needs them).
@@ -56,6 +59,7 @@ type removeData struct {
 
 // installOutcome is what a body recorded for its invocation.
 type installOutcome struct {
+	plan                                       *reconcile.Plan
 	installed, skipped, removed, kept, planned []string
 }
 
@@ -155,8 +159,8 @@ func nextAfterInstall(installed []string) string {
 
 func addFacts(cmd *cobra.Command, _ []string) any {
 	o := outcomeOf(cmd)
-	dry := flagOn(cmd, "dry-run") || flagOn(cmd, "preview") || flagOn(cmd, "show-graph")
-	d := addData{Installed: nonNil(o.installed), Skipped: nonNil(o.skipped), DryRun: dry}
+	dry := flagOn(cmd, "dry-run") || flagOn(cmd, "preview") || flagOn(cmd, "show-graph") || flagOn(cmd, "plan")
+	d := addData{Installed: nonNil(o.installed), Skipped: nonNil(o.skipped), DryRun: dry, Plan: o.plan}
 	if !dry {
 		d.Next = nextAfterInstall(o.installed)
 	}
@@ -165,7 +169,7 @@ func addFacts(cmd *cobra.Command, _ []string) any {
 
 func removeFacts(cmd *cobra.Command, _ []string) any {
 	o := outcomeOf(cmd)
-	d := removeData{Removed: nonNil(o.removed), Kept: nonNil(o.kept), Planned: nonNil(o.planned), DryRun: flagOn(cmd, "dry-run")}
+	d := removeData{Removed: nonNil(o.removed), Kept: nonNil(o.kept), Planned: nonNil(o.planned), DryRun: flagOn(cmd, "dry-run") || flagOn(cmd, "plan"), Plan: o.plan}
 	if len(o.removed) > 0 {
 		d.Next = "nself start"
 	}
@@ -181,7 +185,7 @@ func outcomeBody(run func(*cobra.Command, []string) error, facts func(*cobra.Com
 		if err := run(cmd, args); err != nil {
 			return err
 		}
-		if !jsonEnvelopeOn(cmd) {
+		if !jsonEnvelopeOn(cmd) || flagOn(cmd, "plan") {
 			return nil
 		}
 		return emitEnv(cmd, facts(cmd, args), false)

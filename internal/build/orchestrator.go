@@ -14,6 +14,8 @@ import (
 
 // BuildOptions controls build behavior via CLI flags.
 type BuildOptions struct {
+	PlanPluginDir    string // Plan-only staged plugin source; never used by a write build.
+	PlanPluginTarget string // Installed path used in the rendered plan instead of staging.
 	// RemoteDeploy builds for a remote host: the config cascade drops .env.local
 	// (set by `nself deploy` through the hidden --deploy-remote flag).
 	RemoteDeploy bool
@@ -152,7 +154,7 @@ var requiredDirs = []string{
 //  11. Save build version to .nself/build-version
 //  12. Return BuildResult with summary
 func Build(workdir string, opts BuildOptions) (*BuildResult, error) {
-	if len(opts.EnvOverlay) > 0 && opts.Mode != ModePlan {
+	if (len(opts.EnvOverlay) > 0 || opts.PlanPluginDir != "" || opts.PlanPluginTarget != "") && opts.Mode != ModePlan {
 		return nil, errEnvOverlayWrite
 	}
 	// Scope the secret source for this build only; restored on return.
@@ -161,7 +163,6 @@ func Build(workdir string, opts BuildOptions) (*BuildResult, error) {
 		defer SnapshotEnv()() // planning never leaves the project's env in the process
 	}
 	st := newBuildState(workdir, opts)
-
 	// Acquire exclusive build lock to prevent concurrent builds from
 	// producing inconsistent compose artifacts. Plan mode records the lock as
 	// an effect instead of creating .nself/op.lock.
@@ -224,6 +225,7 @@ func Build(workdir string, opts BuildOptions) (*BuildResult, error) {
 		res.Planned = m.snapshot()
 		res.Planned.Effects = st.fx.Recorded()
 		res.Planned.PluginDir = st.pluginDir
+		normalizePluginPlan(res.Planned, opts)
 		res.FrontingDir = m.fronting
 	}
 	res.EntitlementRefreshed = st.entitlementRefreshed

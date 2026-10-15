@@ -84,6 +84,7 @@ func init() {
 	installCmd.Flags().Bool("with-optional", false, "Include optional dependencies in --preview output")
 	installCmd.Flags().Bool("skip-sbom-check", false, "Skip SBOM verification (air-gapped installs only — sets NSELF_SKIP_SBOM_CHECK=1)")
 	installCmd.Flags().Bool("dry-run", false, "Show what would be installed without making changes")
+	installCmd.Flags().Bool("plan", false, "Stage registry plugins temporarily and show regeneration without installing")
 	installCmd.Flags().Bool("show-graph", false, "Show dependency graph with topological sort order")
 	installCmd.Flags().String("checksum", "", "Expected SHA-256 checksum of the downloaded archive (third-party URL installs only)")
 	installCmd.Flags().Bool("strict", false, "Fail if any plugin in the bundle is missing from the registry")
@@ -94,6 +95,7 @@ func init() {
 	removeCmd.Flags().Bool("delete-data", false, "Delete plugin data (schema/tables). A bundle remove asks for confirmation (or pass --yes); a plugin remove never asks and drops data unless --keep-data")
 	removeCmd.Flags().Bool("force", false, "Remove even if other plugins depend on this one")
 	removeCmd.Flags().Bool("dry-run", false, "Print the planned actions without removing")
+	removeCmd.Flags().Bool("plan", false, "Show regeneration without removing plugins or data")
 
 	RootCmd.AddCommand(installCmd)
 	RootCmd.AddCommand(removeCmd)
@@ -109,6 +111,9 @@ func resolvesToBundle(name string) bool {
 }
 
 func runInstall(cmd *cobra.Command, args []string) error {
+	if flagOn(cmd, "plan") {
+		return runExtensionPlan(cmd, args, true)
+	}
 	if handled, err := toggleBuiltin(args, true); handled {
 		if err == nil {
 			recordInstall(cmd, args, nil) // P7-SURF-13: the envelope names the enabled builtin
@@ -146,6 +151,9 @@ func runInstall(cmd *cobra.Command, args []string) error {
 }
 
 func runRemove(cmd *cobra.Command, args []string) error {
+	if flagOn(cmd, "plan") {
+		return runExtensionPlan(cmd, args, false)
+	}
 	if handled, err := toggleBuiltin(args, false); handled {
 		if err == nil {
 			recordRemove(cmd, args, nil, nil) // P7-SURF-13: the envelope names the disabled builtin

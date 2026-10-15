@@ -7,6 +7,44 @@ export interface AddData {
   dry_run: boolean;
   installed: null | Array<string>;
   next: string;
+  plan?: null | {
+    artifacts: null | Array<{
+      action: string;
+      diff_lines: number;
+      generated: boolean;
+      hand_edited: boolean;
+      kind: string;
+      path: string;
+      redacted: boolean;
+    }>;
+    command: string;
+    containers: {
+      items: null | Array<{
+        action: string;
+        applied_by: string;
+        service: string;
+        stateful: boolean;
+      }>;
+      known: boolean;
+    };
+    destructive: boolean;
+    destructive_reasons: null | Array<string>;
+    effects: null | Array<{
+      detail: string;
+      kind: string;
+      target: string;
+    }>;
+    empty: boolean;
+    env: string;
+    env_class: string;
+    plan_id: string;
+    requires_confirmation: boolean;
+    schema_version: string;
+    trigger: {
+      kind: string;
+      subject: string;
+    };
+  };
   skipped: null | Array<string>;
 }
 
@@ -23,6 +61,8 @@ export type AddFlags = {
   force?: boolean;
   /** License key for Licensed plugins */
   key?: string;
+  /** Stage registry plugins temporarily and show regeneration without installing */
+  plan?: boolean;
   /** Preview the dependency tree without installing */
   preview?: boolean;
   /** Show dependency graph with topological sort order */
@@ -872,6 +912,44 @@ export interface ConfigBundlesInstallData {
   dry_run: boolean;
   installed: null | Array<string>;
   next: string;
+  plan?: null | {
+    artifacts: null | Array<{
+      action: string;
+      diff_lines: number;
+      generated: boolean;
+      hand_edited: boolean;
+      kind: string;
+      path: string;
+      redacted: boolean;
+    }>;
+    command: string;
+    containers: {
+      items: null | Array<{
+        action: string;
+        applied_by: string;
+        service: string;
+        stateful: boolean;
+      }>;
+      known: boolean;
+    };
+    destructive: boolean;
+    destructive_reasons: null | Array<string>;
+    effects: null | Array<{
+      detail: string;
+      kind: string;
+      target: string;
+    }>;
+    empty: boolean;
+    env: string;
+    env_class: string;
+    plan_id: string;
+    requires_confirmation: boolean;
+    schema_version: string;
+    trigger: {
+      kind: string;
+      subject: string;
+    };
+  };
   skipped: null | Array<string>;
 }
 
@@ -5856,6 +5934,44 @@ export interface RemoveData {
   dry_run: boolean;
   kept: null | Array<string>;
   next: string;
+  plan?: null | {
+    artifacts: null | Array<{
+      action: string;
+      diff_lines: number;
+      generated: boolean;
+      hand_edited: boolean;
+      kind: string;
+      path: string;
+      redacted: boolean;
+    }>;
+    command: string;
+    containers: {
+      items: null | Array<{
+        action: string;
+        applied_by: string;
+        service: string;
+        stateful: boolean;
+      }>;
+      known: boolean;
+    };
+    destructive: boolean;
+    destructive_reasons: null | Array<string>;
+    effects: null | Array<{
+      detail: string;
+      kind: string;
+      target: string;
+    }>;
+    empty: boolean;
+    env: string;
+    env_class: string;
+    plan_id: string;
+    requires_confirmation: boolean;
+    schema_version: string;
+    trigger: {
+      kind: string;
+      subject: string;
+    };
+  };
   planned: null | Array<string>;
   removed: null | Array<string>;
 }
@@ -5869,6 +5985,8 @@ export type RemoveFlags = {
   force?: boolean;
   /** Preserve database data on remove */
   "keep-data"?: boolean;
+  /** Show regeneration without removing plugins or data */
+  plan?: boolean;
 };
 
 /** Remove an installed plugin or bundle */

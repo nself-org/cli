@@ -301,6 +301,190 @@
           "next": {
             "type": "string"
           },
+          "plan": {
+            "additionalProperties": false,
+            "properties": {
+              "artifacts": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "action": {
+                      "type": "string"
+                    },
+                    "diff_lines": {
+                      "type": "integer"
+                    },
+                    "generated": {
+                      "type": "boolean"
+                    },
+                    "hand_edited": {
+                      "type": "boolean"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "redacted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "path",
+                    "action",
+                    "generated",
+                    "hand_edited",
+                    "diff_lines",
+                    "redacted"
+                  ],
+                  "type": "object"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "command": {
+                "type": "string"
+              },
+              "containers": {
+                "additionalProperties": false,
+                "properties": {
+                  "items": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "type": "string"
+                        },
+                        "applied_by": {
+                          "type": "string"
+                        },
+                        "service": {
+                          "type": "string"
+                        },
+                        "stateful": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "service",
+                        "action",
+                        "stateful",
+                        "applied_by"
+                      ],
+                      "type": "object"
+                    },
+                    "type": [
+                      "null",
+                      "array"
+                    ]
+                  },
+                  "known": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "known",
+                  "items"
+                ],
+                "type": "object"
+              },
+              "destructive": {
+                "type": "boolean"
+              },
+              "destructive_reasons": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "effects": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "target",
+                    "detail"
+                  ],
+                  "type": "object"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "empty": {
+                "type": "boolean"
+              },
+              "env": {
+                "type": "string"
+              },
+              "env_class": {
+                "type": "string"
+              },
+              "plan_id": {
+                "type": "string"
+              },
+              "requires_confirmation": {
+                "type": "boolean"
+              },
+              "schema_version": {
+                "type": "string"
+              },
+              "trigger": {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "type": "string"
+                  },
+                  "subject": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "subject"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "schema_version",
+              "plan_id",
+              "command",
+              "trigger",
+              "env",
+              "env_class",
+              "artifacts",
+              "effects",
+              "containers",
+              "destructive",
+              "destructive_reasons",
+              "requires_confirmation",
+              "empty"
+            ],
+            "type": [
+              "null",
+              "object"
+            ]
+          },
           "skipped": {
             "items": {
               "type": "string"
@@ -1754,6 +1938,190 @@
           },
           "next": {
             "type": "string"
+          },
+          "plan": {
+            "additionalProperties": false,
+            "properties": {
+              "artifacts": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "action": {
+                      "type": "string"
+                    },
+                    "diff_lines": {
+                      "type": "integer"
+                    },
+                    "generated": {
+                      "type": "boolean"
+                    },
+                    "hand_edited": {
+                      "type": "boolean"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "redacted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "path",
+                    "action",
+                    "generated",
+                    "hand_edited",
+                    "diff_lines",
+                    "redacted"
+                  ],
+                  "type": "object"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "command": {
+                "type": "string"
+              },
+              "containers": {
+                "additionalProperties": false,
+                "properties": {
+                  "items": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "type": "string"
+                        },
+                        "applied_by": {
+                          "type": "string"
+                        },
+                        "service": {
+                          "type": "string"
+                        },
+                        "stateful": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "service",
+                        "action",
+                        "stateful",
+                        "applied_by"
+                      ],
+                      "type": "object"
+                    },
+                    "type": [
+                      "null",
+                      "array"
+                    ]
+                  },
+                  "known": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "known",
+                  "items"
+                ],
+                "type": "object"
+              },
+              "destructive": {
+                "type": "boolean"
+              },
+              "destructive_reasons": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "effects": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "target",
+                    "detail"
+                  ],
+                  "type": "object"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "empty": {
+                "type": "boolean"
+              },
+              "env": {
+                "type": "string"
+              },
+              "env_class": {
+                "type": "string"
+              },
+              "plan_id": {
+                "type": "string"
+              },
+              "requires_confirmation": {
+                "type": "boolean"
+              },
+              "schema_version": {
+                "type": "string"
+              },
+              "trigger": {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "type": "string"
+                  },
+                  "subject": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "subject"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "schema_version",
+              "plan_id",
+              "command",
+              "trigger",
+              "env",
+              "env_class",
+              "artifacts",
+              "effects",
+              "containers",
+              "destructive",
+              "destructive_reasons",
+              "requires_confirmation",
+              "empty"
+            ],
+            "type": [
+              "null",
+              "object"
+            ]
           },
           "skipped": {
             "items": {
@@ -11410,6 +11778,190 @@
           "next": {
             "type": "string"
           },
+          "plan": {
+            "additionalProperties": false,
+            "properties": {
+              "artifacts": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "action": {
+                      "type": "string"
+                    },
+                    "diff_lines": {
+                      "type": "integer"
+                    },
+                    "generated": {
+                      "type": "boolean"
+                    },
+                    "hand_edited": {
+                      "type": "boolean"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "redacted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "path",
+                    "action",
+                    "generated",
+                    "hand_edited",
+                    "diff_lines",
+                    "redacted"
+                  ],
+                  "type": "object"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "command": {
+                "type": "string"
+              },
+              "containers": {
+                "additionalProperties": false,
+                "properties": {
+                  "items": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "type": "string"
+                        },
+                        "applied_by": {
+                          "type": "string"
+                        },
+                        "service": {
+                          "type": "string"
+                        },
+                        "stateful": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "service",
+                        "action",
+                        "stateful",
+                        "applied_by"
+                      ],
+                      "type": "object"
+                    },
+                    "type": [
+                      "null",
+                      "array"
+                    ]
+                  },
+                  "known": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "known",
+                  "items"
+                ],
+                "type": "object"
+              },
+              "destructive": {
+                "type": "boolean"
+              },
+              "destructive_reasons": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "effects": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "target",
+                    "detail"
+                  ],
+                  "type": "object"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "empty": {
+                "type": "boolean"
+              },
+              "env": {
+                "type": "string"
+              },
+              "env_class": {
+                "type": "string"
+              },
+              "plan_id": {
+                "type": "string"
+              },
+              "requires_confirmation": {
+                "type": "boolean"
+              },
+              "schema_version": {
+                "type": "string"
+              },
+              "trigger": {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "type": "string"
+                  },
+                  "subject": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "subject"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "schema_version",
+              "plan_id",
+              "command",
+              "trigger",
+              "env",
+              "env_class",
+              "artifacts",
+              "effects",
+              "containers",
+              "destructive",
+              "destructive_reasons",
+              "requires_confirmation",
+              "empty"
+            ],
+            "type": [
+              "null",
+              "object"
+            ]
+          },
           "planned": {
             "items": {
               "type": "string"
@@ -12857,6 +13409,11 @@
                         "default": "",
                         "description": "License key for Licensed plugins",
                         "type": "string"
+                      },
+                      "plan": {
+                        "default": false,
+                        "description": "Stage registry plugins temporarily and show regeneration without installing",
+                        "type": "boolean"
                       },
                       "preview": {
                         "default": false,
@@ -43704,6 +44261,11 @@
                       "keep-data": {
                         "default": false,
                         "description": "Preserve database data on remove",
+                        "type": "boolean"
+                      },
+                      "plan": {
+                        "default": false,
+                        "description": "Show regeneration without removing plugins or data",
                         "type": "boolean"
                       }
                     },

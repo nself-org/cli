@@ -46,7 +46,7 @@ func checkLicense(ctx context.Context, name string) error {
 			name, "nself.org/pricing")
 	}
 
-	cacheDir := licenseCacheDir()
+	cacheDir := installCacheDir(ctx, licenseCacheDir(), "license")
 
 	// A fresh cached entitlement list that omits this plugin, for a tier that is
 	// not all-access, is a denial. A cached-valid key must not override it (the
@@ -138,7 +138,7 @@ func checkLicense(ctx context.Context, name string) error {
 // If the registry cannot be reached or the plugin is not found, this function
 // returns nil (install will fail downstream with a more specific error).
 func CheckEOLBlock(ctx context.Context, name string, allowEOL bool) error {
-	cacheDir := defaultCacheDir()
+	cacheDir := installCacheDir(ctx, defaultCacheDir(), "registry")
 	reg, err := FetchRegistry(ctx, "", cacheDir)
 	if err != nil {
 		return nil

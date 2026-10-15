@@ -34,7 +34,7 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 	// slug. cron and notify are each served twice (free and pro) and gating
 	// on the name rejected unlicensed operators before ResolvePlugin could
 	// pick the free entry. This is also the order manager.go calls frozen.
-	cacheDir := defaultCacheDir()
+	cacheDir := installCacheDir(ctx, defaultCacheDir(), "registry")
 	reg, err := FetchRegistry(ctx, "", cacheDir)
 	if err != nil {
 		return fmt.Errorf("fetching registry: %w", err)
@@ -215,7 +215,7 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 		_ = os.Remove(archivePath)
 		return bypassErr
 	}
-	if bypassed {
+	if bypassed && !planningInstall(ctx) {
 		fmt.Fprintf(os.Stderr, "WARNING: plugin signature verification skipped (NSELF_LICENSE_SKIP_VERIFY=1 + FORCE)\n")
 		if werr := audit.Write("plugin-install-bypass", map[string]string{
 			"plugin": name,
@@ -265,6 +265,9 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 		return fmt.Errorf("normalizing extracted layout for plugin %q: %w", name, err)
 	}
 
+	if planningInstall(ctx) {
+		return nil // Verified files only: no binary, schema, audit or telemetry.
+	}
 	// Step 6b: Publish a CLI plugin's binary where ProxyCommand will find it.
 	// Without this a command-providing plugin installs cleanly and then cannot
 	// be run at all — the proxy only reads ~/.nself/plugins/bin/.

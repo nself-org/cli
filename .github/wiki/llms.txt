@@ -32,6 +32,7 @@ Flags:
 - `--dry-run` (default false) — Show what would be installed without making changes
 - `--force` (default false) — Reinstall even when the plugin is already present
 - `--key` (default "") — License key for Licensed plugins
+- `--plan` (default false) — Stage registry plugins temporarily and show regeneration without installing
 - `--preview` (default false) — Preview the dependency tree without installing
 - `--show-graph` (default false) — Show dependency graph with topological sort order
 - `--skip-sbom-check` (default false) — Skip SBOM verification (air-gapped installs only — sets NSELF_SKIP_SBOM_CHECK=1)
@@ -460,6 +461,7 @@ Flags:
 - `--dry-run` (default false) — Print the planned actions without removing
 - `--force` (default false) — Remove even if other plugins depend on this one
 - `--keep-data` (default false) — Preserve database data on remove
+- `--plan` (default false) — Show regeneration without removing plugins or data
 - `--yes` (default false) — Skip confirmation prompts
 
 Full page: [[cmd-remove]]
