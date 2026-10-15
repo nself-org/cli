@@ -9,7 +9,7 @@ name: Counts Vendor Sync
 # nself-org/plugins is PUBLIC, so this needs no token.
 #
 # This compares the vendored copy against the canonical artifact on plugins main,
-# ignoring only generated_at (a wall-clock stamp, expected to differ).
+# ignoring generated_from provenance and the legacy generated_at wall-clock stamp.
 
 on:
   push:
@@ -55,7 +55,10 @@ jobs:
           vendored = json.load(open("internal/plugin/count/counts.json"))
           canonical = json.load(open(".plugins-canonical/counts.json"))
 
-          # generated_at is a wall-clock timestamp and is expected to differ.
+          # Provenance can change without changing plugin counts.
+          vendored.pop("generated_from", None)
+          canonical.pop("generated_from", None)
+          # Also support artifacts from before tools/catalog introduced provenance.
           vendored.pop("generated_at", None)
           canonical.pop("generated_at", None)
 

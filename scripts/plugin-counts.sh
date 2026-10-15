@@ -26,6 +26,21 @@ siblings="$(dirname "$root")"
 generator="$siblings/plugins/scripts/plugin-counts.sh"
 
 if [ -x "$generator" ]; then
+  # The upstream default regenerates files. This legacy count reader must not.
+  read_only=0
+  for arg in "$@"; do
+    case "$arg" in
+      --json|--check|-h|--help) read_only=1 ;;
+      --free-only) ;;
+      *) printf "%s\n" "plugin-counts.sh supports only --json or --check [--free-only]" >&2; exit 2 ;;
+    esac
+  done
+  if [ "$#" -eq 0 ]; then
+    set -- --json
+  elif [ "$read_only" -eq 0 ]; then
+    printf "%s\n" "plugin-counts.sh requires --json or --check [--free-only]" >&2
+    exit 2
+  fi
   exec "$generator" "$@"
 fi
 
