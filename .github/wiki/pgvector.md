@@ -92,6 +92,7 @@ docker volume rm <project>_postgres_data
 
 ### Limits
 
+- Image switch errors omit SQL commands and continuations after the error summary, and cut the summary before its first quote to avoid printing row values.
 - The data is read about four times (dump, restore, verify, recheck), so the downtime grows with the size of the database. `--plan` prints the estimate.
 - Row hashes use each row's text form. A column that stores an `oid`, `xid` or a similar server-local number differs between clusters and fails the verify.
 - The read-only setting is a session default, not a lock: any session can turn it off for itself. Sessions are ended at the quiesce and again right before the recheck, and a write made before the recheck is caught (E510), but a write in the second between the recheck and the postgres stop is not. Keep people off the database while the switch runs.

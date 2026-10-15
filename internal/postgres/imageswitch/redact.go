@@ -33,7 +33,8 @@ func (s *Switch) redact(text string, n int) string {
 }
 
 // redactTail returns the last n non-empty lines of s with password material
-// replaced and the lines that quote row data left out.
+// replaced and row data omitted. Error summaries end before the first quote;
+// command text and continuations after an error summary are discarded.
 func redactTail(s string, n int) string {
 	s = passwordClause.ReplaceAllString(s, "${1}'<redacted>'")
 	s = scramHash.ReplaceAllString(s, "<redacted>")
@@ -42,7 +43,17 @@ func redactTail(s string, n int) string {
 	s = connPassword.ReplaceAllString(s, "${1}<redacted>")
 	var lines []string
 	for _, l := range strings.Split(strings.TrimSpace(s), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(l), "Command was:") {
+			break
+		}
 		if l = strings.TrimSpace(l); l != "" && !dataLine.MatchString(l) {
+			if strings.Contains(strings.ToLower(l), "error:") {
+				if i := strings.IndexAny(l, "\"'"); i >= 0 {
+					l = strings.TrimSpace(l[:i])
+				}
+				lines = append(lines, l)
+				break
+			}
 			lines = append(lines, l)
 		}
 	}
