@@ -12,6 +12,7 @@ NEWH=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 
 # mk_bump_env: a nself/{cli,admin} tree at 1.4.13 with the golden tests present and a stub go.
 mk_bump_env() {
+  mkdir -p "$BASE/tmp"; export TMPDIR=$BASE/tmp
   B=$(mktemp -d "$BASE/bump.XXXXXX"); C=$B/nself/cli; A=$B/nself/admin
   mkdir -p "$C/scripts" "$C/internal/version" "$C/sdk/go" "$C/sdk/ts" "$C/sdk/ts-sdk" "$C/sdk/py" "$C/.github" \
     "$C/internal/build" "$C/cmd/commands" "$A/src/lib" "$B/bin"
@@ -54,6 +55,10 @@ gold_all() { local g; for g in $GOLD_PATHS; do grep -q "$1" "$C/$g" || return 1;
 
 # 13. bump regenerates the goldens, then re-runs the tests plain -------------------------
 mk_bump_env
+check "bump fixture resets TMPDIR under BASE" test "$TMPDIR" = "$BASE/tmp"
+# Expand TMPDIR in the child to verify it was exported.
+# shellcheck disable=SC2016
+check "bump fixture exports a live TMPDIR" bash -c 'test -d "$TMPDIR"'
 run_bump 9.9.9
 check "bump exits 0" test "$RC" -eq 0
 check "bump updated version.go" grep -q '"9.9.9"' "$C/internal/version/version.go"
