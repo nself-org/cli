@@ -38,7 +38,7 @@ func TestBuildEntitlementFailureCompletesArtifacts(t *testing.T) {
 	}
 	manifest, _ := os.ReadFile(filepath.Join(f.workdir, composeManifestFile))
 	for _, plugin := range []string{"fixture", "free"} {
-		if !strings.Contains(string(manifest), filepath.Join(dir, plugin, pluginComposeFilename)) {
+		if !strings.Contains(string(manifest), filepath.Join(f.workdir, ".nself", "plugins", plugin, pluginComposeFilename)) {
 			t.Fatalf("%s fragment absent from completed manifest", plugin)
 		}
 	}
