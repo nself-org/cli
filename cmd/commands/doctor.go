@@ -142,6 +142,7 @@ in human and --json mode alike:
 		// Deep mode: run all 12 subsystem checks via doctor package
 		if deep {
 			deepResults := doctor.DeepChecks(ctx, cwd, verbose)
+			deepResults = doctorRemoteEnvDeepChecks(ctx, cwd, selectedEnv, onlySection, !jsonOut && !fix, deepResults)
 
 			// Apply --only filter
 			if onlySection != "" {
@@ -230,9 +231,9 @@ in human and --json mode alike:
 			ui.Section("Configuration")
 		}
 		checks = append(checks, checkEnvExists(cwd, verbose))
+		checks = append(checks, checkDoctorRemoteEnv(ctx, cwd, selectedEnv, !jsonOut)...)
 		checks = append(checks, checkPasswordStrength(cwd, verbose, fix)...)
 		checks = append(checks, checkJWTSecretPresent(cwd, verbose))
-
 		// 7. Route consistency + port range sanity + config validators
 		if !jsonOut {
 			ui.Section("Config Validation")
@@ -246,7 +247,6 @@ in human and --json mode alike:
 			ui.Section("Plugins")
 		}
 		checks = append(checks, checkPluginCompatibility(cwd, verbose)...)
-
 		// 9. License cache state
 		if !jsonOut {
 			ui.Section("License")

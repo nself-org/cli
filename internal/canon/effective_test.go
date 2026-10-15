@@ -180,9 +180,10 @@ func TestEffectivePresplitEquivalence(t *testing.T) {
 					// P7-DEPL-17: both rows carry `stream: {output: stream}` (the NDJSON
 					// progress stream, contract:cli.deploy-progress v1), a flag the frozen
 					// pre-split table lacks. Compare the rest of the entry unchanged.
+					// D-0418 also adds deploy's CLI-only preview diagnostic.
 					rest := map[string]FlagOverride{}
 					for name, f := range got.Flags {
-						if name != "stream" {
+						if name != "stream" && !(k == "deploy" && name == "preview") {
 							rest[name] = f
 						}
 					}

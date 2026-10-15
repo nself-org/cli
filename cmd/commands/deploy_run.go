@@ -97,6 +97,9 @@ func runDeployBody(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	serverFilter = opsPipelineServerFilter(workdir, target, profile, serverFilter)
+	if preview, _ := cmd.Flags().GetBool("preview"); preview {
+		return runDeployEnvPreview(cmd, workdir, target, serverFilter)
+	}
 
 	// Production safety gate: every prod-class environment (name prod or
 	// production today, tier prod once P7-DEPL-13 lands, or a custom name the

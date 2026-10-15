@@ -649,6 +649,7 @@
       "--force-migration",
       "--include-frontends",
       "--json",
+      "--preview",
       "--profile",
       "--rolling",
       "--server",

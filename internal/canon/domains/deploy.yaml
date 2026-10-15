@@ -2,7 +2,7 @@
 # Keys are canonical (v1.5) command paths without the leading "nself ", sorted. Rules: internal/canon/domains.go.
 schema_version: 1
 commands:
-  deploy: {canon: core, side_effect: remote, json: legacy, flags: {follow: {output: stream}, stream: {output: stream}}, confirm: {flags: [yes]}}
+  deploy: {canon: core, side_effect: remote, json: legacy, flags: {follow: {output: stream}, preview: {cli_only: true}, stream: {output: stream}}, confirm: {flags: [yes]}}
   # cmd/commands/access.go:35 RunE path changes no persistent state (prints/reads only)
   deploy access: {side_effect: read}
   deploy access grant: {side_effect: remote, confirm: {flags: [yes]}}

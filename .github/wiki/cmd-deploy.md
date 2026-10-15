@@ -17,6 +17,16 @@ nself deploy [target] [flags]
 ## Description
 
 <!-- BEGIN PROSE:description -->
+`nself deploy staging --preview` compares the local project's `.env` with each
+selected host's `.env` over read-only SSH, then exits before building or deploying.
+It lists only local-only, host-only and changed key names, never values. Use
+`--server <name>` to select one server, or `--json` for a structured report.
+Missing, unreadable or malformed files produce a warning instead of an empty diff.
+The host's `.env` stays authoritative and the local `.env` is never shipped;
+the resolved `.env.<env>` carries the deploy cascade. `--dry-run` remains offline
+unless `--preview` is also requested. Preview requires a configured remote target
+and is available only through the CLI, not as an MCP or HTTP flag.
+
 `nself deploy` builds your stack and deploys it to a target environment using a per-service
 sequenced rolling restart. It chains `nself build` then restarts services in dependency order,
 waiting for each service to pass a health check before restarting the next.
@@ -931,6 +941,7 @@ configure an nginx static page via `nginx/conf.d/`.
 | `--force-migration` |  | `bool` | `false` |  |  |  | Force deploy even with backward-incompatible migrations (disables canary) |
 | `--include-frontends` |  | `bool` | `false` |  |  |  | Include frontend apps in the deploy |
 | `--json` |  | `bool` | `false` |  |  |  | Emit JSON output |
+| `--preview` |  | `bool` | `false` |  |  |  | Compare local and host .env key names over SSH without deploying |
 | `--profile` |  | `string` | `full` |  |  |  | Compose build profile: full or ops |
 | `--rolling` |  | `bool` | `false` |  |  |  | Alias for --strategy=rolling |
 | `--server` |  | `string` | `""` |  |  |  | Deploy to a specific server only (name from control-plane inventory) |

@@ -17,6 +17,13 @@ nself doctor <subcommand> [flags]
 ## Description
 
 <!-- BEGIN PROSE:description -->
+For a selected remote environment, standard and deep diagnostics compare the
+local `.env` with each configured host's `.env` over read-only SSH. The report
+names local-only, host-only and changed keys without printing values. Drift or
+an unavailable comparison is a warning. Neither file is changed, including with
+`--fix`. Deep mode includes this check with `--only config` or no section filter.
+Local environments do not make this SSH check.
+
 `nself doctor` checks everything ɳSelf needs to function correctly and reports issues with actionable fix suggestions. It covers infrastructure prerequisites (Docker, Docker Compose, Git), Docker daemon health and permissions, disk and memory availability, network connectivity, configuration correctness, running container health, and plugin schema placement.
 
 Run `nself doctor` when something is not working as expected, before deploying to a new environment, or as part of an automated health check pipeline. The `--fix` flag enables automatic remediation of common problems.
