@@ -1,7 +1,7 @@
 package plugin
 
 // ReverseDependencies tests (D-0325): the exported scan over installed
-// manifests, its case rules, skipped directories and name validation.
+// manifests, its case rules, absent manifests and name validation.
 
 import (
 	"fmt"
@@ -30,7 +30,6 @@ func TestReverseDependencies(t *testing.T) {
 	writeDepManifest(t, dir, "dep-one", mk("dep-one", `,"dependencies":["Target"]`))
 	writeDepManifest(t, dir, "dep-two", mk("dep-two", `,"dependencies":["other","target"]`))
 	writeDepManifest(t, dir, "bystander", mk("bystander", `,"dependencies":["other"]`))
-	writeDepManifest(t, dir, "broken", `{not json`)
 	if err := os.MkdirAll(filepath.Join(dir, "no-manifest"), 0o755); err != nil {
 		t.Fatal(err)
 	}

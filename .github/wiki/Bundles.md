@@ -86,6 +86,8 @@ A bundle remove deletes a plugin only when the bundle was the last one in its `i
 - **Not recorded.** The ledger at `<plugin dir>/.nself-state/bundles.json` records a bundle only when all its plugins are installed. For a bundle it does not record, `bundle remove` fails with E134 (exit 1): nothing it installed is removable as a unit. Remove the individual plugins with `nself plugin remove <plugin>`.
 - **`--dry-run`** prints the plan and changes nothing; it never creates the ledger. `nself remove <plugin> --dry-run` prints the plugin, the data rule, the referencing bundles and whether E133 would refuse, and changes nothing.
 - **A failure stops the run.** The ledger then keeps the bundle recorded and drops only the plugins already removed, so running the same command again continues from there.
+- **Resume an interrupted removal.** Before removal starts, `.nself-state/remove-intent.json` records the remaining members. Rerun the same command after an interruption to resume; a successful removal or a new install of that bundle clears its intent.
+- **Dependencies stay installed.** A member needed by an installed plugin outside the removal plan is kept and recorded explicit, with a `kept: <member> (needed by <dependent>; recorded explicit)` line. An unreadable outside manifest refuses removal until it is repaired.
 - `--force` keeps its meaning (overwrite hand-edited generated files). `--keep-data` is a hidden, deprecated alias; from v1.5 it does nothing and prints a warning. It is removed in v1.6.0.
 
 `nself remove <plugin>` (and `nself plugin remove`) refuses a plugin an installed bundle still references: **E133**, exit 1, naming the bundle. Remove the bundle, or pass `--force` to remove only that plugin; the ledger then drops the plugin's record.

@@ -9,6 +9,7 @@ package plugin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,8 +33,9 @@ func logDangerousPermissions(pluginName string, permissions []string) {
 }
 
 // checkReverseDependencies scans all installed plugins in pluginDir and returns
-// the names of any that declare name as a dependency. This prevents silently
-// breaking dependent plugins during uninstall.
+// the directory names of any that declare name as a dependency. An existing
+// manifest that cannot be read or parsed refuses removal rather than hiding
+// dependencies; directories without a manifest are not installed plugins.
 func checkReverseDependencies(pluginDir, name string) ([]string, error) {
 	entries, err := os.ReadDir(pluginDir)
 	if err != nil {
@@ -51,11 +53,14 @@ func checkReverseDependencies(pluginDir, name string) ([]string, error) {
 		manifestPath := filepath.Join(pluginDir, entry.Name(), "plugin.json")
 		m, err := parseManifest(manifestPath)
 		if err != nil {
-			continue // skip directories without valid manifests
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return nil, fmt.Errorf("reading reverse dependency %q: %w", entry.Name(), err)
 		}
 		for _, dep := range m.Dependencies {
 			if strings.EqualFold(dep, name) {
-				dependents = append(dependents, m.Name)
+				dependents = append(dependents, entry.Name())
 				break
 			}
 		}

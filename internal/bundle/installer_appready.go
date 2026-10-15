@@ -81,7 +81,7 @@ func finishInstall(ctx context.Context, rn *appready.Runner, store *ledger.Store
 		if len(members) == 0 {
 			return "no installed members to record", nil
 		}
-		if err := store.Update(func(l *ledger.Ledger) error {
+		if err := store.Locked(func(tx *ledger.Tx, l ledger.Ledger) error {
 			// A member that was on disk before this install and has no ledger
 			// record was installed on its own: record it explicit so a later
 			// bundle remove keeps it. (Errs toward keeping the plugin.)
@@ -95,8 +95,12 @@ func finishInstall(ctx context.Context, rn *appready.Runner, store *ledger.Store
 				}
 			}
 			l.AddBundle(result.Bundle, members, time.Now())
-			addCatalogHolders(l, result.Bundle, members, time.Now())
-			return nil
+			addCatalogHolders(&l, result.Bundle, members, time.Now())
+			if err := tx.Write(l); err != nil {
+				return err
+			}
+			// The recorded install supersedes an interrupted remove of this bundle.
+			return tx.ClearRemoveIntent(result.Bundle)
 		}); err != nil {
 			return "", fmt.Errorf("the plugins are installed (not rolled back) but recording them in %s failed: %w", store.Path(), err)
 		}
