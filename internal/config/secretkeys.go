@@ -5,8 +5,8 @@ package config
 // helpers, internal/env and the machine audit log (P7-SURF-25, P7-SURF-12).
 // Inputs: a config key or flag name; a config value.
 // Outputs: true when the name contains SECRET, PASS (which covers PASSWORD and
-// AUTH_SMTP_PASS), KEY, TOKEN, CREDENTIAL, WEBHOOK, PRIVATE, DSN, SALT or BASICAUTH
-// (case-insensitive); a value with its URL credentials masked.
+// AUTH_SMTP_PASS), KEY, TOKEN, CREDENTIAL, WEBHOOK, PRIVATE, DSN, SALT or BASICAUTH;
+// BASIC_AUTH, AUTH and JWT credentials; a value with connection credentials masked.
 // Constraints: over-matching (for example PUBLIC_KEY or BYPASS) is the safe
 // side: a match only redacts. internal/env must not keep a second list.
 
@@ -27,7 +27,11 @@ func IsSecretKey(key string) bool {
 			return true
 		}
 	}
-	return false
+	// Match credential names narrowly: AUTH_* settings, JWT algorithms and
+	// Hasura auth hooks/roles describe behavior rather than hold credentials.
+	normalized := strings.ReplaceAll(upper, "-", "_")
+	return normalized == "AUTH" || normalized == "JWT" ||
+		strings.HasSuffix(normalized, "_JWT") || strings.Contains(normalized, "BASIC_AUTH")
 }
 
 // urlParam is one query, matrix or fragment parameter found by urlParams:
@@ -109,9 +113,14 @@ const maxNestedChecks = 8
 // credential value runs to the next `&` or whitespace (a credential holding
 // a raw `&` or space keeps the part after it); a value masked whole for an
 // encoded credential runs to the next `&`, `;`, `#` or whitespace. Time is
-// linear in len(v). A value without `://` is returned unchanged. The rule
-// over-masks a path that holds an `@`; that is the safe side.
+// linear in len(v). Schemeless user:password@host DSNs and password=/pwd=
+// keyword values are masked too. The rule over-masks a path that holds an
+// `@`; that is the safe side.
 func MaskURLCredentials(v string) string {
+	if masked, ok := maskSchemelessUserinfo(v); ok {
+		return masked
+	}
+	v = maskConninfoCredentials(v)
 	i := strings.Index(v, "://")
 	if i < 0 {
 		return v

@@ -31,6 +31,8 @@ Secret keys (any key containing `SECRET`, `PASS`, `KEY`, `TOKEN`, `CREDENTIAL`, 
 
 With `--json` in v1.5 mode an applied change prints the envelope with `applied: true` (schema `schemas/commands/config-set.v1.schema.json`).
 
+Schemeless connection values also mask `user:password@host` (including Go MySQL `tcp(...)` and `unix(...)` DSNs) and `password=`/`pwd=` keyword values, including quoted and backslash-escaped passwords. Email addresses and plain `user@host` values stay visible. Credential keys `BASICAUTH`, `BASIC_AUTH` (also `basic-auth`), standalone `AUTH`/`JWT`, and names ending in `_JWT` are masked. Behavioral settings such as `AUTH_JWT_ALGO`, `AUTH_JWT_TYPE`, `HASURA_GRAPHQL_AUTH_HOOK`, and `HASURA_GRAPHQL_UNAUTHORIZED_ROLE` stay visible.
+
 **Rotating a live secret.** Put the new value in `.env.secrets` and let the regeneration carry it: `nself config set HASURA_GRAPHQL_ADMIN_SECRET <new> --env secrets --yes` on a prod-class env. The generated env and compose files are updated; the running containers keep the old value until they are recreated (`nself start`). `nself secrets rotate` is a different tool: it rotates the encrypted secret store (`.secrets/<env>.age`), which the build does not read, so it does not regenerate anything. Its schedule tracks `HASURA_GRAPHQL_ADMIN_SECRET`, the name the stack reads.
 
 The `validate` subcommand runs all registered configuration validators and reports pass/fail per rule. It is automatically run during `nself build`, but you can run it independently to check config without rebuilding.

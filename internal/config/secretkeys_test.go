@@ -148,8 +148,8 @@ func TestMaskURLCredentialsLinear(t *testing.T) {
 }
 
 // TestMaskURLCredentialsNoPanic feeds random strings over the separator and
-// escape alphabet; the scanner indexes by hand, so it must never panic, and a
-// value without :// must come back unchanged.
+// escape alphabet; the scanners index by hand, so neither URL nor schemeless
+// values must panic.
 func TestMaskURLCredentialsNoPanic(t *testing.T) {
 	const alphabet = "?&;#=%3Dd2F5aFt@:/ x"
 	seed := uint32(7)
@@ -161,8 +161,6 @@ func TestMaskURLCredentialsNoPanic(t *testing.T) {
 		}
 		seed = seed*1664525 + 1013904223
 		_ = MaskURLCredentials(string(b))
-		if got := MaskURLCredentials(string(b[8:])); !strings.Contains(string(b[8:]), "://") && got != string(b[8:]) {
-			t.Fatalf("schemeless %q changed to %q", b[8:], got)
-		}
+		_ = MaskURLCredentials(string(b[8:]))
 	}
 }
