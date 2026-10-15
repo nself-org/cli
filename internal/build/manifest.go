@@ -185,12 +185,12 @@ func isPluginSlug(s string) bool {
 }
 
 // coreServiceAliases maps declared plugin names that are satisfied by core
-// compose services rather than plugin containers. "auth" and "storage" are
-// wired by the compose generator directly (hasura-auth container + MinIO),
-// so declaring them must not produce a false "missing plugin" report.
+// compose services rather than plugin containers. "auth" is wired by the
+// compose generator directly (hasura-auth container), so declaring it must not
+// produce a false "missing plugin" report. "storage" is deliberately absent:
+// it is the free storage plugin, a different service from core MinIO (D-0451).
 var coreServiceAliases = map[string][]string{
-	"auth":    {"auth"},
-	"storage": {"minio", "storage"},
+	"auth": {"auth"},
 }
 
 // autoInstallEnabled reports whether missing declared plugins may be

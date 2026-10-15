@@ -43,7 +43,7 @@ func InstallDeclaredPlugins(ctx context.Context, workdir string, remoteDeploy bo
 //
 //  1. Already installed in pluginDir → satisfied (its compose fragment, if
 //     any, is picked up by DiscoverPluginComposeFiles).
-//  2. Provided by a core compose service (auth, storage) → satisfied.
+//  2. Provided by a core compose service (auth) → satisfied.
 //  3. Otherwise attempt a best-effort auto-install from the registry, then
 //     re-check. Still absent → reported in missing.
 //
@@ -136,7 +136,7 @@ func satisfiedByCoreService(name string, serviceSet map[string]bool) bool {
 
 // expectedCoreServices returns the compose service names the generator will
 // emit for core/optional services, derived from config. Used by
-// ResolveDeclaredPlugins to recognise declared names (auth, storage) that a
+// ResolveDeclaredPlugins to recognise declared names (auth) that a
 // core service satisfies — the compose YAML is generated after plugin
 // resolution, so the names are derived rather than parsed.
 func expectedCoreServices(cfg *config.Config) []string {
