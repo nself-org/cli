@@ -303,6 +303,18 @@ systemctl status nself-backup-stream.timer
 
 Create a local backup (written to `BACKUP_DIR`, default `./backups`).
 
+The `minio` target (also included in `all`) uses the S3 API at
+`http://127.0.0.1:MINIO_PORT` with `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD` and
+`MINIO_REGION`. It needs no host `mc` binary or configured alias. Every visible
+bucket, including empty buckets, is saved under `minio_<timestamp><tag>/<bucket>/`
+with directories mode 0700 and files mode 0600. The directory appears only after
+all downloads succeed. Zero-byte keys ending in `/` become directories. Keys
+ending in `/` with nonempty contents fail. Keys that cannot map faithfully to local paths (for
+example `../secret`, repeated slashes or backslashes) and file/directory collisions
+fail the backup; incomplete downloads and objects whose size changes during the
+backup are refused and removed. This target saves current
+object contents, not object versions, metadata or bucket policies.
+
 ```bash
 nself backup create [--type full|wal|metadata|minio|all] [--encrypt] [--tag <label>] [--dry-run]
 ```
