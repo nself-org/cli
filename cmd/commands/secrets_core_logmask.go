@@ -25,15 +25,22 @@ import (
 	"github.com/spf13/pflag"
 )
 
+// machineSecretsRestored records whether this invocation restored a bundle.
+// Mounted plugins cannot safely accept these values until their protocol
+// supports the secret environment hand-off (D-0651).
+var machineSecretsRestored bool
+
 // restoreSecretArgv is the first step of Execute: a machine invoker hands the
 // secret values over the environment (D-0468); put them back into os.Args and
 // tell the command log to mask them (D-0473).
 func restoreSecretArgv() error {
+	machineSecretsRestored = false
 	restored, values, err := invoke.RestoreSecretArgv(os.Args)
 	if err != nil {
 		return err
 	}
 	os.Args = restored
+	machineSecretsRestored = len(values) > 0
 	cmdlog.MaskValues(values...)
 	return nil
 }

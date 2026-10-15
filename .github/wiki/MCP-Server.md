@@ -72,6 +72,8 @@ becomes `<path> --json --quiet=true --tags=a --tags=b -- -x`. Flags are sorted b
 
 Refused with `E420`, naming the flag but never echoing its value: an unknown or unexposed flag, a value of the wrong type (`1.5` for an integer), too few or too many args, a NUL byte anywhere, an element over 32 KiB or an argv over 128 KiB.
 
+Mounted plugin calls that restore secret-marked arguments or flags from `NSELF_INVOKE_SECRETS` are refused with `E421` before the plugin binary starts. The plugin protocol does not yet support forwarding the secret bundle, so executing it would expose the restored values on its process arguments. Free-form plugin `argv` has no secret markers and remains subject to the accepted risks above.
+
 ## Request id
 
 The request id names a request in logs. It is the lowercase hex SHA-256 of the canonical JSON `{"args":[...],"argv":[...],"command":"<path>","flags":{...}}`: keys sorted, no whitespace, `confirm` left out, missing members empty, and every secret argument and flag value replaced by `"[REDACTED]"` first. Redaction fails closed: a positional past the declared args and a flag the command does not declare are replaced too. Free-form plugin `argv` items cannot be marked secret, so every one is replaced by `"[REDACTED]"` before hashing (the id keeps their count) and scrubbed from `E422` stderr tails. Two requests that differ only in a secret value share an id, and no id is derived from a secret. The id is not a confirmation: anyone can compute it.
