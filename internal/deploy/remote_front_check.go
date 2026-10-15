@@ -14,7 +14,7 @@ package deploy
 //              what the record says this project shipped there (or what it ships
 //              now). A path without a recorded set (an old record) is treated
 //              like an unknown path: its set must equal the shipped file's, and
-//              it is never pruned. An empty set never matches an unknown path.
+//              it is never pruned. An empty set never establishes ownership.
 
 import (
 	"context"
@@ -32,7 +32,9 @@ type frontView struct {
 	Names map[string][]string // that record's server_name set per path; a missing key is "unknown"
 }
 
-func sameNames(a, b []string) bool { return strings.Join(a, " ") == strings.Join(b, " ") }
+func sameNames(a, b []string) bool {
+	return len(a) > 0 && len(b) > 0 && strings.Join(a, " ") == strings.Join(b, " ")
+}
 
 // checkFrontForeign refuses (E485, nothing sent) to replace a host file that is
 // not this project's.
