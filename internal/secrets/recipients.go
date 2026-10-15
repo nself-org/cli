@@ -91,6 +91,13 @@ func Recipients(req RecipientsRequest, sink AuditFunc) ([]string, bool, error) {
 	if err := checkStorePath(filepath.Join(req.ProjectRoot, ".secrets"), path, missing); err != nil {
 		return nil, false, err
 	}
+	if req.Action != "list" {
+		unlock, err := lockRecipientStore(path + ".lock")
+		if err != nil {
+			return nil, false, decryptError()
+		}
+		defer unlock()
+	}
 	key, err := readableIdentity()
 	if err != nil {
 		return nil, false, err

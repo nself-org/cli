@@ -51,7 +51,10 @@ Run grants against an operator-trusted checkout. A writer can copy ciphertext fr
 
 Pass an absolute `--project` to resolve and recipient commands. Monorepo startup may change the working directory to `backend/` before a relative path or the default project is resolved (D-0510).
 
+Concurrent recipient additions and removals on the same store are serialized across load, audit and save, including when using an absolute `--project` outside the project directory. The persistent `.secrets/<file>.age.lock` sidecar holds the operating system lock; leave it in place.
+
 ### `secrets rotate <KEY>`
+
 ### `secrets rekey`
 <!-- END PROSE:description -->
 
