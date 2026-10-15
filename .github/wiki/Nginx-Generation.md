@@ -61,21 +61,17 @@ Use this sequence to switch a running project:
 
 ```bash
 nself add traefik --yes
-nself build --remove-orphans --yes
-nself start
 ```
 
-The add writes files through reconcile. The build removes the nginx orphan, and start brings up traefik. In v1.5, prod-class changes print the reconcile plan and require confirmation. A refused add leaves generated files and containers unchanged, but leaves traefik installed. Remove it with `nself remove traefik`, or fix the refusal before the next build. For measured downtime, see the e2e evidence.
+The add writes files through reconcile, then, in the same apply, removes the nginx orphan and starts the traefik services that have no container yet. The plan lists the orphan removal before anything runs. Prod-class changes print the plan and require confirmation. When nothing is orphaned, the add starts nothing; run `nself start` as before. If the removal or the start fails, the files stay written and the error names the fallback: `nself build --remove-orphans --yes`, then `nself start`. A refused add leaves generated files and containers unchanged, but leaves traefik installed. Remove it with `nself remove traefik`, or fix the refusal before the next build. For measured downtime, see the e2e evidence.
 
 ### Returning to nginx
 
 ```bash
 nself remove traefik --yes
-nself build --remove-orphans --yes
-nself start
 ```
 
-The remove deletes the plugin. The next build derives nginx again and deletes the renderer's two output directories, `.nself/generated/traefik/` and `.nself/generated/traefik-static/`, but only when the renderer's `.nself-generated` marker is inside each. A directory without that marker, a directory reached through a symlink, and every other path stay in place; the build prints one warning and carries on. The build also removes the traefik containers as orphans. After the sequence, the generated files, the compose service set and the containers match the project as it was before `nself add traefik`, and the request-parity matrix passes through nginx again.
+The remove deletes the plugin, removes the traefik containers as orphans and starts nginx in the same apply (the fallback is `nself build --remove-orphans --yes`, then `nself start`). The next build derives nginx again and deletes the renderer's two output directories, `.nself/generated/traefik/` and `.nself/generated/traefik-static/`, but only when the renderer's `.nself-generated` marker is inside each. A directory without that marker, a directory reached through a symlink, and every other path stay in place; the build prints one warning and carries on. The build also removes the traefik containers as orphans. After the sequence, the generated files, the compose service set and the containers match the project as it was before `nself add traefik`, and the request-parity matrix passes through nginx again.
 
 On Linux the `traefik-config` container runs as root and Docker creates its bind directories root-owned, so an unprivileged build cannot delete them. The build then warns (naming the directory), keeps the marker so the next build retries, and does not fail. Run the `sudo rm -rf` it prints, or `sudo chown -R "$USER" .nself/generated`, and build again. This is debt D-0782; the plugin's one-shot should run as the host user.
 
