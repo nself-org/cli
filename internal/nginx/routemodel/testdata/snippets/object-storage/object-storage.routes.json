@@ -16,7 +16,7 @@
         "https": true
       },
       "tls": {
-        "ssl_dir": "example.test",
+        "ssl_dir": "",
         "protocols": [],
         "ciphers": null
       },
@@ -54,7 +54,10 @@
         }
       ],
       "shadowed_by": null,
-      "unmodelled": []
+      "unmodelled": [
+        "ssl_certificate /etc/nginx/ssl/example.test/fullchain.pem;",
+        "ssl_certificate_key /etc/nginx/ssl/example.test/privkey.pem;"
+      ]
     }
   ]
 }
