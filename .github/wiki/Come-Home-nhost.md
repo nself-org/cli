@@ -77,7 +77,7 @@ mismatch; E522 means verification could not run. Treat both as an incomplete imp
 database first; the source side still needs the S3 flags and still downloads every file. The private stage is removed after a pass; `--keep-stage` keeps the
 integrity-checked bundle. If the target object store already holds a key from the
 bundle, the import is refused with E519 before anything is written and the target's
-object is left untouched. A failed run keeps its private stage under `.nself/import/`
+object is left untouched. A failed run that wrote to the target keeps its private stage under `.nself/import/`
 (a copy of your data, mode 0600): delete it when you are done.
 
 ## After a failed import

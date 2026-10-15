@@ -28,9 +28,10 @@ content hash, user hash algorithm, object checksum, tracking record, permission,
 relationship and independent source count matched. E523 means a mismatch; E522
 means verification could not run. Treat either outcome as an incomplete import.
 
-The private stage is removed after a pass. Use `--keep-stage` to retain the
-integrity-checked portable bundle for inspection. Failed imports retain their
-stage and report. The error hint (E521, E522 and E523) names the report path,
+The private stage is removed after a pass or when nothing was written to the
+target. Use `--keep-stage` to retain the portable bundle for inspection. Failed
+imports that wrote to the target retain their stage; every staged run retains its
+report. The error hint (E521, E522 and E523) names the report path,
 `.nself/import/<run-id>/report.json`, which lists every mismatch.
 
 ## After a failed import

@@ -67,6 +67,6 @@ nself stop
 nself start
 ```
 
-A failed run keeps its private stage under `.nself/import/` (a copy of your data, mode
+A failed run that wrote to the target keeps its private stage under `.nself/import/` (a copy of your data, mode
 0600): delete it when you are done. The same recovery rules as
 [Come home from PostgreSQL](Come-Home-Postgres) apply.

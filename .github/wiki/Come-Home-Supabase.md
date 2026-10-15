@@ -89,7 +89,7 @@ listed as exemptions (`compat:<name>`); define them in the target before relying
   in the future are imported as disabled; a dated ban becomes a plain disabled flag.
 - The shim `auth.uid()` reads the session Hasura sets for mutations. It serves column defaults on
   insert; use Hasura permissions for access rules.
-- After a failed import the private stage under `.nself/import/<run-id>/` keeps the user hashes
+- After a failed import that wrote to the target the private stage under `.nself/import/<run-id>/` keeps the user hashes
   (mode 0700); delete it once you no longer need it.
 - A user whose hash is not bcrypt is listed in `users.reset_required`.
 - Bucket settings (public flag, size limit, allowed types) are not carried; set them in the

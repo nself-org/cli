@@ -26,6 +26,7 @@ import (
 var started = load.Started
 var targetChecks = checkTarget
 var lockTarget = acquireLock
+var applyBundle = load.Apply
 
 // acquireLock holds the import advisory lock on a dedicated target connection until release is
 // called, so two imports cannot both pass the emptiness check.
@@ -143,7 +144,7 @@ func Run(ctx context.Context, cfg *config.Config, s Source, in Input, opts RunOp
 		return report, errs.New("E520", "import directory unavailable")
 	}
 	defer func() {
-		if report.Result == "pass" && !opts.KeepStage {
+		if (report.Result == "pass" || !report.Wrote) && !opts.KeepStage {
 			_ = os.RemoveAll(stage)
 		}
 	}()
@@ -171,7 +172,7 @@ func runBundle(ctx context.Context, cfg *config.Config, stage string, opts RunOp
 	m := bundle.Manifest()
 	progress := &load.Progress{}
 	defer func() { report.Wrote, report.LastStep = progress.Wrote, progress.Step }()
-	exemptions, err := load.Apply(ctx, cfg, bundle, load.Options{SkipStorage: opts.SkipStorage, Progress: progress})
+	exemptions, err := applyBundle(ctx, cfg, bundle, load.Options{SkipStorage: opts.SkipStorage, Progress: progress})
 	if err != nil {
 		return err
 	}
