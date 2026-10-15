@@ -22,6 +22,7 @@ import (
 	"sync"
 
 	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/license/entitlement"
 	"github.com/nself-org/cli/internal/ui"
@@ -84,6 +85,9 @@ func discoverPluginComposeFilesFx(fx Effects, sink Sink, workdir, pluginDir stri
 	licensedSeen := false
 	for _, entry := range entries {
 		if !entry.IsDir() {
+			continue
+		}
+		if entry.Name() == "minio" && compat.V15() && !config.MinioEnabledFromEnv() {
 			continue
 		}
 		// Skip disabled plugins (those with a .disabled marker file).

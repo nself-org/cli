@@ -37,6 +37,8 @@ E138 names three ways out: run `nself add minio` to keep the `minio_data` volume
 
 If this project does not use MinIO at all, set `MINIO_ENABLED=false` in `.env`. MinIO credentials such as `MINIO_ROOT_USER` and `MINIO_ROOT_PASSWORD` also count as MinIO intent when `MINIO_ENABLED` is not set, which is why `nself init` writes `MINIO_ENABLED=false`.
 
+In v1.5 mode, builds also exclude the installed MinIO plugin's compose fragment when the project has no MinIO intent. The plugin remains installed for other projects; excluded fragments are left untouched. Explicit MinIO intent still includes the fragment when core object storage is enabled, so both stores can run during migration. v1.4 fragment discovery is unchanged.
+
 To keep your existing store, run (this needs the minio plugin, coming with the v1.5 release):
 
 ```bash

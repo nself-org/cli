@@ -89,6 +89,8 @@ func TestMountIgnoresOverride(t *testing.T) {
 }
 
 func TestMountEmptyFileE125(t *testing.T) {
+	isolateEnv(t)
+	t.Setenv("HOME", t.TempDir())
 	compattest.Set(t, true)
 	t.Setenv("LICENSE_CACHE_PATH", filepath.Join(t.TempDir(), "missing"))
 	t.Setenv("LICENSE_PUBLIC_KEY_OVERRIDE", "")
