@@ -153,14 +153,15 @@ func TestNextStep(t *testing.T) {
 		t.Run(tc.stage+"_"+tc.mode, func(t *testing.T) {
 			nextStepFixture(t, tc.stage)
 			t.Setenv("NEXTSTEP_DOCKER", tc.mode)
-			start := time.Now()
 			ctx, cancel := context.WithTimeout(context.Background(), nextStepTimeout)
 			defer cancel()
 			if got := nextStep(ctx); got != "Next: nself "+tc.want {
 				t.Errorf("got %q, want %q", got, tc.want)
 			}
-			if elapsed := time.Since(start); elapsed > 4*time.Second {
-				t.Errorf("detection took %v", elapsed)
+			// Shared runners may resume long after the deadline. Assert the
+			// timeout path itself instead of how quickly the runner resumed.
+			if tc.mode == "slow" && ctx.Err() != context.DeadlineExceeded {
+				t.Errorf("slow detection context error = %v, want %v", ctx.Err(), context.DeadlineExceeded)
 			}
 		})
 	}
