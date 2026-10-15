@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/ssl"
 	"github.com/nself-org/cli/internal/ssl/acme"
 	"github.com/nself-org/cli/internal/ui"
@@ -43,7 +44,8 @@ func httpProbeAddr(env map[string]string) string {
 // into <served ssl>/.acme-webroot (nginx answers the challenge from the
 // default server or the domain's own port-80 block), install the certificate
 // as a generation of certificates/<domain-safe>, write the custom-domain conf,
-// reload, verify the served fingerprint and record the lineage.
+// reload, verify the served fingerprint and record the lineage. Under traefik
+// the reload is the traefik-config one-shot and no conf is written (D-0791).
 func runSSLAddACME(cmd *cobra.Command, args []string) (retErr error) {
 	domain := strings.ToLower(strings.TrimSuffix(args[0], "."))
 	if !acmeHostRE.MatchString(domain) {
@@ -102,7 +104,7 @@ func runSSLAddACME(cmd *cobra.Command, args []string) (retErr error) {
 	if err := errors.Join(e1, e2); err != nil {
 		return e151(err)
 	}
-	reload := acme.NginxReloader{Container: r.res.Container, Exec: acmeD.exec}
+	reload := r.reloader()
 	gens, err := acme.Install(ctx, acme.InstallReq{SSLDir: r.res.SSLDir, Targets: l.Targets, Cert: c, Key: k,
 		Reloader: reload, Fault: r.hooks.Fault, Exit: acmeD.exit})
 	if err != nil {
@@ -130,20 +132,24 @@ func installFailed(err error) error { return fmt.Errorf("%w%.0w", err, acme.ErrI
 
 // writeAndVerifyAdd writes the domain's conf (unless a served conf already uses
 // the target), reloads nginx and checks the fingerprint it serves.
-func writeAndVerifyAdd(ctx context.Context, r *acmeRun, l acme.Lineage, cert []byte, reload acme.NginxReloader) error {
+func writeAndVerifyAdd(ctx context.Context, r *acmeRun, l acme.Lineage, cert []byte, reload acme.Reloader) error {
 	hosts, _ := ssl.ServedHosts(r.res.NginxDir)
-	if !strings.Contains(hosts[l.Domains[0]], "/"+l.Name+"/") {
+	// traefik reads no nginx conf (the swap refuses conf.d, E481) and Install's
+	// reload already re-rendered its configuration from the new generation.
+	if r.provider != build.ProviderTraefik && !strings.Contains(hosts[l.Domains[0]], "/"+l.Name+"/") {
 		upstream, _ := r.cmd.Flags().GetString("upstream")
 		if err := writeCustomDomainConfServed(r.workdir, r.cfg.Nginx.FrontedBy, l.Domains[0], upstream); err != nil {
 			return e151(installFailed(acmeRefuse("the certificate is installed; fix the conf directory and re-run", "writing nginx conf: %v", err)))
 		}
 	}
-	if err := reload.Reload(ctx); err != nil {
-		return e151(installFailed(acmeRefuse("fix the nginx error above; the certificate is installed", "%v", err)))
+	if r.provider != build.ProviderTraefik {
+		if err := reload.Reload(ctx); err != nil {
+			return e151(installFailed(acmeRefuse("fix the nginx error above; the certificate is installed", "%v", err)))
+		}
 	}
 	if err := r.verifier(l, cert)(ctx); err != nil {
-		return e151(installFailed(acmeRefuse("check that nginx serves the domain on its HTTPS port", "served certificate check failed: %v", err)))
+		return e151(installFailed(acmeRefuse("check that "+r.proxyName()+" serves the domain on its HTTPS port", "served certificate check failed: %v", err)))
 	}
-	r.say("lineage %s: nginx reloaded, served certificate verified", l.Name)
+	r.say("lineage %s: %s reloaded, served certificate verified", l.Name, r.proxyName())
 	return nil
 }

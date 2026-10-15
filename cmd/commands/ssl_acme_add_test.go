@@ -252,3 +252,34 @@ func TestACMEAdoptHTTP01Command(t *testing.T) {
 		t.Errorf("probe calls: %v", *probed)
 	}
 }
+
+// TestSSLAddACMETraefik (D-0791): under the traefik provider `ssl add --acme`
+// reloads through the traefik-config one-shot, never execs in an nginx
+// container and never writes nginx/conf.d (the swap refuses that file, E481).
+func TestSSLAddACMETraefik(t *testing.T) {
+	f, probed := addFix(t, nil)
+	renders := f.useTraefik(0)
+
+	out, err := f.runAdd("app.example.org", "--acme", "--agree-tos", "--upstream=app:3000")
+	if err != nil {
+		t.Fatalf("add under traefik: %v\n%s", err, out)
+	}
+	if len(f.execs) != 0 {
+		t.Errorf("traefik must never exec in an nginx container: %v", f.execs)
+	}
+	if len(*renders) == 0 {
+		t.Error("the certificate was installed without re-running the traefik-config one-shot")
+	}
+	if _, err := os.Stat(filepath.Join(f.served, "nginx", "conf.d", "custom-app-example-org.conf")); !os.IsNotExist(err) {
+		t.Errorf("an nginx custom-domain conf was written under traefik: %v", err)
+	}
+	if got := *probed; len(got) != 1 || got[0] != "app.example.org@127.0.0.1:80" {
+		t.Errorf("reachability probe: %v", got)
+	}
+	if !strings.Contains(out, "traefik reloaded") || strings.Contains(out, "nginx reloaded") {
+		t.Errorf("output must name traefik:\n%s", out)
+	}
+	if file, err := acme.Load(f.ssl); err != nil || len(file.Lineages) != 1 || file.Lineages[0].LastIssued == nil {
+		t.Errorf("lineage not recorded: %+v %v", file, err)
+	}
+}
