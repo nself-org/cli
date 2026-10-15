@@ -18,6 +18,7 @@ type Executor interface {
 // DownOptions configures behavior for ComposeDown.
 type DownOptions struct {
 	RemoveVolumes bool
+	RemoveImages  bool // --rmi all
 	RemoveOrphans bool
 	Timeout       int // seconds; 0 uses Docker default
 }

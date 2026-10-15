@@ -140,8 +140,6 @@ func runStartFlow(cmd *cobra.Command, _ []string, out *startOutcome) error {
 		return err
 	}
 
-	// DNS/BASE_DOMAIN/auto-trust/license/cert checks extracted to
-	// start_config.go (T-P6-E2-W1-S1-T3).
 	runPostConfigChecks(ctx, cmd, cfg, projectDir, opts.verbose)
 
 	// Compose manifest read + --skip-plugins filter extracted to
@@ -155,7 +153,6 @@ func runStartFlow(cmd *cobra.Command, _ []string, out *startOutcome) error {
 	currentStep++
 	ui.Step(currentStep, totalSteps, "Checking port availability")
 
-	// Extracted to start_ports.go (T-P6-E2-W1-S1-T3).
 	if err := checkStartPorts(ctx, opts, projectDir, composeFiles); err != nil {
 		return err
 	}
@@ -231,6 +228,11 @@ func runStartFlow(cmd *cobra.Command, _ []string, out *startOutcome) error {
 		}
 
 		out.report = runHealthCheckLoop(ctx, cfg, projectDir, opts.timeout, requiredPct, opts.verbose)
+	}
+
+	// Shared host proxy (P7-ADOPT-21): attach the owner's nginx once healthy.
+	if startErr = afterStartSharedProxy(ctx, cfg, projectDir); startErr != nil {
+		return startErr
 	}
 
 	// ── Hasura metadata apply (FIX-CLI-3) ─────────────────────────────
