@@ -125,6 +125,46 @@ func TestBuildContextRefused(t *testing.T) {
 	}
 }
 
+// D-0420: a service with both image: and build: runs on its image, so its
+// context is not checked; a context that exists but holds no Dockerfile is
+// refused up front instead of failing at `up`; a named dockerfile: is honoured
+// and dockerfile_inline needs no file.
+func TestBuildContextImageAndDockerfile(t *testing.T) {
+	_, o, rp := applyFixture(t, "")
+	compose := o.Set.Compose[0]
+	rel := strings.TrimPrefix(compose, rp+"/")
+	writeFile(t, filepath.Join(o.Set.StageDir, rel), `services:
+  both:
+    image: registry.example.org/both:1
+    build: ./ghost
+  nodocker:
+    build: ./empty
+  named:
+    build:
+      context: ./named
+      dockerfile: docker/Api.Dockerfile
+  inline:
+    build:
+      context: ./empty
+      dockerfile_inline: "FROM scratch"
+  fine:
+    build: ./present
+`, 0o644)
+	writeFile(t, filepath.Join(rp, "empty", ".keep"), "", 0o644)
+	writeFile(t, filepath.Join(rp, "named", "docker", "Api.Dockerfile"), "FROM scratch\n", 0o644)
+	writeFile(t, filepath.Join(rp, "present", "Dockerfile"), "FROM scratch\n", 0o644)
+	_, err := ApplyRemote(context.Background(), o)
+	var ce *errs.CLIError
+	if !errors.As(err, &ce) || ce.Code != "E485" || !strings.Contains(err.Error(), "service(s) nodocker ") {
+		t.Fatalf("err = %v, want E485 naming only nodocker", err)
+	}
+	for _, ok := range []string{"both", "named", "inline", "fine"} {
+		if strings.Contains(err.Error(), ok+",") || strings.Contains(err.Error(), ok+" build") {
+			t.Errorf("%s was refused: %v", ok, err)
+		}
+	}
+}
+
 // F9: the throwaway nginx gets a host entry for every service name, container
 // name and network alias, so proxy_pass to a service name passes nginx -t.
 func TestNginxCheckAddsStackHosts(t *testing.T) {

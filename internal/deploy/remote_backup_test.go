@@ -26,6 +26,7 @@ func seedDeployedHost(t *testing.T, rp string) {
 	writeFile(t, filepath.Join(rp, ".env.prod"), "ENV=prod\n", 0o600)
 	writeFile(t, filepath.Join(rp, ".nself", "compose-files.txt"), rp+"/docker-compose.yml\n", 0o644)
 	writeFile(t, filepath.Join(rp, ".nself", "plugins", "ai", "docker-compose.plugin.yml"), "services: {ai: {}}\n", 0o644)
+	writeFile(t, filepath.Join(rp, ".nself", "plugins", "ai", "Dockerfile"), "FROM scratch\n", 0o644)
 	writeFile(t, filepath.Join(rp, "nginx", "nginx.conf"), markedConf+"# v1\n", 0o644)
 	writeFile(t, filepath.Join(rp, "nginx", "sites", "api.conf"), markedConf+"# v1\n", 0o644)
 	writeFile(t, filepath.Join(rp, "nginx", "sites", "foreign.conf"), "# hand written\n", 0o644)
