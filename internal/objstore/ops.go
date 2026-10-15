@@ -60,6 +60,19 @@ func (c *Client) EnsureBucket(ctx context.Context, bucket string) error {
 // seekable body is hashed and rewound, any other body is spooled to a
 // temporary file (removed before return).
 func (c *Client) Put(ctx context.Context, bucket, key string, body io.Reader, size int64) error {
+	return c.put(ctx, bucket, key, body, size, false)
+}
+
+// PutIfAbsent uploads size bytes only when bucket/key does not already exist.
+// It uses If-None-Match: * so a concurrent writer cannot be overwritten.
+// A 412 response returns an *Error whose IsPreconditionFailed method is true;
+// other failures and payload preparation follow Put. No unconditional retry occurs.
+func (c *Client) PutIfAbsent(ctx context.Context, bucket, key string, body io.Reader, size int64) error {
+	return c.put(ctx, bucket, key, body, size, true)
+}
+
+// put shares validation, payload preparation and response handling for both PUT modes.
+func (c *Client) put(ctx context.Context, bucket, key string, body io.Reader, size int64, ifAbsent bool) error {
 	if err := checkBucket(bucket); err != nil {
 		return err
 	}
@@ -81,6 +94,10 @@ func (c *Client) Put(ctx context.Context, bucket, key string, body io.Reader, si
 	req, err := c.build(ctx, http.MethodPut, bucket, key, nil, payload)
 	if err != nil {
 		return err
+	}
+	if ifAbsent {
+		req.Header.Set("If-None-Match", "*")
+		c.signer().Sign(req, payload, c.now())
 	}
 	req.ContentLength = size
 	if size == 0 {

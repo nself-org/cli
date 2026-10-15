@@ -38,6 +38,9 @@ func (e *Error) Error() string {
 // IsNotFound reports whether the response was 404.
 func (e *Error) IsNotFound() bool { return e.Status == http.StatusNotFound }
 
+// IsPreconditionFailed reports whether a conditional write found an existing object.
+func (e *Error) IsPreconditionFailed() bool { return e.Status == http.StatusPreconditionFailed }
+
 var signatureRe = regexp.MustCompile(`(?i)(signature=|signature:\s*)[0-9a-f]{16,}`)
 
 // redact removes the secret key and any SigV4 signature from s. It runs on
