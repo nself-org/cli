@@ -29,7 +29,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
 )
 
@@ -249,42 +248,6 @@ func RestoreIntoContainer(ctx context.Context, c *Container, file string) error 
 		slog.Warn(tool+" completed with warnings", "output", strings.TrimSpace(msg))
 	}
 	return nil
-}
-
-// runRestoreTest spins up a temporary postgres container, restores the backup,
-// and runs the full smoke-query catalog plus a sentinel CRUD round-trip to
-// verify data integrity. A schema-only restore (empty DB) fails this check.
-//
-// Flag: --restore-test (confirmed per S41-T11 drift fix).
-func runRestoreTest(ctx context.Context, cfg *config.Config, backupFile string, opts VerifyOptions) error {
-	// Only the pg_dump (.dump) format produced by `nself backup create` has an
-	// automated restore path. A legacy base-backup tar cannot be restored here,
-	// so fail with a clear message instead of running smoke queries against an
-	// empty database (which would mis-report a "schema-only restore").
-	if !strings.HasSuffix(backupFile, ".dump") {
-		return fmt.Errorf("%w: %s is not a restorable pg_dump (.dump) backup; recreate it with the default format before running --restore-test",
-			errs.ErrBackupVerifyFailed, backupFile)
-	}
-	c, err := StartContainer(ctx, ContainerSpec{
-		Name:     cfg.ProjectName + verifySuffix,
-		Volume:   cfg.ProjectName + "_restore_test_data",
-		User:     cfg.Postgres.User,
-		DB:       cfg.Postgres.DB,
-		Password: cfg.Postgres.Password,
-		Image:    compose.ImageRef("postgres", cfg.Postgres.Version),
-		Keep:     opts.Keep,
-		Ready:    30 * time.Second,
-	})
-	if err != nil {
-		return err
-	}
-	// Cleanup deferred unconditionally so the sentinel schema is always removed.
-	defer c.Remove()
-
-	if err := RestoreIntoContainer(ctx, c, backupFile); err != nil {
-		return fmt.Errorf("restore test failed: %w", err)
-	}
-	return smokeAndSentinel(ctx, c)
 }
 
 // drillImage is the image of the drill container: the image lock's postgres

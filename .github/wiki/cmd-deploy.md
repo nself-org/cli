@@ -577,9 +577,12 @@ file. v1.4 mode keeps the push described above, byte for byte. One flow runs per
    primary).
 5. **Verified backup (tier prod).** Right after the tar and before anything is synced or any compose
    command runs: `nself backup create --tag pre-deploy-<id>` on the host, the backup is found in
-   `nself backup list --format json`, and `nself backup verify <id>` must exit 0. Any failure is
-   `E206` and nothing is applied. The id is recorded as `backup_id`, the host as `backup_host`. The
-   host needs `nself` on the ssh `PATH`.
+   `nself backup list --format json`, and `nself backup verify <id> --restore-test --cleanup`
+   must exit 0. Verification has a ten-minute deadline and restores the dump in a test Postgres
+   container with smoke and sentinel checks. An encrypted dump must decrypt with the host's
+   default backup identity, as rollback would. Cleanup of the test container is requested.
+   Any failure or timeout is `E206` and nothing is applied. The id is recorded as `backup_id`,
+   the host as `backup_host`. The host needs `nself` on the ssh `PATH`.
 6. **Artifact sync, in place.** `rsync -a` with no `--delete`: manifests, merged compose files,
    fragments, env files (`--chmod=F600`, mode 600 asserted afterwards), `nginx/` and `hasura/`.
    The project `.env` is the host's own file and is never overwritten: it stays in the compose
