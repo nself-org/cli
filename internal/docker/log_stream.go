@@ -46,7 +46,7 @@ func (c *Compose) StreamLogLines(parent context.Context, workdir string, args []
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	r, w := io.Pipe()
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	if stderr == nil {
 		stderr = w
 	}
