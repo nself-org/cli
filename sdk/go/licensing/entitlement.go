@@ -9,6 +9,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/nself-org/cli/sdk/go/v2/signing"
 )
 
 const FileEnv = "NSELF_ENTITLEMENT_FILE"
@@ -97,7 +99,7 @@ func verifyToken(token, slug string, now time.Time) error {
 	if len(key) != ed25519.PublicKeySize || err != nil || len(sig) != ed25519.SignatureSize {
 		return ErrEntitlementExpired
 	}
-	if !ed25519.Verify(key, []byte(parts[0]+"."+parts[1]), sig) {
+	if signing.VerifyEd25519(key, []byte(parts[0]+"."+parts[1]), sig) != nil {
 		return ErrEntitlementExpired
 	}
 	payload, err := enc.DecodeString(parts[1])

@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/sdk/go/v2/signing"
 )
 
 // CacheEntry is one cached licence validation.
@@ -84,7 +85,7 @@ func (c *CacheEntry) verifySignedBody() bool {
 	}
 	ok := false
 	for _, k := range PingKeys {
-		if len(k.Public) == ed25519.PublicKeySize && ed25519.Verify(k.Public, []byte(c.RawBody), sig) {
+		if signing.VerifyEd25519(k.Public, []byte(c.RawBody), sig) == nil {
 			ok = true
 			break
 		}
@@ -147,7 +148,7 @@ func (c *CacheEntry) verifyLegacy() bool {
 	}
 	payload := c.signablePayload()
 	for _, pk := range GetPublicKeys() {
-		if ed25519.Verify(pk.Key, payload, sigBytes) {
+		if signing.VerifyEd25519(pk.Key, payload, sigBytes) == nil {
 			return true
 		}
 	}
@@ -179,7 +180,7 @@ func verifyResponseSig(rawBody []byte, sigHex string) error {
 		return fmt.Errorf("response signature malformed: %w — falling back to cache", err)
 	}
 	for _, pk := range GetPublicKeys() {
-		if ed25519.Verify(pk.Key, rawBody, sigBytes) {
+		if signing.VerifyEd25519(pk.Key, rawBody, sigBytes) == nil {
 			return nil
 		}
 	}

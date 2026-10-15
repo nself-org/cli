@@ -19,6 +19,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/nself-org/cli/sdk/go/v2/signing"
 )
 
 const (
@@ -113,7 +115,7 @@ func ParseLicenseJWT(token string) (*LicenseClaims, error) {
 	if err != nil || len(sig) != ed25519.SignatureSize {
 		return nil, jwtErr("signature is malformed")
 	}
-	if !ed25519.Verify(pub, []byte(parts[0]+"."+parts[1]), sig) {
+	if signing.VerifyEd25519(pub, []byte(parts[0]+"."+parts[1]), sig) != nil {
 		return nil, jwtErr("signature does not verify")
 	}
 	payload, err := enc.DecodeString(parts[1])

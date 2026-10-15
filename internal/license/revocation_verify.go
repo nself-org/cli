@@ -5,15 +5,17 @@ package license
 // Purpose: produce the canonical JSON byte form the server signs and verify the ed25519 signature over it, used by RefreshRevocationList in revocation.go, split out for file size.
 // Inputs: a RevocationList and its detached signature.
 // Outputs: canonical JSON bytes, or a verification error.
-// Constraints: pure move from revocation.go (CLI-R12 Batch F); no behaviour change. Wire format must keep matching web/backend/services/ping_api's revocation-list.ts exactly.
+// Constraints: wire format matches web/backend/services/ping_api's revocation-list.ts;
+// sdk/go/signing rejects malformed and small-order verification keys.
 
 import (
-	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
 
 	"sort"
 	"strings"
+
+	"github.com/nself-org/cli/sdk/go/v2/signing"
 )
 
 // canonicalJSON produces the same byte sequence the server signed:
@@ -138,18 +140,7 @@ func VerifyRevocationSignature(list *RevocationList) bool {
 	}
 	keys := GetPublicKeys()
 	for _, pk := range keys {
-		// Skip the placeholder zero key (dev builds without ldflags).
-		allZero := true
-		for _, b := range pk.Key {
-			if b != 0 {
-				allZero = false
-				break
-			}
-		}
-		if allZero {
-			continue
-		}
-		if ed25519.Verify(pk.Key, canonical, sig) {
+		if signing.VerifyEd25519(pk.Key, canonical, sig) == nil {
 			return true
 		}
 	}

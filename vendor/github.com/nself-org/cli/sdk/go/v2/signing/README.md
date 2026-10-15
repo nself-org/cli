@@ -20,6 +20,7 @@ verifies as a plugin or agent signature (`ErrWrongPurpose`).
 | `NewLookupVerifier(p, lookup, opts...)` | keys resolved per call (`KeyLookup`) |
 | `WithScope`, `WithRevoked`, `WithClock` | verifier options |
 | `Verify(msg, Signature)`, `VerifyContext` | returns nil or a sentinel error |
+| `VerifyEd25519(pub, msg, sig)` | raw verification for legacy wire formats; caller owns trust selection and claims |
 | `ErrUnknownKey`, `ErrRevoked`, `ErrWrongPurpose`, `ErrWrongScope`, `ErrBadSignature`, `ErrMalformed`, `ErrExpired`, `ErrNotYetValid` | match with `errors.Is` |
 | `Signer`, `NewEd25519Signer(purpose, priv)`, `ParsePKCS8PEM` | signing side; the id is derived, never chosen |
 | `EncodeSig`, `DecodeSig` | strict base64 standard signature text |
@@ -44,6 +45,12 @@ ci-release-0123456789abcdef  AAAA...=
 Ids are always `KeyID(purpose, key)`; a public key appears once per key set;
 small-order public keys (the identity point and its kin) are refused, because Go's
 `ed25519.Verify` accepts them and one fixed signature then verifies any message.
+
+Licence caches, licence and entitlement JWTs, revocation lists, canonical plugin
+objects and plugin identities use `VerifyEd25519`. It rejects malformed lengths
+and small-order keys without changing their existing payload or signature
+encodings. Use `Verifier` when purpose, scope, revocation and validity metadata
+are part of the key contract.
 
 ## Fail closed
 

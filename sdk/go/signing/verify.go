@@ -170,11 +170,8 @@ func (v *Verifier) VerifyContext(ctx context.Context, msg []byte, sig Signature)
 	if !key.NotAfter.IsZero() && !now.Before(key.NotAfter) {
 		return fmt.Errorf("%w: %q", ErrExpired, key.ID)
 	}
-	if len(sig.Sig) != ed25519.SignatureSize {
-		return fmt.Errorf("%w: signature length %d (key %q)", ErrMalformed, len(sig.Sig), key.ID)
-	}
-	if !ed25519.Verify(key.Public, msg, sig.Sig) {
-		return fmt.Errorf("%w: key %q", ErrBadSignature, key.ID)
+	if err := VerifyEd25519(key.Public, msg, sig.Sig); err != nil {
+		return fmt.Errorf("%w (key %q)", err, key.ID)
 	}
 	return nil
 }

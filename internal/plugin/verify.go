@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+
+	"github.com/nself-org/cli/sdk/go/v2/signing"
 )
 
 // canonicalManifestFields holds exactly the 6 fields included in the signed
@@ -90,7 +92,7 @@ func VerifyCanonicalSignature(bundle, name, sha256, visibility, version string, 
 		return fmt.Errorf("invalid signature length: got %d bytes, want %d", len(sigBytes), ed25519.SignatureSize)
 	}
 
-	if !ed25519.Verify(ed25519.PublicKey(pubKeyBytes), canonical, sigBytes) {
+	if signing.VerifyEd25519(ed25519.PublicKey(pubKeyBytes), canonical, sigBytes) != nil {
 		return fmt.Errorf("signature verification failed: canonical object or key mismatch")
 	}
 	return nil
