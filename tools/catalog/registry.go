@@ -75,7 +75,8 @@ func buildRegistry(t tierInfo, ms map[string]*manifestv2.Manifest, rel *model.Re
 			continue
 		}
 		if strings.TrimPrefix(m.Version, "v") != strings.TrimPrefix(r.Version, "v") {
-			rep.note("%s: manifest version %s differs from released version %s; the registry carries the release", s, m.Version, r.Version)
+			rep.problem("%s: manifest version %s differs from released version %s; restore the released manifest or publish a matching release row", s, m.Version, r.Version)
+			continue
 		}
 		link, prob := linking(m, r)
 		if prob != "" {
