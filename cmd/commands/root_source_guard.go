@@ -21,6 +21,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/spf13/cobra"
 )
 
 // checkNotInSourceRepo detects if the user is running nself from within the
@@ -127,4 +129,22 @@ func isRepoScopedCommand(name string) bool {
 	return map[string]bool{
 		"ci": true,
 	}[name]
+}
+
+// isRepoScopedInvocation preserves the caller's cwd for repo-relative paths.
+// Inputs: the resolved Cobra command, including its parents.
+// Outputs: whether the monorepo redirect must be skipped.
+// Constraints: match secrets paths in both CLI modes, never unrelated leaf names.
+func isRepoScopedInvocation(cmd *cobra.Command) bool {
+	if isRepoScopedCommand(cmd.Name()) {
+		return true
+	}
+	path := strings.TrimPrefix(cmd.CommandPath(), cmd.Root().Name()+" ")
+	for _, prefix := range []string{"secrets", "config secrets"} {
+		if path == prefix+" resolve" || path == prefix+" recipients" ||
+			strings.HasPrefix(path, prefix+" recipients ") {
+			return true
+		}
+	}
+	return false
 }
