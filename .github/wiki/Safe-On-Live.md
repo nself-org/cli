@@ -121,6 +121,8 @@ A prod-class env is `ENV` `prod` or `staging` (a running stack does not make an 
 
 A generated file whose content on disk no longer matches its sha256 hash in `.nself/state/generated.json` is considered hand-edited. 
 
+Doctor resolves recorded plugin files using `NSELF_PLUGIN_DIR` from the project's env cascade, falling back to the default plugin directory. Legacy absolute record keys under that directory migrate to `@plugins/` keys on the next successful build. Their original hashes protect hand edits before that build writes anything; missing legacy files leave the record.
+
 Overwrite-on-regenerate stays the default in v1.4 mode (with a warning). In v1.5 mode, nself detects hand-edited generated files and refuses to overwrite them by default (Exit code 4, E403). It will print a unified diff of the file and require you to pass `--force` to forcefully overwrite your changes.
 
 When `--force` is used, the file is overwritten with the newly generated content and the new hash is recorded in `generated.json`.

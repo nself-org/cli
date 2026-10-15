@@ -26,6 +26,38 @@ import (
 	"strings"
 )
 
+// withPluginKeys copies the record and migrates legacy absolute keys under
+// dir to plugin keys, retaining their original hashes for hand-edit checks.
+// Inputs: the resolved build/project plugin directory. Outputs: an owned copy.
+// Constraints: canonical keys win; only definitely missing files are pruned;
+// unrelated absolute paths and the caller's record remain untouched.
+func (s *GeneratedState) withPluginKeys(dir string) *GeneratedState {
+	next := &GeneratedState{SchemaVersion: s.SchemaVersion,
+		Files: make(map[string]string, len(s.Files)), Host: append([]GeneratedHostEntry(nil), s.Host...)}
+	for key, hash := range s.Files {
+		next.Files[key] = hash
+	}
+	for key, hash := range s.Files {
+		rel, legacy := strings.CutPrefix(key, AbsPrefix)
+		if !legacy {
+			continue
+		}
+		disk := string(filepath.Separator) + filepath.FromSlash(rel)
+		canonical := displayPath(dir, disk)
+		if !strings.HasPrefix(canonical, PluginsPrefix) {
+			continue
+		}
+		delete(next.Files, key)
+		if _, err := os.Lstat(disk); errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if _, exists := next.Files[canonical]; !exists {
+			next.Files[canonical] = hash
+		}
+	}
+	return next
+}
+
 // pruneGonePlugins deletes every "@plugins/" key whose plugin entry is gone
 // per exists, except keys in keep (the files this build writes).
 func (s *GeneratedState) pruneGonePlugins(keep map[string]bool, exists func(entry string) bool) {

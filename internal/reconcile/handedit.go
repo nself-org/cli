@@ -55,7 +55,7 @@ func (s *GeneratedState) HandEdited(path string, current []byte) bool {
 // current bytes. A nil record (no state yet) answers false for everything:
 // the first run on an existing project records and never blocks.
 func (s *GeneratedState) HandEditedFn(projectDir string) func(path string) bool {
-	return s.handEditedFnWith(projectDir, nil, "")
+	return s.handEditedFnWith(projectDir, nil, cascadeValue(projectDir, nil, "NSELF_PLUGIN_DIR"))
 }
 
 // handEditedFnWith is HandEditedFn with the env files a pending change will
@@ -64,9 +64,17 @@ func (s *GeneratedState) HandEditedFn(projectDir string) func(path string) bool 
 // pluginDir is the plugin directory "@plugins/" paths resolve under ("" means
 // DefaultPluginDir).
 func (s *GeneratedState) handEditedFnWith(projectDir string, env map[string][]byte, pluginDir string) func(path string) bool {
+	// Use the old hash before any planned bytes replace it, including the
+	// first build after upgrading a record that used absolute plugin keys.
+	if s != nil {
+		s = s.withPluginKeys(pluginDirOr(pluginDir))
+	}
 	var fronting string
 	var frontingOK, frontingDone bool
 	return func(path string) bool {
+		if rel, legacy := strings.CutPrefix(path, AbsPrefix); legacy {
+			path = displayPath(pluginDir, string(filepath.Separator)+filepath.FromSlash(rel))
+		}
 		disk, ok := displayDiskPath(projectDir, env, pluginDir, path, &fronting, &frontingOK, &frontingDone)
 		if !ok {
 			return false

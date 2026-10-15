@@ -133,11 +133,7 @@ func (s *GeneratedState) Save(projectDir string) error {
 func PlannedRecord(state *GeneratedState, pb *nbuild.PlannedBuild) (*GeneratedState, []byte, error) {
 	next := &GeneratedState{}
 	if state != nil {
-		next.Files = make(map[string]string, len(state.Files))
-		for k, v := range state.Files {
-			next.Files[k] = v
-		}
-		next.Host = append([]GeneratedHostEntry(nil), state.Host...)
+		next = state.withPluginKeys(pluginDirOr(pb.PluginDir))
 	}
 	next.RecordPlanned(pb)
 	keep := make(map[string]bool, len(pb.Files))
