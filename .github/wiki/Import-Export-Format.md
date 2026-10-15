@@ -53,6 +53,16 @@ The bundle directory is mode 0700 and its files 0600. A bundle never holds a sec
 
 The manifest is deterministic: keys are sorted (Go marshals maps in key order), arrays are sorted by their natural id (`db.tables` by schema and name, `files` by path, and so on; a table's `pk` keeps the key's column order), two-space indent, one trailing newline. Two runs over the same input write the same bytes. Only `created_at` changes with time.
 
+## Auth users
+
+`auth/users.jsonl` carries each user's identity, password hash and algorithm,
+`disabled`, `email_verified`, `metadata`, `roles` and optional `default_role`.
+Native nSelf/Hasura-auth sources preserve the default role. Older bundles that
+omit it retain the historical `user` default. Verification independently reads
+the loaded authorization fields, compares roles without regard to order, and
+reports mismatches without including metadata values. NULL metadata and an empty
+object compare equally because some target schemas require an object.
+
 ## Table hash
 
 `rows` is `count(*)`. `hash` is, as a decimal string:

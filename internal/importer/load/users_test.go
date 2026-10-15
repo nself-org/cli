@@ -45,3 +45,14 @@ func TestUserRowKeepsNullEmail(t *testing.T) {
 		t.Fatalf("empty email changed to %#v", row[1])
 	}
 }
+
+func TestUserRowPreservesDefaultRole(t *testing.T) {
+	var u verify.User
+	if err := json.Unmarshal([]byte(`{"default_role":"restricted","roles":["restricted","user"]}`), &u); err != nil {
+		t.Fatal(err)
+	}
+	row := userRow(pgtype.UUID{}, time.Unix(1, 0).UTC(), nil, u, nil)
+	if row[13] != "restricted" {
+		t.Fatalf("custom default role changed to %v", row[13])
+	}
+}

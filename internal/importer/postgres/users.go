@@ -20,7 +20,7 @@ func exportUsers(ctx context.Context, tx pgx.Tx, w *portable.Writer, m *portable
 	if !exists {
 		return nil
 	}
-	return WriteUsers(ctx, tx, w, m, `SELECT json_build_object('id',u.id,'email',u.email,'email_verified',u.email_verified,'phone',u.phone_number,'display_name',u.display_name,'created_at',u.created_at,'disabled',u.disabled,'password_hash',u.password_hash,'metadata',u.metadata,'roles',coalesce((SELECT json_agg(r.role ORDER BY r.role) FROM auth.user_roles r WHERE r.user_id=u.id),'[]'::json)) FROM auth.users u ORDER BY u.id`)
+	return WriteUsers(ctx, tx, w, m, `SELECT json_build_object('id',u.id,'email',u.email,'email_verified',u.email_verified,'phone',u.phone_number,'display_name',u.display_name,'created_at',u.created_at,'disabled',u.disabled,'password_hash',u.password_hash,'metadata',u.metadata,'default_role',u.default_role,'roles',coalesce((SELECT json_agg(r.role ORDER BY r.role) FROM auth.user_roles r WHERE r.user_id=u.id),'[]'::json)) FROM auth.users u ORDER BY u.id`)
 }
 
 // WriteUsers runs selectSQL (one JSON user object per row, ordered by id) inside the snapshot

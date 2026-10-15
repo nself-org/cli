@@ -47,6 +47,9 @@ func ApplyUsers(ctx context.Context, db *pgx.Conn, users []verify.User) error {
 			hash = u.PasswordHash
 		}
 		values = append(values, userRow(id, created, hash, u, nullable))
+		if _, err = tx.Exec(ctx, `INSERT INTO auth.roles(role) VALUES($1) ON CONFLICT DO NOTHING`, u.EffectiveDefaultRole()); err != nil {
+			return errors.New("auth default role registration failed")
+		}
 		for _, role := range u.Roles {
 			if _, err = tx.Exec(ctx, `INSERT INTO auth.roles(role) VALUES($1) ON CONFLICT DO NOTHING`, role); err != nil {
 				return errors.New("auth role registration failed")
@@ -130,5 +133,5 @@ func userRow(id pgtype.UUID, created time.Time, hash *string, u verify.User, nul
 	if u.Metadata == nil {
 		meta = nullOr(nullable["metadata"], map[string]any{})
 	}
-	return []any{id, nullOrString(nullable["email"], u.Email), u.EmailVerified, nullOrString(nullable["phone_number"], u.Phone), nullOrString(nullable["display_name"], u.DisplayName), created, u.Disabled, hash, meta, created, "", "en", false, "user", false, time.Unix(0, 0).UTC(), time.Unix(0, 0).UTC()}
+	return []any{id, nullOrString(nullable["email"], u.Email), u.EmailVerified, nullOrString(nullable["phone_number"], u.Phone), nullOrString(nullable["display_name"], u.DisplayName), created, u.Disabled, hash, meta, created, "", "en", false, u.EffectiveDefaultRole(), false, time.Unix(0, 0).UTC(), time.Unix(0, 0).UTC()}
 }

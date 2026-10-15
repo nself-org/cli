@@ -28,6 +28,7 @@ type User struct {
 	HashAlgorithm string         `json:"hash_algorithm"`
 	Metadata      map[string]any `json:"metadata"`
 	Roles         []string       `json:"roles"`
+	DefaultRole   string         `json:"default_role,omitempty"`
 }
 type Metadata map[string]map[string]any
 type State struct {
@@ -38,6 +39,8 @@ type State struct {
 	Counts   map[string]int64
 	// UserIdent holds Identity() of each target user; nil skips the identity check.
 	UserIdent map[string]string
+	// UserAttributes independently observes authorization fields; nil skips this check.
+	UserAttributes map[string]User
 }
 type Target interface {
 	Snapshot(context.Context, portable.Manifest) (State, error)
@@ -92,6 +95,8 @@ func CompareState(state State, m portable.Manifest, users []User, metadata Metad
 			add("user_hash_algorithm", u.ID, "password hash algorithm differs", "user")
 		} else if got, have := state.UserIdent[u.ID]; state.UserIdent != nil && (!have || got != Identity(u.Email, u.Phone, u.DisplayName)) {
 			add("user", u.ID, "user identity fields differ", "user")
+		} else if got, have := state.UserAttributes[u.ID]; state.UserAttributes != nil && (!have || !sameUserAttributes(u, got)) {
+			add("user", u.ID, "user authorization fields differ", "user")
 		}
 	}
 	for _, o := range m.Storage.Objects {

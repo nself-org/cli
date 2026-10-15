@@ -33,7 +33,7 @@ func writeAuth(ctx context.Context, tx pgx.Tx, w *portable.Writer, m *portable.M
 	rows, err := tx.Query(ctx, `SELECT jsonb_build_object(
 'id',u.id,'email',u.email,'email_verified',u.email_verified,'phone',u.phone_number,
 'display_name',u.display_name,'created_at',u.created_at,'disabled',u.disabled,
-'password_hash',u.password_hash,'metadata',u.metadata,
+'password_hash',u.password_hash,'metadata',u.metadata,'default_role',u.default_role,
 'roles',coalesce((SELECT jsonb_agg(r.role ORDER BY r.role COLLATE "C") FROM auth.user_roles r WHERE r.user_id=u.id),'[]'::jsonb))
 FROM auth.users u ORDER BY u.id`)
 	if err != nil {

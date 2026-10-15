@@ -56,14 +56,19 @@ func (l *Live) Snapshot(ctx context.Context, m portable.Manifest) (State, error)
 	}
 	if l.HasAuth || len(l.Users) > 0 {
 		s.UserIdent = map[string]string{}
-		rows, e := tx.Query(ctx, `SELECT id::text, password_hash, email::text, phone_number, display_name FROM auth.users`)
+		s.UserAttributes = map[string]User{}
+		rows, e := tx.Query(ctx, `SELECT u.id::text, u.password_hash, u.email::text, u.phone_number, u.display_name,
+u.disabled, u.email_verified, u.metadata, u.default_role,
+ARRAY(SELECT r.role FROM auth.user_roles r WHERE r.user_id=u.id ORDER BY r.role)
+FROM auth.users u`)
 		if e != nil {
 			return s, errors.New("target users unavailable")
 		}
 		for rows.Next() {
 			var id string
 			var hash, email, phone, display *string
-			if rows.Scan(&id, &hash, &email, &phone, &display) != nil {
+			var attributes User
+			if rows.Scan(&id, &hash, &email, &phone, &display, &attributes.Disabled, &attributes.EmailVerified, &attributes.Metadata, &attributes.DefaultRole, &attributes.Roles) != nil {
 				rows.Close()
 				return s, errors.New("target user read failed")
 			}
@@ -73,6 +78,7 @@ func (l *Live) Snapshot(ctx context.Context, m portable.Manifest) (State, error)
 			}
 			s.Users[id] = algo
 			s.UserIdent[id] = Identity(email, phone, display)
+			s.UserAttributes[id] = attributes
 		}
 		e = rows.Err()
 		rows.Close()

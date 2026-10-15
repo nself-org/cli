@@ -67,6 +67,21 @@ done
 test "$(psql "$SRC" -Atc 'SELECT count(*) FROM auth.users')" = 3 || fail 'signup count'
 test "$(psql "$SRC" -Atc "SELECT count(*) FROM auth.users WHERE encrypted_password LIKE '\$2%'")" = 3 || fail 'gotrue hash is not bcrypt'
 psql "$SRC" -v ON_ERROR_STOP=1 -q -f "$ROOT/test/fixtures/import/supabase/seed.sql" || fail seed
+# Exercise the source policy as a real non-owner, with grants so a missing table
+# privilege cannot masquerade as an RLS denial. Roll back the owner controls.
+SRC_UID1=$(psql "$SRC" -Atc "SELECT id FROM auth.users WHERE email='fake-supabase-1@example.invalid'")
+CROSS_NOTE=$(psql "$SRC" -Atc "SELECT n.id FROM public.notes n JOIN auth.users u ON u.id=n.user_id WHERE u.email='fake-supabase-2@example.invalid'")
+test -n "$SRC_UID1" -a -n "$CROSS_NOTE" || fail 'missing owner fixtures'
+psql "$SRC" -v ON_ERROR_STOP=1 -q -c 'GRANT USAGE ON SCHEMA public, auth TO authenticated; GRANT SELECT, UPDATE, DELETE ON public.notes TO authenticated' || fail 'RLS fixture grants'
+SOURCE_COUNTS=$(psql "$SRC" -v ON_ERROR_STOP=1 -Atq -c "BEGIN;
+SET LOCAL ROLE authenticated;
+SET LOCAL \"request.jwt.claim.sub\" = '$SRC_UID1';
+WITH changed AS (UPDATE public.notes SET title='owner control' WHERE user_id='$SRC_UID1' RETURNING id) SELECT count(*) FROM changed;
+WITH changed AS (UPDATE public.notes SET title='cross-user mutation' WHERE id='$CROSS_NOTE' RETURNING id) SELECT count(*) FROM changed;
+WITH changed AS (DELETE FROM public.notes WHERE id='$CROSS_NOTE' RETURNING id) SELECT count(*) FROM changed;
+WITH changed AS (DELETE FROM public.notes WHERE user_id='$SRC_UID1' RETURNING id) SELECT count(*) FROM changed;
+ROLLBACK;") || fail 'source RLS mutations'
+test "$SOURCE_COUNTS" = $'1\n0\n0\n1' || fail 'source RLS owner controls or cross-user denials'
 curl -fsS -X POST "$STORAGE/bucket" -H "Authorization: Bearer $FIXTURE_SERVICE_KEY" -H 'Content-Type: application/json' -d '{"id":"avatars","name":"avatars","public":false}' >/dev/null || fail bucket
 for key in a.png dir/b.png c.txt; do
   printf 'fake object %s\n' "$key" >"$W/obj"
@@ -135,8 +150,26 @@ gql() { curl -fsS "http://127.0.0.1:$TARGET_HASURA_PORT/v1/graphql" -H "Authoriz
 gql '{"query":"{ notes { id user_id } }"}' >"$W/notes.json" || fail 'notes query'
 jq -e --arg u "$UID1" '(.data.notes|length)==1 and .data.notes[0].user_id==$u' "$W/notes.json" >/dev/null || fail 'select permission is not owner-filtered'
 # The auth.uid() default fills the owner column with the caller's id.
-gql '{"query":"mutation { insert_notes_one(object: {title: \"from hasura\"}) { user_id } }"}' >"$W/insert.json" || fail 'insert request'
+gql '{"query":"mutation { insert_notes_one(object: {title: \"from hasura\"}) { id user_id } }"}' >"$W/insert.json" || fail 'insert request'
 jq -e --arg u "$UID1" '.data.insert_notes_one.user_id==$u' "$W/insert.json" >/dev/null || fail 'insert did not fill user_id from auth.uid()'
+# Hasura must deny the same cross-user update/delete, while permitting the owner.
+mutation() {
+  jq -nc --arg q "$1" --arg id "$2" '{query:$q,variables:{id:$id}}'
+}
+UPDATE='mutation($id: uuid!) { update_notes(where: {id: {_eq: $id}}, _set: {title: "changed"}) { affected_rows } }'
+DELETE='mutation($id: uuid!) { delete_notes(where: {id: {_eq: $id}}) { affected_rows } }'
+CROSS_BEFORE=$(tpg "SELECT row_to_json(n)::text FROM public.notes n WHERE id='$CROSS_NOTE'")
+test -n "$CROSS_BEFORE" || fail 'target cross-user fixture missing'
+gql "$(mutation "$UPDATE" "$CROSS_NOTE")" >"$W/cross-update.json" || fail 'cross-user update request'
+jq -e '.errors==null and .data.update_notes.affected_rows==0' "$W/cross-update.json" >/dev/null || fail 'cross-user update allowed'
+gql "$(mutation "$DELETE" "$CROSS_NOTE")" >"$W/cross-delete.json" || fail 'cross-user delete request'
+jq -e '.errors==null and .data.delete_notes.affected_rows==0' "$W/cross-delete.json" >/dev/null || fail 'cross-user delete allowed'
+test "$(tpg "SELECT row_to_json(n)::text FROM public.notes n WHERE id='$CROSS_NOTE'")" = "$CROSS_BEFORE" || fail 'cross-user row changed'
+OWN_NOTE=$(jq -r '.data.insert_notes_one.id' "$W/insert.json")
+gql "$(mutation "$UPDATE" "$OWN_NOTE")" >"$W/own-update.json" || fail 'owner update request'
+jq -e '.errors==null and .data.update_notes.affected_rows==1' "$W/own-update.json" >/dev/null || fail 'owner update denied'
+gql "$(mutation "$DELETE" "$OWN_NOTE")" >"$W/own-delete.json" || fail 'owner delete request'
+jq -e '.errors==null and .data.delete_notes.affected_rows==1' "$W/own-delete.json" >/dev/null || fail 'owner delete denied'
 # The untranslated policy leaves the table closed to the user role.
 gql '{"query":"{ announcements { id } }"}' >"$W/announcements.json" || true
 jq -e '.errors!=null' "$W/announcements.json" >/dev/null || fail 'untranslated policy table is open'
