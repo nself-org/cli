@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/nself-org/cli/tools/perfbench/scenarios"
@@ -108,8 +109,17 @@ func (emptyProbes) Run(context.Context, scenarios.Config) ([]scenarios.Sample, e
 }
 func (emptyProbes) Probes() []scenarios.Probe { return nil }
 
+var registerEmptyProbes sync.Once
+
+// Repeat in one process, as go test -count does, to catch duplicate registration.
+func TestABRefusesEmptyMetricsRepeated(t *testing.T) {
+	for i := 0; i < 3; i++ {
+		t.Run(fmt.Sprintf("run-%d", i), TestABRefusesEmptyMetrics)
+	}
+}
+
 func TestABRefusesEmptyMetrics(t *testing.T) {
-	scenarios.Register(emptyProbes{})
+	registerEmptyProbes.Do(func() { scenarios.Register(emptyProbes{}) })
 	bin := script(t, "nself", okScript)
 	for _, extra := range [][]string{{}, {"-json"}} {
 		var out, errb bytes.Buffer

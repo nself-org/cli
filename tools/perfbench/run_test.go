@@ -30,7 +30,10 @@ func (f fakeScenario) Run(_ context.Context, cfg scenarios.Config) ([]scenarios.
 	return out, nil
 }
 
-func init() { scenarios.Register(fakeScenario{}) }
+func init() {
+	scenarios.Register(fakeScenario{})
+	scenarios.Register(mixedScenario{})
+}
 
 func TestRegisteredScenarioRunsThroughRun(t *testing.T) {
 	var out, errb bytes.Buffer
@@ -67,7 +70,6 @@ func TestUnknownScenarioAndSubcommand(t *testing.T) {
 }
 
 func TestMixedUnitsFailTheRun(t *testing.T) {
-	scenarios.Register(mixedScenario{})
 	var out, errb bytes.Buffer
 	code := dispatch([]string{"run", "-scenario", "test-mixed", "-bin", "x", "-runs", "2"}, &out, &errb)
 	if code != 1 || !strings.Contains(errb.String(), "mixed units") {
