@@ -24,6 +24,10 @@ type Registry struct {
 	// endpoint's top-level "fetchedAt" field (CLI-R16). Empty for registries
 	// that don't send it (e.g. the GitHub raw fallback).
 	FetchedAt string
+	// Origin is the registry URL this snapshot was fetched from (D-0849). The
+	// cache records it so an entry cached from one registry never answers for
+	// another. Empty for a registry read from a file that predates the field.
+	Origin string
 }
 
 // EnvVar describes an environment variable required or used by a plugin.
