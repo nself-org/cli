@@ -40,8 +40,13 @@ Secrets (passwords, API keys, JWT secrets) are managed through the `.env` cascad
 - `.env.secrets` and `ssl/` (certificate private keys) must be ignored by git. `nself init` adds both to a new project's `.gitignore`; `nself doctor --deep` asks git whether they are ignored or already tracked (SEC-GITIGNORE-01)
 - Secret values are **redacted** from all CLI output (`***REDACTED***`)
 
-Secret env vars matching these patterns are automatically redacted:
-`*_PASSWORD`, `*_SECRET`, `*_KEY`, `*_TOKEN`
+Secret names containing SECRET, PASS, KEY, TOKEN, CREDENTIAL, WEBHOOK, PRIVATE,
+DSN, SALT or BASICAUTH (any case) are automatically redacted. This shared rule
+also hides Mailpit's `MP_UI_BASICAUTH` value in compose diffs, including literal
+credentials from older generated files. See [[Config-Env-Vars]].
+
+Log redaction preserves loopback addresses (`127.0.0.1` and `::1`), including
+port mappings such as `127.0.0.1:5432:5432`, while masking other IP addresses.
 
 ## Security Headers
 

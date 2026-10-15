@@ -95,6 +95,20 @@ func TestRedactIPv4PreservesLoopback(t *testing.T) {
 	}
 }
 
+func TestRedactPreservesLoopbackPortMappings(t *testing.T) {
+	for _, input := range []string{
+		"127.0.0.1:5432:5432",
+		"ports: 127.0.0.1:6543:5432",
+		"[::1]:5432:5432",
+		"127.0.0.1:5432:5432 and [::1]:6543:5432",
+		"literal [LOOPBACK_VFOUR] and [LOOPBACK_VSIX]",
+	} {
+		if got := Redact(input); got != input {
+			t.Errorf("Redact(%q) = %q, want unchanged loopback mapping", input, got)
+		}
+	}
+}
+
 func TestRedactIPv6(t *testing.T) {
 	in := "peer 2001:db8::8a2e:370:7334 connected"
 	got := Redact(in)

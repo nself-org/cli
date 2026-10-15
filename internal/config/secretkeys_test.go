@@ -8,7 +8,7 @@ import (
 
 // TestIsSecretKey pins IsSecretKey: the basis rule of cmd/commands isSecretKey
 // at cli f6c45e2f (SECRET, PASSWORD, KEY, TOKEN) widened by P7-SURF-12 with
-// PASS, CREDENTIAL, WEBHOOK, PRIVATE, DSN and SALT, for 30 keys.
+// PASS, CREDENTIAL, WEBHOOK, PRIVATE, DSN and SALT, then BASICAUTH (D-0559).
 func TestIsSecretKey(t *testing.T) {
 	cases := []struct {
 		key  string
@@ -44,9 +44,11 @@ func TestIsSecretKey(t *testing.T) {
 		{"HASURA_GRAPHQL_ENABLE_CONSOLE", false},
 		{"SMTP_HOST", false},
 		{"BASE_URL", false},
+		{"MP_UI_BASICAUTH", true},
+		{"mp_ui_basicauth", true},
 	}
-	if len(cases) != 30 {
-		t.Fatalf("table has %d keys, want 30", len(cases))
+	if len(cases) != 32 {
+		t.Fatalf("table has %d keys, want 32", len(cases))
 	}
 	for _, c := range cases {
 		if got := IsSecretKey(c.key); got != c.want {

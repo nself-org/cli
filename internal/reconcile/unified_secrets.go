@@ -15,7 +15,7 @@ package reconcile
 // it hid; applySecretValues then hides every other literal copy of those values
 // (a healthcheck that repeats the --requirepass password). Unified collects
 // from both sides of the diff before applying. observability.Redact is not used
-// here: it masks IPs, ports and digit runs and emits NUL bytes, which would
+// here: it masks IPs, ports and digit runs, which would
 // hide a port change in a compose file.
 
 import (

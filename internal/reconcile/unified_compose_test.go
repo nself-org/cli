@@ -11,8 +11,7 @@ import (
 )
 
 // composeFixture builds a config whose redis password is pw and whose other
-// secrets are plain synthetic values. Mailpit is off: its UI basic-auth value
-// is not covered by the secret-name rule (filed as debt).
+// secrets are plain synthetic values, including Mailpit UI basic auth.
 func composeFixture(pw string) *config.Config {
 	return &config.Config{
 		ProjectName:   "test",
@@ -24,13 +23,58 @@ func composeFixture(pw string) *config.Config {
 			AdminSecret: "fake-hasura-0000", JWTKey: "fake-jwt-key-00000000000000000000",
 			JWTType: "HS256", Port: 8080, Version: "v2.36.0", MemLimit: "1g", CPULimit: "1.0",
 		},
-		Auth:  config.AuthConfig{Version: "0.36.0", Port: 4000, ClientURL: "http://localhost:3000", MemLimit: "256m", CPULimit: "0.25"},
-		Redis: config.RedisConfig{Enabled: true, Password: pw},
-		Minio: config.MinioConfig{Enabled: true, RootUser: "minio", RootPassword: "fake-minio-0000"},
+		Auth:    config.AuthConfig{Version: "0.36.0", Port: 4000, ClientURL: "http://localhost:3000", MemLimit: "256m", CPULimit: "0.25"},
+		Redis:   config.RedisConfig{Enabled: true, Password: pw},
+		Mailpit: config.MailpitConfig{Enabled: true, UIUser: "admin", UIPassword: "mailpitSentinel #$secret"},
+		Minio:   config.MinioConfig{Enabled: true, RootUser: "minio", RootPassword: "fake-minio-0000"},
 		Search: config.SearchConfig{
 			Enabled: true, Engine: "typesense",
 			Typesense: config.TypesenseConfig{APIKey: "fake-typesense-0000"},
 		},
+	}
+}
+
+// TestUnifiedHidesGeneratedMailpitBasicAuth covers the current generator and
+// an upgrade from its old dotenv-unsafe literal fallback (D-0559).
+func TestUnifiedHidesGeneratedMailpitBasicAuth(t *testing.T) {
+	compattest.Set(t, false)
+	cfg := composeFixture("redisSentinel #$secret")
+	current, err := compose.NewGenerator(cfg).Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(current), "MP_UI_BASICAUTH:") {
+		t.Fatal("positive control: generated compose lacks Mailpit basic auth")
+	}
+	var doc struct {
+		Services map[string]struct {
+			Healthcheck struct{ Test []string }
+			Environment map[string]string
+		}
+	}
+	if err := yaml.Unmarshal(current, &doc); err != nil {
+		t.Fatal(err)
+	}
+	redis := doc.Services["redis"]
+	// D-0282 already removed the password argv entirely. Preserve that
+	// stronger fix rather than reintroducing a --pass literal for redaction.
+	if strings.Join(redis.Healthcheck.Test, " ") != "CMD redis-cli ping" || redis.Environment["REDISCLI_AUTH"] != "${REDIS_PASSWORD}" {
+		t.Fatal("Redis healthcheck must authenticate through REDISCLI_AUTH without password argv")
+	}
+	// Before D-0333 the generator wrote this password literally. Keep the
+	// generated service shape while reproducing that on-disk upgrade input.
+	legacy := strings.ReplaceAll(string(current), "admin:${MAILPIT_UI_PASSWORD}", "'admin:"+cfg.Mailpit.UIPassword+"'")
+	if !strings.Contains(legacy, cfg.Mailpit.UIPassword) {
+		t.Fatal("positive control: legacy compose lacks the literal password")
+	}
+	for name, diff := range map[string]string{
+		"current": Unified("docker-compose.yml", nil, current),
+		"legacy":  Unified("docker-compose.yml", nil, []byte(legacy)),
+		"upgrade": Unified("docker-compose.yml", []byte(legacy), current),
+	} {
+		if diff == "" || strings.Contains(diff, cfg.Mailpit.UIPassword) || strings.Contains(diff, "MP_UI_BASICAUTH: admin:") {
+			t.Errorf("%s: generated Mailpit basic auth was not masked", name)
+		}
 	}
 }
 
