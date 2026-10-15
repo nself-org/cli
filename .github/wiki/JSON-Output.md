@@ -67,6 +67,8 @@ Record types:
 {"schema_version":"1","command":"deploy promote","data":{"type":"result","result":"rolled_back","steps":[{"step":"health","status":"failed"},{"step":"apply","status":"rolled_back"}]}}
 ```
 
+Progress detail uses the shared config redaction rules for secret assignments and URL credentials, including passwords containing `@` or `/` and Azure SAS `sig` parameters. Redaction runs before detail is shortened.
+
 The event schema is `schemas/deploy-progress.v1.schema.json`. See [[cmd-deploy]].
 
 ## Compatibility (ADR 0021)
