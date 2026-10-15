@@ -144,7 +144,7 @@ func TestInitPresetsWriteObjectStorage(t *testing.T) {
 		dir := t.TempDir()
 		t.Chdir(dir)
 		t.Setenv("NSELF_TELEMETRY", "false")
-		cmd := newInitCmd()
+		cmd := newInitCmd(t)
 		cmd.SetArgs([]string{"init", "--non-interactive", "--quiet", "--demo", "--name", "storage-demo"})
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("demo init: %v", err)
@@ -201,7 +201,7 @@ func TestInitStandardEnvObjectStorageLine(t *testing.T) {
 		dir := t.TempDir()
 		t.Chdir(dir)
 		t.Setenv("NSELF_TELEMETRY", "false")
-		cmd := newInitCmd()
+		cmd := newInitCmd(t)
 		cmd.SetArgs([]string{"init", "--non-interactive", "--quiet", "--name", "storage-std"})
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("init: %v", err)

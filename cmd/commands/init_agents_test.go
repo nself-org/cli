@@ -70,7 +70,7 @@ func TestInitAgentsMDMatchesMCPSetup(t *testing.T) {
 // A command that is not under the live RootCmd (a test clone) skips the hook.
 func TestInitHookSkipsForeignTree(t *testing.T) {
 	dir := t.TempDir()
-	scaffoldAgentsMD(newInitCmd().Commands()[0], dir, false)
+	scaffoldAgentsMD(newInitCmd(t).Commands()[0], dir, false)
 	if _, err := os.Stat(filepath.Join(dir, "AGENTS.md")); err == nil {
 		t.Fatal("hook ran against a foreign tree")
 	}

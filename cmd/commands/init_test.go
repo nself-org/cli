@@ -14,7 +14,9 @@ import (
 // newInitCmd returns a fresh cobra.Command tree wired with just the init
 // command so tests can execute it in isolation without side effects from the
 // global RootCmd state.
-func newInitCmd() *cobra.Command {
+func newInitCmd(t *testing.T) *cobra.Command {
+	t.Helper()
+	t.Setenv("PROJECT_NAME", "init-fixture")
 	root := &cobra.Command{Use: "nself", RunE: func(cmd *cobra.Command, args []string) error { return nil }}
 
 	ic := &cobra.Command{
@@ -63,7 +65,7 @@ func TestInitCmd_FlagName(t *testing.T) {
 	// tracked .env.example fixture.
 	t.Chdir(t.TempDir())
 
-	root := newInitCmd()
+	root := newInitCmd(t)
 	var buf bytes.Buffer
 	root.SetOut(&buf)
 	root.SetErr(&buf)
@@ -86,7 +88,7 @@ func TestInitCmd_FlagDomain(t *testing.T) {
 	// tracked .env.example fixture.
 	t.Chdir(t.TempDir())
 
-	root := newInitCmd()
+	root := newInitCmd(t)
 	var buf bytes.Buffer
 	root.SetOut(&buf)
 	root.SetErr(&buf)
@@ -108,7 +110,7 @@ func TestInitCmd_FlagNonInteractive(t *testing.T) {
 	// tracked .env.example fixture.
 	t.Chdir(t.TempDir())
 
-	root := newInitCmd()
+	root := newInitCmd(t)
 	var buf bytes.Buffer
 	root.SetOut(&buf)
 	root.SetErr(&buf)
@@ -130,7 +132,7 @@ func TestInitCmd_UnknownFlagRejected(t *testing.T) {
 	// tracked .env.example fixture.
 	t.Chdir(t.TempDir())
 
-	root := newInitCmd()
+	root := newInitCmd(t)
 	var buf bytes.Buffer
 	root.SetOut(&buf)
 	root.SetErr(&buf)
@@ -151,7 +153,7 @@ func TestInitCmd_FlagFast(t *testing.T) {
 	// tracked .env.example fixture.
 	t.Chdir(t.TempDir())
 
-	root := newInitCmd()
+	root := newInitCmd(t)
 	var buf bytes.Buffer
 	root.SetOut(&buf)
 	root.SetErr(&buf)
@@ -170,7 +172,7 @@ func TestInitCmd_FlagFast(t *testing.T) {
 func TestInitCmd_NonInteractiveCreatesEnvFile(t *testing.T) {
 	t.Chdir(t.TempDir())
 
-	root := newInitCmd()
+	root := newInitCmd(t)
 	var buf bytes.Buffer
 	root.SetOut(&buf)
 	root.SetErr(&buf)
@@ -191,7 +193,7 @@ func TestInitCmd_NonInteractiveCreatesEnvFile(t *testing.T) {
 func TestInitCmd_NameFlagSetsProjectName(t *testing.T) {
 	t.Chdir(t.TempDir())
 
-	root := newInitCmd()
+	root := newInitCmd(t)
 	var buf bytes.Buffer
 	root.SetOut(&buf)
 	root.SetErr(&buf)
@@ -215,9 +217,8 @@ func TestInitCmd_NameFlagSetsProjectName(t *testing.T) {
 // in the generated .env file.
 func TestInitCmd_DomainFlagSetsBaseDomain(t *testing.T) {
 	t.Chdir(t.TempDir())
-	t.Setenv("PROJECT_NAME", "init-domain-fixture")
 
-	root := newInitCmd()
+	root := newInitCmd(t)
 	var buf bytes.Buffer
 	root.SetOut(&buf)
 	root.SetErr(&buf)
@@ -247,7 +248,7 @@ func TestInitCmd_ForceOverwritesExistingEnv(t *testing.T) {
 		t.Fatalf("writing seed .env: %v", err)
 	}
 
-	root := newInitCmd()
+	root := newInitCmd(t)
 	var buf bytes.Buffer
 	root.SetOut(&buf)
 	root.SetErr(&buf)
@@ -262,7 +263,7 @@ func TestInitCmd_ForceOverwritesExistingEnv(t *testing.T) {
 // TestInitCmd_InvalidNameRejected verifies that --name with all invalid
 // characters is rejected with a clear error message.
 func TestInitCmd_InvalidNameRejected(t *testing.T) {
-	root := newInitCmd()
+	root := newInitCmd(t)
 	var buf bytes.Buffer
 	root.SetOut(&buf)
 	root.SetErr(&buf)
@@ -357,9 +358,8 @@ func TestValidateDomain_WithTab(t *testing.T) {
 // produces a .env file in a fresh directory.
 func TestInitCmd_TemplateFlag_Valid(t *testing.T) {
 	t.Chdir(t.TempDir())
-	t.Setenv("PROJECT_NAME", "init-template-fixture")
 
-	root := newInitCmd()
+	root := newInitCmd(t)
 	var buf bytes.Buffer
 	root.SetOut(&buf)
 	root.SetErr(&buf)
@@ -380,7 +380,7 @@ func TestInitCmd_TemplateFlag_Valid(t *testing.T) {
 func TestInitCmd_TemplateFlag_Invalid(t *testing.T) {
 	t.Chdir(t.TempDir())
 
-	root := newInitCmd()
+	root := newInitCmd(t)
 	var buf bytes.Buffer
 	root.SetOut(&buf)
 	root.SetErr(&buf)
@@ -502,7 +502,7 @@ func TestClassifyInitError_CategoryIsEnum(t *testing.T) {
 func TestInitCmd_DemoFlag(t *testing.T) {
 	t.Chdir(t.TempDir())
 
-	root := newInitCmd()
+	root := newInitCmd(t)
 	var buf bytes.Buffer
 	root.SetOut(&buf)
 	root.SetErr(&buf)

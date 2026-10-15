@@ -12,6 +12,7 @@ func TestInitFixturesIgnorePriorProject(t *testing.T) {
 	t.Setenv("PROJECT_NAME", "invalid_project_name")
 	t.Setenv("ENV", "prod")
 	t.Setenv("BASE_DOMAIN", "previous.example")
+	t.Run("non-interactive", TestInitCmd_NonInteractiveCreatesEnvFile)
 	t.Run("domain", TestInitCmd_DomainFlagSetsBaseDomain)
 	t.Run("template", TestInitCmd_TemplateFlag_Valid)
 }

@@ -46,6 +46,9 @@ func runValidateWithManifest(t *testing.T, fixture string) (error, string) {
 func TestConfigValidateNselfYAML(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
 		v15 := compat.V15()
+		restoreProcessEnv(t)
+		clearProjectConfigEnv(t)
+		compattest.Set(t, v15)
 		baseErr, baseStderr := runValidateWithManifest(t, "")
 		if baseErr != nil {
 			t.Fatalf("baseline project must validate (otherwise the exit checks prove nothing): %v\n%s", baseErr, baseStderr)
