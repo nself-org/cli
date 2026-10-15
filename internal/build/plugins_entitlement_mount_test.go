@@ -107,7 +107,7 @@ func TestMountEmptyFileE125(t *testing.T) {
 	if err != nil || len(data) != 0 {
 		t.Fatalf("empty file: %q %v", data, err)
 	}
-	fragment, err := os.ReadFile(path)
+	fragment, err := os.ReadFile(filepath.Join(project, ".nself", "plugins", "fixture", pluginComposeFilename))
 	if err != nil || !bytes.Contains(fragment, []byte(entitlementMount)) {
 		t.Fatalf("failed build omitted mount: %s %v", fragment, err)
 	}
@@ -245,7 +245,7 @@ func TestMountRefreshOnceAfterDiscovery(t *testing.T) {
 			t.Errorf("refresh installation %q, want %q", installation, dir)
 		}
 		for _, name := range []string{"fixture", "second"} {
-			data, err := os.ReadFile(filepath.Join(dir, name, pluginComposeFilename))
+			data, err := os.ReadFile(filepath.Join(project, ".nself", "plugins", name, pluginComposeFilename))
 			if err != nil || !bytes.Contains(data, []byte(entitlementMount)) {
 				t.Errorf("refresh before discovery completed: %s %v", name, err)
 			}

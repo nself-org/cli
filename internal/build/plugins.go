@@ -1,7 +1,7 @@
 package build
 
 // Purpose: plugin directory resolution and discovery of installed plugins'
-// docker-compose fragments, plus in-place normalization of stale Dockerfile
+// docker-compose fragments, plus project-local normalization of stale Dockerfile
 // references left over from the Rust->Go migration.
 // Inputs: workdir and the global plugin directory.
 // Outputs: absolute compose-fragment paths, or normalized compose bytes.
@@ -12,7 +12,6 @@ package build
 // in plugins_image_to_build.go (see its header for rationale).
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -57,16 +56,15 @@ func DefaultPluginDir() string {
 
 // DiscoverPluginComposeFiles scans pluginDir for installed plugins that
 // contain a docker-compose.plugin.yml file. It returns absolute paths to
-// each discovered compose file, sorted by plugin directory name for
+// each normalized project-local compose file, sorted by plugin directory name for
 // deterministic ordering. Plugins without a compose file are silently
 // skipped (they are background-process plugins, not compose plugins).
 func DiscoverPluginComposeFiles(workdir, pluginDir string) ([]string, error) {
 	return discoverPluginComposeFilesFx(writeEffects{}, newDiskSink(workdir), workdir, pluginDir)
 }
 
-// discoverPluginComposeFilesFx is DiscoverPluginComposeFiles with the in-place
-// fragment normalisation routed through fx: plan mode records one
-// plugin-fragment effect per rewritten fragment and leaves the file alone.
+// discoverPluginComposeFilesFx normalizes installed fragments into the project
+// Sink: plan mode records overlays without changing either filesystem.
 func discoverPluginComposeFilesFx(fx Effects, sink Sink, workdir, pluginDir string, refreshed ...*bool) ([]string, error) {
 	entries, err := os.ReadDir(pluginDir)
 	if err != nil {
@@ -107,7 +105,7 @@ func discoverPluginComposeFilesFx(fx Effects, sink Sink, workdir, pluginDir stri
 			continue
 		}
 
-		// Normalize stale Dockerfile references in place. Installed compose
+		// Normalize stale Dockerfile references in a project copy. Installed compose
 		// files may predate the Rust→Go migration and reference "Dockerfile.go"
 		// or "Dockerfile.golang" that no longer exist. Fix them so `nself build`
 		// always produces a working docker-compose manifest without requiring
@@ -154,16 +152,12 @@ func discoverPluginComposeFilesFx(fx Effects, sink Sink, workdir, pluginDir stri
 					licensedSeen = true
 				}
 			}
-			if !bytes.Equal(normalized, content) {
-				// Write the corrected file back so the manifest references a valid compose.
-				// The bytes go through the Sink in both modes (P7-LIVE-03) so a plan
-				// carries and binds them; write failures must fail the build so
-				// licensed services cannot run without their entitlement guard.
-				_ = fx.Do(EffectPluginFragment, absPath, "normalise plugin compose fragment in place", nil)
-				if werr := sink.WriteFile(absPath, normalized, 0644); werr != nil {
-					return nil, werr
-				}
+			absPath, err = writePluginComposeOverlay(sink, workdir, entry.Name(), normalized)
+			if err != nil {
+				return nil, err
 			}
+		} else {
+			return nil, fmt.Errorf("reading plugin compose fragment %s: %w", absPath, readErr)
 		}
 
 		composePaths = append(composePaths, absPath)

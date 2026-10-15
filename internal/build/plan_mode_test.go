@@ -489,12 +489,6 @@ func TestPlanModeEqualsWrite(t *testing.T) {
 			for _, l := range before {
 				beforeSet[l] = true
 			}
-			for _, e := range res.Planned.Effects {
-				if e.Kind == EffectPluginFragment {
-					rel, _ := filepath.Rel(f.root, e.Target)
-					planned[filepath.ToSlash(rel)] = true // an in-place rewrite is an effect, not an artifact
-				}
-			}
 			for _, l := range planSnapshot(t, f.root) {
 				fields := strings.Fields(l)
 				if fields[0] != "f" || beforeSet[l] {
@@ -576,7 +570,7 @@ func TestPlanModeAutoInstall(t *testing.T) {
 
 // TestPlanModeHostEffects: a fixture that needs new local certificates records
 // certificates (with the domains), hosts, trust-store, secrets-persist (key
-// names only), plugin-fragment and build-lock effects, and still renders the
+// names only) and build-lock effects, and still renders the
 // TLS server blocks write mode produces.
 func TestPlanModeHostEffects(t *testing.T) {
 	f := newPlanFixture(t, "local-tls")
@@ -589,7 +583,7 @@ func TestPlanModeHostEffects(t *testing.T) {
 	for _, e := range res.Planned.Effects {
 		byKind[e.Kind] = e
 	}
-	for _, k := range []string{EffectCertificates, EffectHosts, EffectTrustStore, EffectSecretsPersist, EffectPluginFragment, EffectBuildLock} {
+	for _, k := range []string{EffectCertificates, EffectHosts, EffectTrustStore, EffectSecretsPersist, EffectBuildLock} {
 		if _, ok := byKind[k]; !ok {
 			t.Errorf("missing %s effect in %+v", k, effectKinds(res.Planned.Effects))
 		}
