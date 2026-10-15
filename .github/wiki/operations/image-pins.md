@@ -6,6 +6,13 @@ Image pins move only through one reviewed pull request a week. See [ADR 0030: Im
 
 The workflow `.github/workflows/image-pin-bump.yml` runs every Monday at 06:00 UTC. It can also be started by hand (`workflow_dispatch`).
 
+The default image check runs `TestRepositoryPolicyCoverage` on pushes and pull
+requests that change image pins, the bump policy, or `tools/imagebump`. This
+offline test uses the weekly planner to reject missing policies and versions
+outside their regex before the scheduled bump runs. Add a policy row for every
+new non-plugin image. Valkey's `8.1-alpine` tag stays on that floating minor line;
+the weekly lock regeneration refreshes its digest.
+
 1. `tools/imagebump` reads `internal/compose/images.yaml` and the policy `.github/image-bump-policy.yaml`. For each entry it lists the registry tags (through `scripts/images/mirror-images.sh --list-tags`) and picks the newest tag the policy allows.
 2. It rewrites the `version` of the entries that moved and nothing else in the file.
 3. It runs `go run ./tools/imagelock -resolve`, which regenerates `internal/compose/images.lock.json`. This also runs when no version moved, so floating tags such as `latest` or `alpine` refresh their digests.

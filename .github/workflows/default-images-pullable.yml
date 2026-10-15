@@ -26,6 +26,8 @@ on:
       - 'internal/compose/images.lock.json'
       - 'tools/imagelist/**'
       - 'tools/imagelock/**'
+      - 'tools/imagebump/**'
+      - '.github/image-bump-policy.yaml'
       - '.github/workflows/default-images-pullable.yml'
   pull_request:
     paths:
@@ -33,6 +35,8 @@ on:
       - 'internal/compose/images.lock.json'
       - 'tools/imagelist/**'
       - 'tools/imagelock/**'
+      - 'tools/imagebump/**'
+      - '.github/image-bump-policy.yaml'
       - '.github/workflows/default-images-pullable.yml'
   workflow_dispatch:
     inputs:
@@ -58,6 +62,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+
+      - name: Check image bump policy coverage
+        run: go test -mod=vendor ./tools/imagebump/... -run '^TestRepositoryPolicyCoverage$' -count=1
 
       - name: Check every default image manifest resolves
         env:
