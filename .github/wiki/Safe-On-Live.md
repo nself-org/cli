@@ -18,6 +18,8 @@ The invocation decorator takes the lock around a command's body when all of thes
 - The command's registry `side_effect`, after flag escalation, is `write`, `remote` or `destructive`. For example `nself build`, `nself config set`, `nself stop --volumes`, `nself plug --apply`.
 - The command's output kind is `document`. `stream` and `interactive` commands are exempt: they can run for hours and no machine surface exposes them. `nself start --watch` is a stream.
 
+Read-only modes (`build --plan`, including `--json`, `config set --preview`, and `update --plan`) also never take the lock or create its file. They can be inspected while another command holds the lock. Explicit false flags (`--plan=false`, `--preview=false`) keep the normal mutation lock policy.
+
 Read commands (`status`, `doctor`, `config get`, `logs`, and every other `side_effect: read`) never take the lock and never create its file. A command refused by `--json` (E402) is refused before any lock is taken.
 
 ### How it works
@@ -69,7 +71,7 @@ It is a cooperative lock between nself processes of the same user:
 
 ### What `--plan` guarantees
 
-- It writes nothing under the project, `~/.nself`, the plugin directory, the fronting stack's nginx directory or `/etc/hosts`, and it starts, stops and creates no container. The command guard still creates the operation lock file `.nself/op.lock` (build is a `write` command), and the usual one-line invocation log in `~/.nself/logs/nself.log` is written unless `NSELF_CMD_LOG_ENABLED=false`. The log directory is created `0700` and the log files `0600` (an older, wider directory or rotated file is narrowed on the next write). Secret arguments, secret-looking flag values (`--db-password`, `--auth-token`) and URL passwords are written as `[REDACTED]`; the log holds the command line and the error text, never command output.
+- It writes nothing under the project, `~/.nself`, the plugin directory, the fronting stack's nginx directory or `/etc/hosts`, and it starts, stops and creates no container. It never takes the operation lock or creates `.nself/op.lock`. The usual one-line invocation log in `~/.nself/logs/nself.log` is written unless `NSELF_CMD_LOG_ENABLED=false`. The log directory is created `0700` and the log files `0600` (an older, wider directory or rotated file is narrowed on the next write). Secret arguments, secret-looking flag values (`--db-password`, `--auth-token`) and URL passwords are written as `[REDACTED]`; the log holds the command line and the error text, never command output.
 - Container impact comes from `docker compose config --hash` over the planned files (the same files and env files `nself start` passes) compared with the `com.docker.compose.config-hash` label of the running containers. A service whose hash differs is `recreate`; one running without the label is `unknown` and treated as a recreate. A planned service with no container (running or stopped) is `create` when the project already has containers; on a project with none, nothing is listed as `create`. A service that mounts a named volume is `stateful`. Every container item is `applied_by: next-start`: no build command recreates a container. If Docker cannot be asked, the plan says `containers.known: false` and prints a notice on stderr; it never fails for that reason.
 - Secrets are never printed: env-kind artifacts are redacted, `--diff` shows key names only, and an effect that persists a secret names the key, not the value.
 

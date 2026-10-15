@@ -18,6 +18,7 @@
 //     outside a project, so a run there pays no canon parse.
 //   - The class is the registry class after flag escalation: a given flag only
 //     raises the side effect and replaces the output kind (EPIC D5/D6).
+//     Build/update plans and config-set previews are read-only exceptions.
 package oplockcmd
 
 import (
@@ -78,7 +79,8 @@ func take(cmd *cobra.Command, entry EntryFunc) (context.Context, func(), error) 
 }
 
 // Effective returns the side effect and output kind of e after the flags given
-// on cmd: a flag only escalates the side effect and replaces the output kind.
+// on cmd: flags escalate the side effect and replace the output kind, except
+// the read-only plan/preview modes, which never take the operation lock.
 func Effective(cmd *cobra.Command, e *cmdregistry.Command) (side, out string) {
 	side, out = e.SideEffect, e.Output
 	for _, f := range e.Flags {
@@ -93,5 +95,25 @@ func Effective(cmd *cobra.Command, e *cmdregistry.Command) (side, out string) {
 			out = *f.Output
 		}
 	}
+	if readOnlyPlan(cmd, e.Path) {
+		side = canon.SideEffectRead
+	}
 	return side, out
+}
+
+// readOnlyPlan identifies the supported non-mutating modes by canonical path.
+// Inputs are parsed command flags and registry identity; false flags keep the
+// normal mutation policy. Other commands' similarly named flags are unaffected.
+func readOnlyPlan(cmd *cobra.Command, path string) bool {
+	var flag string
+	switch path {
+	case "nself build", "nself update":
+		flag = "plan"
+	case "nself config set":
+		flag = "preview"
+	default:
+		return false
+	}
+	on, err := cmd.Flags().GetBool(flag)
+	return err == nil && on
 }
