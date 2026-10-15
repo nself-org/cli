@@ -25,3 +25,20 @@ func TestCLITargets(t *testing.T) {
 		}
 	}
 }
+
+func TestCLITargetsOfV1PluginType(t *testing.T) {
+	for _, typ := range []string{"service", "cli", ""} {
+		t.Run(typ, func(t *testing.T) {
+			m, err := Normalize([]byte(`{"name":"retro-gaming","version":"1.0.0",
+				"pluginType":"` + typ + `","binaryName":"nself-server",
+				"cliCommands":[{"name":"server"}]}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := CLITargets(m.Name, typ, "nself-server", []string{"server"})
+			if got := CLITargetsOf(m); !reflect.DeepEqual(got, want) {
+				t.Fatalf("got %v, want installer targets %v", got, want)
+			}
+		})
+	}
+}
