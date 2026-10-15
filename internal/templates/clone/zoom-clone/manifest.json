@@ -2,5 +2,5 @@
   "name": "zoom-clone",
   "version": "1.0.0",
   "description": "Video meeting platform with recordings and participant management",
-  "required_plugins": ["livekit", "recording", "auth", "notify"]
+  "required_plugins": ["livekit", "auth", "notify"]
 }

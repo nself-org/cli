@@ -31,7 +31,7 @@ Six clone templates are embedded directly in the CLI binary. They work without a
 | `notion-clone` | 1.0.0 | `cms`, `auth`, `realtime` | Collaborative note-taking with workspaces, pages, and blocks |
 | `slack-clone` | 1.0.0 | `chat`, `livekit`, `realtime`, `auth`, `notify` | Team messaging with threads, reactions, and voice/video |
 | `substack-clone` | 1.0.0 | `cms`, `notify`, `auth` | Newsletter platform with subscriber tiers and post publishing |
-| `zoom-clone` | 1.0.0 | `livekit`, `recording`, `auth`, `notify` | Video meeting platform with lobby, recording, and participant management |
+| `zoom-clone` | 1.0.0 | `livekit`, `auth`, `notify` | Video meeting platform with lobby, recording, and participant management |
 
 All bundled templates are free (no license check). Scaffold one with:
 

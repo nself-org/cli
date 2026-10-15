@@ -121,7 +121,8 @@ func TestTemplateEntitlementE137Recording(t *testing.T) {
 		}
 		return base(slug)
 	}
-	rep := Check(context.Background(), "zoom-clone", required(t, "zoom-clone"), find, s.lic)
+	plugins := append(required(t, "zoom-clone"), "recording") // synthetic unknown requirement
+	rep := Check(context.Background(), "zoom-clone", plugins, find, s.lic)
 	if len(rep.Unknown) != 1 || rep.Unknown[0] != "recording" {
 		t.Fatalf("Unknown = %v, want recording (and auth is licensed, not unknown)", rep.Unknown)
 	}

@@ -53,7 +53,7 @@ Clone templates are full-stack app starters embedded in the CLI binary. They inc
 | `notion-clone` | `np_workspaces`, `np_pages`, `np_blocks`, `np_page_members` | `cms`, `auth`, `realtime` |
 | `slack-clone` | `np_workspaces`, `np_channels`, `np_messages`, `np_threads`, `np_reactions` | `chat`, `livekit`, `realtime`, `auth`, `notify` |
 | `substack-clone` | `np_newsletters`, `np_posts`, `np_subscribers`, `np_tiers` | `cms`, `notify`, `auth` |
-| `zoom-clone` | `np_meetings`, `np_participants`, `np_recordings` | `livekit`, `recording`, `auth`, `notify` |
+| `zoom-clone` | `np_meetings`, `np_participants`, `np_recordings` | `livekit`, `auth`, `notify` |
 
 ### Plugin entitlement
 
