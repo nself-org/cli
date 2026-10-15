@@ -89,13 +89,13 @@ check_rule_commits_since_prior() {
 }
 
 check_rule_license_scan() {
-  # DENY-004: failed-license-scan. Query latest license-audit.yml run.
+  # DENY-004: failed-license-scan. Query latest license-audit.yml run on main.
   if ! command -v gh >/dev/null 2>&1; then
     log_warn "gh CLI not found; cannot verify license-audit. Treating as PASS (CI gate handles it)."
     return 0
   fi
   local conclusion
-  conclusion=$(gh run list --workflow license-audit.yml --limit 1 --json conclusion -q '.[0].conclusion' 2>/dev/null || echo "")
+  conclusion=$(gh run list --workflow license-audit.yml --branch main --limit 1 --json conclusion -q '.[0].conclusion' 2>/dev/null || echo "")
   if [ "${conclusion}" = "success" ]; then
     return 0
   fi
@@ -122,8 +122,12 @@ TRIGGERED_RULES=()
 
 log_info "evaluating denylist for tag: ${TAG}"
 
-if ! check_rule_signature; then TRIGGERED_RULES+=("DENY-001 signature-check"); fi
-if ! check_rule_sbom; then TRIGGERED_RULES+=("DENY-002 missing-sbom"); fi
+if [ -d "${REPO_ROOT}/dist" ]; then
+  if ! check_rule_signature; then TRIGGERED_RULES+=("DENY-001 signature-check"); fi
+  if ! check_rule_sbom; then TRIGGERED_RULES+=("DENY-002 missing-sbom"); fi
+else
+  log_info "no dist/: deferring DENY-001 and DENY-002 to post-build pre-release-gate.yml"
+fi
 if ! check_rule_commits_since_prior; then TRIGGERED_RULES+=("DENY-003 zero-commits-since-prior-tag"); fi
 if ! check_rule_license_scan; then TRIGGERED_RULES+=("DENY-004 failed-license-scan"); fi
 if ! check_rule_milestone_closed; then TRIGGERED_RULES+=("DENY-005 no-milestone-closed"); fi
