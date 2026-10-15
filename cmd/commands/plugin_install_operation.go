@@ -30,8 +30,18 @@ func installPluginWithOperation(ctx context.Context, cfg *config.Config, name, p
 	})
 }
 
+// pluginUpdateFn is plugin.Update; tests replace it.
+var pluginUpdateFn = plugin.Update
+
+// updatePluginWithOperation updates one plugin and then refreshes its bundle
+// ledger record in the same operation. plugin.Update leaves the ledger, which
+// supplies the build's plugin pins, on the old version and checksum, so every
+// update path (plugin update, --all, --tier, nself update) goes through here.
 func updatePluginWithOperation(ctx context.Context, cfg *config.Config, name, pluginDir string) error {
 	return withPluginInstallOperation(ctx, pluginDir, func() error {
-		return plugin.Update(ctx, cfg, name, pluginDir)
+		if err := pluginUpdateFn(ctx, cfg, name, pluginDir); err != nil {
+			return err
+		}
+		return refreshBundleLedger(pluginDir, name)
 	})
 }

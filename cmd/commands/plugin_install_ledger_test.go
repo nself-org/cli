@@ -185,3 +185,33 @@ func TestBundleReconcileHookOutsideProjectPrintsHint(t *testing.T) {
 		t.Errorf("stderr = %q, want the outside-project hint", errBuf.String())
 	}
 }
+
+// D-0825: every plugin update path refreshes the bundle ledger record, so the
+// image lock (built from the ledger) does not keep the pre-update version and
+// checksum.
+func TestPluginUpdateRefreshesBundleLedger(t *testing.T) {
+	dir := t.TempDir()
+	writeLedgerFixturePlugin(t, dir, "bots", "1.0.0")
+	store := bundle.LedgerStore(dir)
+	old := strings.Repeat("a", 64)
+	err := store.Update(func(l *ledger.Ledger) error {
+		l.AddBundle("nclaw", []ledger.InstalledPlugin{{Name: "bots", Version: "1.0.0", Tier: ledger.TierFree, Checksum: old}}, time.Now())
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prev := pluginUpdateFn
+	t.Cleanup(func() { pluginUpdateFn = prev })
+	pluginUpdateFn = func(_ context.Context, _ *config.Config, name, pluginDir string) error {
+		writeLedgerFixturePlugin(t, pluginDir, name, "2.0.0") // what plugin.Update leaves on disk
+		return nil
+	}
+	if err := updateWithTier(context.Background(), nil, "bots", dir, ""); err != nil {
+		t.Fatal(err)
+	}
+	l, _, _ := store.Load()
+	if rec := l.Plugins["bots"]; rec.Version != "2.0.0" || rec.Checksum == old {
+		t.Fatalf("ledger record after plugin update = %+v, want version 2.0.0 and a new checksum", rec)
+	}
+}

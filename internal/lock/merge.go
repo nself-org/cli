@@ -82,6 +82,14 @@ func MergeDetailed(files []SourceFile, owned func(service string) bool, forCompa
 					problems[name+": the image "+s.Image+" in "+f.Name+" contains a variable: image source cannot be verified"], bad[name] = true, true
 				}
 			}
+			// A !reset clears the earlier image and a service-level !override
+			// replaces the whole earlier service, so neither may keep it.
+			if s.Reset || s.Override {
+				delete(merged, name)
+			}
+			if s.Reset && owned(name) {
+				problems[name+": !reset in "+f.Name+": image source cannot be verified"], bad[name] = true, true
+			}
 			if s.Image == "" {
 				continue
 			}

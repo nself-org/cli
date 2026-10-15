@@ -184,12 +184,7 @@ var newUpdateDeps = func() updateDeps {
 			if err != nil {
 				return err
 			}
-			if err := updatePluginWithOperation(ctx, cfg, slug, resolvePluginDir()); err != nil {
-				return err
-			}
-			// plugin.Update leaves the bundle ledger, which supplies the build's
-			// plugin pins, on the old version and checksum.
-			return refreshBundleLedger(resolvePluginDir(), slug)
+			return updatePluginWithOperation(ctx, cfg, slug, resolvePluginDir())
 		},
 		build: func(ctx context.Context, dir string) error {
 			_, _, err := reconcile.ApplyBuild(ctx, reconcile.Request{

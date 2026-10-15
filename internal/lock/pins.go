@@ -73,6 +73,12 @@ type ServiceSource struct {
 	Image   string
 	Extends bool
 	Build   bool
+	// Reset is set when the service or its image carries Compose's !reset tag:
+	// the key is cleared, so an earlier file's image no longer applies. A
+	// service-level !override sets Override: it replaces the earlier service
+	// whole, so the earlier image does not carry over either.
+	Reset    bool
+	Override bool
 }
 
 // ComposeSources reads every service of the first document of a compose file,
@@ -81,12 +87,8 @@ type ServiceSource struct {
 // document, and this reader sees only the first, so such a file is opaque).
 func ComposeSources(data []byte) (services map[string]ServiceSource, include, multiDoc bool, err error) {
 	var doc struct {
-		Include  yaml.Node `yaml:"include"`
-		Services map[string]struct {
-			Image   string    `yaml:"image"`
-			Extends yaml.Node `yaml:"extends"`
-			Build   yaml.Node `yaml:"build"`
-		} `yaml:"services"`
+		Include  yaml.Node            `yaml:"include"`
+		Services map[string]yaml.Node `yaml:"services"`
 	}
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	if err := dec.Decode(&doc); err != nil && !errors.Is(err, io.EOF) {
@@ -95,8 +97,23 @@ func ComposeSources(data []byte) (services map[string]ServiceSource, include, mu
 	var extra yaml.Node
 	multiDoc = !errors.Is(dec.Decode(&extra), io.EOF)
 	services = map[string]ServiceSource{}
-	for name, s := range doc.Services {
-		services[name] = ServiceSource{Image: s.Image, Extends: s.Extends.Kind != 0, Build: s.Build.Kind != 0}
+	for name, node := range doc.Services {
+		var s struct {
+			Image   yaml.Node `yaml:"image"`
+			Extends yaml.Node `yaml:"extends"`
+			Build   yaml.Node `yaml:"build"`
+		}
+		if node.Tag != "!reset" {
+			if err := node.Decode(&s); err != nil {
+				return nil, false, false, fmt.Errorf("lock: parse compose service %s: %w", name, err)
+			}
+		}
+		src := ServiceSource{Extends: s.Extends.Kind != 0, Build: s.Build.Kind != 0,
+			Reset: node.Tag == "!reset" || s.Image.Tag == "!reset", Override: node.Tag == "!override"}
+		if !src.Reset && s.Image.Kind == yaml.ScalarNode {
+			src.Image = s.Image.Value
+		}
+		services[name] = src
 	}
 	return services, doc.Include.Kind != 0, multiDoc, nil
 }
