@@ -34,6 +34,7 @@ type graph struct {
 	pkgs          map[string]pkgInfo
 	imports       map[string][]string
 	testImporters map[string][]string
+	source        []sourceImport // all build variants and tests, for D1/D2 only
 }
 
 var (
@@ -42,9 +43,10 @@ var (
 	graphErr  error
 )
 
-// loadGraph returns the real module graph. One `go list` call per test binary
-// (EPIC G3): fixed GOOS/GOARCH, vendor mode, so the result does not depend on
-// the host. A missing `go` skips locally and fails in CI (requireTool).
+// loadGraph returns the real module graph and all-variant source imports.
+// One Linux/amd64 default-tag `go list` call per test binary supplies D3/D9;
+// source parsing supplies platform/tag/test-independent D1/D2 coverage.
+// A missing `go` skips locally and fails in CI (requireTool).
 func loadGraph(t *testing.T) graph {
 	t.Helper()
 	goBin := requireTool(t, "go")
@@ -71,7 +73,12 @@ func runGoList(goBin, root string) (graph, error) {
 	if err != nil {
 		return graph{}, fmt.Errorf("go list: %v: %s", err, strings.TrimSpace(stderr.String()))
 	}
-	return decodeGoList(bytes.NewReader(out), module)
+	g, err := decodeGoList(bytes.NewReader(out), module)
+	if err != nil {
+		return graph{}, err
+	}
+	g.source, err = sourceImports(root, module)
+	return g, err
 }
 
 type listedPkg struct {
