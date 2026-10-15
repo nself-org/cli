@@ -53,7 +53,7 @@ Clone templates are full-stack app starters embedded in the CLI binary. They inc
 | `notion-clone` | `np_workspaces`, `np_pages`, `np_blocks`, `np_page_members` | `cms`, `auth`, `realtime` |
 | `slack-clone` | `np_workspaces`, `np_channels`, `np_messages`, `np_threads`, `np_reactions` | `chat`, `livekit`, `realtime`, `auth`, `notify` |
 | `substack-clone` | `np_newsletters`, `np_posts`, `np_subscribers`, `np_tiers` | `cms`, `notify`, `auth` |
-| `zoom-clone` | `np_meetings`, `np_participants`, `np_recordings` | `livekit`, `recording`, `auth`, `notify` |
+| `zoom-clone` | `np_meetings`, `np_participants` | `livekit`, `auth`, `notify` |
 
 ### Plugin entitlement
 
@@ -62,7 +62,7 @@ Before it writes anything, `nself init --template <x>-clone` looks up each requi
 | Finding | From v1.5 | In v1.4 mode |
 |---|---|---|
 | A licensed plugin your licence does not cover | Refused with `E110` (exit 3); the message lists each plugin, the Bundles that include it and the purchase link. Nothing is written. | The same text is printed as a warning and the template is scaffolded. |
-| A plugin that is in no registry (`recording`, required by `zoom-clone`) | Refused with `E137` (exit 1). | Warning, then scaffold. |
+| A plugin that is in no registry | Refused with `E137` (exit 1). | Warning, then scaffold. |
 | No catalog and no cached copy | Refused with `E115` (exit 2). | Scaffold, no message. |
 
 A licensed plugin is covered when any of your configured licence keys covers one of its Bundles (an all-access licence such as ɳSelf+ covers them all). A licensed plugin that is in no Bundle cannot be decided here; init prints a note and `nself plugin install` checks it later. A plugin that exists in both tiers counts as free, as it does for `nself plugin install` without a licence. In v1.4 mode the whole check gives up after 8 seconds, so a slow network never holds up the scaffold, and a check that timed out prints nothing. Init may print a `note:` line for licensed plugins that are in no Bundle, and the licence client's offline-grace warning when the licence server is unreachable. Buy a Bundle at https://nself.org/pricing or run `nself license set <key>`, then run the command again.
