@@ -46,11 +46,9 @@ func (sp *SSHProber) Architecture(ctx context.Context, s Server) (string, error)
 	}
 	key := os.Getenv(s.SSHKeyRef)
 	if key == "" {
-		key = os.Getenv("NSELF_DEPLOY_SSH_KEY")
-	}
-	if key == "" {
-		home, _ := os.UserHomeDir()
-		key = home + "/.ssh/id_ed25519"
+		// NSELF_DEPLOY_KEY_PATH, NSELF_DEPLOY_SSH_KEY, then ~/.ssh/id_ed25519: the
+		// deploy key every other remote command uses (D-0526).
+		key = remote.DefaultKeyPath()
 	}
 	tier, envName := probeTier(sp.projectRoot, s)
 	policy, err := HostKeyOptions(ctx, envName, s.Name, tier, s.Host, sp.shipping.on())

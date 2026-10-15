@@ -43,6 +43,24 @@ func PreflightShipping(ctx context.Context, inv *Inventory, env string, composeF
 	return preflightWith(WithShippingRun(ctx), inv, env, composeFiles, prober, archguard.RegistryLookup)
 }
 
+// SingleHostInventory scopes a deploy preflight to one remote host. The loaded
+// inventory server whose Host equals host is reused (so its arch and key ref
+// apply), else a synthetic app server named <env>-app is built. The result holds
+// one remote environment named env. remoteDeployPush and the ops preflight share it.
+func SingleHostInventory(loaded *Inventory, env, host string) *Inventory {
+	server := Server{Name: env + "-app", Role: RoleApp, Host: host, Primary: true}
+	if loaded != nil {
+		for _, environment := range loaded.Environments {
+			for _, candidate := range environment.Servers {
+				if candidate.Host == host {
+					server = candidate
+				}
+			}
+		}
+	}
+	return &Inventory{Environments: map[string]Environment{env: {Name: env, Kind: "remote", Servers: []Server{server}}}}
+}
+
 // ComposeFilesForDeploy includes every generated compose fragment in its
 // recorded merge order. A missing listed file fails closed in composeImages.
 func ComposeFilesForDeploy(base string) ([]string, error) {

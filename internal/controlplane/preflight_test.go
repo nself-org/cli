@@ -116,3 +116,51 @@ func TestProbeArchitectureStrictHostKey(t *testing.T) {
 		t.Fatalf("probe ran ssh without a host-key check: %q", lines)
 	}
 }
+
+// TestProbeArchitectureUsesDeployKeyPath proves the arch probe takes the deploy
+// key from NSELF_DEPLOY_KEY_PATH when the server names no key env var (D-0526),
+// so a host reachable only with that key is not probed with the default key.
+func TestProbeArchitectureUsesDeployKeyPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a shell fixture")
+	}
+	compattest.Set(t, false)
+	dir := t.TempDir()
+	log := filepath.Join(dir, "args.log")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '" + log + "'\nprintf 'aarch64\\n'\n"
+	if err := os.WriteFile(filepath.Join(dir, "ssh"), []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	deployKey := filepath.Join(dir, "deploy_key")
+	t.Setenv("NSELF_DEPLOY_KEY_PATH", deployKey)
+	t.Setenv("NSELF_DEPLOY_SSH_KEY", "")
+	prober := NewSSHProber(dir, false)
+	server := Server{Name: "key-host", Host: "u@key.example.test"}
+	if arch, err := prober.Architecture(context.Background(), server); err != nil || arch != "arm64" {
+		t.Fatalf("architecture = %q, %v", arch, err)
+	}
+	args, err := os.ReadFile(log)
+	if err != nil || !strings.Contains(string(args), "-i "+deployKey+" ") {
+		t.Fatalf("ssh args = %q, %v; want -i %s", args, err, deployKey)
+	}
+}
+
+// TestSingleHostInventory covers the one-environment scoping both deploy
+// preflights share: a matching inventory server is reused, else a synthetic
+// app server is built for the host.
+func TestSingleHostInventory(t *testing.T) {
+	loaded := &Inventory{Environments: map[string]Environment{
+		"prod": {Name: "prod", Servers: []Server{{Name: "web", Host: "u@known.example.test", Arch: "arm64", SSHKeyRef: "K"}}},
+	}}
+	got := SingleHostInventory(loaded, "ops", "u@known.example.test")
+	env := got.Environments["ops"]
+	if env.Name != "ops" || env.Kind != "remote" || len(env.Servers) != 1 || env.Servers[0].Name != "web" || env.Servers[0].Arch != "arm64" {
+		t.Fatalf("known host not reused: %+v", env)
+	}
+	got = SingleHostInventory(loaded, "ops", "u@new.example.test")
+	srv := got.Environments["ops"].Servers[0]
+	if srv.Name != "ops-app" || srv.Role != RoleApp || !srv.Primary || srv.Host != "u@new.example.test" {
+		t.Fatalf("bad synthetic server: %+v", srv)
+	}
+}

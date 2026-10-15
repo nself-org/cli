@@ -161,10 +161,10 @@ var (
 const opsEnvName = "ops"
 
 // opsPreflight runs the architecture-guard preflight (controlplane.Preflight)
-// for the ops host before anything is pushed. It mirrors the inventory
-// scoping in remoteDeployPush (deploy_remote.go, which is not edited here): the
+// for the ops host before anything is pushed. It shares the one-environment
+// inventory scoping with remoteDeployPush (controlplane.SingleHostInventory): the
 // inventory server whose Host matches the parsed host spec is used, else a
-// synthetic app server; the check then runs on a one-environment inventory.
+// synthetic app server.
 // Inputs:  project workdir, the NSELF_DEPLOY_HOST_OPS value, built compose path.
 // Outputs: nil when every image can run on the host; the preflight error otherwise.
 func opsPreflight(ctx context.Context, workdir, host, composePath string) error {
@@ -176,17 +176,7 @@ func opsPreflight(ctx context.Context, workdir, host, composePath string) error 
 	if err != nil {
 		return err
 	}
-	server := controlplane.Server{Name: "ops-app", Role: controlplane.RoleApp, Host: spec.String(), Primary: true}
-	for _, environment := range loaded.Environments {
-		for _, candidate := range environment.Servers {
-			if candidate.Host == spec.String() {
-				server = candidate
-			}
-		}
-	}
-	inv := &controlplane.Inventory{Environments: map[string]controlplane.Environment{
-		opsEnvName: {Name: opsEnvName, Kind: "remote", Servers: []controlplane.Server{server}},
-	}}
+	inv := controlplane.SingleHostInventory(loaded, opsEnvName, spec.String())
 	files, err := controlplane.ComposeFilesForDeploy(composePath)
 	if err != nil {
 		return err
