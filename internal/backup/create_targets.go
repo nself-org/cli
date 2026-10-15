@@ -1,6 +1,6 @@
 package backup
 
-// Purpose: per-target backup implementations (full pg_dump, Hasura metadata, MinIO, WAL checkpoint) plus encryption and remote-upload helpers used by create.go's createSingle dispatcher.
+// Purpose: full pg_dump, Hasura metadata and WAL checkpoint backup implementations plus encryption and remote-upload helpers used by create.go's createSingle dispatcher.
 // Inputs: a *config.Config, backup directory, timestamp, and CreateOptions.
 // Outputs: backup artifact files on disk, optionally encrypted and/or uploaded to a remote target.
 // Constraints: split out of create.go as a pure move (CLI-R12); no behavior change.
@@ -185,32 +185,6 @@ func hasuraMetadataExportCmd(ctx context.Context, cfg *config.Config) *exec.Cmd 
 	)
 	cmd.Env = append(os.Environ(), "HASURA_GRAPHQL_ADMIN_SECRET="+cfg.Hasura.AdminSecret)
 	return cmd
-}
-
-// createMinioBackup uses mc mirror to back up MinIO buckets.
-func createMinioBackup(ctx context.Context, cfg *config.Config, backupDir, ts, tag string) error {
-	if !cfg.Minio.Enabled {
-		slog.Info("MinIO not enabled, skipping MinIO backup")
-		return nil
-	}
-
-	destDir := filepath.Join(backupDir, fmt.Sprintf("minio_%s%s", ts, tag))
-	if err := os.MkdirAll(destDir, 0700); err != nil {
-		return fmt.Errorf("create minio backup directory: %w", err)
-	}
-
-	// Use mc mirror to copy all buckets locally.
-	alias := cfg.ProjectName + "-minio"
-	args := []string{"mirror", "--overwrite", alias + "/", destDir}
-	cmd := exec.CommandContext(ctx, "mc", args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("mc mirror: %w", err)
-	}
-
-	slog.Info("minio backup created", "path", destDir)
-	return nil
 }
 
 // triggerWALCheckpoint forces a WAL checkpoint to flush pending WAL data.
