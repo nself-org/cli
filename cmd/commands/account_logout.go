@@ -5,6 +5,7 @@ package commands
 // Constraints: split out of account.go (CLI-R12) as a pure move, no behavior change.
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/nself-org/cli/internal/auth"
@@ -43,7 +44,11 @@ func runAccountLogout(cmd *cobra.Command, _ []string) error {
 
 	// Revoke on server (best-effort — still delete local file on failure).
 	if revokeErr := auth.RevokeSession(cmdCtx(cmd), af.AccessToken, all); revokeErr != nil {
-		ui.Warn(fmt.Sprintf("Could not revoke session on server: %v", revokeErr))
+		if errors.Is(revokeErr, auth.ErrNotLoggedIn) {
+			ui.Warn("session already invalid on the server")
+		} else {
+			ui.Warn(fmt.Sprintf("Could not revoke session on server: %v", revokeErr))
+		}
 		ui.Warn("Deleting local credentials anyway.")
 	}
 

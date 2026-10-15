@@ -49,11 +49,11 @@ func statusState(results []health.HealthResult) string {
 }
 
 // statusExit is the process status `status` requests for a state it found
-// (nil context value when 0). v1.4 mode keeps the human codes (2 unhealthy, 1
-// starting); v1.5 mode uses the reserved state range (10, 11) in human and JSON
+// (nil context value when 0). v1.4 mode keeps the human code 2 for unhealthy
+// services (including starting); v1.5 mode uses the reserved state range (10, 11) in human and JSON
 // mode alike. v1.4 --json requests nothing: its callers pass jsonMode.
 func statusExit(results []health.HealthResult, unhealthy bool, jsonMode bool) int {
-	// compat.V15(P7-REG-09): status exits 2 (unhealthy) or 1 (starting), 0 with --json -> 10 (unhealthy) or 11 (starting) in both modes
+	// compat.V15(P7-REG-09): status exits 2 (unhealthy, including starting), 0 with --json -> 10 (unhealthy) or 11 (starting) in both modes
 	if compat.V15() {
 		return stateExitCode(statusState(results))
 	}
