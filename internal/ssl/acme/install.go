@@ -51,6 +51,7 @@ func (n NginxReloader) Reload(ctx context.Context) error {
 // InstallReq is one install of one certificate into one or more targets.
 // Verify (optional) runs after the reload; Fault and Exit are the test hook.
 type InstallReq struct {
+	Access    *InstallAccess // nil preserves 0700 generations owned by the running uid
 	SSLDir    string
 	Targets   []string // dirs relative to SSLDir, e.g. certificates/api-example-org
 	Cert, Key []byte
@@ -230,6 +231,9 @@ func prepare(r InstallReq, target string) (swap, error) {
 	if !pairOK(dir) {
 		_ = os.RemoveAll(dir)
 		return swap{}, fmt.Errorf("issued certificate and key for %s do not match; nothing installed", target)
+	}
+	if err := r.Access.apply(parent, base); err != nil {
+		return swap{}, err
 	}
 	return swap{link: link, prev: prev, new: next}, nil
 }

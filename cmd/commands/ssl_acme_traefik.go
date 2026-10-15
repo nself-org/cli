@@ -53,19 +53,16 @@ var traefikComposeConfig = func(ctx context.Context, workdir string) ([]byte, er
 
 // traefikReloader implements acme.Reloader for the traefik provider.
 type traefikReloader struct {
-	workdir, sslDir string
-	roots           []string // host paths the one-shot may mount from: the project and the served stack
-	config          func(context.Context, string) ([]byte, error)
-	run             func(context.Context, docker.RunSpec) (string, string, error)
+	workdir string
+	roots   []string // host paths the one-shot may mount from: the project and the served stack
+	config  func(context.Context, string) ([]byte, error)
+	run     func(context.Context, docker.RunSpec) (string, string, error)
 }
 
 // Reload re-runs the traefik-config one-shot. A failed render leaves the
 // previous dynamic.yml in place (the renderer writes atomically), so a failure
 // here means nothing was reloaded.
 func (t traefikReloader) Reload(ctx context.Context) error {
-	if err := prepareGenerations(t.workdir, t.sslDir); err != nil {
-		return err
-	}
 	raw, err := t.config(ctx, t.workdir)
 	if err != nil {
 		return fmt.Errorf("resolving %s: %w", traefikConfigService, err)
@@ -120,7 +117,7 @@ func (r *acmeRun) useProvider(in *acme.Input) error {
 // reloader is the install step that makes the serving proxy pick up new files.
 func (r *acmeRun) reloader() acme.Reloader {
 	if r.provider == build.ProviderTraefik {
-		return traefikReloader{workdir: r.workdir, sslDir: r.res.SSLDir, roots: []string{r.workdir, r.res.Root},
+		return traefikReloader{workdir: r.workdir, roots: []string{r.workdir, r.res.Root},
 			config: traefikComposeConfig, run: acmeD.run}
 	}
 	return acme.NginxReloader{Container: r.res.Container, Exec: acmeD.exec}

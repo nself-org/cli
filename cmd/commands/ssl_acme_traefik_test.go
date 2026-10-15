@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -249,59 +248,27 @@ func TestAcmeTraefikSpecRefusals(t *testing.T) {
 	}
 }
 
-// The renewal timer runs as root: the new generation is handed to the ids the
-// build exported for traefik, and nothing moves without them or when not root.
+// Root renewals select the exported owner; interactive renewals keep theirs.
 func TestAcmeTraefikGenerationHandOver(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("POSIX permission bits and ownership")
-	}
 	root := t.TempDir()
-	gen := filepath.Join(root, "ssl", "certificates", ".x.gen-3")
-	if err := os.MkdirAll(gen, 0o700); err != nil {
-		t.Fatal(err)
+	r := &acmeRun{provider: build.ProviderTraefik, workdir: root}
+	old := traefikEuid
+	t.Cleanup(func() { traefikEuid = old })
+	traefikEuid = func() int { return 0 }
+	if got := r.installAccess(); got.UID != -1 || got.GID != -1 {
+		t.Fatalf("missing ids: %+v", got)
 	}
-	if err := os.Chmod(filepath.Dir(gen), 0o750); err != nil {
-		t.Fatal(err)
+	acmeWriteFile(t, filepath.Join(root, ".nself", "compose.env"), []byte("NSELF_HOST_UID=1001\nNSELF_HOST_GID=1002\n"))
+	if got := r.installAccess(); got.UID != 1001 || got.GID != 1002 || got.DirMode != 0o711 || got.ParentMode != 0o751 {
+		t.Fatalf("root policy: %+v", got)
 	}
-	if err := os.WriteFile(filepath.Join(gen, "privkey.pem"), []byte("k"), 0o600); err != nil {
-		t.Fatal(err)
+	traefikEuid = func() int { return 1001 }
+	if got := r.installAccess(); got.UID != -1 || got.GID != -1 {
+		t.Fatalf("interactive policy: %+v", got)
 	}
-	var chowned []string
-	oldE, oldC := traefikEuid, traefikChown
-	t.Cleanup(func() { traefikEuid, traefikChown = oldE, oldC })
-	traefikChown = func(p string, uid, gid int) error {
-		chowned = append(chowned, p+" "+strconv.Itoa(uid)+":"+strconv.Itoa(gid))
-		return nil
-	}
-	run := func(euid int) []string {
-		chowned = nil
-		traefikEuid = func() int { return euid }
-		if err := prepareGenerations(root, filepath.Join(root, "ssl")); err != nil {
-			t.Fatal(err)
-		}
-		return chowned
-	}
-	if got := run(0); len(got) != 0 {
-		t.Errorf("no exported ids: nothing may move, got %v", got)
-	}
-	if err := os.MkdirAll(filepath.Join(root, ".nself"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, ".nself", "compose.env"), []byte("NSELF_HOST_UID=1001\nNSELF_HOST_GID=1002\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if got := run(1001); len(got) != 0 {
-		t.Errorf("not root: nothing may move, got %v", got)
-	}
-	got := run(0)
-	if len(got) != 2 || got[0] != gen+" 1001:1002" || got[1] != filepath.Join(gen, "privkey.pem")+" 1001:1002" {
-		t.Errorf("hand-over = %v", got)
-	}
-	if fi, _ := os.Stat(gen); fi.Mode().Perm() != 0o711 {
-		t.Errorf("generation dir mode = %v, want 0711", fi.Mode().Perm())
-	}
-	if fi, _ := os.Stat(filepath.Dir(gen)); fi.Mode().Perm()&0o001 == 0 {
-		t.Errorf("certificates dir mode = %v is not traversable", fi.Mode().Perm())
+	r.provider = build.ProviderNginx
+	if r.installAccess() != nil {
+		t.Fatal("nginx defaults changed")
 	}
 }
 

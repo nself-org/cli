@@ -246,7 +246,7 @@ func (r *acmeRun) issueInstall(ctx context.Context, l *acme.Lineage, tos bool) e
 // the fingerprint it serves; a failure restores the previous generation.
 func (r *acmeRun) install(ctx context.Context, l acme.Lineage, cert, key []byte) error {
 	gens, err := acme.Install(ctx, acme.InstallReq{SSLDir: r.res.SSLDir, Targets: l.Targets, Cert: cert, Key: key,
-		Reloader: r.reloader(), Verify: r.verifier(l, cert), Fault: r.hooks.Fault, Exit: acmeD.exit})
+		Access: r.installAccess(), Reloader: r.reloader(), Verify: r.verifier(l, cert), Fault: r.hooks.Fault, Exit: acmeD.exit})
 	if err != nil {
 		return e151(r.afterFailedInstall(ctx, err))
 	}
@@ -256,7 +256,7 @@ func (r *acmeRun) install(ctx context.Context, l acme.Lineage, cert, key []byte)
 	return nil
 }
 
-// verifier returns the post-reload check that nginx serves cert on every target.
+// verifier returns the post-reload check that the proxy serves cert on every target.
 func (r *acmeRun) verifier(l acme.Lineage, cert []byte) func(context.Context) error {
 	b, _ := pem.Decode(cert)
 	if b == nil {
@@ -266,7 +266,7 @@ func (r *acmeRun) verifier(l acme.Lineage, cert []byte) func(context.Context) er
 	addr, snis := ssl.ServedAddr(r.servedEnv()), r.probeHosts(l)
 	return func(ctx context.Context) error {
 		for _, sni := range snis {
-			if err := pollServed(ctx, addr, sni, hex.EncodeToString(sum[:])); err != nil {
+			if err := pollServed(ctx, r.proxyName(), addr, sni, hex.EncodeToString(sum[:])); err != nil {
 				return err
 			}
 		}

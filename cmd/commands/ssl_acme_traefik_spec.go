@@ -9,18 +9,17 @@ package commands
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io/fs"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/docker"
+	"github.com/nself-org/cli/internal/ssl/acme"
 )
 
 // traefikImageRE is a plain image reference: no leading dash (never a docker flag), no spaces.
@@ -101,59 +100,20 @@ func under(p string, roots []string) bool {
 	return false
 }
 
-// Seams for the ownership hand-over.
-var (
-	traefikEuid  = os.Geteuid
-	traefikChown = os.Lchown
-)
+// traefikEuid is the ownership-policy seam for root timer renewals.
+var traefikEuid = os.Geteuid
 
-// prepareGenerations makes the ACME generation directories usable by the two
-// readers of the certificates. (1) The renderer runs as root with every
-// capability dropped, which can neither enter nor stat inside a directory owned
-// by another uid ("fullchain.pem missing"): core writes them 0700, so others get
-// the execute bit (files stay 0600). (2) traefik runs as NSELF_HOST_UID with no
-// capabilities and opens the 0600 key as its owner; when the renewal runs as
-// root (the systemd timer) the new generation is root's, so it is handed to the
-// ids the build exported in .nself/compose.env. Without those ids nothing moves.
-func prepareGenerations(workdir, sslDir string) error {
-	certs := filepath.Join(sslDir, "certificates") // acme.Install creates it 0750 when absent
-	dirs, err := filepath.Glob(filepath.Join(certs, ".*.gen-*"))
-	if err != nil {
-		return err
+// installAccess lets the renderer traverse generations and the proxy own keys.
+// A non-root renewal keeps its own uid; root uses the ids exported by build.
+func (r *acmeRun) installAccess() *acme.InstallAccess {
+	if r.provider != build.ProviderTraefik {
+		return nil
 	}
-	uid, gid := hostOwner(workdir)
-	for _, d := range append([]string{certs}, dirs...) {
-		fi, err := os.Lstat(d)
-		if err != nil || !fi.IsDir() {
-			continue
-		}
-		if fi.Mode().Perm()&0o001 == 0 {
-			if err := os.Chmod(d, fi.Mode().Perm()|0o011); err != nil && !errors.Is(err, fs.ErrNotExist) {
-				if d == certs { // owned by another user (a root timer created it): the render reports it if it matters
-					slog.Warn("cannot make the certificates directory traversable for the renderer", "dir", d, "error", err)
-					continue
-				}
-				return fmt.Errorf("making %s traversable for the renderer: %w", d, err)
-			}
-		}
-		if d == certs || uid < 0 || traefikEuid() != 0 {
-			continue
-		}
-		entries, err := os.ReadDir(d)
-		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return fmt.Errorf("reading %s to hand it to traefik's user: %w", d, err)
-		}
-		for _, e := range append([]os.DirEntry{nil}, entries...) {
-			p := d
-			if e != nil {
-				p = filepath.Join(d, e.Name())
-			}
-			if err := traefikChown(p, uid, gid); err != nil && !errors.Is(err, fs.ErrNotExist) {
-				return fmt.Errorf("handing %s to traefik's user %d:%d: %w", p, uid, gid, err)
-			}
-		}
+	uid, gid := -1, -1
+	if traefikEuid() == 0 {
+		uid, gid = hostOwner(r.workdir)
 	}
-	return nil
+	return &acme.InstallAccess{DirMode: 0o711, ParentMode: 0o751, UID: uid, GID: gid}
 }
 
 // hostOwner reads the ids traefik runs as from .nself/compose.env (-1, -1 when absent).
