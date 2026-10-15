@@ -223,7 +223,7 @@ func readPluginManifest(pluginDir, name string) *pluginManifestMinimal {
 	return &m
 }
 
-// ComputePluginEnvVars returns environment variables needed by plugin compose
+// computePluginEnvVars returns environment variables needed by plugin compose
 // files. These are written to .nself/compose.env and .env.computed so that
 // `docker compose` can interpolate them in plugin compose fragments.
 //
@@ -234,12 +234,13 @@ func readPluginManifest(pluginDir, name string) *pluginManifestMinimal {
 //     Only wired when the dependency plugin is also installed.
 //   - the addPluginCoreEnvVars set (ENV, PROJECT_NAME, COMPOSE_PROJECT_NAME,
 //     BASE_DOMAIN, POSTGRES_DB/USER, PLUGIN_INTERNAL_SECRET,
-//     NOTIFY_INTERNAL_SECRET) — the project-specific values the ${VAR}
+//     NOTIFY_INTERNAL_SECRET, and active-store S3_ENDPOINT/S3_REGION) — the
+//     project-specific values the ${VAR}
 //     references normalizeComposePluginCoreEnv (plugins_core_env.go) injects
 //     into every plugin fragment resolve to. cfg may be nil (existing
 //     callers/tests that only need the two sets above); a nil cfg skips this
 //     set entirely.
-func ComputePluginEnvVars(workdir, pluginDir string, cfg *config.Config) map[string]string {
+func computePluginEnvVars(workdir, pluginDir string, cfg *config.Config, storeProfile bool) map[string]string {
 	vars := make(map[string]string)
 
 	absPluginDir, err := filepath.Abs(pluginDir)
@@ -247,7 +248,7 @@ func ComputePluginEnvVars(workdir, pluginDir string, cfg *config.Config) map[str
 		absPluginDir = pluginDir
 	}
 	vars["NSELF_PLUGIN_DIR"] = absPluginDir
-	addPluginCoreEnvVars(vars, cfg)
+	addPluginCoreEnvVars(vars, cfg, pluginDir, storeProfile)
 
 	// Build a port map for all installed plugins so dependency resolution is O(1).
 	entries, err := os.ReadDir(pluginDir)

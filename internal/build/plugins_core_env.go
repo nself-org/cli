@@ -27,10 +27,12 @@ package build
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 
 	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/ui"
 )
@@ -241,7 +243,9 @@ func warnUnrecognisedEnvBlock(pluginDir, pluginName string) {
 // (WriteComposeEnv itself, and SecretEnvMap) so are deliberately not
 // duplicated here; POSTGRES_HOST/PORT and HASURA_GRAPHQL_ENDPOINT are fixed
 // literals in the fragment (see pluginCoreEnvValue), needing no entry here.
-func addPluginCoreEnvVars(vars map[string]string, cfg *config.Config) {
+// S3_ENDPOINT and S3_REGION exist only while a project store is active, so a
+// plugin's explicit project env or built-in default remains the no-store fallback.
+func addPluginCoreEnvVars(vars map[string]string, cfg *config.Config, pluginDir string, storeProfile bool) {
 	if cfg == nil {
 		return
 	}
@@ -256,5 +260,15 @@ func addPluginCoreEnvVars(vars map[string]string, cfg *config.Config) {
 	}
 	if cfg.PluginConfig.NotifySecret != "" {
 		vars["NOTIFY_INTERNAL_SECRET"] = cfg.PluginConfig.NotifySecret
+	}
+	installed := false
+	if info, err := os.Stat(filepath.Join(pluginDir, "minio", "plugin.json")); err == nil && !info.IsDir() {
+		installed = true
+	}
+	if endpoint, region, ok := compose.ActiveStoreConnection(cfg, installed); storeProfile && ok {
+		vars["S3_ENDPOINT"] = endpoint
+		if region != "" {
+			vars["S3_REGION"] = region
+		}
 	}
 }

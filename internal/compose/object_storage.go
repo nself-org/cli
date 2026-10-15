@@ -57,6 +57,29 @@ func ActiveStore(cfg *config.Config, installed bool) string {
 	return "none"
 }
 
+// ActiveStoreConnection returns the internal endpoint and configured region for
+// the store selected by ActiveStore.
+// Inputs: loaded config and whether the MinIO plugin is installed.
+// Outputs: endpoint, region and true for an active store; empty values and false otherwise.
+// Constraints: endpoints address containers on the project network; host port overrides
+// apply only to v1.4 core MinIO, matching the existing custom-service contract.
+func ActiveStoreConnection(cfg *config.Config, installed bool) (string, string, bool) {
+	switch ActiveStore(cfg, installed) {
+	case "seaweedfs":
+		return "http://seaweedfs:8333", cfg.Minio.Region, true
+	case "minio-plugin":
+		return "http://minio:9000", cfg.Minio.Region, true
+	case "minio-core":
+		port := cfg.Minio.Port
+		if port == 0 {
+			port = 9000
+		}
+		return fmt.Sprintf("http://minio:%d", port), cfg.Minio.Region, true
+	default:
+		return "", "", false
+	}
+}
+
 // Purpose: read OBJECT_STORAGE_ENABLED from the process env.
 // Inputs: env (the config loader has already loaded .env into it).
 // Outputs: true for true, 1, yes, on or enabled in any case, matching config getEnvBool.
