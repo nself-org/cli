@@ -8,8 +8,8 @@ package commands
 import (
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -38,6 +38,9 @@ func TestRebuildCascade(t *testing.T) {
 			t.Run(scenario+"/"+caller.name, func(t *testing.T) {
 				t.Cleanup(build.SnapshotEnv())
 				isolateDoctorHome(t)
+				if runtime.GOOS == "windows" && caller.name == "restart_smart" {
+					t.Skip("the docker stub is a POSIX shell script; a real docker.exe answers instead")
+				}
 				t.Setenv("NSELF_V15", "1")
 				t.Setenv("ENV", "")
 				dir := t.TempDir()
@@ -73,9 +76,6 @@ func TestRebuildCascade(t *testing.T) {
 				l03Write(t, filepath.Join(stub, "docker"), rebuildDockerStub, 0o755)
 				t.Setenv("PATH", stub+string(os.PathListSeparator)+os.Getenv("PATH"))
 				before := doctorTreeHash(t, dir)
-				dockerAt, lookErr := exec.LookPath("docker")
-				psOut, psErr := docker.NewCompose().ComposePs(context.Background(), dir)
-				t.Logf("DIAG docker=%s lookErr=%v ps=%v psErr=%v ENV=%q", dockerAt, lookErr, psOut, psErr, os.Getenv("ENV"))
 				err = caller.run(dir)
 				if detail := errs.Describe(err); detail == nil || detail.Code != "E403" {
 					t.Errorf("got %v, want E403", err)

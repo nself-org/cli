@@ -22,6 +22,7 @@ func init() {
 }
 
 func confirmPluginDisable(cmd *cobra.Command, name string) error {
+	// compat.V15(D-0752): plugin disable never confirmed -> prod-class and hand-edit confirmation before the marker is written.
 	if !compat.V15() {
 		return nil
 	}
