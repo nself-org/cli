@@ -90,7 +90,7 @@ func (st *buildState) generateSSLAndNginx() error {
 		if err := st.backupSites(sitesDir); err != nil {
 			return fmt.Errorf("backing up nginx/sites before regeneration: %w", err)
 		}
-		removed, foreign, pruneErr := pruneGeneratedNginxSitesVia(st.sink, sitesDir)
+		removed, foreign, pruneErr := pruneGeneratedNginxSitesVia(st.sink, sitesDir, st.opts.PreserveNginxSite)
 		if pruneErr != nil {
 			return fmt.Errorf("clearing stale nginx/sites confs: %w", pruneErr)
 		}

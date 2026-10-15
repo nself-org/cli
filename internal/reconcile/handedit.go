@@ -13,10 +13,9 @@ package reconcile
 // Outputs: GeneratedState.HandEdited, the pure check over given bytes, and
 // HandEditedFn, the Request callback that resolves a display path to the disk
 // and reads the file.
-// Constraints: a path with no record is never hand-edited (an unmarked,
-// unrecorded file is never a write target either — the plan only lists what
-// the pipeline renders); the file's exact bytes are hashed, so any change a
-// formatter or editor makes counts.
+// Constraints: this callback checks recorded hashes. The planner separately
+// compares unrecorded marked files with the fresh render (unrecorded.go).
+// Exact bytes are hashed, so any formatter or editor change counts.
 
 import (
 	"crypto/sha256"
@@ -52,8 +51,8 @@ func (s *GeneratedState) HandEdited(path string, current []byte) bool {
 
 // HandEditedFn returns the Request.HandEdited callback over this record: it
 // resolves each display path to its location on disk and reads the file's
-// current bytes. A nil record (no state yet) answers false for everything:
-// the first run on an existing project records and never blocks.
+// current bytes. A nil record answers false here; the planner still detects
+// unrecorded marked files that differ from its fresh render.
 func (s *GeneratedState) HandEditedFn(projectDir string) func(path string) bool {
 	return s.handEditedFnWith(projectDir, nil, "")
 }

@@ -19,6 +19,8 @@ type BuildOptions struct {
 	RemoteDeploy bool
 	// Force rebuilds everything regardless of cache freshness.
 	Force bool
+	// PreserveNginxSite keeps unrecorded marked sites out of the stale-file sweep.
+	PreserveNginxSite func(path string) bool
 	// Verbose enables detailed build progress output.
 	Verbose bool
 	// Check validates configuration and exits without generating files.

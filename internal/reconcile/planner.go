@@ -52,7 +52,10 @@ type computed struct {
 
 // compute renders once in plan mode and builds the plan from that render.
 func compute(ctx context.Context, req Request) (*computed, error) {
-	opts := req.Build
+	opts, err := siteBuildOptions(req)
+	if err != nil {
+		return nil, err
+	}
 	if opts.Check {
 		return nil, fmt.Errorf("a plan cannot be computed for --check: --check validates and writes nothing")
 	}
@@ -79,6 +82,7 @@ func compute(ctx context.Context, req Request) (*computed, error) {
 	if res == nil || res.Planned == nil {
 		return nil, fmt.Errorf("plan-mode build returned no planned artifacts")
 	}
+	warnUnrecordedSites(req, opts, res.Planned)
 	ov := newOverlay(req.ProjectDir, res.FrontingDir, res.Planned)
 	ov.env = env
 	before, after, err := artifactSets(ov, res.Planned)
@@ -109,7 +113,7 @@ func compute(ctx context.Context, req Request) (*computed, error) {
 		}
 		before[GeneratedStateDisplayPath] = File{Data: raw, Perm: perm}
 	}
-	arts := append(Diff(before, after, pendingHandEdited(req.HandEdited, state, env, req.ProjectDir, res.Planned.PluginDir)), modeArtifacts(before, after)...)
+	arts := append(Diff(before, after, unrecordedHandEdits(state, before, after, pendingHandEdited(req.HandEdited, state, env, req.ProjectDir, res.Planned.PluginDir))), modeArtifacts(before, after)...)
 	p := &Plan{
 		Command:   req.Command,
 		Trigger:   req.Trigger,

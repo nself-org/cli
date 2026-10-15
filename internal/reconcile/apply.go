@@ -76,14 +76,15 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (applied *Pl
 	}
 
 	// P7-LIVE-04 (EPIC D5): the generated-state record tells a generated change
-	// from a human one. A missing record is the first run on an existing
-	// project: nothing is detected (never block), the apply records what it
-	// wrote and warns once below. A record a caller already supplied (tests,
-	// later callers) is used as given.
+	// from a human one. Without a baseline the planner compares marked files
+	// to the fresh render; unrecorded marked orphans stay foreign unless forced.
+	// A callback a caller already supplied is retained for recorded files.
+	// A successful first apply records its output and warns once below.
 	state, err := LoadGeneratedState(req.ProjectDir)
 	if err != nil {
 		return nil, nil, err
 	}
+	req.Build.PreserveNginxSite = preserveUnrecordedSites(state, req.ProjectDir, opt.Force || !v15)
 	if req.HandEdited == nil {
 		req.HandEdited = state.HandEditedFn(req.ProjectDir)
 	}

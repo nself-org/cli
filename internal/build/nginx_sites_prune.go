@@ -185,7 +185,7 @@ func pruneGeneratedNginxSites(sitesDir string) (removed int, foreign []string, e
 // pruneGeneratedNginxSitesVia is pruneGeneratedNginxSites with the listing,
 // marker reads and deletes routed through sink: write mode deletes from disk,
 // plan mode reports each removal as a sink.Remove (never re-derived later).
-func pruneGeneratedNginxSitesVia(sink Sink, sitesDir string) (removed int, foreign []string, err error) {
+func pruneGeneratedNginxSitesVia(sink Sink, sitesDir string, preserve ...func(string) bool) (removed int, foreign []string, err error) {
 	entries, readErr := sink.ReadDir(sitesDir)
 	if readErr != nil {
 		if os.IsNotExist(readErr) {
@@ -208,6 +208,9 @@ func pruneGeneratedNginxSitesVia(sink Sink, sitesDir string) (removed int, forei
 		}
 		path := filepath.Join(sitesDir, e.Name())
 		if isGeneratedNginxSiteFile(sink, path, headBytes) {
+			if len(preserve) > 0 && preserve[0] != nil && preserve[0](path) {
+				continue
+			}
 			if rmErr := sink.Remove(path); rmErr != nil {
 				return removed, foreign, fmt.Errorf("removing generated file %s: %w", path, rmErr)
 			}
