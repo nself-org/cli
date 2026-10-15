@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/docker"
@@ -50,12 +51,13 @@ var deployServiceOrder = []string{
 // manifest files and env files; clock is injectable so the gate's 30 s and
 // 60 s limits are testable without waiting.
 type rollingPlan struct {
-	compose *docker.Compose
-	workdir string
-	order   []string
-	specs   []docker.ServiceSpec
-	clock   docker.Clock
-	jsonOut bool
+	compose   *docker.Compose
+	workdir   string
+	order     []string
+	specs     []docker.ServiceSpec
+	clock     docker.Clock
+	jsonOut   bool
+	upTimeout time.Duration // zero uses rollingUpTimeout; tests may shorten it
 }
 
 // runRollingRestart performs a per-service sequenced restart with a health
@@ -66,7 +68,8 @@ type rollingPlan struct {
 // services last), never a hardcoded list: a fixed list restarted a service
 // that did not exist and aborted a real deploy half way (production incident
 // 2026-09-20). Each service is brought up with `up -d --no-deps` and then
-// gated by kind: healthcheck declared -> healthy within 60s; restart "no"
+// gated by kind: healthcheck declared -> healthy within its resolved timeout
+// (at least 60s, at most 10m); restart "no"
 // without a healthcheck (one-shot) -> a new run that exited 0; otherwise
 // running within 30s and still the same run a poll later. Any kind fails at
 // once on a container that exited non-zero or keeps restarting. The deploy
@@ -114,9 +117,9 @@ func rollingRestart(ctx context.Context, plan rollingPlan) ([]deployStep, error)
 		if err != nil {
 			return addStep(ctx, steps, deployStep{Name: stepName, Status: "failed"}), gateError(svc, markErr(ctx, err))
 		}
-		if err := plan.compose.ComposeUpNoDeps(ctx, plan.workdir, svc); err != nil {
+		if err := rollingUp(ctx, plan, svc); err != nil {
 			steps = addStep(ctx, steps, deployStep{Name: stepName, Status: "failed"})
-			return steps, fmt.Errorf("rolling restart: service %s restart failed: %w\nRun 'nself logs %s' for details", svc, err, svc)
+			return steps, err
 		}
 		if !plan.jsonOut {
 			fmt.Printf("  [waiting] Waiting for %s (%s)\n", svc, gateKind(spec))
@@ -178,6 +181,9 @@ func markErr(ctx context.Context, err error) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
+	if interrupted := rollingInterrupt(err); errors.Is(interrupted, context.Canceled) {
+		return interrupted
+	}
 	return fmt.Errorf("%w: %w", docker.ErrStateRead, err)
 }
 
@@ -187,7 +193,7 @@ func gateKind(sp docker.ServiceSpec) string {
 	case sp.OneShot():
 		return "one-shot: exit 0, max 60s"
 	case sp.HasHealthcheck:
-		return "healthy, max 60s"
+		return fmt.Sprintf("healthy, max %s", max(docker.HealthyTimeout, sp.HealthTimeout))
 	default:
 		return "running, max 30s"
 	}
@@ -207,6 +213,7 @@ func gateFailStatus(err error) string {
 // cause is outside the service (docker could not be read, or the user
 // interrupted), so the message never blames a healthy service.
 func gateError(svc string, err error) error {
+	err = rollingInterrupt(err)
 	hint := fmt.Sprintf("Run 'nself logs %s' for details", svc)
 	switch {
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):

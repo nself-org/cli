@@ -182,7 +182,7 @@ The registry marks the `--stream` flag `output: stream`, so MCP and HTTP keep th
 
 | Strategy | Status | Behavior |
 |---|---|---|
-| `rolling` | **Default (v1.1.1)** | Per-service sequenced restart with health-gating. Each service waits up to 60s for `service_healthy` before the next restarts. |
+| `rolling` | **Default (v1.1.1)** | Per-service sequenced restart with health-gating. Each healthcheck service waits at least 60s, extended by its declared healthcheck timing up to 10m, before the next restarts. |
 | `blue-green / canary` | **Available via `--canary N` (Y17)** | Zero-downtime: green containers run alongside blue, Nginx shifts N% traffic to green during soak, then promotes to 100%. Requires `NSELF_FEATURE_BLUE_GREEN_DEPLOY=true`. |
 | `preview` | Not yet implemented | Falls back to rolling with an explicit warning. |
 
@@ -271,7 +271,7 @@ fallback for plugin variables: a plugin variable must be in `.nself/compose.env`
 
 | Service kind | Waits for | Limit | On failure |
 |---|---|---|---|
-| Declares a healthcheck | `healthy` | 60s | E251 (health check timeout), service named |
+| Declares a healthcheck | `healthy` | max(60s, declared healthcheck timing), capped at 10m | E251 (health check timeout), service named |
 | One-shot (`restart: "no"`, no healthcheck) | a new run that exits 0 | 60s | non-zero exit fails at once with E250; never exiting, or never starting again, is E251 |
 | Anything else | `running`, seen as the same run on two polls 2s apart | 30s | E251, service named |
 
@@ -286,7 +286,15 @@ default policy is "no"), so it is done. Containers left behind by `docker compos
 service. A service that appears in the restart order but not in the resolved config fails the deploy
 with E252, checked for every service before the first restart. If Docker cannot be read (daemon down, `compose ps` fails), the
 deploy stops with Docker's own message and no service code, because nothing is known about the
-service; an interrupt (ctrl-c) stops the same way.
+service. An interrupt (Ctrl-C), including Docker exiting 130 before the CLI's signal handler
+runs, is reported as an interrupted deploy rather than an unreadable service state.
+
+For a healthcheck, declared timing is `start_period + retries * (interval + timeout)` using
+Docker's defaults for omitted values. The progress line shows the actual gate limit.
+Each local rolling `up -d --no-deps` has a separate ten-minute timeout. A timeout or Ctrl-C
+during `up` halts the roll and names the affected service. Compose may already have stopped
+that service; the error includes `nself start <service>` to recover it. Nothing rolls back
+automatically, and later services are not restarted.
 
 **What a failed deploy leaves behind.** Nothing rolls back. Services before the failed one already run
 the new config. The failed service is in whatever state `up` left it (running but not ready, restarting,
@@ -333,9 +341,8 @@ serving until its replacement becomes healthy.
 pulled yet), so it prints the resolution rule instead of a concrete list — the real order is
 only known once the build for this deploy has run.
 
-Use `--skip-health-check` to bypass the 60s gate for known-slow services like MeiliSearch or
-Grafana. Set `HEALTHCHECK_TIMEOUT_<SERVICE>` (e.g. `HEALTHCHECK_TIMEOUT_GRAFANA=120s`) to
-extend the per-service timeout.
+For slow services, set the Compose healthcheck timing to allow startup. The rolling gate
+uses that timing, with a minimum of 60s and a maximum of 10m.
 
 ### Custom service env vars in a dry-run
 
