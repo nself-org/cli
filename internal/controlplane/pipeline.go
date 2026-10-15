@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/deploy"
 )
 
@@ -66,7 +67,8 @@ func runPayload(ctx context.Context, inv *Inventory, env string, prober Prober, 
 	if !ok {
 		reader = NewSSHProber(filepath.Dir(composePath), false)
 	}
-	if pl.envFile != "" {
+	shipping := pl.envFile != "" || (compat.V15() && pl.apply != nil && len(pl.apply.Set.EnvFiles) > 0)
+	if shipping {
 		// A run that ships an env file: host keys are checked (shipping policy) on every
 		// remote server before any probe, and every connection of the run is strict.
 		defer markShipping(prober)()
@@ -78,7 +80,7 @@ func runPayload(ctx context.Context, inv *Inventory, env string, prober Prober, 
 	}
 	statuses := Resolve(scoped, prober)
 	emitAudit(statuses)
-	if pl.envFile != "" {
+	if shipping {
 		// A probe that met a host-key error after the pre-check (the key changed
 		// mid-run) aborts the run; Resolve alone would only mark the server read-only.
 		for _, v := range []any{prober, reader} {
