@@ -224,6 +224,9 @@ func TestAccessSelectorPartialFailures(t *testing.T) {
 	} {
 		t.Cleanup(func() { resetFlags(tc.cmd) })
 		resetFlags(tc.cmd)
+		for cmd := tc.cmd; cmd != nil; cmd = cmd.Parent() {
+			cmd.SetOut(nil)
+		}
 		tc.cmd.SetContext(context.Background())
 		_ = tc.cmd.Flags().Set("env", "qa")
 		for k, v := range tc.flags {

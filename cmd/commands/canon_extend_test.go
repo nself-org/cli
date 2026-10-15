@@ -259,6 +259,9 @@ func compareExtensionResults(t *testing.T, legacy, canonical equivalenceResult) 
 
 func TestEquivalencePluginInstall(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
+		t.Chdir(t.TempDir())
+		resetCmdWriters()
+		t.Setenv("NSELF_SKIP_SBOM_CHECK", "")
 		manifest := `{"name":"zzfixture","version":"1.0.0","description":"fixture","category":"utility","license":"MIT"}`
 		var archive bytes.Buffer
 		gz := gzip.NewWriter(&archive)
@@ -291,6 +294,8 @@ func TestEquivalencePluginInstall(t *testing.T) {
 		t.Setenv("NSELF_PLUGIN_REGISTRY", registry.URL)
 		t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "fixture-key")
 		for _, cmd := range []*cobra.Command{pluginInstallCmd, installCmd} {
+			resetFlags(cmd)
+			t.Cleanup(func() { resetFlags(cmd) })
 			if err := cmd.Flags().Set("skip-sbom-check", "true"); err != nil {
 				t.Fatal(err)
 			}

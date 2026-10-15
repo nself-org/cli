@@ -145,8 +145,10 @@ func (p *l03Project) run(t *testing.T, v15 bool, args ...string) pilotRun {
 	t.Helper()
 	bin := l03Binary(t)
 	var env []string
+	configKeys := projectConfigKeys()
 	for _, kv := range os.Environ() {
-		if !strings.HasPrefix(kv, "NSELF_") && !strings.HasPrefix(kv, "HOME=") && !strings.HasPrefix(kv, "PATH=") && !strings.HasPrefix(kv, "STUB_") {
+		key, _, _ := strings.Cut(kv, "=")
+		if !configKeys[key] && !strings.HasPrefix(kv, "NSELF_") && !strings.HasPrefix(kv, "HOME=") && !strings.HasPrefix(kv, "PATH=") && !strings.HasPrefix(kv, "STUB_") {
 			env = append(env, kv)
 		}
 	}

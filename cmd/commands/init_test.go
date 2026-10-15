@@ -215,6 +215,7 @@ func TestInitCmd_NameFlagSetsProjectName(t *testing.T) {
 // in the generated .env file.
 func TestInitCmd_DomainFlagSetsBaseDomain(t *testing.T) {
 	t.Chdir(t.TempDir())
+	t.Setenv("PROJECT_NAME", "init-domain-fixture")
 
 	root := newInitCmd()
 	var buf bytes.Buffer
@@ -356,6 +357,7 @@ func TestValidateDomain_WithTab(t *testing.T) {
 // produces a .env file in a fresh directory.
 func TestInitCmd_TemplateFlag_Valid(t *testing.T) {
 	t.Chdir(t.TempDir())
+	t.Setenv("PROJECT_NAME", "init-template-fixture")
 
 	root := newInitCmd()
 	var buf bytes.Buffer

@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/output"
@@ -71,6 +72,9 @@ func writeSeedPlugin(t *testing.T, dir, name string, seedArgv []string) {
 // seedHarness wires the seams and returns the plugin dir, runtime and stdout.
 func seedHarness(t *testing.T, env string) (string, *fakeSeedRT, *bytes.Buffer) {
 	t.Helper()
+	compattest.Set(t, false)
+	reattachRealTree()
+	resetFlags(dbSeedCmd)
 	dir := t.TempDir()
 	rt := &fakeSeedRT{}
 	out := &bytes.Buffer{}

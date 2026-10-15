@@ -188,6 +188,7 @@ func TestDefaultDataRequiresSetData(t *testing.T) {
 // --i-know-what-im-doing, so the registry exposes it with that flag as its
 // confirm block instead of marking it cli-only (S1).
 func TestResetChecksumConfirmBlock(t *testing.T) {
+	reattachRealTree()
 	compattest.Set(t, true)
 	resetRegistryCache()
 	t.Cleanup(resetRegistryCache)

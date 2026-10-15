@@ -49,7 +49,7 @@ func chatFixture(t *testing.T) *l03Project {
 // resetCmdWriters drops output writers earlier tests set on the remove command tree
 // (SetErr on the root or a parent leaks into every child), so output goes to os.Stderr.
 func resetCmdWriters() {
-	for _, c := range []*cobra.Command{RootCmd, bundleCmd, removeCmd, bundleRemoveCmd, pluginRemoveCmd} {
+	for _, c := range []*cobra.Command{RootCmd, bundleCmd, removeCmd, bundleRemoveCmd, pluginRemoveCmd, pluginInstallCmd, installCmd} {
 		for p := c; p != nil; p = p.Parent() { // the writer is inherited from any ancestor
 			p.SetErr(nil)
 			p.SetOut(nil)
