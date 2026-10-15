@@ -66,6 +66,11 @@ A tracked file must not be a compiled binary: `TestTrackedBinaries` rejects an E
 
 Two ratchets freeze the call sites that bypass a shared funnel. Each is a shrink-only allowlist of `<path> <count>` lines, checked by `go test ./internal/repoqa/`.
 
+Logs commands use `internal/docker.Compose.StreamLogs` for bounded, cancellable
+line streaming, `LogsOutput` for report samples, and `PsOutput` for unparsed
+status output and service/container discovery. `TestLogsDockerFunnel` keeps
+these paths free of direct Docker spawns, independently of the allowlist.
+
 | Rule | Funnel (exempt dir) | Test | Allowlist | Basis constant |
 |---|---|---|---|---|
 | D5 | `internal/httptimeout` | `TestHTTPFunnel` | `internal/repoqa/testdata/http-client-allowlist.txt` | `httpBasisTotal` |

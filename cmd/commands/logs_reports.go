@@ -12,12 +12,12 @@ package commands
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"sort"
 	"strconv"
 	"time"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -36,12 +36,7 @@ func runLogsStatus(cmd *cobra.Command) error {
 
 	ui.CommandHeader("nself logs --status", "Service status overview")
 
-	dockerCmd := exec.CommandContext(cmd.Context(), "docker", "compose", "ps")
-	dockerCmd.Dir = workdir
-	dockerCmd.Stdout = os.Stdout
-	dockerCmd.Stderr = os.Stderr
-
-	if err := dockerCmd.Run(); err != nil {
+	if err := docker.NewCompose().PsOutput(cmd.Context(), workdir, os.Stdout, os.Stderr); err != nil {
 		return fmt.Errorf("docker compose ps: %w", err)
 	}
 

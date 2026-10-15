@@ -8,17 +8,18 @@ package commands
 // LogsOptions for per-line filtering.
 // Outputs: filtered/formatted lines written to the given io.Writer; a list
 // of running service names.
-// Constraints: pure move, no behavior change; streamLogLines is the single
-// docker spawn of the logs stream (human, legacy JSON and v1.5 JSON paths).
+// Constraints: streamLogLines shares filtering across human, legacy JSON and
+// v1.5 JSON paths; process handling belongs to internal/docker.
 
 import (
-	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"strings"
+
+	"github.com/nself-org/cli/internal/docker"
 )
 
 // streamFilteredLogs runs docker with composeArgs and streams filtered/formatted output to w.
@@ -40,70 +41,32 @@ func streamFilteredLogs(ctx context.Context, workdir string, composeArgs []strin
 const maxLogLineBytes = 4 << 20
 
 // streamLogLines runs docker with composeArgs and calls fn with every line that
-// passes the opts filters (the one place the logs commands spawn docker). An
-// error from fn stops the stream, kills docker and is returned. A cancelled
+// passes the opts filters. An error from fn stops the stream, kills docker and
+// is returned. A cancelled
 // parent context ends the stream without an error.
 func streamLogLines(parent context.Context, workdir string, composeArgs []string, opts LogsOptions, fn func(line string) error) error {
-	ctx, cancel := context.WithCancel(parent)
-	defer cancel()
-	dockerCmd := exec.CommandContext(ctx, "docker", composeArgs...)
-	dockerCmd.Dir = workdir
-	dockerCmd.Stderr = os.Stderr
-
+	var stdin io.Reader
 	if opts.Follow {
-		dockerCmd.Stdin = os.Stdin
+		stdin = os.Stdin
 	}
-
-	stdout, err := dockerCmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("creating stdout pipe: %w", err)
-	}
-
-	if err := dockerCmd.Start(); err != nil {
-		return fmt.Errorf("starting docker: %w", err)
-	}
-
-	var fnErr error
-	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(make([]byte, 0, 64*1024), maxLogLineBytes)
-	for scanner.Scan() {
-		filtered, ok := filterLogLine(scanner.Text(), opts)
+	return docker.NewCompose().StreamLogs(parent, workdir, composeArgs[2:], stdin, os.Stderr, func(line string) error {
+		filtered, ok := filterLogLine(line, opts)
 		if !ok {
-			continue
+			return nil
 		}
-		if fnErr = fn(filtered); fnErr != nil {
-			cancel()
-			break
-		}
-	}
-
-	// A read error (a line over maxLogLineBytes) must not pass for the end of
-	// the logs: stop docker so Wait cannot block on a full pipe, and report it.
-	if fnErr == nil {
-		if serr := scanner.Err(); serr != nil {
-			cancel()
-			fnErr = fmt.Errorf("reading docker output: %w", serr)
-		}
-	}
-
-	waitErr := dockerCmd.Wait()
-	if fnErr != nil {
-		return fnErr
-	}
-	if parent.Err() != nil {
-		return nil
-	}
-	return waitErr
+		return fn(filtered)
+	})
 }
 
 // getRunningServices returns the list of service names from docker compose ps --services.
 func getRunningServices(ctx context.Context, workdir string) ([]string, error) {
-	out, err := exec.CommandContext(ctx, "docker", "compose", "ps", "--services").Output()
+	var out bytes.Buffer
+	err := docker.NewCompose().PsOutput(ctx, workdir, &out, nil, "--services")
 	if err != nil {
 		return nil, fmt.Errorf("docker compose ps --services: %w", err)
 	}
 	var services []string
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for _, line := range strings.Split(strings.TrimSpace(out.String()), "\n") {
 		line = strings.TrimSpace(line)
 		if line != "" {
 			services = append(services, line)
