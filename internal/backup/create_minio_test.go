@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -54,7 +55,7 @@ func TestCreateMinioBackupWithoutHostMC(t *testing.T) {
 			t.Fatalf("%s: body=%q err=%v", key, body, err)
 		}
 		info, _ := os.Stat(path)
-		if info.Mode().Perm() != 0600 {
+		if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 { // Windows reports 0666 for every file
 			t.Errorf("object permissions = %o", info.Mode().Perm())
 		}
 	}
