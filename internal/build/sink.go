@@ -63,9 +63,6 @@ func newDiskSink(root string) *diskSink { return &diskSink{root: root} }
 // abs resolves a project-relative, absolute or "@fronting/" path to disk.
 func (d *diskSink) abs(p string) string { return resolveSinkPath(d.root, d.fronting, p) }
 
-func (d *diskSink) WriteFile(p string, data []byte, perm fs.FileMode) error {
-	return os.WriteFile(d.abs(p), data, perm)
-}
 func (d *diskSink) WriteAtomic(p string, data []byte, perm fs.FileMode) error {
 	return atomicWrite(d.abs(p), data, perm)
 }

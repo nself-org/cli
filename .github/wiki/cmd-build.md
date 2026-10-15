@@ -23,6 +23,8 @@ The build pipeline loads configuration from `.env` → `.env.{dev|staging|prod}`
 
 By default, `nself build` is smart-cached: it compares `.env` modification time against `docker-compose.yml` and skips regeneration when nothing has changed. Use `--force` to override the cache.
 
+Newly generated files receive their planned permissions even under a restrictive umask such as `077`. Rewrites preserve existing file permissions unless the build explicitly changes them; secret files remain owner-only (`0600`).
+
 ### ENV resolution — which `.env.{ENV}` layer loads
 
 `ENV` decides which of `.env.dev` / `.env.staging` / `.env.prod` loads as the second cascade layer. It is resolved in this order, and the build logs which source decided it:
