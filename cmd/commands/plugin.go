@@ -148,6 +148,7 @@ func init() {
 	pluginInstallCmd.Flags().String("version", "", "Install a specific version")
 	pluginInstallCmd.Flags().Bool("force", false, "Required when using NSELF_LICENSE_SKIP_VERIFY; explicit acknowledgment of skipped validation")
 	pluginInstallCmd.Flags().Bool("allow-eol", false, "Allow installing an EOL plugin (not recommended)") // S58-T03
+	pluginInstallCmd.Flags().Bool("allow-downgrade", false, "Install a registry version older than the installed one (v1.5 refuses by default)")
 	pluginInstallCmd.Flags().Bool("preview", false, "Preview the dependency tree without installing")
 	pluginInstallCmd.Flags().Bool("with-optional", false, "Include optional dependencies in --preview output")
 	pluginInstallCmd.Flags().Bool("skip-sbom-check", false, "Skip SBOM verification (air-gapped installs only — sets NSELF_SKIP_SBOM_CHECK=1)") // S2.T12
@@ -158,6 +159,7 @@ func init() {
 
 	// Flags on update.
 	pluginUpdateCmd.Flags().Bool("allow-eol", false, "Allow updating to/from an EOL plugin (not recommended)") // S58-T03
+	pluginUpdateCmd.Flags().Bool("allow-downgrade", false, "Accept a registry version older than the installed one (v1.5 refuses by default)")
 	pluginUpdateCmd.Flags().String("tier", "", `Switch the plugin to "free" or "licensed" on purpose (needs a plugin name); default keeps the installed tier`)
 
 	// Flags on remove.
@@ -220,6 +222,9 @@ func runPluginUpdateTier(cmd *cobra.Command, args []string) error {
 	tier = strings.ToLower(strings.TrimSpace(tier))
 	if tier != "" && tier != "free" && tier != plugin.LicenseLicensed && tier != plugin.WireTierPro {
 		return fmt.Errorf(`invalid --tier %q: must be "free" or "licensed"`, tier)
+	}
+	if allow, _ := cmd.Flags().GetBool("allow-downgrade"); allow {
+		_ = os.Setenv("NSELF_PLUGIN_ALLOW_DOWNGRADE", "1") // D-0843, read by plugin.installLocked
 	}
 	if len(args) != 1 {
 		if tier != "" {
