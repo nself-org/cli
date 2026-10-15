@@ -3,10 +3,9 @@
 # row goes first and writes AGENTS.md without a word, so the second row prints the
 # same stderr on every one of its runs. start, stop and restart cannot finish on
 # the fixture (no docker-compose.yml; --skip-build keeps start from generating
-# one), so each exits 1 the same way in base and head and is tagged no-json; their
-# success documents and their failures are covered by TestLifecycleJSON.
+# one). Check their error envelopes here; TestLifecycleJSON covers success.
 init --quiet --force --non-interactive --name smoke --domain example.test
 init --force --non-interactive --name smoke --domain example.test
-start --skip-build #| no-json=fixture-has-no-docker-compose-yml-see-json_lifecycle_test.go
-stop #| no-json=fixture-has-no-docker-compose-yml-see-json_lifecycle_test.go
-restart #| no-json=fixture-has-no-docker-compose-yml-see-json_lifecycle_test.go
+start --skip-build #| error-json=E004
+stop #| error-json=E400
+restart #| error-json=E400

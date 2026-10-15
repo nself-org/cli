@@ -116,7 +116,22 @@ while IFS= read -r raw || [ -n "$raw" ]; do
       diff -u "$left" "$right" >&2 || true
     fi
   fi
-  if [[ "$tags" != *no-json=* ]]; then
+  error_code=""
+  if [[ " $tags " =~ [[:space:]]error-json=([^[:space:]]+) ]]; then
+    error_code="${BASH_REMATCH[1]}"
+  fi
+  if [ -n "$error_code" ]; then
+    run_one "$head_bin" 1 "--json" "$tmp/head-json" "${argv[@]}"
+    if [ "$(cat "$tmp/head-json.rc")" -eq 0 ]; then
+      echo "FAIL $label: v1.5 --json expected a non-zero exit"; bad=1
+    fi
+    if ! jq -e -s --arg code "$error_code" 'length == 1 and (.[0] | type == "object" and has("error") and (has("data") | not) and .error.code == $code)' "$tmp/head-json.out" >/dev/null 2>&1; then
+      echo "FAIL $label: stdout is not one error envelope with code $error_code"; bad=1
+    elif ! (cd "$repo_root" && "$tmp/jsonvalidate" -schema envelope.v1.schema.json "$tmp/head-json.out") >"$tmp/validator.out" 2>&1; then
+      echo "FAIL $label: error envelope schema invalid"; bad=1
+      cat "$tmp/validator.out" >&2
+    fi
+  elif [[ "$tags" != *no-json=* ]]; then
     run_one "$head_bin" 1 "--json" "$tmp/head-json" "${argv[@]}"
     if [ "$(cat "$tmp/head-json.rc")" -ne 0 ]; then
       echo "FAIL $label: v1.5 --json exited non-zero"; bad=1
