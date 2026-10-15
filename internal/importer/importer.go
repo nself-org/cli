@@ -17,6 +17,8 @@ type Input struct {
 	Values map[string]string
 	Env    func(string) string
 	Target *config.Config
+	// VerifiedBundle is Detect's reader, scoped to this run and checked against dir by Extract.
+	VerifiedBundle *portable.Reader
 }
 type Detection struct {
 	Kind    string   `json:"kind"`
@@ -29,6 +31,8 @@ type Detection struct {
 	// Objects lists the bucket/key pairs a bundle source will load, for the --plan object-store check.
 	// It never reaches the report: keys can be user file names.
 	Objects []portable.Object `json:"-"`
+	// VerifiedBundle hands verified source bytes to Extract without another full hash pass.
+	VerifiedBundle *portable.Reader `json:"-"`
 }
 
 // Extracted names the written bundle. UntranslatedPolicies lists the source access rules the
@@ -36,6 +40,8 @@ type Detection struct {
 type Extracted struct {
 	Stage                string
 	UntranslatedPolicies []Policy
+	// VerifiedBundle is the verified staged copy; nil asks the runner to verify it.
+	VerifiedBundle *portable.Reader
 }
 type Source interface {
 	Name() string

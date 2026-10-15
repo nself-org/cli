@@ -13,6 +13,7 @@ import (
 	"github.com/nself-org/cli/internal/importer/load"
 	"github.com/nself-org/cli/internal/importer/postgres"
 	"github.com/nself-org/cli/internal/portable"
+	"path/filepath"
 	"reflect"
 )
 
@@ -28,13 +29,24 @@ func (Source) Flags() []importer.FlagSpec {
 	return []importer.FlagSpec{{Name: "dir", Usage: "Portable bundle directory written by `nself db export` (positional argument)"}}
 }
 
-// open verifies the whole bundle (E515 format or major, E516 integrity) before anything is staged.
+// open reuses this run's verified source reader, or verifies the whole bundle before staging.
+// Format or major failures are E515; integrity and reader-directory mismatches are E516.
 func open(in importer.Input) (*portable.Reader, error) {
 	dir := in.Values["dir"]
 	if dir == "" {
 		return nil, errs.New("E517", "bundle directory required")
 	}
-	r, err := portable.Open(dir)
+	var r *portable.Reader
+	var err error
+	if in.VerifiedBundle != nil {
+		root, e := filepath.EvalSymlinks(dir)
+		if e != nil || root != in.VerifiedBundle.Dir() {
+			return nil, errs.New("E516", "bundle changed while it was staged")
+		}
+		r = in.VerifiedBundle
+	} else {
+		r, err = portable.Open(dir)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -57,6 +69,7 @@ func (Source) Detect(ctx context.Context, in importer.Input) (importer.Detection
 	}
 	m := r.Manifest()
 	d := importer.Detection{Kind: "nself", Version: m.Postgres.ServerVersion, Schemas: m.DB.Schemas, SourceUsers: m.Auth.Users, Objects: m.Storage.Objects, Notes: []string{fmt.Sprintf("portable bundle from %s %s (source %s)", m.Producer.Tool, m.Producer.Version, m.Producer.Source)}}
+	d.VerifiedBundle = r
 	if in.Target == nil {
 		return d, nil
 	}
@@ -92,5 +105,5 @@ func (Source) Extract(ctx context.Context, in importer.Input, stage string) (imp
 	if !reflect.DeepEqual(staged.Manifest(), r.Manifest()) {
 		return importer.Extracted{}, errs.New("E516", "bundle changed while it was staged")
 	}
-	return importer.Extracted{Stage: stage}, nil
+	return importer.Extracted{Stage: stage, VerifiedBundle: staged}, nil
 }

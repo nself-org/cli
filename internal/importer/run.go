@@ -114,10 +114,12 @@ func Run(ctx context.Context, cfg *config.Config, s Source, in Input, opts RunOp
 		defer release()
 	}
 	in.Target = cfg
+	in.VerifiedBundle = nil // A caller cannot carry a previous run's snapshot into Detect.
 	detection, err := s.Detect(ctx, in)
 	if err != nil {
 		return report, publicError(err, "E517", "source detection failed")
 	}
+	in.VerifiedBundle = detection.VerifiedBundle
 	if err = targetChecks(ctx, cfg, detection); err != nil {
 		return report, err
 	}
@@ -152,7 +154,7 @@ func Run(ctx context.Context, cfg *config.Config, s Source, in Input, opts RunOp
 	if err != nil {
 		err = publicError(err, "E520", "source extraction failed")
 	} else {
-		err = runBundle(ctx, cfg, stage, opts, &report)
+		err = runBundle(ctx, cfg, stage, extracted, opts, &report)
 	}
 	b, e := json.MarshalIndent(report, "", "  ")
 	if e == nil {
@@ -163,8 +165,8 @@ func Run(ctx context.Context, cfg *config.Config, s Source, in Input, opts RunOp
 	}
 	return report, withReportHint(err, report.RunID, report.Wrote)
 }
-func runBundle(ctx context.Context, cfg *config.Config, stage string, opts RunOptions, report *Report) error {
-	bundle, err := portable.Open(stage)
+func runBundle(ctx context.Context, cfg *config.Config, stage string, extracted Extracted, opts RunOptions, report *Report) error {
+	bundle, err := extracted.openBundle(stage)
 	if err != nil {
 		return errs.New("E520", "extracted bundle failed integrity checks")
 	}

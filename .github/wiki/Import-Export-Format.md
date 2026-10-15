@@ -17,6 +17,11 @@ The portable bundle is the vendor-neutral directory that `nself db export` write
 
 Library: `internal/portable` (Writer, Reader, Manifest), `internal/postgres/tablehash` (count and hash per table), `internal/objstore` (S3 client for bucket contents).
 
+The nSelf importer reuses detection's verified source reader while staging, then
+reuses the verified staged reader for loading. Staging still hashes each member
+during the copy and verifies the staged bundle against the detected manifest.
+Reader handoffs are scoped to one import; member identity checks remain active.
+
 ## Layout
 
 ```
