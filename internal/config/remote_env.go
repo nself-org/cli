@@ -7,9 +7,12 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"sort"
 	"strings"
+
+	"github.com/nself-org/cli/internal/compat"
 )
 
 // ValidateRemoteEnv requires every populated config key in the process to
@@ -38,7 +41,13 @@ func ValidateRemoteEnv(fromFiles map[string]string) error {
 		return nil
 	}
 	sort.Strings(missing)
-	return fmt.Errorf("remote deploy refused: process-only config keys %s; put these keys in an env file in the remote target's cascade (.env, .env.<target>, or .env.secrets); process values are never shipped", strings.Join(missing, ", "))
+	err := fmt.Errorf("remote deploy refused: process-only config keys %s; put these keys in an env file in the remote target's cascade (.env, .env.<target>, or .env.secrets); process values are never shipped", strings.Join(missing, ", "))
+	// compat.V15(D-0260): process-only config keys shape the remote build with a warning -> the remote deploy is refused
+	if !compat.V15() {
+		slog.Warn("remote deploy: process-only config keys shape the build but are not shipped to the host; v1.5 refuses this", "keys", strings.Join(missing, ", "))
+		return nil
+	}
+	return err
 }
 
 // remoteDynamicConfigKey recognizes the dynamic collections and passthrough

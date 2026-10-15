@@ -5,9 +5,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/nself-org/cli/internal/compat/compattest"
 )
 
 func TestRemoteDeployProcessOnlyConfig(t *testing.T) {
+	compattest.Set(t, true)
 	isolateRemoteConfigEnv(t)
 	for _, key := range []string{"POSTGRES_PASSWORD", "CLOUDFLARE_API_KEY", "AUTH_PROVIDER_TEST_SECRET", "CS_1_ENV", "FRONTEND_APP_1_IMAGE", "INTERNAL_ROUTE_1_TARGET"} {
 		t.Run(key, func(t *testing.T) {
@@ -24,7 +27,19 @@ func TestRemoteDeployProcessOnlyConfig(t *testing.T) {
 	}
 }
 
+// v1.4 keeps the old behaviour (warning, no refusal) until the 1.5 default flip.
+func TestRemoteDeployProcessOnlyConfigV14Warns(t *testing.T) {
+	compattest.Set(t, false)
+	isolateRemoteConfigEnv(t)
+	t.Setenv("ENV", "staging")
+	t.Setenv("POSTGRES_PASSWORD", "process-secret-sentinel")
+	if _, err := LoadWithOptions(t.TempDir(), LoadOptions{RemoteDeploy: true}); err != nil {
+		t.Fatalf("v1.4 remote build refused process-only config: %v", err)
+	}
+}
+
 func TestRemoteDeployFilePrecedence(t *testing.T) {
+	compattest.Set(t, true)
 	isolateRemoteConfigEnv(t)
 	t.Setenv("ENV", "staging")
 	t.Setenv("POSTGRES_PASSWORD", "shell-secret")

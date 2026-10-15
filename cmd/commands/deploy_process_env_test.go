@@ -5,9 +5,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/nself-org/cli/internal/compat/compattest"
 )
 
 func TestResolvedDeployEnvProcessOnlyRefusal(t *testing.T) {
+	compattest.Set(t, true)
 	t.Setenv("POSTGRES_PASSWORD", "shell-secret-sentinel")
 	dir := t.TempDir()
 	path, cleanup, err := writeResolvedDeployEnv(dir, "staging")
@@ -25,6 +28,7 @@ func TestResolvedDeployEnvProcessOnlyRefusal(t *testing.T) {
 }
 
 func TestResolvedDeployEnvFileWins(t *testing.T) {
+	compattest.Set(t, true)
 	for _, value := range []string{"file-secret", ""} {
 		t.Run(value, func(t *testing.T) {
 			t.Setenv("POSTGRES_PASSWORD", "shell-secret-sentinel")
