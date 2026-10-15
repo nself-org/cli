@@ -12,22 +12,23 @@ import (
 )
 
 // initContainerListArgs is the `docker ps` argument list that selects init
-// containers safe to remove: labelled nself.type=init-container, exited, with
+// containers safe to remove in the given project: labelled nself.type=init-container, exited, with
 // exit code 0. Running ones (a start in progress, or a service that uses the
 // label) and failed ones (kept for `docker logs`) are left alone.
-func initContainerListArgs() []string {
+func initContainerListArgs(projectName string) []string {
 	return []string{"ps", "-aq",
 		"--filter", "label=nself.type=init-container",
+		"--filter", "label=com.docker.compose.project=" + projectName,
 		"--filter", "status=exited",
 		"--filter", "exited=0",
 	}
 }
 
 // cleanupInitContainers removes finished init containers (minio-init,
-// meilisearch-init, seaweedfs-init, ...): the ones that exited with code 0.
+// meilisearch-init, seaweedfs-init, ...) in the given project that exited with code 0.
 // Running and failed init containers are kept.
-func cleanupInitContainers(ctx context.Context) error {
-	out, err := exec.CommandContext(ctx, "docker", initContainerListArgs()...).Output()
+func cleanupInitContainers(ctx context.Context, projectName string) error {
+	out, err := exec.CommandContext(ctx, "docker", initContainerListArgs(projectName)...).Output()
 	if err != nil {
 		return fmt.Errorf("finding init containers: %w", err)
 	}
@@ -114,7 +115,7 @@ func RunPreStartCleanup(ctx context.Context, projectName string) error {
 func RunPostStartCleanup(ctx context.Context, projectName string) error {
 	// Run init container cleanup 3 times with delays to handle race conditions.
 	for i := 0; i < 3; i++ {
-		if err := cleanupInitContainers(ctx); err != nil {
+		if err := cleanupInitContainers(ctx, projectName); err != nil {
 			// Non-fatal: continue with remaining passes.
 			slog.Debug("cleanup init containers (non-fatal)", "pass", i+1, "err", err)
 		}
