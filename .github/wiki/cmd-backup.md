@@ -329,6 +329,13 @@ Verify backup integrity, optionally running a restore test in a temporary contai
 nself backup verify <backup-id|latest> [--restore-test] [--cleanup] [--keep]
 ```
 
+Without `--restore-test`, verification checks only that the file exists and is non-empty.
+Use `--restore-test --cleanup` to restore a `.dump` or `.dump.age` backup in a test
+Postgres container and run smoke and sentinel checks. Encrypted dumps use the same
+default identity search as restore; verification fails if the host cannot decrypt
+the backup. Temporary plaintext is removed after the check, including on failure.
+Production-tier remote deploys and promotions require this restore test before applying.
+
 ---
 
 ## backup list

@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nself-org/cli/internal/deploy"
 	"github.com/nself-org/cli/internal/errs"
@@ -19,14 +20,18 @@ type recRemote struct {
 	failOn  string
 	listOut string
 	tag     string
+	verify  func(context.Context, string) error
 }
 
 func (r *recRemote) Label() string { return "host-a" }
 func (r *recRemote) Rsync(context.Context, []string, string, string, string) error {
 	return errors.New("rsync is not part of a snapshot")
 }
-func (r *recRemote) Run(_ context.Context, c string) ([]byte, error) {
+func (r *recRemote) Run(ctx context.Context, c string) ([]byte, error) {
 	r.log = append(r.log, c)
+	if r.verify != nil && strings.Contains(c, "backup verify") {
+		return nil, r.verify(ctx, c)
+	}
 	if strings.Contains(c, "if mkdir") {
 		return []byte("OK\n"), nil
 	}
@@ -57,7 +62,7 @@ func TestVerifiedSnapshot(t *testing.T) {
 		if err != nil || id != "proj_full_20261010_130000_pre-deploy-ID1" {
 			t.Fatalf("id %q err %v", id, err)
 		}
-		want := []string{"backup create --tag 'pre-deploy-ID1'", "backup list --format json", "backup verify 'proj_full_20261010_130000_pre-deploy-ID1'"}
+		want := []string{"backup create --tag 'pre-deploy-ID1'", "backup list --format json", "backup verify 'proj_full_20261010_130000_pre-deploy-ID1' --restore-test --cleanup"}
 		if len(r.log) != 3 {
 			t.Fatalf("log %v", r.log)
 		}
@@ -89,6 +94,31 @@ func TestVerifiedSnapshot(t *testing.T) {
 			t.Fatalf("%q %v", got, err)
 		}
 	})
+}
+
+func TestVerifiedSnapshotRequiresRestorableBackup(t *testing.T) {
+	for _, failure := range []string{"external recipient", "timeout"} {
+		t.Run(failure, func(t *testing.T) {
+			r := &recRemote{listOut: listJSON, verify: func(ctx context.Context, command string) error {
+				if !strings.Contains(command, "--restore-test --cleanup") {
+					return nil // The old existence/size check accepts this backup.
+				}
+				deadline, ok := ctx.Deadline()
+				if !ok || time.Until(deadline) > 10*time.Minute {
+					t.Fatal("restore verification must have a timeout of at most 10 minutes")
+				}
+				if failure == "timeout" {
+					return context.DeadlineExceeded
+				}
+				return errors.New("age: no identity matched any of the recipients")
+			}}
+			id, err := VerifiedSnapshot(context.Background(), r, "/opt/nself", "pre-deploy-ID1")
+			var ce *errs.CLIError
+			if id != "" || !errors.As(err, &ce) || ce.Code != "E206" {
+				t.Fatalf("id %q err %v, want E206 for %s", id, err, failure)
+			}
+		})
+	}
 }
 
 // TestVerifiedSnapshotBeforeAnyCompose (F2): driven through deploy.ApplyRemote on a

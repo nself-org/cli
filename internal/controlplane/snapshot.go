@@ -5,7 +5,8 @@ package controlplane
 //
 // Purpose: on the host, `nself backup create --tag <tag>`, find the backup the
 //          tag names in `nself backup list --format json`, then require
-//          `nself backup verify <id>` to exit 0. Returns the backup id.
+//          `nself backup verify <id> --restore-test --cleanup` to exit 0
+//          within ten minutes. Returns the backup id.
 // Inputs:  a deploy.Remote, the remote project path and the tag.
 // Outputs: the backup id, or E206 with nothing applied.
 // Constraints: the commands are the host's own nself (cd <remote_path> first, as
@@ -18,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/nself-org/cli/internal/deploy"
 	"github.com/nself-org/cli/internal/errs"
@@ -46,7 +48,9 @@ func VerifiedSnapshot(ctx context.Context, r deploy.Remote, remotePath, tag stri
 	if err != nil {
 		return fail("backup list", err)
 	}
-	if _, err := r.Run(ctx, cd+"nself backup verify "+remote.ShellQuote(id)); err != nil {
+	verifyCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer cancel()
+	if _, err := r.Run(verifyCtx, cd+"nself backup verify "+remote.ShellQuote(id)+" --restore-test --cleanup"); err != nil {
 		return fail("backup verify "+id, err)
 	}
 	return id, nil
