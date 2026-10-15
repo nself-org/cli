@@ -141,42 +141,36 @@ func (r *Reader) Manifest() Manifest { return r.m }
 // Dir returns the bundle directory (symlinks in the caller's path resolved).
 func (r *Reader) Dir() string { return r.root }
 
-// OpenFile opens a listed member and returns the descriptor, for tools that
-// need a file rather than a stream (pg_restore reads standard input, or a
-// /dev/fd path of this descriptor).
+// OpenFile opens a listed member as a verifying stream.
 //
 // Purpose: a path handed to another process can be swapped between the check
-// and the use. This returns an open file instead, after re-checking that the
+// and the use. This returns a reader instead, after re-checking that the
 // member is still the file that was verified at Open: no symlink on the way
-// (O_NOFOLLOW on the last component where the platform has it), one hard link,
+// (directory-handle-relative opens that refuse links), one hard link,
 // and the same device and inode (Windows: volume and file index), size and
 // modification time as the snapshot taken during verification. Any difference
 // is refused with E516 (ErrChanged, or ErrLink for a link).
-// Constraints: the bytes are not hashed again; Open streams them with the
-// length and SHA-256 check. Callers must close the file.
-func (r *Reader) OpenFile(rel string) (*os.File, error) {
+// Constraints: callers must read through EOF and propagate errors to verify
+// the consumed bytes' length and SHA-256. Prefixes are unverified until EOF.
+// Callers must close the reader; no raw descriptor bypass is exposed.
+func (r *Reader) OpenFile(rel string) (io.ReadCloser, error) {
 	f, ok := r.byPath[rel]
 	if !ok {
 		return nil, fmt.Errorf("portable: %q is not a member of this bundle", rel)
 	}
 	snap := r.snaps[rel]
 	fh, _, err := openMember(r.root, f, &snap)
-	return fh, err
+	if err != nil {
+		return nil, err
+	}
+	return newVerifyingReader(fh, f), nil
 }
 
 // Open returns a reader for a listed member. It opens through OpenFile's
 // checks and re-checks length and SHA-256 as it streams: reading to EOF yields
 // E516 instead of io.EOF if the bytes changed since Open.
 func (r *Reader) Open(rel string) (io.ReadCloser, error) {
-	f, ok := r.byPath[rel]
-	if !ok {
-		return nil, fmt.Errorf("portable: %q is not a member of this bundle", rel)
-	}
-	fh, err := r.OpenFile(rel)
-	if err != nil {
-		return nil, err
-	}
-	return newVerifyingReader(fh, f), nil
+	return r.OpenFile(rel)
 }
 
 // Verify re-runs the member checks (links, identity, length, SHA-256,

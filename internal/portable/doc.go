@@ -11,5 +11,6 @@
 // (StorageMember).
 //
 // Layering: L1; imports only internal/errs, the standard library and
-// golang.org/x/text (NFC and case folding).
+// golang.org/x/text (NFC and case folding) and golang.org/x/sys (no-follow,
+// directory-handle-relative opens).
 package portable

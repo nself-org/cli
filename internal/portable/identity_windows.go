@@ -7,8 +7,8 @@ import (
 	"syscall"
 )
 
-// openFlags: Windows has no O_NOFOLLOW; the Lstat of every component before
-// the open and the identity check after it stand in.
+// openFlags is used for manifest.json's path-based open. Member opens instead
+// use relative native handles and refuse reparse points (member_windows.go).
 const openFlags = os.O_RDONLY
 
 // handleInfo returns the volume serial number and file index, and the hard-link

@@ -8,54 +8,24 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 // openMember opens the listed member f under root without following links and
 // returns the descriptor with the snapshot taken from it.
 //
-// Every directory component and the file itself are Lstat-ed: a symlink
-// anywhere, a non-regular file or a file with more than one hard link is
-// refused; the length must equal the manifest's. The file is opened with
-// O_NOFOLLOW where the platform has it, and the opened descriptor must be the
-// file that was Lstat-ed (a swap between the check and the open is refused).
+// Each component is opened relative to its parent's directory handle without
+// following links. A renamed parent therefore cannot redirect a later open.
+// A non-regular file or a file with more than one hard link is refused; the
+// length must equal the manifest's.
 // When want is not nil the descriptor must also be the snapshot taken when the
 // bundle was verified: same device and inode (Windows: volume and file index),
 // size and modification time, or the open is refused with ErrChanged.
 func openMember(root string, f File, want *snapshot) (*os.File, snapshot, error) {
-	cur := root
-	segs := strings.Split(f.Path, "/")
-	for i, seg := range segs {
-		cur = filepath.Join(cur, seg)
-		fi, err := os.Lstat(cur)
+	fh, err := openMemberHandle(root, f.Path)
+	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, snapshot{}, integrityErr(ErrMissing, "bundle file %q is missing", f.Path)
 		}
-		if err != nil {
-			return nil, snapshot{}, integrityErr(ErrMissing, "bundle file %q cannot be read: %v", f.Path, err)
-		}
-		if fi.Mode()&os.ModeSymlink != 0 {
-			return nil, snapshot{}, integrityErr(ErrLink, "bundle member %q goes through a symlink", f.Path)
-		}
-		if i < len(segs)-1 {
-			if !fi.IsDir() {
-				return nil, snapshot{}, integrityErr(ErrLink, "bundle member %q has a non-directory parent", f.Path)
-			}
-			continue
-		}
-		if !fi.Mode().IsRegular() {
-			return nil, snapshot{}, integrityErr(ErrLink, "bundle member %q is not a regular file", f.Path)
-		}
-		return openChecked(cur, fi, f, want)
-	}
-	return nil, snapshot{}, integrityErr(ErrMissing, "bundle file %q is missing", f.Path)
-}
-
-// openChecked opens path (already Lstat-ed as fi) and applies the descriptor
-// checks of openMember.
-func openChecked(path string, fi os.FileInfo, f File, want *snapshot) (*os.File, snapshot, error) {
-	fh, err := os.OpenFile(path, openFlags, 0)
-	if err != nil {
 		return nil, snapshot{}, integrityErr(ErrLink, "bundle file %q cannot be opened without following links: %v", f.Path, err)
 	}
 	snap, nlink, st, err := snapshotOf(fh)
@@ -63,7 +33,7 @@ func openChecked(path string, fi os.FileInfo, f File, want *snapshot) (*os.File,
 	case err != nil:
 		_ = fh.Close()
 		return nil, snapshot{}, integrityErr(ErrMissing, "bundle file %q cannot be inspected: %v", f.Path, err)
-	case !st.Mode().IsRegular() || !os.SameFile(fi, st):
+	case !st.Mode().IsRegular():
 		_ = fh.Close()
 		return nil, snapshot{}, integrityErr(ErrLink, "bundle file %q changed while it was opened", f.Path)
 	case nlink > 1:
