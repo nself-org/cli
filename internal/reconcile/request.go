@@ -69,6 +69,8 @@ type Request struct {
 	// lines change an env file, so the plan rendered after the write (which
 	// sees no difference) keeps the same confirmation and plan_id.
 	envChanged, envChangedSet bool
+	// resolvedEnv is the cascade selector shared by every render of an apply.
+	resolvedEnv string
 }
 
 // ApplyOptions are the operator's answers to a plan.
