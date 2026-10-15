@@ -7,6 +7,7 @@ package commands
 // the fakeSystemd of ssl_certbot_retire_test.go.
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -16,6 +17,38 @@ import (
 	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/ssl/acme"
 )
+
+// TestACMETimerRechecksHooksAfterEarlierRetirement covers D-0597: a hook
+// appearing between timerAfter's scans still reports an earlier retirement.
+func TestACMETimerRechecksHooksAfterEarlierRetirement(t *testing.T) {
+	f := newACMEFix(t)
+	le := useCertbotDir(t)
+	sd := &fakeSystemd{load: "loaded", file: "enabled", active: "active"}
+	useSystemd(t, sd)
+	var out bytes.Buffer
+	r := &acmeRun{out: &out, workdir: f.project, res: &acme.Resolution{SSLDir: f.ssl}}
+	retired, err := r.retireCertbot()
+	if err != nil || !retired || sd.disables() != 1 {
+		t.Fatalf("earlier retirement: retired=%v err=%v disables=%d", retired, err, sd.disables())
+	}
+	out.Reset()
+	hook := filepath.Join(le, "renewal", "x.conf")
+	scans := 0
+	acmeD.certbotHooks = func(dir string, sslDirs ...string) ([]string, error) {
+		scans++
+		if scans == 2 {
+			acmeWriteFile(t, hook, []byte("[renewalparams]\n"+nselfDeployHook(f.project)))
+		}
+		return certbotHooks(dir, sslDirs...)
+	}
+	err = r.timerAfter(retired)
+	if err == nil || codeOf(err) != "E151" || !strings.Contains(err.Error(), hook+":2") {
+		t.Fatalf("hook saved between scans: err=%v (want E151 naming %s:2)", err, hook)
+	}
+	if scans != 2 || sd.disables() != 1 || f.timers != 0 || strings.Count(out.String(), "was disabled before this failure") != 1 {
+		t.Fatalf("scans=%d disables=%d timers=%d\n%s", scans, sd.disables(), f.timers, out.String())
+	}
+}
 
 // TestACMETimerRetiresCertbotTimer: `setup --acme --install-cron` disables the
 // certbot timer before installing the ACME one; a re-run changes nothing; a

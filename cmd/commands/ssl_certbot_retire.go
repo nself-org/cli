@@ -141,7 +141,7 @@ func (r *acmeRun) refuseCertbotHooks(dirs ...string) error {
 	}
 	slices.Sort(dirs)
 	for _, dir := range slices.Compact(dirs) {
-		hits, err := certbotHooks(dir, r.res.SSLDir, filepath.Join(r.workdir, "ssl"))
+		hits, err := acmeD.certbotHooks(dir, r.res.SSLDir, filepath.Join(r.workdir, "ssl"))
 		if err != nil {
 			return e151(acmeRefuse("run as the user that owns "+dir, "cannot read certbot's hooks: %v", err))
 		}

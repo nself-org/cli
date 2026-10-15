@@ -36,15 +36,16 @@ var acmeInput acme.Input
 
 // acmeD holds the outside-world seams of the ACME commands.
 var acmeD = struct {
-	run    func(context.Context, docker.RunSpec) (string, string, error)
-	exec   func(context.Context, string, []string) (string, string, error)
-	probe  func(context.Context, string, string, time.Duration) (ssl.ServedCert, error)
-	secGet func(root, env, key string) (string, error)
-	secSet func(root, env, key, value string) error
-	timer  func(workdir, keyPath string) error
-	ask    func(prompt string) bool
-	exit   func(int)
-}{docker.RunOneShot, docker.ExecCapture, ssl.ProbeServed, secrets.Get, secrets.Set, installACMETimer, askTTY, os.Exit}
+	run          func(context.Context, docker.RunSpec) (string, string, error)
+	exec         func(context.Context, string, []string) (string, string, error)
+	probe        func(context.Context, string, string, time.Duration) (ssl.ServedCert, error)
+	secGet       func(root, env, key string) (string, error)
+	secSet       func(root, env, key, value string) error
+	timer        func(workdir, keyPath string) error
+	ask          func(prompt string) bool
+	exit         func(int)
+	certbotHooks func(dir string, sslDirs ...string) ([]string, error)
+}{docker.RunOneShot, docker.ExecCapture, ssl.ProbeServed, secrets.Get, secrets.Set, installACMETimer, askTTY, os.Exit, certbotHooks}
 
 // acmeOnlyFlags mean nothing without --acme and are refused without it.
 var acmeOnlyFlags = []string{"dry-run", "nginx-container", "agree-tos", "force", "quiet", "adopt-certbot", "dns-credential-file", "challenge", "lineage"}
