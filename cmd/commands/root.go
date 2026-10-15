@@ -89,6 +89,13 @@ func init() {
 	// (invocation.go) refuses it on commands that cannot produce JSON.
 	RootCmd.PersistentFlags().Bool("json", false, "Machine-readable output: one JSON document on stdout (see JSON-Output)")
 	RootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		// Explain keeps target flags as data. Apply its global options before
+		// root hooks inspect them, especially the monorepo redirect below.
+		if cmd == configExplainCmd && cmd.DisableFlagParsing {
+			if err := prepareConfigExplain(cmd, args); err != nil {
+				return err
+			}
+		}
 		// ── OTel tracing ──────────────────────────────────────────────────────
 		// InitTracer is only called when OTEL_EXPORTER_OTLP_ENDPOINT is set.
 		// Leaving it unset is the zero-config path: no tracer, no side-effects.

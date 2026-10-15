@@ -31,6 +31,8 @@ nself config explain BASE_DOMAIN --json   # one envelope
 
 For example, the command `init` with the flag `--domain` resolves to `BASE_DOMAIN`.
 
+From a monorepo root, `config explain` follows the detected `backend/` or `.backend/` project. Use `nself config explain BASE_DOMAIN --no-monorepo --json` to explain the current directory instead. With `--json`, any redirect notice goes to stderr so stdout remains one JSON document.
+
 The answer lists the env name, the default, the flags that supply the key, the MCP tool and HTTP route parameter that carry each flag, the `nself.yaml` row, every cascade file that sets the key and the winner. A key that is not a known configuration key, and a flag that supplies no key, exit 1 with `E434`. `nself config env explain VAR` walks the same cascade and prints the same winner.
 
 ## Flags that supply a key
