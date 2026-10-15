@@ -87,6 +87,8 @@ A project that already has a `docker-compose.yml` gets a first lock that takes i
 2. Otherwise the CLI image lock entry whose version matches the reference.
 3. Otherwise a tag-only entry under `unpinned`.
 
+When the local digest matches the CLI image lock, the first lock uses the CLI entry's full image reference so the local Docker cache does not change its spelling. A different local digest keeps the compose reference and that local digest.
+
 A service the old compose lacks takes the CLI default. A project with no compose starts from the CLI defaults.
 
 The admin UI's compose service is `nself-admin`, while its lock key is `admin`. If another compose file also defines a service named `admin`, that service cannot replace the admin UI's lock entry: the generated `nself-admin` service wins the key deterministically.

@@ -238,6 +238,9 @@ func TestLockBootstrapDigest(t *testing.T) {
 // TestLockV14OptIn: v1.4 writes no lock unless build --write-lock opts in; once
 // the file exists it is honoured and updated.
 func TestLockV14OptIn(t *testing.T) {
+	prev := localRepoDigest
+	localRepoDigest = func(string) string { return "" }
+	t.Cleanup(func() { localRepoDigest = prev })
 	f := newPlanFixture(t, "dev-minimal")
 	compattest.Set(t, false)
 	lockBuild(t, f)
