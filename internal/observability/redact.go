@@ -63,9 +63,13 @@ var (
 
 	// Loopback addresses that must survive redaction. These never identify
 	// a user and appear in nearly every doctor/diag log.
-	loopbackPlaceholder = "\x00LOOPBACK\x00"
-	loopbackV4          = "127.0.0.1"
-	loopbackV6          = "::1"
+	// Keep the tokens free of digits and terminate them with a non-hex word.
+	// A numeric suffix beside :port:port can itself match the IPv6 regex and
+	// destroy the token before restoration (D-0559).
+	loopbackV4Placeholder = "\x00LOOPBACKVFOUR\x00"
+	loopbackV6Placeholder = "\x00LOOPBACKVSIX\x00"
+	loopbackV4            = "127.0.0.1"
+	loopbackV6            = "::1"
 
 	// Global counter for redaction failures.
 	redactionFailures atomic.Int64
@@ -91,8 +95,8 @@ func Redact(s string) string {
 	result := s
 
 	// Stash loopback addresses so the IP regexes don't clobber them.
-	result = strings.ReplaceAll(result, loopbackV4, loopbackPlaceholder+"4")
-	result = strings.ReplaceAll(result, loopbackV6, loopbackPlaceholder+"6")
+	result = strings.ReplaceAll(result, loopbackV4, loopbackV4Placeholder)
+	result = strings.ReplaceAll(result, loopbackV6, loopbackV6Placeholder)
 
 	// JWT first (matches before any prefix logic would).
 	result = jwtRegex.ReplaceAllString(result, redactionPlaceholder)
@@ -122,8 +126,8 @@ func Redact(s string) string {
 	}
 
 	// Restore loopback addresses.
-	result = strings.ReplaceAll(result, loopbackPlaceholder+"4", loopbackV4)
-	result = strings.ReplaceAll(result, loopbackPlaceholder+"6", loopbackV6)
+	result = strings.ReplaceAll(result, loopbackV4Placeholder, loopbackV4)
+	result = strings.ReplaceAll(result, loopbackV6Placeholder, loopbackV6)
 
 	return result
 }

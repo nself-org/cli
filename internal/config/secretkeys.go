@@ -5,7 +5,7 @@ package config
 // helpers, internal/env and the machine audit log (P7-SURF-25, P7-SURF-12).
 // Inputs: a config key or flag name; a config value.
 // Outputs: true when the name contains SECRET, PASS (which covers PASSWORD and
-// AUTH_SMTP_PASS), KEY, TOKEN, CREDENTIAL, WEBHOOK, PRIVATE, DSN or SALT
+// AUTH_SMTP_PASS), KEY, TOKEN, CREDENTIAL, WEBHOOK, PRIVATE, DSN, SALT or BASICAUTH
 // (case-insensitive); a value with its URL credentials masked.
 // Constraints: over-matching (for example PUBLIC_KEY or BYPASS) is the safe
 // side: a match only redacts. internal/env must not keep a second list.
@@ -17,7 +17,7 @@ import (
 
 // secretKeyParts are the substrings whose presence in an upper-cased key name
 // marks a secret value.
-var secretKeyParts = []string{"SECRET", "PASS", "KEY", "TOKEN", "CREDENTIAL", "WEBHOOK", "PRIVATE", "DSN", "SALT"}
+var secretKeyParts = []string{"SECRET", "PASS", "KEY", "TOKEN", "CREDENTIAL", "WEBHOOK", "PRIVATE", "DSN", "SALT", "BASICAUTH"}
 
 // IsSecretKey reports whether key names a secret value.
 func IsSecretKey(key string) bool {
