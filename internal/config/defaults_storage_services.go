@@ -49,10 +49,10 @@ func applyDefaultsMinio(cfg *Config) error {
 }
 
 // applyDefaultsMinioWithOptions fills connection/storage defaults and skips the
-// credential policy only for callers that never use or start this service.
+// credential policy for callers that never use or start it, or missing v1.5 plugins.
 func applyDefaultsMinioWithOptions(cfg *Config, opts LoadOptions) error {
 	applyDefaultsMinioConn(cfg)
-	if !opts.SkipMinioCredentialGuard {
+	if !opts.SkipMinioCredentialGuard && minioCredentialGuardRequired() {
 		if err := ValidateMinioCredentials(cfg); err != nil {
 			return err
 		}
