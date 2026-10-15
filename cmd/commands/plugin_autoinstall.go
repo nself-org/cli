@@ -121,7 +121,7 @@ func autoInstallResolve(ctx context.Context, slug, version string) (*plugin.Plug
 		return nil, nil, err
 	}
 	manual := fmt.Sprintf("nself add %s", slug)
-	reg, err := plugin.FetchRegistry(ctx, "", plugin.DefaultCacheDir())
+	reg, err := plugin.FetchRegistryExclusive(ctx, "", plugin.DefaultCacheDir())
 	if err != nil {
 		return nil, nil, fmt.Errorf("auto-install of %q: fetching the catalogue: %w (install it by hand: %s)", slug, err, manual)
 	}
