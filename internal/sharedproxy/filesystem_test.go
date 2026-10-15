@@ -3,6 +3,7 @@ package sharedproxy
 // Tests for the filesystem helpers: sameDir, Restore, mkdirPrivate and Write.
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
