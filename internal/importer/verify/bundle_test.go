@@ -1,6 +1,7 @@
 package verify
 
 import (
+	"encoding/json"
 	"github.com/nself-org/cli/internal/portable"
 	"path/filepath"
 	"strings"
@@ -12,7 +13,7 @@ func TestBundleUsersAndMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = w.WriteFile("auth/users.jsonl", strings.NewReader(`{"id":"u1","hash_algorithm":"argon2"}`+"\n")); err != nil {
+	if _, err = w.WriteFile("auth/users.jsonl", strings.NewReader(`{"id":"u1","hash_algorithm":"argon2","metadata":{"account":9007199254740993}}`+"\n")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = w.WriteFile("hasura/metadata.json", strings.NewReader(`{"sources":[{"name":"default","tables":[{"table":{"schema":"public","name":"notes"},"select_permissions":[]}]}]}`)); err != nil {
@@ -29,6 +30,9 @@ func TestBundleUsersAndMetadata(t *testing.T) {
 	users, err := ReadUsers(r)
 	if err != nil || len(users) != 1 {
 		t.Fatalf("users: %+v %v", users, err)
+	}
+	if users[0].Metadata["account"] != json.Number("9007199254740993") {
+		t.Fatal("bundle metadata number lost precision")
 	}
 	meta, err := ReadMetadata(r)
 	if err != nil || meta["public.notes"] == nil {

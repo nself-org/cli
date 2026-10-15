@@ -214,7 +214,7 @@ if nself db import nself "$W/flipped" --json >"$W/flipped.json" 2>"$W/flipped.er
 grep -q E516 "$W/flipped.json" "$W/flipped.err" || fail 'flipped byte without E516'
 cp -r "$W/bundle" "$W/v2"
 chmod -R u+w "$W/v2"
-sed -i 's/"schema_version": "1"/"schema_version": "2"/' "$W/v2/manifest.json"
+sed -i 's/"schema_version": "[^"]*"/"schema_version": "2"/' "$W/v2/manifest.json"
 if nself db import nself "$W/v2" --json >"$W/v2.json" 2>"$W/v2.err"; then fail 'schema_version 2 accepted'; fi
 grep -q E515 "$W/v2.json" "$W/v2.err" || fail 'schema_version 2 without E515'
 test "$(state_b)" = "$before" || fail 'refused bundles changed B'

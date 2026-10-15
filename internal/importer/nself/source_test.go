@@ -91,7 +91,7 @@ func TestSchemaVersion2IsE515(t *testing.T) {
 	dir := makeBundle(t)
 	p := filepath.Join(dir, "manifest.json")
 	b, _ := os.ReadFile(p)
-	b = bytes.Replace(b, []byte(`"schema_version": "1"`), []byte(`"schema_version": "2"`), 1)
+	b = bytes.Replace(b, []byte(`"schema_version": "`+portable.SchemaVersion+`"`), []byte(`"schema_version": "2"`), 1)
 	if err := os.WriteFile(p, b, 0o600); err != nil {
 		t.Fatal(err)
 	}

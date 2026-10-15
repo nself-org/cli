@@ -2,6 +2,7 @@ package exporter
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -57,6 +58,33 @@ func TestAuthPortableFields(t *testing.T) {
 	for _, rows := range []*fakeUserRows{{data: []string{`{`}}, {data: []string{`{}`}, scanErr: errors.New("fake scan failure")}, {errorAtEnd: errors.New("fake row failure")}} {
 		if err := streamAuth(rows, &b, &a); err == nil {
 			t.Fatal("auth read failed open")
+		}
+	}
+}
+
+// Purpose: retain source authorization and account flags in portable user JSONL.
+// Inputs: independent snapshot JSON rows. Outputs: unchanged account values.
+// Constraints: bcrypt classification is added without rewriting user fields.
+func TestAuthPreservesAccountFields(t *testing.T) {
+	const raw = `{"id":"fixture-user","default_role":"staff","locale":"fr","phone_number_verified":true,"is_anonymous":true,"email_verified":true,"disabled":true,"metadata":{"department":"support"},"roles":["staff","user"]}`
+	rows := &fakeUserRows{data: []string{raw}}
+	var b bytes.Buffer
+	a := portable.Auth{HashAlgorithms: map[string]int{}}
+	if err := streamAuth(rows, &b, &a); err != nil {
+		t.Fatal(err)
+	}
+	var want, got map[string]any
+	if err := json.Unmarshal([]byte(raw), &want); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(b.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	for key, value := range want {
+		wantJSON, _ := json.Marshal(value)
+		gotJSON, _ := json.Marshal(got[key])
+		if !bytes.Equal(gotJSON, wantJSON) {
+			t.Errorf("portable field %s changed", key)
 		}
 	}
 }

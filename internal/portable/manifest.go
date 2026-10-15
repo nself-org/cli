@@ -5,7 +5,7 @@ const Format = "nself-portable-export"
 
 // SchemaVersion is the manifest version the Writer emits. The Reader accepts
 // any "1" or "1.<n>" and refuses every other major (E515).
-const SchemaVersion = "1"
+const SchemaVersion = "1.1"
 
 // MajorVersion is the only major this package reads and writes.
 const MajorVersion = 1

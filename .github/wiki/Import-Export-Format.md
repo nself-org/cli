@@ -38,7 +38,7 @@ The bundle directory is mode 0700 and its files 0600. A bundle never holds a sec
 | Field | Meaning |
 |---|---|
 | `_format` | always `nself-portable-export` |
-| `schema_version` | `"1"`; readers accept `1` and `1.<n>` |
+| `schema_version` | `"1.1"`; readers accept `1` and `1.<n>` |
 | `created_at` | RFC 3339; the only time-dependent field |
 | `producer` | `tool`, `version`, `source` (`nself`, `postgres`, `nhost`, `hasura-cloud`, `supabase`, `firebase`, `appwrite`) |
 | `postgres` | `server_version`, `major` of the source |
@@ -52,6 +52,24 @@ The bundle directory is mode 0700 and its files 0600. A bundle never holds a sec
 | `files` | every member except `manifest.json`: `path`, `sha256` (lowercase hex of the exact bytes), `bytes` |
 
 The manifest is deterministic: keys are sorted (Go marshals maps in key order), arrays are sorted by their natural id (`db.tables` by schema and name, `files` by path, and so on; a table's `pk` keeps the key's column order), two-space indent, one trailing newline. Two runs over the same input write the same bytes. Only `created_at` changes with time.
+
+## Auth user records
+
+`auth/users.jsonl` contains one object per user. Hasura-auth sources preserve
+`id`, `email`, `email_verified`, `phone`, `display_name`, `created_at`, `disabled`,
+`password_hash`, `hash_algorithm`, `metadata` and `roles`. Version `1.1` adds
+`default_role`, `locale`, `phone_number_verified` and `is_anonymous` so import
+preserves the user's selected role, locale and account flags. The default role
+is distinct from the set of allowed roles; it need not be the first array entry.
+Other source adapters retain their existing role mapping.
+
+Older records remain readable. An absent or empty `default_role` loads as
+`user`; an absent or empty `locale` loads as `en`. Absent boolean fields load
+as `false`. Import registers the default role and allowed roles before loading
+users. Verification independently reads the target's role set, default role,
+locale, email and phone verification flags, disabled and anonymous flags, and
+metadata, as well as identity fields and password hash algorithm. Role order
+does not affect comparison; differing account values prevent a passing report.
 
 ## Table hash
 

@@ -31,6 +31,7 @@ func ReadUsers(r *portable.Reader) ([]User, error) {
 	}
 	defer func() { _ = f.Close() }()
 	dec := json.NewDecoder(f)
+	dec.UseNumber()
 	out := []User{}
 	seen := map[string]bool{}
 	for {

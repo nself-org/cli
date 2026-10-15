@@ -157,6 +157,8 @@ func TestManifestDecodeIsStrict(t *testing.T) {
 	}
 	for _, c := range cases {
 		dir := fixture(t)
+		// Strict-version cases start at 1 regardless of the Writer's current minor.
+		editManifest(t, dir, func(m map[string]any) { m["schema_version"] = "1" })
 		rawManifest(t, dir, c.edit)
 		_, err := Open(dir)
 		if c.want {

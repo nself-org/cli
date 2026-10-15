@@ -17,17 +17,21 @@ type Mismatch struct {
 	Detail string `json:"detail"`
 }
 type User struct {
-	ID            string         `json:"id"`
-	Email         *string        `json:"email"`
-	EmailVerified bool           `json:"email_verified"`
-	Phone         *string        `json:"phone"`
-	DisplayName   *string        `json:"display_name"`
-	CreatedAt     string         `json:"created_at"`
-	Disabled      bool           `json:"disabled"`
-	PasswordHash  *string        `json:"password_hash"`
-	HashAlgorithm string         `json:"hash_algorithm"`
-	Metadata      map[string]any `json:"metadata"`
-	Roles         []string       `json:"roles"`
+	ID                  string         `json:"id"`
+	Email               *string        `json:"email"`
+	EmailVerified       bool           `json:"email_verified"`
+	Phone               *string        `json:"phone"`
+	DisplayName         *string        `json:"display_name"`
+	CreatedAt           string         `json:"created_at"`
+	Disabled            bool           `json:"disabled"`
+	PasswordHash        *string        `json:"password_hash"`
+	HashAlgorithm       string         `json:"hash_algorithm"`
+	Metadata            map[string]any `json:"metadata"`
+	Roles               []string       `json:"roles"`
+	DefaultRole         string         `json:"default_role,omitempty"`
+	Locale              string         `json:"locale,omitempty"`
+	PhoneNumberVerified bool           `json:"phone_number_verified,omitempty"`
+	IsAnonymous         bool           `json:"is_anonymous,omitempty"`
 }
 type Metadata map[string]map[string]any
 type State struct {
@@ -38,6 +42,8 @@ type State struct {
 	Counts   map[string]int64
 	// UserIdent holds Identity() of each target user; nil skips the identity check.
 	UserIdent map[string]string
+	// UserAuth holds independently observed auth fields; nil is for synthetic targets.
+	UserAuth map[string]User
 }
 type Target interface {
 	Snapshot(context.Context, portable.Manifest) (State, error)
@@ -92,6 +98,8 @@ func CompareState(state State, m portable.Manifest, users []User, metadata Metad
 			add("user_hash_algorithm", u.ID, "password hash algorithm differs", "user")
 		} else if got, have := state.UserIdent[u.ID]; state.UserIdent != nil && (!have || got != Identity(u.Email, u.Phone, u.DisplayName)) {
 			add("user", u.ID, "user identity fields differ", "user")
+		} else if got, have := state.UserAuth[u.ID]; state.UserAuth != nil && (!have || !sameAuth(u, got)) {
+			add("user_auth", u.ID, "user authorization fields differ", "user")
 		}
 	}
 	for _, o := range m.Storage.Objects {

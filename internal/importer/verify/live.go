@@ -56,25 +56,18 @@ func (l *Live) Snapshot(ctx context.Context, m portable.Manifest) (State, error)
 	}
 	if l.HasAuth || len(l.Users) > 0 {
 		s.UserIdent = map[string]string{}
-		rows, e := tx.Query(ctx, `SELECT id::text, password_hash, email::text, phone_number, display_name FROM auth.users`)
+		s.UserAuth = map[string]User{}
+		rows, e := tx.Query(ctx, `SELECT jsonb_build_object(
+'id',u.id,'password_hash',u.password_hash,'email',u.email,'phone',u.phone_number,
+'display_name',u.display_name,'email_verified',u.email_verified,'disabled',u.disabled,
+'metadata',u.metadata,'default_role',u.default_role,'locale',u.locale,
+'phone_number_verified',u.phone_number_verified,'is_anonymous',u.is_anonymous,
+'roles',coalesce((SELECT jsonb_agg(r.role ORDER BY r.role) FROM auth.user_roles r WHERE r.user_id=u.id),'[]'::jsonb))
+FROM auth.users u`)
 		if e != nil {
 			return s, errors.New("target users unavailable")
 		}
-		for rows.Next() {
-			var id string
-			var hash, email, phone, display *string
-			if rows.Scan(&id, &hash, &email, &phone, &display) != nil {
-				rows.Close()
-				return s, errors.New("target user read failed")
-			}
-			algo := "none"
-			if hash != nil && len(*hash) >= 4 && (*hash)[:2] == "$2" {
-				algo = "bcrypt"
-			}
-			s.Users[id] = algo
-			s.UserIdent[id] = Identity(email, phone, display)
-		}
-		e = rows.Err()
+		e = observeAuthRows(rows, &s)
 		rows.Close()
 		if e != nil {
 			return s, errors.New("target user read failed")
