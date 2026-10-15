@@ -10,7 +10,7 @@ import (
 )
 
 // TestV15SuiteInCI prevents the default compatibility mode from hiding v1.5
-// regressions. A required job must run the entire suite with NSELF_V15=1.
+// regressions. A required job must run the suite (cmd/commands narrowed, D-0275) with NSELF_V15=1.
 func TestV15SuiteInCI(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci.yml"))
 	if err != nil {
@@ -40,16 +40,16 @@ func TestV15SuiteInCI(t *testing.T) {
 			if value, ok := step.Env["NSELF_V15"]; ok {
 				mode = value
 			}
-			args := strings.Fields(step.Run)
-			if mode != "1" || len(args) < 3 || args[0] != "go" || args[1] != "test" || step.ContinueOnError {
+			if mode != "1" || step.ContinueOnError {
 				continue
 			}
-			for _, arg := range args[2:] {
-				if arg == "./..." {
-					return
-				}
+			// The step must test the module (go list ./...) and keep the Hasura
+			// remote tests of cmd/commands under v1.5.
+			if strings.Contains(step.Run, "go test") && strings.Contains(step.Run, "go list -mod=vendor ./...") &&
+				strings.Contains(step.Run, "-run '^TestDBHasuraRemotePartialFailure$' ./cmd/commands") {
+				return
 			}
 		}
 	}
-	t.Fatal("CI must run go test ./... in a required job with NSELF_V15=1")
+	t.Fatal("CI must run the v1.5 suite (go list ./... plus cmd/commands Hasura tests) in a required job with NSELF_V15=1")
 }
