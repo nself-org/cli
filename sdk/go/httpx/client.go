@@ -71,12 +71,18 @@ func New(opts ClientOptions) *Client {
 // request has a body but no GetBody (a body built from a plain io.Reader),
 // Do reads the body into memory once and closes it, then replays those bytes
 // on each attempt. A body over 8 MiB without GetBody is sent once, without
-// retries; set GetBody to retry large bodies.
+// retries; set GetBody to retry large bodies. Buffered bodies must match an
+// explicit positive ContentLength. Inferred lengths apply only to attempts,
+// preserving the caller's ContentLength and chunked encoding for trailers.
 func (c *Client) Do(ctx context.Context, req *http.Request) (*http.Response, error) {
 	if req.Header.Get("User-Agent") == "" {
 		req.Header.Set("User-Agent", c.opts.UserAgent)
 	}
 
+	// Keep buffering's metadata changes local. Share Trailer until the body
+	// has been read, since a reader may populate its values at EOF.
+	bufferReq := *req
+	req = &bufferReq
 	getBody, buffered, err := bodySource(req, c.opts.MaxRetries > 0)
 	if err != nil {
 		return nil, err
@@ -136,8 +142,9 @@ func (c *Client) Do(ctx context.Context, req *http.Request) (*http.Response, err
 // single attempt (retries false), or a body without GetBody larger than
 // maxBufferedBody (req.Body is then rebuilt so the one attempt still sends it
 // whole). buffered reports that req.Body was read into memory and closed, so
-// even the first attempt must use the copy; req.ContentLength is set to the
-// buffered length.
+// even the first attempt must use the copy. req is Do's local request copy:
+// its ContentLength is inferred only when there are no trailers, after
+// validating any explicit positive length against the buffered bytes.
 func bodySource(req *http.Request, retries bool) (getBody func() (io.ReadCloser, error), buffered bool, err error) {
 	if !retries || req.Body == nil || req.Body == http.NoBody {
 		return nil, false, nil
@@ -159,7 +166,13 @@ func bodySource(req *http.Request, retries bool) (getBody func() (io.ReadCloser,
 		return nil, false, nil
 	}
 	_ = orig.Close()
-	req.ContentLength = int64(len(data))
+	length := int64(len(data))
+	if req.ContentLength > 0 && req.ContentLength != length {
+		return nil, false, fmt.Errorf("httpx: ContentLength=%d with buffered body length %d", req.ContentLength, length)
+	}
+	if len(req.Trailer) == 0 {
+		req.ContentLength = length
+	}
 	return func() (io.ReadCloser, error) {
 		return io.NopCloser(bytes.NewReader(data)), nil
 	}, true, nil
