@@ -1,6 +1,6 @@
 // Package clone provides embedded app-clone templates for nself init --template.
 // Each template bundles a Postgres schema, Hasura metadata, seed data, and a
-// Flutter UI starter. Templates are embedded in the binary via go:embed so no
+// backend configuration. Templates are embedded in the binary via go:embed so no
 // network access is required at scaffold time.
 package clone
 

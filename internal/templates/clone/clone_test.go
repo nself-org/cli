@@ -3,6 +3,7 @@ package clone
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -135,5 +136,39 @@ func TestScaffold_InvalidTemplate(t *testing.T) {
 	_, err := Scaffold("does-not-exist", opts)
 	if err == nil {
 		t.Error("Scaffold with invalid template should return error, got nil")
+	}
+}
+
+// TestScaffold_BackendGettingStarted guards the instructions and files actually
+// delivered to users of every bundled clone template.
+func TestScaffold_BackendGettingStarted(t *testing.T) {
+	for _, name := range All() {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			files, err := Scaffold(name, ScaffoldOptions{TargetDir: dir})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, file := range files {
+				if strings.HasPrefix(filepath.ToSlash(file), "flutter/") {
+					t.Errorf("obsolete Flutter starter scaffolded: %s", file)
+				}
+			}
+			data, err := os.ReadFile(filepath.Join(dir, "README.md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			readme := string(data)
+			for _, want := range []string{"nself db hasura metadata apply\n", "nself add ", "No frontend starter is bundled"} {
+				if !strings.Contains(readme, want) {
+					t.Errorf("README missing %q", want)
+				}
+			}
+			for _, obsolete := range []string{"nself hasura", "--file hasura/metadata.json", "nself plugin install", "flutter run", "Flutter starter with"} {
+				if strings.Contains(readme, obsolete) {
+					t.Errorf("README still contains %q", obsolete)
+				}
+			}
+		})
 	}
 }

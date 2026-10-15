@@ -6,15 +6,16 @@ Newsletter publishing starter built with nSelf.
 
 - `np_newsletters`, `np_posts`, `np_subscribers`, `np_tiers` tables with RLS
 - Hasura permissions and relationships
-- Flutter starter with post list, editor, and subscriber management
 - Required plugins: `cms`, `notify`, `auth`
 
 ## Getting started
 
+No frontend starter is bundled. Connect your own React + Vite or React Native app
+to this backend; the former Flutter starter has been removed.
+
 ```bash
-nself plugin install cms notify auth
+nself add cms notify auth
 nself start
 nself db migrate
-nself hasura metadata apply --file hasura/metadata.json
-cd flutter && flutter run
+nself db hasura metadata apply
 ```

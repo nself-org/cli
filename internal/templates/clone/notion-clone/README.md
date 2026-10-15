@@ -6,15 +6,16 @@ Collaborative workspace starter built with nSelf.
 
 - `np_workspaces`, `np_pages`, `np_blocks`, `np_page_members` tables with RLS
 - Hasura permissions and relationships
-- Flutter starter with sidebar tree and block editor
 - Required plugins: `cms`, `auth`, `realtime`
 
 ## Getting started
 
+No frontend starter is bundled. Connect your own React + Vite or React Native app
+to this backend; the former Flutter starter has been removed.
+
 ```bash
-nself plugin install cms auth realtime
+nself add cms auth realtime
 nself start
 nself db migrate
-nself hasura metadata apply --file hasura/metadata.json
-cd flutter && flutter run
+nself db hasura metadata apply
 ```
