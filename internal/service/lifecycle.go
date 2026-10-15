@@ -115,7 +115,10 @@ func Start(ctx context.Context, serviceName string) error {
 	if err != nil {
 		return err
 	}
-	c := docker.NewCompose(filepath.Join(dir, "docker-compose.yml"))
+	c, err := lifecycleCompose(dir)
+	if err != nil {
+		return err
+	}
 	return c.ComposeUp(ctx, dir, canon)
 }
 
@@ -130,7 +133,10 @@ func Stop(ctx context.Context, serviceName string) error {
 	if err != nil {
 		return err
 	}
-	c := docker.NewCompose(filepath.Join(dir, "docker-compose.yml"))
+	c, err := lifecycleCompose(dir)
+	if err != nil {
+		return err
+	}
 	return c.ComposeStop(ctx, dir, canon)
 }
 
@@ -144,7 +150,10 @@ func Restart(ctx context.Context, serviceName string) error {
 	if err != nil {
 		return err
 	}
-	c := docker.NewCompose(filepath.Join(dir, "docker-compose.yml"))
+	c, err := lifecycleCompose(dir)
+	if err != nil {
+		return err
+	}
 	return c.ComposeRestart(ctx, dir, canon)
 }
 

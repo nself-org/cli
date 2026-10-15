@@ -18,6 +18,8 @@ See [[cmd-config]] for the current command. [[Command-Canon]] lists every move.
 
 Enabling or disabling a service writes to your `.env` file. After changing service state, run `nself build` to regenerate `docker-compose.yml` with the updated service set, then `nself restart` to apply the changes.
 
+`nself service start`, `stop`, and `restart` use the build's recorded Compose files and env files, including plugin fragments and computed secrets. Projects without manifests use the base Compose file, available overrides, and project env files.
+
 **MLflow** is no longer an optional service. Use `nself plugin install mlflow` instead.
 
 ## Available Services (6)
