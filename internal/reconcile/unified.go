@@ -46,7 +46,14 @@ func Unified(path string, a, b []byte) string {
 		}
 		return sb.String()
 	}
-	if IsEnvPath(path) {
+	if strings.HasPrefix(cleanPath(path), ".nself/secrets/") {
+		for i := range al {
+			al[i] = redactedValue + "\n"
+		}
+		for i := range bl {
+			bl[i] = redactedValue + "\n"
+		}
+	} else if IsEnvPath(path) {
 		al, bl = redactEnvLines(al), redactEnvLines(bl)
 	} else {
 		al, bl = redactSecretSides(al, bl)

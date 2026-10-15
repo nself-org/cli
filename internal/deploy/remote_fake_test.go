@@ -108,7 +108,11 @@ func (f *fakeRemote) Rsync(ctx context.Context, flags []string, filesFrom, srcDi
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return err
 		}
-		mode := os.FileMode(0o644)
+		info, err := os.Stat(filepath.Join(srcDir, rel))
+		if err != nil {
+			return err
+		}
+		mode := info.Mode().Perm()
 		if len(flags) > 0 && flags[0] == "--chmod=F600" {
 			mode = 0o600
 		}

@@ -74,7 +74,7 @@ func NewBackupID(now time.Time) string {
 // they exist; .env.* and plugin fragment files are added by the script.
 var tarSources = []string{
 	"docker-compose.yml", "docker-compose.override.yml", "nself-compose.yml", ".env",
-	".nself/compose-files.txt", ".nself/compose-env-files.txt", ".nself/compose.env", ShippedFile, "nginx", "hasura",
+	".nself/compose-files.txt", ".nself/compose-env-files.txt", ".nself/compose.env", secretDir, ShippedFile, "nginx", "hasura",
 }
 
 // CreatePreDeployTar tars the host's current deployable files, reports which of
@@ -85,6 +85,9 @@ func CreatePreDeployTar(ctx context.Context, r Remote, remotePath, id string, pa
 		return PreDeployBackup{}, fmt.Errorf("invalid pre-deploy backup id %q", id)
 	}
 	if err := checkPaths("the artifact set", paths); err != nil {
+		return PreDeployBackup{}, err
+	}
+	if err := prepareSecretDir(ctx, r, remotePath, paths); err != nil {
 		return PreDeployBackup{}, err
 	}
 	tar := path.Join(remotePath, BackupDir, "pre-deploy-"+id+".tar.gz")
@@ -154,6 +157,9 @@ func restoreIn(ctx context.Context, r Remote, root, home, tar string, spec Resto
 	if err := checkPaths("the absent list", spec.Absent); err != nil {
 		return err
 	}
+	if err := prepareSecretDir(ctx, r, remotePath, spec.Changed); err != nil {
+		return err
+	}
 	isChanged := map[string]bool{}
 	for _, c := range spec.Changed {
 		isChanged[c] = true
@@ -194,7 +200,7 @@ func restoreIn(ctx context.Context, r Remote, root, home, tar string, spec Resto
 		}
 	}
 	tmp := path.Join(home, BackupDir, "restore-"+strings.TrimSuffix(path.Base(tar), ".tar.gz"))
-	script := fmt.Sprintf(`set -e; umask 077; tmp=%s; rm -rf "$tmp"; mkdir -p "$tmp"; tar -xzf %s -C "$tmp"`, q(tmp), q(tar))
+	script := fmt.Sprintf(`set -e; umask 077; tmp=%s; rm -rf "$tmp"; mkdir -p "$tmp"; tar -xzf %s -p -C "$tmp"`, q(tmp), q(tar))
 	script += fmt.Sprintf(`; rp=%s`, q(remotePath))
 	// One rsync per directory, over bare file names: no directory is ever
 	// transferred, so existing dirs (remote_path included) keep their mode and

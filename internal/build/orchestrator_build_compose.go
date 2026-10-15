@@ -82,6 +82,11 @@ func (st *buildState) generateCompose() error {
 	// passed via --env-file by start/stop/restart). Secrets never land in
 	// the generated docker-compose.yml (ASI generated-file-secret rule).
 	st.secretMap = SecretEnvMap(st.cfg)
+	secretFiles, err := writeComposeSecretFilesVia(st.sink, st.workdir, st.cfg, composeYAML)
+	if err != nil {
+		return fmt.Errorf("writing compose secret files: %w", err)
+	}
+	st.filesGenerated += secretFiles
 	composeYAML = TemplateSecrets(composeYAML, st.secretMap)
 	for _, leak := range LiteralSecretLeaks(composeYAML, st.secretMap) {
 		slog.Warn("secret value still appears literally in docker-compose.yml — do not commit this file",

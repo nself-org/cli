@@ -138,7 +138,11 @@ func DeployViaSsh(ctx context.Context, cfg SSHConfig, composePath string) error 
 	}
 	// Shipping an env file sends secrets: strict in v1.4 and v1.5 (E487 before
 	// any rsync). A compose-only deploy keeps the v1.4 accept-new policy.
-	policy, err := HostKeyPolicy(ctx, spec.String(), identityEnv, serverName, true, cfg.EnvFile != "")
+	secretFiles, err := sshSecretFiles(composePath)
+	if err != nil {
+		return err
+	}
+	policy, err := HostKeyPolicy(ctx, spec.String(), identityEnv, serverName, true, cfg.EnvFile != "" || len(secretFiles) > 0)
 	if err != nil {
 		return err
 	}
@@ -157,6 +161,9 @@ func DeployViaSsh(ctx context.Context, cfg SSHConfig, composePath string) error 
 	}
 
 	// 2. rsync compose file to remote.
+	if err := shipSSHSecrets(ctx, t, path.Dir(remoteCompose), secretFiles); err != nil {
+		return err
+	}
 	if err := rsyncFile(ctx, t, composePath, remoteCompose); err != nil {
 		return err
 	}
@@ -169,19 +176,23 @@ func DeployViaSsh(ctx context.Context, cfg SSHConfig, composePath string) error 
 	}
 
 	// 4. docker compose pull on remote.
-	if err := runSSH(ctx, t, fmt.Sprintf("docker compose -f %s pull", remote.ShellQuote(remoteCompose))); err != nil {
+	composeCmd := fmt.Sprintf("docker compose -f %s", remote.ShellQuote(remoteCompose))
+	if len(secretFiles) > 0 {
+		composeCmd = fileSecretComposeCommand(composeCmd, path.Dir(remoteCompose), envFinal)
+	}
+	if err := runSSH(ctx, t, composeCmd+" pull"); err != nil {
 		return fmt.Errorf("remote pull: %w", err)
 	}
 
 	// 5. docker compose up -d on remote.
-	if err := runSSH(ctx, t, fmt.Sprintf("docker compose -f %s up -d", remote.ShellQuote(remoteCompose))); err != nil {
+	if err := runSSH(ctx, t, composeCmd+" up -d"); err != nil {
 		return fmt.Errorf("remote up: %w", err)
 	}
 
 	// 6. Optional log stream.
 	if cfg.Follow {
 		sc, serr := remote.Command(ctx, "ssh",
-			t.sshArgv(fmt.Sprintf("docker compose -f %s logs --follow", remote.ShellQuote(remoteCompose)))...)
+			t.sshArgv(composeCmd+" logs --follow")...)
 		if serr == nil {
 			sc.Env = os.Environ()
 			sc.Stdout = os.Stdout

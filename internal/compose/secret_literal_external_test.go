@@ -108,7 +108,7 @@ func resolveRefs(text string, env map[string]string) string {
 }
 
 // TestSecretRefNamesAreComposeEnvKeys: every ${NAME} an optional service
-// emits must be a build.SecretEnvMap key, or .nself/compose.env never carries
+// emits must be written to .nself/compose.env, or it never carries
 // the value and the container starts with an empty secret.
 func TestSecretRefNamesAreComposeEnvKeys(t *testing.T) {
 	compattest.Set(t, false) // core MinIO exists only in v1.4 (P7-PLUG-60)
@@ -118,14 +118,14 @@ func TestSecretRefNamesAreComposeEnvKeys(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: Generate() error: %v", engine, err)
 		}
-		secrets := build.SecretEnvMap(cfg)
+		secrets := readComposeEnv(t, cfg, build.SecretEnvMap(cfg))
 		seen := 0
 		for _, m := range secretRefPattern.FindAllStringSubmatch(optionalText(t, out), -1) {
 			if _, ok := secrets[m[1]]; ok {
 				seen++
 				continue
 			}
-			t.Errorf("%s: ${%s} is not a build.SecretEnvMap key; compose.env will not resolve it", engine, m[1])
+			t.Errorf("%s: ${%s} is not a compose.env key", engine, m[1])
 		}
 		if seen == 0 {
 			t.Fatalf("%s: no secret references found; the generator no longer emits them", engine)

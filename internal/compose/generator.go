@@ -181,6 +181,7 @@ func (g *Generator) buildDockerCompose() (*DockerCompose, error) {
 
 	// Post-process: add logging, security, graceful shutdown to ALL services
 	g.postProcess(dc)
+	g.fileSecrets(dc)
 
 	return dc, nil
 }

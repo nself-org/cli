@@ -36,7 +36,7 @@ Only Nginx exposes external ports (80 and 443). All external traffic flows throu
 Secrets (passwords, API keys, JWT secrets) are managed through the `.env` cascade:
 
 - `.env.secrets`, sensitive values, **never committed to git**
-- Secrets are passed to containers as environment variables, not files
+- Generated Postgres and MinIO services use Compose file secrets with their native `*_FILE` variables. Hasura reads its admin secret, JWT JSON and database URL from mounted files before starting the engine. These values stay out of Docker's `Config.Env` and command arguments. Images without file support retain environment variables.
 - `.env.secrets` and `ssl/` (certificate private keys) must be ignored by git. `nself init` adds both to a new project's `.gitignore`; `nself doctor --deep` asks git whether they are ignored or already tracked (SEC-GITIGNORE-01)
 - Secret values are **redacted** from all CLI output (`***REDACTED***`)
 
@@ -44,6 +44,24 @@ Secret names containing SECRET, PASS, KEY, TOKEN, CREDENTIAL, WEBHOOK, PRIVATE,
 DSN, SALT or BASICAUTH (any case) are automatically redacted. This shared rule
 also hides Mailpit's `MP_UI_BASICAUTH` value in compose diffs, including literal
 credentials from older generated files. See [[Config-Env-Vars]].
+
+`nself build` writes raw mounted credentials beneath `.nself/secrets/`. Keep
+`.nself/` ignored by git. This generated directory is mode `0700` on the host;
+files are `0444` so the existing non-root container users can read their mounts.
+Build, confirmed apply and both SSH deploy paths establish the private directory
+before writing secrets. Deploy staging preserves the exact bytes and includes
+them in protected pre-deploy backups and rollback. Plan diffs redact every line.
+Unused files are retained; they carry no generated marker and are not pruned.
+
+Postgres strips trailing newlines from file passwords; MinIO trims credential
+whitespace. Values affected by those image behaviors retain environment transport
+to preserve existing credentials. Hasura's reader preserves trailing newlines
+and refuses to start if a file cannot be read. An `io.nself.secret-version`
+label receives a per-service digest from `.nself/compose.env`, so replacing a
+mounted secret recreates its consumers on the next start. Privileged inspection
+can see that digest. Docker access can still read mounted files; this is defense
+in depth against accidental environment inspection, not isolation from Docker
+administrators.
 
 Log redaction preserves loopback addresses (`127.0.0.1` and `::1`), including
 port mappings such as `127.0.0.1:5432:5432`, while masking other IP addresses.

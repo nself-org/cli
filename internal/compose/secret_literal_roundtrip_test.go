@@ -270,6 +270,27 @@ func TestSecretConsumersResolveIdentically(t *testing.T) {
 			templated := build.TemplateSecrets(out, secrets)
 			env := readComposeEnv(t, cfg, secrets)
 			svcs := resolvedServices(t, templated, env)
+			// File-backed consumers receive these same resolved values through
+			// their grants rather than Config.Env (D-0551). Writer/runtime
+			// byte preservation is exercised by the file-secret regressions.
+			var mounts struct {
+				Services map[string]struct {
+					Secrets []string `yaml:"secrets"`
+				} `yaml:"services"`
+			}
+			if err := yaml.Unmarshal(templated, &mounts); err != nil {
+				t.Fatal(err)
+			}
+			for name, svc := range mounts.Services {
+				for _, grant := range svc.Secrets {
+					key := strings.ToUpper(grant)
+					source := key
+					if key == "HASURA_GRAPHQL_DATABASE_URL" {
+						source = "DATABASE_URL"
+					}
+					svcs[name][key] = env[source]
+				}
+			}
 
 			pg, rd := cfg.Postgres.Password, cfg.Redis.Password
 			plain := []struct{ svc, key, want string }{

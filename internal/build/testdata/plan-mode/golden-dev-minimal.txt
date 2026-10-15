@@ -1,3 +1,4 @@
+d 0700 project/.nself/secrets
 d 0755 home
 d 0755 plugins
 d 0755 project
@@ -14,10 +15,14 @@ d 0755 project/postgres/init
 d 0755 project/services
 d 0755 project/ssl
 d 0755 project/ssl/certificates
+f 0444 project/.nself/secrets/HASURA_GRAPHQL_ADMIN_SECRET 3ef36f67b02ffafe3f02b17cfaf4c9de463a3092c0aecee9f14b2fe2263e4f33
+f 0444 project/.nself/secrets/HASURA_GRAPHQL_DATABASE_URL f23d1fe5b3270a9caa2745069e218959a188b1ea7fd7e99b5590e5aba502c6c3
+f 0444 project/.nself/secrets/HASURA_GRAPHQL_JWT_SECRET 495918f42b12874aa395bae81ac97ec787f5f7839ec9c536f246bcfa2faea374
+f 0444 project/.nself/secrets/POSTGRES_PASSWORD 3da927c037e2672c11f0290b44e9daa85e53dcec60c44a3584b95f077a2d339d
 f 0600 project/.env 3f9f5e92353c2eafb5d2fbf56c4693cf8feb9bf82bb07d1b1e3bc230339f2db5
 f 0600 project/.env.computed 11d69b678463f3b0ecff1c6a2036bd3ac6ac39c6f0ab75b775da0196f209ed55
-f 0600 project/.nself/compose.env fd68648754cf9a6c5f72298ef87d050aee49495249735d97bea75fbb09622caa
-f 0600 project/docker-compose.yml 916a3b8f73f849cdf1ac401dca17e3991695f54bc0d9fad3779f00ebf73647de
+f 0600 project/.nself/compose.env 36cb28efdeb188a072487a57339281af130aac1003dd231479407640d48b5fcb
+f 0600 project/docker-compose.yml dc52794d3abf6153528baa7a6b7c4b2a6258c635789b896777984b02116a005e
 f 0644 project/.nself/build-profile a172cedcae47474b615c54d510a5d84a8dea3032e958587430b413538be3f333
 f 0644 project/.nself/build-version 5b761e4d62032b8f9c28aee75ba0a1d3ed0e59d0cf32cf641e31cadb7e95a9d5
 f 0644 project/.nself/compose-env-files.txt 7d3e777d4d376c34edad2c78f512e08ec2d1819efdea2a89bbf91cb62e675a92

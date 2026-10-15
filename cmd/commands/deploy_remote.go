@@ -164,6 +164,14 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 
 	// rsync compose + env files to the remote. Every ssh option is built by the deploy
 	// transport (ForwardAgent=no is an ssh option, never an rsync one).
+	fileSecrets, err := tr.tr.CopyFileSecrets(ctx, filepath.Join(workdir, "docker-compose.yml"), remotePath)
+	if err != nil {
+		return err
+	}
+	composeCmd := "docker compose"
+	if fileSecrets {
+		composeCmd += " --env-file " + remote.ShellQuote(".env."+target) + " --env-file .nself/compose.env"
+	}
 	if !jsonOut {
 		fmt.Printf("  [running] rsync compose + resolved env to %s:%s\n", sshTarget, remotePath)
 	}
@@ -191,7 +199,7 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 	}
 
 	// Pull new images on the remote.
-	sshPull := fmt.Sprintf("cd %s && docker compose pull", remote.ShellQuote(remotePath))
+	sshPull := fmt.Sprintf("cd %s && %s pull", remote.ShellQuote(remotePath), composeCmd)
 	if !jsonOut {
 		fmt.Printf("  [running] docker compose pull on %s\n", sshTarget)
 	}
@@ -205,7 +213,7 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 	// This must succeed: falling back to a fixed guess list when it fails is
 	// exactly the production incident (deploy_service_order.go) this guards
 	// against, just on the remote path instead of the local one.
-	lsCmd := fmt.Sprintf("cd %s && docker compose config --services", remote.ShellQuote(remotePath))
+	lsCmd := fmt.Sprintf("cd %s && %s config --services", remote.ShellQuote(remotePath), composeCmd)
 	out, err := tr.ssh(ctx, lsCmd)
 	if err != nil {
 		return fmt.Errorf("remote rolling restart: listing services on %s failed: %w\n%s", sshTarget, err, strings.TrimSpace(string(out)))
@@ -225,7 +233,7 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 
 	// Rolling restart on the remote: sequence the services via SSH.
 	for _, svc := range order {
-		restartCmd := fmt.Sprintf("cd %s && docker compose up -d --no-deps %s", remote.ShellQuote(remotePath), remote.ShellQuote(svc))
+		restartCmd := fmt.Sprintf("cd %s && %s up -d --no-deps %s", remote.ShellQuote(remotePath), composeCmd, remote.ShellQuote(svc))
 		if !jsonOut {
 			fmt.Printf("  [running] Rolling restart: %s on %s\n", svc, sshTarget)
 		}

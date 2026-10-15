@@ -99,11 +99,11 @@ func TestTemplateSecrets_NoLiteralSecretsInGeneratedCompose(t *testing.T) {
 
 	// The ${VAR} references must be present instead.
 	for _, ref := range []string{
-		"POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}",
+		"POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password",
 		"HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_GRAPHQL_ADMIN_SECRET}",
 		"HASURA_GRAPHQL_JWT_SECRET: ${HASURA_GRAPHQL_JWT_SECRET}",
-		"MINIO_ROOT_USER: ${MINIO_ROOT_USER}",
-		"MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}",
+		"MINIO_ROOT_USER_FILE: /run/secrets/minio_root_user",
+		"MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password",
 		"AUTH_JWT_SECRET: ${HASURA_JWT_KEY}",
 		":${POSTGRES_PASSWORD_URLENC:-${POSTGRES_PASSWORD}}@", // DATABASE_URL credential position (D-0334)
 	} {

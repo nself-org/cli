@@ -153,6 +153,11 @@ func Stage(in StageInput) (ArtifactSet, error) {
 		return set, err
 	}
 	set.Files = append(append(set.Files, hasura...), nginxFiles...)
+	secrets, err := stageSecretFiles(in.Map.ScratchRoot, in.StageDir)
+	if err != nil {
+		return set, err
+	}
+	set.Files = append(set.Files, secrets...)
 	set.NotShipped = notShipped
 	if set.Front, err = stageFront(in); err != nil {
 		return set, err
@@ -208,6 +213,9 @@ func copyTree(srcDir, stage, rel string, m PathMap, rewrite bool) ([]string, err
 // checkNoLocalPaths fails when any staged file still names a local root.
 func checkNoLocalPaths(m PathMap, stage string, rels []string) error {
 	for _, rel := range rels {
+		if isSecretFile(rel) {
+			continue
+		} // credential bytes are never paths
 		data, err := os.ReadFile(filepath.Join(stage, filepath.FromSlash(rel)))
 		if err != nil {
 			return err

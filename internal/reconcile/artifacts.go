@@ -75,7 +75,7 @@ func Kind(p string) ArtifactKind {
 // Env-kind artifacts are always redacted in diffs and plans.
 func IsEnvPath(p string) bool {
 	p = cleanPath(p)
-	return strings.HasPrefix(path.Base(p), ".env") || p == ".nself/compose.env"
+	return strings.HasPrefix(path.Base(p), ".env") || p == ".nself/compose.env" || strings.HasPrefix(p, ".nself/secrets/")
 }
 
 // IsGenerated reports whether the first 512 bytes of data carry the nself

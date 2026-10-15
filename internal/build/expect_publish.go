@@ -118,6 +118,13 @@ func (p *artifactPublisher) publish() error {
 		if err := p.mkdir(p.sink.abs(k), p.sink.dirs[k]); err != nil {
 			return err
 		}
+		// Mounted secret files are readable by image UIDs. Their generated
+		// parent must be private before publishing any of those files.
+		if k == composeSecretsDir {
+			if err := os.Chmod(p.sink.abs(k), 0700); err != nil {
+				return err
+			}
+		}
 	}
 	for _, k := range sortedArtifactKeys(p.sink.keyr.files) {
 		file := p.sink.keyr.files[k]

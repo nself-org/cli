@@ -26,6 +26,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
 )
 
@@ -201,6 +202,9 @@ func writeComposeEnvVia(sink Sink, workdir string, cfg *config.Config, secrets, 
 		merged[k] = v
 	}
 	for k, v := range secrets {
+		merged[k] = v
+	}
+	for k, v := range compose.SecretFileVersions(cfg) {
 		merged[k] = v
 	}
 

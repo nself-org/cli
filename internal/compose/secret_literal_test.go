@@ -189,8 +189,8 @@ func TestOptionalServicesSecretRefsPerService(t *testing.T) {
 			"REDISCLI_AUTH: ${REDIS_PASSWORD}",
 			`--requirepass "$$REDISCLI_AUTH"`,
 		}},
-		{"meilisearch", "minio", true, []string{"MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}"}},
-		{"meilisearch", "minio", false, []string{"MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-}"}},
+		{"meilisearch", "minio", true, []string{"MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password"}},
+		{"meilisearch", "minio", false, []string{"MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password"}},
 		{"meilisearch", "mailpit", true, []string{"MP_UI_BASICAUTH: admin:${MAILPIT_UI_PASSWORD}"}},
 		{"meilisearch", AdminServiceName, true, []string{
 			"HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_GRAPHQL_ADMIN_SECRET}",

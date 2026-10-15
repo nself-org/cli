@@ -6,6 +6,19 @@ networks:
 volumes:
     minio_data: {}
     postgres_data: {}
+secrets:
+    hasura_graphql_admin_secret:
+        file: ./.nself/secrets/HASURA_GRAPHQL_ADMIN_SECRET
+    hasura_graphql_database_url:
+        file: ./.nself/secrets/HASURA_GRAPHQL_DATABASE_URL
+    hasura_graphql_jwt_secret:
+        file: ./.nself/secrets/HASURA_GRAPHQL_JWT_SECRET
+    minio_root_password:
+        file: ./.nself/secrets/MINIO_ROOT_PASSWORD
+    minio_root_user:
+        file: ./.nself/secrets/MINIO_ROOT_USER
+    postgres_password:
+        file: ./.nself/secrets/POSTGRES_PASSWORD
 services:
     postgres:
         image: postgres:16-alpine
@@ -18,11 +31,13 @@ services:
         environment:
             POSTGRES_DB: nself
             POSTGRES_HOST_AUTH_METHOD: scram-sha-256
-            POSTGRES_PASSWORD: password
+            POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
             POSTGRES_USER: postgres
         volumes:
             - postgres_data:/var/lib/postgresql/data
             - ./postgres/init:/docker-entrypoint-initdb.d:ro
+        secrets:
+            - postgres_password
         ports:
             - 127.0.0.1:5432:5432
         command:
@@ -60,6 +75,8 @@ services:
             - SETUID
             - SETGID
             - IPC_LOCK
+        labels:
+            io.nself.secret-version: ${NSELF_SECRET_VERSION_POSTGRES}
         read_only: true
         tmpfs:
             - /tmp
@@ -75,17 +92,22 @@ services:
             postgres:
                 condition: service_healthy
         environment:
-            HASURA_GRAPHQL_ADMIN_SECRET: secret
             HASURA_GRAPHQL_CORS_DOMAIN: ""
-            HASURA_GRAPHQL_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD_URLENC:-${POSTGRES_PASSWORD}}@postgres:5432/nself
             HASURA_GRAPHQL_DEV_MODE: ${HASURA_GRAPHQL_DEV_MODE:-false}
             HASURA_GRAPHQL_ENABLE_CONSOLE: ${HASURA_GRAPHQL_ENABLE_CONSOLE:-false}
             HASURA_GRAPHQL_ENABLE_TELEMETRY: "false"
-            HASURA_GRAPHQL_JWT_SECRET: '{"key":"testsecretkey12345678901234567890","type":"HS256"}'
             HASURA_GRAPHQL_LOG_LEVEL: ""
             HASURA_GRAPHQL_UNAUTHORIZED_ROLE: public
+        secrets:
+            - hasura_graphql_admin_secret
+            - hasura_graphql_database_url
+            - hasura_graphql_jwt_secret
         ports:
             - 127.0.0.1:8080:8080
+        command:
+            - /bin/sh
+            - -ec
+            - value=$$(cat /run/secrets/hasura_graphql_admin_secret && printf .); export HASURA_GRAPHQL_ADMIN_SECRET="$${value%.}"; value=$$(cat /run/secrets/hasura_graphql_jwt_secret && printf .); export HASURA_GRAPHQL_JWT_SECRET="$${value%.}"; value=$$(cat /run/secrets/hasura_graphql_database_url && printf .); export HASURA_GRAPHQL_DATABASE_URL="$${value%.}"; exec "$$HGE_BINARY" serve
         healthcheck:
             test:
                 - CMD
@@ -113,6 +135,8 @@ services:
             - no-new-privileges:true
         cap_drop:
             - ALL
+        labels:
+            io.nself.secret-version: ${NSELF_SECRET_VERSION_HASURA}
         read_only: true
         tmpfs:
             - /tmp
@@ -203,10 +227,13 @@ services:
         environment:
             MINIO_DEFAULT_BUCKETS: ""
             MINIO_DISABLE_XATTR: "on"
-            MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-            MINIO_ROOT_USER: test-access-key
+            MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password
+            MINIO_ROOT_USER_FILE: /run/secrets/minio_root_user
         volumes:
             - minio_data:/data
+        secrets:
+            - minio_root_password
+            - minio_root_user
         ports:
             - 127.0.0.1:9000:9000
             - 127.0.0.1:9001:9001
@@ -242,6 +269,8 @@ services:
             - CHOWN
             - SETUID
             - SETGID
+        labels:
+            io.nself.secret-version: ${NSELF_SECRET_VERSION_MINIO}
         read_only: true
         tmpfs:
             - /tmp

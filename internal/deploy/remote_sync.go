@@ -38,6 +38,9 @@ func SyncArtifacts(ctx context.Context, r Remote, set ArtifactSet) error {
 	if err := checkConfDFiles(set.Files); err != nil {
 		return err
 	}
+	if err := prepareSecretDir(ctx, r, set.RemotePath, set.Files); err != nil {
+		return err
+	}
 	if set.KeepHostEnv {
 		script := fmt.Sprintf(`umask 077; mkdir -p %s; if [ ! -e %s ]; then : > %s; fi`, q(set.RemotePath), q(path.Join(set.RemotePath, ".env")), q(path.Join(set.RemotePath, ".env")))
 		if _, err := r.Run(ctx, shScript(script)); err != nil {

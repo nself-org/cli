@@ -73,7 +73,7 @@ bad() { printf 'OUTSIDE %%s\t%%s\n' "$(san "$1")" "$(san "$2")"; }
 inside() { case "$1/" in "$base/"*) return 0;; esac; return 1; }
 for d in %s; do if [ -d "$d" ]; then x=$(cd -P "$d" 2>/dev/null && pwd -P && echo X) || x=; x=${x%%X}; x=${x%%?}; if ! safe "$x"; then bad "$d" "$x"; elif inside "$x"; then [ "$x" = "$base/$d" ] || printf 'LINK %%s\t%%s\n' "$d" "$x"; else bad "$d" "${x:-?}"; fi; fi; done
 for l in %s .env.*; do if [ -L "$l" ]; then x=$(res "$l"); inside "$x" || bad "$l" "${x:-?}"; fi; done
-for s in nginx hasura .nself/plugins; do if [ -e "$s" ]; then find -L "$s" -exec sh -c 'for f; do r=$(readlink -f -- "$f" 2>/dev/null || realpath -- "$f" 2>/dev/null); case "$r/" in "$0/"*) ;; *) printf "OUTSIDE %%s\t%%s\n" "$(printf %%s "$f" | tr -c "[:print:]" "?")" "$(printf %%s "${r:-?}" | tr -c "[:print:]" "?")";; esac; done' "$base" {} + 2>/dev/null; fi; done
+for s in nginx hasura .nself/plugins .nself/secrets; do if [ -e "$s" ]; then find -L "$s" -exec sh -c 'for f; do r=$(readlink -f -- "$f" 2>/dev/null || realpath -- "$f" 2>/dev/null); case "$r/" in "$0/"*) ;; *) printf "OUTSIDE %%s\t%%s\n" "$(printf %%s "$f" | tr -c "[:print:]" "?")" "$(printf %%s "${r:-?}" | tr -c "[:print:]" "?")";; esac; done' "$base" {} + 2>/dev/null; fi; done
 exit 0`, q(remotePath), strings.Join(quoteAll(dirs), " "), strings.Join(quoteAll(tarSources), " "))
 	raw, err := r.Run(ctx, shScript(script))
 	if err != nil {

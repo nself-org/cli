@@ -10,6 +10,7 @@ type DockerCompose struct {
 	Name         string                   `yaml:"name"`
 	Networks     map[string]NetworkConfig `yaml:"networks"`
 	Volumes      map[string]VolumeConfig  `yaml:"volumes"`
+	Secrets      map[string]SecretConfig  `yaml:"secrets,omitempty"`
 	Services     map[string]ServiceConfig `yaml:"-"`
 	ServiceOrder []string                 `yaml:"-"`
 }
@@ -100,6 +101,13 @@ func (dc *DockerCompose) MarshalYAML() (interface{}, error) {
 		)
 	}
 
+	if len(dc.Secrets) > 0 {
+		var secrets yaml.Node
+		if err := secrets.Encode(dc.Secrets); err != nil {
+			return nil, err
+		}
+		doc.Content = append(doc.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: "secrets", Tag: "!!str"}, &secrets)
+	}
 	// services
 	doc.Content = append(doc.Content,
 		&yaml.Node{Kind: yaml.ScalarNode, Value: "services", Tag: "!!str"},
@@ -123,6 +131,7 @@ type ServiceConfig struct {
 	DependsOn     map[string]DepOn  `yaml:"depends_on,omitempty"`
 	Environment   map[string]string `yaml:"environment,omitempty"`
 	Volumes       []string          `yaml:"volumes,omitempty"`
+	Secrets       []string          `yaml:"secrets,omitempty"`
 	Ports         []string          `yaml:"ports,omitempty"`
 	Expose        []string          `yaml:"expose,omitempty"`
 	Command       interface{}       `yaml:"command,omitempty"`
@@ -147,6 +156,11 @@ type ServiceConfig struct {
 	// above cap_add when cap_drop is intentionally omitted. Not serialized as
 	// a YAML field — rendered as a comment via MarshalYAML.
 	CapDropComment string `yaml:"-"`
+}
+
+// SecretConfig names a host file mounted read-only by Docker Compose.
+type SecretConfig struct {
+	File string `yaml:"file"`
 }
 
 // DepOn represents a service dependency with a condition.

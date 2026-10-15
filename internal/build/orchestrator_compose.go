@@ -186,7 +186,7 @@ func scanSocketService(d socketDoc, name string, body map[string]any, lookup Soc
 	use := func(u bool, f string, a ...any) { uses = append(uses, SocketUse{d.origin, fmt.Sprintf(f, a...), u}) }
 	bad := func(w string) error { return fmt.Errorf("%s service %q has an unsupported %s", d.origin, name, w) }
 	for _, k := range []string{"extends", "volumes_from", "secrets", "configs"} {
-		if v := body[k]; v != nil && fmt.Sprint(v) != "[]" { // an empty list is safe
+		if v := body[k]; v != nil && fmt.Sprint(v) != "[]" && (k != "secrets" || !generatedCoreSecrets(d, name, v)) { // an empty list is safe
 			use(true, "uses %s, which is not inspected", k)
 		}
 	}
