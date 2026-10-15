@@ -35,6 +35,8 @@ With `--json` in v1.5 mode an applied change prints the envelope with `applied: 
 
 The `validate` subcommand runs all registered configuration validators and reports pass/fail per rule. It is automatically run during `nself build`, but you can run it independently to check config without rebuilding.
 
+Manifest type findings identify the YAML type and location without echoing scalar values. Quote hints describe the correction without copying the value. Key names and YAML tags remain visible in diagnostics.
+
 ### JSON output
 
 With `NSELF_V15=1` (the default from v1.5.0), `config show`, `config get` and `config list` write one v1 envelope to stdout when given `--json` (see [[JSON-Output]]). Before that, `--json` is accepted and ignored and the human output is unchanged. Secret keys and URL credentials are masked as `***` exactly as in the human output; `--reveal` shows them in `show` and `get`, and `list` never reveals.

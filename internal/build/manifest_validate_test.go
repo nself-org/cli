@@ -107,7 +107,7 @@ func TestManifestValidateMultiDocument(t *testing.T) {
 // The wording of a coerced scalar must tell the user to quote it.
 func TestManifestValidateQuoteHint(t *testing.T) {
 	f := validateFixture(t, "scalar-coerced.yaml")[0]
-	if !strings.Contains(f.Fix, `quote it: "true"`) || !strings.Contains(f.Message, "bool") {
+	if f.Fix != "quote the value so YAML reads it as text" || !strings.Contains(f.Message, "bool") {
 		t.Errorf("finding = %+v", f)
 	}
 }

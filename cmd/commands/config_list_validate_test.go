@@ -10,7 +10,7 @@ import (
 )
 
 // d0430Scalars are synthetic credential-shaped scalars written into nself.yaml
-// where build's validator echoes a value: a string where a map or list
+// where build's validator rejects a value: a string where a map or list
 // belongs, and non-string scalars where a string belongs.
 var d0430Scalars = []string{"fake-scalar-d0430-0000", "fake-list-d0430-0000", "8675309123", "fake-true",
 	"fake-pem-d0430-0000", "fake-pem-d0430-0001", "fake-tag-d0430-0000", "fake-fold-d0430-0000", "fake-fold-d0430-0001",
@@ -25,12 +25,11 @@ var d0430Manifests = []string{
 	"app: !<tag:example.test,2000:s> fake-vtag-d0430-0000\nbundle: \"a\\nfake-esc-d0430-0000\"\nplugins: !x-y |\n  fake-tblk-d0430-0000\n",
 }
 
-// TestRedactManifestFinding runs build.ValidateManifestFile on a manifest that
-// holds synthetic scalars in every echoing shape (D-0430). The raw findings
-// must carry the scalars (positive control: the guard tracks build's wording)
-// and the redacted findings must not, while file, line and path stay.
-func TestRedactManifestFinding(t *testing.T) {
+// TestReportManifestFindings keeps the validator's diagnostics intact while
+// omitting scalar values at the source (D-0744).
+func TestReportManifestFindings(t *testing.T) {
 	var findings []build.Finding
+	var reported strings.Builder
 	for i, m := range d0430Manifests {
 		path := filepath.Join(t.TempDir(), "nself.yaml")
 		if err := os.WriteFile(path, []byte(m), 0o600); err != nil {
@@ -41,28 +40,19 @@ func TestRedactManifestFinding(t *testing.T) {
 		} else {
 			t.Fatalf("manifest %d gives no finding", i)
 		}
+		reportNselfYAML(&reported, filepath.Dir(path))
 	}
-	var raw, redacted strings.Builder
+	var raw strings.Builder
 	for _, f := range findings {
 		raw.WriteString(f.String() + "\n")
-		r := redactManifestFinding(f)
-		if r.File != f.File || r.Line != f.Line || r.Path != f.Path || r.Code != f.Code {
-			t.Errorf("redaction changed the location: %+v -> %+v", f, r)
-		}
-		redacted.WriteString(r.String() + "\n")
+	}
+	if reported.String() != raw.String() {
+		t.Errorf("report changed the validator diagnostics: got %q, want %q", reported.String(), raw.String())
 	}
 	for _, v := range d0430Scalars {
-		if v != "fake-true" && !strings.Contains(raw.String(), v) {
-			t.Fatalf("positive control: build no longer echoes %q, so this guard tests nothing; update redactManifestFinding\n%s", v, raw.String())
+		if strings.Contains(reported.String(), v) {
+			t.Errorf("findings still hold %q:\n%s", v, reported.String())
 		}
-	}
-	for _, v := range d0430Scalars {
-		if strings.Contains(redacted.String(), v) {
-			t.Errorf("redacted findings still hold %q:\n%s", v, redacted.String())
-		}
-	}
-	if !strings.Contains(redacted.String(), "(value hidden)") {
-		t.Errorf("redacted findings lack the (value hidden) marker:\n%s", redacted.String())
 	}
 }
 
