@@ -363,7 +363,7 @@ func TestSSLInstallFronted(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if want := filepath.Join(stack, "nginx", "sites", "api-docs.conf"); got != want {
+		if want := filepath.Join(stack, "nginx", "sites", filepath.Base(project)+".api-docs.conf"); got != want {
 			t.Fatalf("api-docs conf at %s, want %s", got, want)
 		}
 		mustNotExist(t, filepath.Join(project, "nginx"))

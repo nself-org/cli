@@ -17,6 +17,7 @@ func (st *buildState) writeRoutesJSON(m *routemodel.Model) error {
 		return fmt.Errorf("modelling api-docs route: %w", err)
 	}
 	if docs != nil {
+		docs.File = filepath.ToSlash(apiDocsSitePath("nginx/sites", st.cfg.Nginx.FrontedBy, st.cfg.ProjectName))
 		out.Routes = append(out.Routes, *docs)
 	}
 	b, err := routemodel.Marshal(out)

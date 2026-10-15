@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/nself-org/cli/internal/apidocs"
@@ -23,6 +24,8 @@ import (
 
 // WriteAPIDocsSiteConf writes the api-docs server block (docs.<base>) to
 // api-docs.conf in the SERVED nginx sites directory and returns its path.
+// Fronted output uses the workdir basename as its project prefix; Build uses
+// the configured PROJECT_NAME instead.
 //
 // Inputs: the project workdir, NGINX_FRONTED_BY (empty for a project that runs
 // its own nginx) and the rendered conf. Outputs: the written path. On a fronted
@@ -31,11 +34,11 @@ import (
 // for every other site conf. Non-fronted output is <workdir>/nginx/sites as
 // before.
 func WriteAPIDocsSiteConf(workdir, frontedBy string, conf []byte) (string, error) {
-	return writeAPIDocsSiteConfVia(newDiskSink(workdir), workdir, frontedBy, conf)
+	return writeAPIDocsSiteConfVia(newDiskSink(workdir), workdir, frontedBy, filepath.Base(workdir), conf)
 }
 
 // writeAPIDocsSiteConfVia is WriteAPIDocsSiteConf writing through sink.
-func writeAPIDocsSiteConfVia(sink Sink, workdir, frontedBy string, conf []byte) (string, error) {
+func writeAPIDocsSiteConfVia(sink Sink, workdir, frontedBy, project string, conf []byte) (string, error) {
 	sitesDir, err := resolveNginxSitesDir(workdir, frontedBy)
 	if err != nil {
 		return "", fmt.Errorf("resolving nginx sites dir for api-docs: %w", err)
@@ -43,7 +46,11 @@ func writeAPIDocsSiteConfVia(sink Sink, workdir, frontedBy string, conf []byte) 
 	if err := sink.MkdirAll(sitesDir, 0755); err != nil {
 		return "", fmt.Errorf("creating %s: %w", sitesDir, err)
 	}
-	path := filepath.Join(sitesDir, "api-docs.conf")
+	path := apiDocsSitePath(sitesDir, frontedBy, project)
+	if frontedBy != "" {
+		_, body, _ := strings.Cut(string(conf), "\n")
+		conf = []byte(sharedMarker(project) + "\n" + body)
+	}
 	if err := sink.WriteFile(path, conf, 0644); err != nil {
 		return "", fmt.Errorf("writing api-docs nginx conf: %w", err)
 	}
@@ -123,13 +130,15 @@ func (st *buildState) writeFinalArtifacts() (*BuildResult, error) {
 
 		// Write the nginx site config (full server block, served on docs.<base>).
 		apiDocsNginxConf := apidocs.NginxConf(apiDocsCfg.Path, st.cfg.BaseDomain)
-		if _, err := writeAPIDocsSiteConfVia(st.siteSink(), st.workdir, st.cfg.Nginx.FrontedBy, []byte(apiDocsNginxConf)); err != nil {
+		if _, err := writeAPIDocsSiteConfVia(st.siteSink(), st.workdir, st.cfg.Nginx.FrontedBy, st.cfg.ProjectName, []byte(apiDocsNginxConf)); err != nil {
 			return nil, err
 		}
 		// Best-effort cleanup of the legacy bare-location file, if present from a
 		// prior build with the broken layout.
 		_ = st.sink.Remove(filepath.Join(st.workdir, "nginx", "conf.d", "api-docs.conf"))
 		st.filesGenerated++
+	} else if err := st.removeAPIDocsSiteConf(); err != nil {
+		return nil, err
 	}
 
 	// ── Step 11.5: Post-build validation ────────────────────────────
