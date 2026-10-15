@@ -187,9 +187,5 @@ func opsPreflight(ctx context.Context, workdir, host, composePath string) error 
 	inv := &controlplane.Inventory{Environments: map[string]controlplane.Environment{
 		opsEnvName: {Name: opsEnvName, Kind: "remote", Servers: []controlplane.Server{server}},
 	}}
-	files, err := controlplane.ComposeFilesForDeploy(composePath)
-	if err != nil {
-		return err
-	}
-	return opsControlplaneCheck(ctx, inv, opsEnvName, files)
+	return opsControlplaneCheck(ctx, inv, opsEnvName, []string{composePath})
 }

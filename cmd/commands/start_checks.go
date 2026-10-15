@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/build"
+	"github.com/nself-org/cli/internal/doctor"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/migration"
 	"github.com/nself-org/cli/internal/plugin"
@@ -74,8 +75,13 @@ func aiAutoInstallWanted(getenv func(string) string, pluginInstalled bool) bool 
 // running before the stack boots, when aiAutoInstallWanted says the user opted
 // in (AI_AUTO_INSTALL=true or the ai plugin installed) and Ollama is not
 // already healthy (T-05-05, D-0221).
-func autoInstallAIIfNeeded(ctx context.Context) {
-	if !aiAutoInstallWanted(os.Getenv, aiPluginInstalledFn()) {
+func autoInstallAIIfNeeded(ctx context.Context, projectDirs ...string) {
+	projectDir := "."
+	if len(projectDirs) > 0 {
+		projectDir = projectDirs[0]
+	}
+	_, env, err := doctor.LoadConfigIsolatedLookup(projectDir, "AI_AUTO_INSTALL")
+	if err != nil || !aiAutoInstallWanted(func(key string) string { return env[key] }, aiPluginInstalledFn()) {
 		return
 	}
 	if ollamaHealthyFn(ctx) {

@@ -21,7 +21,7 @@ import (
 // or narrowed later reopens the ordering oracle. This check re-runs those
 // rules against live metadata.
 // Inputs: the project directory (its config gives the Hasura endpoint and
-// admin secret; its .env cascade gives HASURA_GRAPHQL_INFER_FUNCTION_PERMISSIONS).
+// admin secret). Desired inference settings do not establish the live setting.
 // Outputs: one failing CheckResult (section "hasura", name
 // VECTOR-SEARCH-<schema.function>) per unsafe function, one passing result
 // when every tracked search function is safe, nothing when none is tracked.
@@ -46,7 +46,7 @@ func VectorSearchChecks(ctx context.Context, projectDir string) []CheckResult {
 	if projectDir == "" {
 		return nil
 	}
-	cfg, env, err := LoadConfigIsolatedLookup(projectDir, inferFunctionPerms)
+	cfg, err := LoadConfigIsolated(projectDir)
 	if err != nil {
 		return vectorSearchUnread(projectDir, fmt.Sprintf("project config unreadable: %v", err))
 	}
@@ -56,7 +56,9 @@ func VectorSearchChecks(ctx context.Context, projectDir string) []CheckResult {
 	if err != nil {
 		return vectorSearchUnread(projectDir, fmt.Sprintf("live Hasura metadata unreadable (is the stack running?): %v", err))
 	}
-	return vectorSearchResults(live, !strings.EqualFold(strings.TrimSpace(env[inferFunctionPerms]), "false"))
+	// Until the running Hasura setting is confirmed, include inferred callers:
+	// a config edit alone does not recreate the container.
+	return vectorSearchResults(live, true)
 }
 
 // vectorSearchResults turns an export_metadata document into check results.

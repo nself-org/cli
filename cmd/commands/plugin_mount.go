@@ -33,6 +33,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/output"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/plugin/mount"
 	"github.com/spf13/cobra"
@@ -217,6 +218,7 @@ func proxyRunE(node *cobra.Command, s mount.Spec, segs []string) {
 	own := append([]string{}, segs...)
 	node.RunE = func(cmd *cobra.Command, args []string) error {
 		argv := append(append([]string{}, own...), stripRootPersistentFlags(args)...)
+		output.SetInvocation(invokedKey(cmd), output.JSONRequestedFromArgs(argv))
 		return plugin.ProxyBinaryAt(s.BinaryPath, resolvePluginDir(), s.Slug, argv)
 	}
 }

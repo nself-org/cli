@@ -46,6 +46,11 @@ func Exposure(cmd *cmdregistry.Command, transport string, set map[string]bool) (
 	if cmd.JSON != canon.JSONEnvelope {
 		return false, "no JSON envelope"
 	}
+	for _, flag := range cmd.Flags {
+		if set[flag.Name] && flag.JSON != nil && *flag.JSON != canon.JSONEnvelope {
+			return false, "no JSON envelope with --" + flag.Name
+		}
+	}
 	side := cmdregistry.EffectiveSideEffect(cmd, set)
 	switch cmdregistry.EffectiveOutput(cmd, set) {
 	case canon.OutputDocument:

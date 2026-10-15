@@ -72,7 +72,7 @@ func stubExport(t *testing.T, live []byte, err error) {
 // TestVectorSearchChecksLive: no project gives nothing; an unreachable Hasura
 // is a skip only when disk names a search function (never a silent pass where
 // one is known), and silent otherwise; a reachable one is audited; the
-// project's HASURA_GRAPHQL_INFER_FUNCTION_PERMISSIONS=false is honoured.
+// project's desired inference setting cannot prove the live setting.
 func TestVectorSearchChecksLive(t *testing.T) {
 	if res := VectorSearchChecks(context.Background(), ""); res != nil {
 		t.Fatalf("no project: %+v", res)
@@ -102,8 +102,8 @@ func TestVectorSearchChecksLive(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("PROJECT_NAME=fx\nENV=dev\n"+inferFunctionPerms+"=false\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if res := VectorSearchChecks(context.Background(), dir); len(res) != 1 || res[0].Status != "pass" {
-		t.Fatalf("inference off in the project env: %+v", res)
+	if res := VectorSearchChecks(context.Background(), dir); len(res) != 1 || res[0].Status != "fail" {
+		t.Fatalf("unconfirmed live inference must audit inferred callers: %+v", res)
 	}
 	if v, ok := os.LookupEnv(inferFunctionPerms); ok && v != "" {
 		t.Errorf("the check leaked %s=%q into the process environment", inferFunctionPerms, v)

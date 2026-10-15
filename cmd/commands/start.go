@@ -111,7 +111,7 @@ func runStartFlow(cmd *cobra.Command, _ []string, out *startOutcome) error {
 	// ── AI auto-install (T-05-05) + Auto-build detection ──────────────
 	// Both extracted to start_checks.go (T-P6-E2-W1-S1-T3). Auto-build runs
 	// BEFORE the docker-compose.yml check because build creates it.
-	autoInstallAIIfNeeded(ctx)
+	autoInstallAIIfNeeded(ctx, projectDir)
 
 	entitlementRefreshed := false
 	if !opts.skipBuild {
