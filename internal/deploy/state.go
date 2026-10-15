@@ -89,6 +89,9 @@ type StrategyState struct {
 	// FrontNames is, per host, the server_name set of each shipped front file: the
 	// next deploy replaces or prunes a recorded path only while the host file still has it.
 	FrontNames map[string]map[string][]string `json:"front_names,omitempty"`
+	// FrontPrevNames is the same per host as the record held it before that deploy:
+	// `deploy rollback` puts the files back, so it also puts these back into FrontNames.
+	FrontPrevNames map[string]map[string][]string `json:"front_prev_names,omitempty"`
 	// DBRestoredAt is set (RFC 3339) right after `nself backup restore` succeeded,
 	// before the re-apply, so a retried rollback never restores the database twice.
 	DBRestoredAt string `json:"db_restored_at,omitempty"`

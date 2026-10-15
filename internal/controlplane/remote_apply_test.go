@@ -86,3 +86,35 @@ func TestRemoteApplyRefusesMismatchedRemotePath(t *testing.T) {
 		}
 	}
 }
+
+// D-0823: a server that fails before ApplyRemote runs (remote_path mismatch,
+// remote does not open) still reaches the recorder, so deploy.json carries an
+// outcome for it.
+func TestRemoteApplyRecordsEarlyFailures(t *testing.T) {
+	compattest.Set(t, true)
+	composePath := fakeDeploy(t)
+	inv := fourServerInventory()
+	env := inv.Environments["staging"]
+	env.Servers[2].RemotePath = "/srv/other" // app-02: mismatch
+	inv.Environments["staging"] = env
+	got := map[string]error{}
+	ra := &RemoteApply{
+		Set: deploy.ArtifactSet{RemotePath: "/opt/nself", StageDir: t.TempDir()},
+		Open: func(_ context.Context, srv Server, _, _ string) (deploy.Remote, error) {
+			if srv.Name == "app-01" {
+				return nil, errors.New("ssh: connection refused")
+			}
+			return &recRemote{}, nil
+		},
+		Record: func(srv Server, _ deploy.ApplyResult, err error) { got[srv.Name] = err },
+	}
+	if _, err := RunWithApply(context.Background(), inv, "staging", &pipelineStubProber{}, composePath, ra); err != nil {
+		t.Fatal(err)
+	}
+	if e := got["app-01"]; e == nil || !strings.Contains(e.Error(), "connection refused") {
+		t.Errorf("app-01 (remote did not open): recorded %v", e)
+	}
+	if e := got["app-02"]; e == nil || !strings.Contains(e.Error(), "/srv/other") {
+		t.Errorf("app-02 (remote_path mismatch): recorded %v", e)
+	}
+}

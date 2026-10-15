@@ -67,6 +67,10 @@ func recordFront(st *deploy.StrategyState, res deploy.ApplyResult) {
 		st.FrontNames = map[string]map[string][]string{}
 	}
 	st.FrontNames[res.BackupHost] = res.FrontNames
+	if st.FrontPrevNames == nil {
+		st.FrontPrevNames = map[string]map[string][]string{}
+	}
+	st.FrontPrevNames[res.BackupHost] = res.FrontPrevNames
 	st.FrontTars[res.BackupHost] = res.FrontTar
 	st.FrontChanged[res.BackupHost], st.FrontAbsent[res.BackupHost] = res.FrontChanged, res.FrontAbsent
 }

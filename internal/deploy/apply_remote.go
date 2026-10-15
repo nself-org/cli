@@ -191,12 +191,12 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 		say("no record of a previous deploy: nothing is pruned")
 	}
 	pruned, err := PrunePrevious(ctx, r, rp, o.Set.KeepSet(), o.Previous)
-	if err != nil {
-		return res, err
-	}
-	for _, f := range pruned {
+	for _, f := range pruned { // also on a failed batch: earlier batches already deleted theirs
 		emit(o.Out, "  [pruned] %s (generated file the new set dropped)", f)
 		res.Changed = append(res.Changed, f)
+	}
+	if err != nil {
+		return res, err
 	}
 	if err = SyncArtifacts(ctx, r, o.Set); err != nil {
 		return res, err

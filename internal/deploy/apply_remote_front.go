@@ -43,6 +43,9 @@ type FrontRecord struct {
 	FrontShipped []string
 	// FrontNames is the server_name set of each shipped file (the file as shipped).
 	FrontNames map[string][]string
+	// FrontPrevNames is the server_name set the local record held for each path
+	// before this deploy: what the host files carry again after a rollback.
+	FrontPrevNames map[string][]string
 	// FrontSynced is true once the front sync started (the first front write was
 	// allowed). A record carries the front fields only then: a deploy that stopped
 	// before it (the re-check refused) changed nothing in the front root, and a
@@ -197,6 +200,10 @@ for p in %s; do if [ ! -e "$p" ] && [ ! -L "$p" ]; then printf 'ABSENT %%s\n' "$
 			return err
 		}
 		res.FrontNames[f] = n
+	}
+	res.FrontPrevNames = map[string][]string{}
+	for p, n := range fa.names {
+		res.FrontPrevNames[p] = append([]string{}, n...)
 	}
 	return nil
 }

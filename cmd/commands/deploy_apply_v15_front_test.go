@@ -245,3 +245,37 @@ func TestSnapshotFrontSSLOnlyForFrontedLayout(t *testing.T) {
 		t.Errorf("unfronted project: %v %+v", err, none.FrontSSL)
 	}
 }
+
+// D-0823: after `deploy rollback` the host holds the files it had before the
+// deploy, so the record's server_name sets go back to the pre-deploy ones. With
+// the rolled-back names kept, deploying the same names again raises E485 against
+// a file this project owns.
+func TestRollbackRestoresPreDeployFrontNames(t *testing.T) {
+	openFrontStub(t)
+	h := "deploy@app.example.test"
+	proj := t.TempDir()
+	st := frontRecord(true)
+	st.FrontShipped = map[string][]string{h: {"nginx/sites/api.conf"}}
+	st.FrontNames = map[string]map[string][]string{h: {"nginx/sites/api.conf": {"new.example.org"}}}
+	recordFront(&st, deploy.ApplyResult{BackupHost: "h9", FrontRecord: deploy.FrontRecord{
+		FrontTar: "/srv/a/backend/.nself/backups/pre-deploy-y-front.tar.gz", FrontSynced: true,
+		FrontChanged: []string{"nginx/sites/api.conf"}, FrontShipped: []string{"nginx/sites/api.conf"},
+		FrontNames:     map[string][]string{"nginx/sites/api.conf": {"new.example.org"}},
+		FrontPrevNames: map[string][]string{"nginx/sites/api.conf": {"old.example.org"}},
+	}})
+	if got := st.FrontPrevNames["h9"]["nginx/sites/api.conf"]; len(got) != 1 || got[0] != "old.example.org" {
+		t.Fatalf("recordFront dropped the pre-deploy names: %v", st.FrontPrevNames)
+	}
+	st.FrontPrevNames = map[string]map[string][]string{h: {"nginx/sites/api.conf": {"old.example.org"}}}
+	if err := deploy.SaveDeployState(proj, st); err != nil {
+		t.Fatal(err)
+	}
+	if handled, err := rollbackRemoteV15(yesCmd(), proj, "prod"); !handled || err != nil {
+		t.Fatalf("rollback handled=%v err=%v", handled, err)
+	}
+	set := deploy.ArtifactSet{Front: &deploy.FrontRoot{}}
+	markFrontPrevious(&set, proj, "prod")
+	if got := set.Front.PreviousNames[h]["nginx/sites/api.conf"]; len(got) != 1 || got[0] != "old.example.org" {
+		t.Errorf("after rollback the recorded names are %v, want the pre-deploy [old.example.org]", set.Front.PreviousNames)
+	}
+}

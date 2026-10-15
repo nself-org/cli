@@ -105,6 +105,13 @@ func rollbackRemoteV15(cmd *cobra.Command, workdir, target string) (bool, error)
 		return true, fmt.Errorf("deploy rollback failed on %d host(s): %s", len(failed), strings.Join(failed, "; "))
 	}
 	st.RolledBack = true
+	for _, host := range hosts { // the host files are the pre-deploy ones again: so are their recorded names
+		if prev, ok := st.FrontPrevNames[host]; ok {
+			st.FrontNames[host] = prev
+		} else {
+			delete(st.FrontNames, host) // unknown names: a path is never pruned on them
+		}
+	}
 	if !manualDB {
 		st.BackupID = ""
 	}
