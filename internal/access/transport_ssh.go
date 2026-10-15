@@ -22,7 +22,6 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -81,14 +80,23 @@ func (t *SSHTransport) sshArgsContext(ctx context.Context) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		option, err := remote.GlobalKnownHostsFileOption(filepath.Join(home, ".config", "nself", "deploy_known_hosts"))
+		pinFile := filepath.Join(home, ".config", "nself", "deploy_known_hosts")
+		option, err := remote.GlobalKnownHostsFileOption(pinFile)
 		if err != nil {
 			return nil, err
 		}
+		keys, err := (remote.PinnedHostKeys{Path: pinFile}).LookupHost(spec)
+		if err != nil {
+			return nil, err
+		}
+		useAlias := len(keys) > 0 || (spec.Port != 0 && spec.Port != 22)
+		if !useAlias {
+			// Operator names must never match an ambiguous legacy nSelf pin.
+			option = `GlobalKnownHostsFile="/dev/null"`
+		}
 		args = append(args, "-o", "StrictHostKeyChecking=yes", "-o", option)
-		if spec.Port != 0 {
-			alias := "nself-" + strings.ReplaceAll(spec.Host, ":", "-") + "-" + strconv.Itoa(spec.Port)
-			args = append(args, "-o", "HostKeyAlias="+alias)
+		if useAlias {
+			args = append(args, "-o", "HostKeyAlias="+remote.PinAlias(spec))
 		}
 	} else {
 		args = append(args, "-o", "StrictHostKeyChecking=accept-new")

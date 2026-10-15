@@ -186,7 +186,7 @@ func TestAdminSSHV14NoKeyscanNoHostKeyPolicy(t *testing.T) {
 
 // TestAdminSSHV15TrustedKeyExact pins the exact v1.5 VerifySSHKey argv for a
 // key trusted through the operator's known_hosts: strict checking and the
-// double-quoted pin file, no alias, no accept-new. The keyscan marker is the
+// disabled nSelf pin file, no alias, no accept-new. The keyscan marker is the
 // positive control for the v1.4 absence checks.
 func TestAdminSSHV15TrustedKeyExact(t *testing.T) {
 	compattest.Set(t, true)
@@ -198,7 +198,7 @@ func TestAdminSSHV15TrustedKeyExact(t *testing.T) {
 	want := []string{
 		"-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=30",
 		"-o", "StrictHostKeyChecking=yes",
-		"-o", `GlobalKnownHostsFile="` + e.pinFile() + `"`,
+		"-o", `GlobalKnownHostsFile="/dev/null"`,
 		"-p", "2222", "--", "u@host.test", "true",
 	}
 	got := e.argv(t)

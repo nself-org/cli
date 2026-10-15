@@ -25,13 +25,13 @@ func v15Verify(pin, alias string) []string {
 }
 
 // TestAdminSSHV15PinOnlyExact pins the pin-file-only path: known_hosts is
-// absent, the key lives in the nSelf pin file under the nself-<host>-<port>
+// absent, the key lives in the nSelf pin file under the nself+<host>+<port>
 // alias, and the argv adds HostKeyAlias with the quoted pin file. Covers a DNS
-// name and a bracketed IPv6 literal (colons become dashes in the alias).
+// name and a bracketed IPv6 literal (the alias preserves colons).
 func TestAdminSSHV15PinOnlyExact(t *testing.T) {
 	cases := []struct{ host, alias, dest string }{
-		{"host.test", "nself-host.test-2222", "u@host.test"},
-		{"[2001:db8::1]", "nself-2001-db8--1-2222", "u@2001:db8::1"},
+		{"host.test", "nself+host.test+2222", "u@host.test"},
+		{"[2001:db8::1]", "nself+2001:db8::1+2222", "u@2001:db8::1"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.host, func(t *testing.T) {
@@ -59,7 +59,7 @@ func TestAdminSSHV15PinOnlyExact(t *testing.T) {
 func TestAdminSSHV15PinFileWithSpaceIsOneWord(t *testing.T) {
 	compattest.Set(t, true)
 	home := filepath.Join(t.TempDir(), "a b")
-	e := newArgvEnv(t, home, &hostKey{alias: "[host.test]:2222"})
+	e := newArgvEnv(t, home, &hostKey{alias: "nself+host.test+2222", pin: true})
 	if err := callEntry("verify", "u", "host.test", 2222); err != nil {
 		t.Fatal(err)
 	}

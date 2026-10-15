@@ -387,6 +387,16 @@ for an ED25519 key first and falls back to ECDSA, then RSA, one `ssh-keyscan` co
 holds only a non-ED25519 key fails with `E487` when the scan finds an ED25519 key, because that key
 is not trusted: pin the key the scan reports.
 
+Deploy, admin and access share the pin alias `nself+<lowercase-host>+<port>`;
+an omitted port and explicit port 22 use the same pin. The separators cannot
+appear in a hostname, so IPv6 and hostname pins cannot collide. Existing bare
+DNS pins on port 22 migrate once when read, unless the name starts with
+`nself-`. Old `nself-...` aliases are ambiguous and require explicit enrollment:
+verify the fingerprint independently, then run
+`nself env target add <env> <server> --trust-host-key SHA256:<fingerprint>`.
+Legacy entries remain for older clients; after migration only the canonical
+pin determines trust. Operator `~/.ssh/known_hosts` entries keep OpenSSH's names.
+
 A run that ships an env file is strict from its first connection. The inventory pipeline checks
 every remote server of the environment before any probe, preflight, load-balancer step or copy, and
 an unknown key stops the whole run with `E487` (it is never reported as a skipped server), and so does a key that stops verifying later in the run. The probes

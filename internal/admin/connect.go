@@ -141,8 +141,7 @@ func adminSSHArgs(ctx context.Context, user, host string, port int) ([]string, e
 
 // adminHostKeyOptions validates the live key against operator or nSelf pins.
 func adminHostKeyOptions(ctx context.Context, spec remote.HostSpec) ([]string, error) {
-	// Port 22 is the default: OpenSSH and the nSelf pin file store it under the
-	// bare host name, never [host]:22, so key lookups treat it like no port.
+	// OpenSSH operator known_hosts uses the bare host for port 22.
 	if spec.Port == 22 {
 		spec.Port = 0
 	}
@@ -164,17 +163,23 @@ func adminHostKeyOptions(ctx context.Context, spec remote.HostSpec) ([]string, e
 		return nil, errs.New("E487", fmt.Sprintf("host key scan for %s failed: %v", spec.Host, err))
 	}
 	operatorAlias := spec.Host
-	pinAlias := spec.Host
+	pinAlias := remote.PinAlias(spec)
 	if spec.Port != 0 {
 		operatorAlias = "[" + spec.Host + "]:" + strconv.Itoa(spec.Port)
-		pinAlias = "nself-" + strings.ReplaceAll(spec.Host, ":", "-") + "-" + strconv.Itoa(spec.Port)
 	}
 	operator := adminTrustedFingerprints(ctx, operatorAlias, filepath.Join(home, ".ssh", "known_hosts"))
+	if _, err := (remote.PinnedHostKeys{Path: pinFile}).LookupHost(spec); err != nil {
+		return nil, errs.New("E487", fmt.Sprintf("deploy pin file %s refused: %v", pinFile, err))
+	}
 	pinned := adminTrustedFingerprints(ctx, pinAlias, pinFile)
 	for _, key := range keys {
 		if operator[key.Fingerprint] || pinned[key.Fingerprint] {
+			if operator[key.Fingerprint] {
+				// Bare operator names must not match leftover synthetic pins.
+				pinOption = `GlobalKnownHostsFile="/dev/null"`
+			}
 			opts := []string{"-o", "StrictHostKeyChecking=yes", "-o", pinOption}
-			if spec.Port != 0 && !operator[key.Fingerprint] {
+			if !operator[key.Fingerprint] {
 				opts = append(opts, "-o", "HostKeyAlias="+pinAlias)
 			}
 			return opts, nil

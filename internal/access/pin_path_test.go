@@ -11,7 +11,7 @@ func TestSSHPinPathWithSpace(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "a b")
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	args, err := (&SSHTransport{Host: "host.test"}).sshArgs()
+	args, err := (&SSHTransport{Host: "host.test:2222"}).sshArgs()
 	if err != nil {
 		t.Fatal(err)
 	}
