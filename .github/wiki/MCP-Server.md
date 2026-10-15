@@ -19,6 +19,8 @@ A machine request names a command from the **machine registry** and gives typed 
 
 The child refuses to run anything but the command the invoker checked: the invoker sets `NSELF_INVOKE_PATH` to the classified path, and the child resolves its own argv with the same lookup it is about to execute and answers `E421` when the two differ (for example after a plugin upgrade gave a leaf new subcommands, or the binary was replaced, while the server kept its registry from start-up). The variable is removed before the command runs, so nothing the command spawns inherits it.
 
+After the path matches, the child rebuilds the registry from its mounted command tree and rechecks exposure for the transport and named flags. A plugin upgrade that changes only exposure attributes, such as `surface: cli-only` or removal of JSON output, is refused with `E421` before the handler runs. The internal `NSELF_INVOKE_TRANSPORT` marker distinguishes HTTP document requests from NDJSON streams and is removed before execution.
+
 Running as a child keeps global state, `os.Exit` and the project operation lock identical to a typed command. There is no shell anywhere: every request value is exactly one argv element.
 
 The **machine registry** is the v1.5 registry of the running binary with installed plugin commands mounted. It is the same in both compat modes ([[Compat-V15]]), so tool names and routes are the v1.5 shape in 1.4.x too. The plugin set is read when the server starts; install a plugin, then restart the server.
