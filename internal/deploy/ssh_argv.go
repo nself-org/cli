@@ -128,14 +128,11 @@ func (t sshTransport) rsyncMultiArgv(flags []string, dest string, srcs ...string
 		args = append(args, f)
 	}
 	eOpts := append(append([]string{}, t.opts...), t.spec.SSHOptions()...)
-	// rsync parses -e again. Its parser represents a literal quote by doubling
-	// it inside a quoted word (backslash escaping does not preserve it).
-	for i, option := range eOpts {
-		if strings.HasPrefix(option, `GlobalKnownHostsFile="`) {
-			eOpts[i] = `"` + strings.ReplaceAll(option, `"`, `""`) + `"`
-		}
+	sshCommand, err := rsyncSSHCommand(eOpts)
+	if err != nil {
+		return nil, err
 	}
-	args = append(args, "-e", "ssh "+strings.Join(eOpts, " "), "--")
+	args = append(args, "-e", sshCommand, "--")
 	for _, src := range srcs {
 		local, err := localOperand(src)
 		if err != nil {
@@ -144,6 +141,23 @@ func (t sshTransport) rsyncMultiArgv(flags []string, dest string, srcs ...string
 		args = append(args, local)
 	}
 	return append(args, t.operand(dest)), nil
+}
+
+// rsyncSSHCommand validates SSH tokens and preserves canonical pin-file quotes
+// through rsync's second parsing step. It never invokes a shell.
+func rsyncSSHCommand(options []string) (string, error) {
+	eOpts := append([]string{}, options...)
+	// rsync parses -e again. Its parser represents a literal quote by doubling
+	// it inside a quoted word (backslash escaping does not preserve it).
+	for i, option := range eOpts {
+		if err := checkTransportToken(option); err != nil {
+			return "", err
+		}
+		if strings.HasPrefix(option, `GlobalKnownHostsFile="`) {
+			eOpts[i] = `"` + strings.ReplaceAll(option, `"`, `""`) + `"`
+		}
+	}
+	return "ssh " + strings.Join(eOpts, " "), nil
 }
 
 // scpArgv is the scp argv: options, -P port, "--", local, host:dest. The

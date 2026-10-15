@@ -67,6 +67,10 @@ func TestRsyncPreservesQuotedPinPath(t *testing.T) {
 	if err := os.WriteFile(source, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	list := filepath.Join(dir, "list")
+	if err := os.WriteFile(list, []byte("source\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for _, name := range []string{"a b", "a'b", "a`b", "a$b"} {
 		t.Run(name, func(t *testing.T) {
 			option, err := remote.GlobalKnownHostsFileOption(filepath.Join(dir, name, "pins"))
@@ -77,19 +81,28 @@ func TestRsyncPreservesQuotedPinPath(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			args, err := transport.rsyncArgv(source, "/remote")
+			legacy, err := transport.rsyncArgv(source, "/remote")
+			if err != nil {
+				t.Fatal(err)
+			}
+			inventory, err := rsyncArgv(transport.spec, transport.opts, nil, list, dir, "/remote")
 			if err != nil {
 				t.Fatal(err)
 			}
 			// The stub deliberately refuses the rsync protocol after recording
 			// argv. This invokes rsync's actual -e parser without a connection.
-			_ = exec.Command(rsync, args...).Run()
-			data, err := os.ReadFile(log)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !strings.Contains(string(data), "\n"+option+"\n") {
-				t.Fatalf("rsync changed pin option: %q, want %q", data, option)
+			for _, args := range [][]string{legacy, inventory} {
+				if err := os.Remove(log); err != nil && !os.IsNotExist(err) {
+					t.Fatal(err)
+				}
+				_ = exec.Command(rsync, args...).Run()
+				data, err := os.ReadFile(log)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !strings.Contains(string(data), "\n"+option+"\n") {
+					t.Fatalf("rsync changed pin option: %q, want %q", data, option)
+				}
 			}
 		})
 	}

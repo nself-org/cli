@@ -15,7 +15,7 @@ func GlobalKnownHostsFileOption(path string) (string, error) {
 	if path == "" {
 		return "", fmt.Errorf("SSH pin file path is empty")
 	}
-	if strings.ContainsAny(filepath.ToSlash(path), "\"\\") || strings.IndexFunc(path, unicode.IsControl) >= 0 {
+	if strings.ContainsAny(filepath.ToSlash(path), "\"\\") || strings.ContainsFunc(path, unicode.IsControl) {
 		return "", fmt.Errorf("SSH pin file path %q has a quote, backslash or control character", path)
 	}
 	abs, err := filepath.Abs(path)
@@ -23,7 +23,7 @@ func GlobalKnownHostsFileOption(path string) (string, error) {
 		return "", fmt.Errorf("SSH pin file path: %w", err)
 	}
 	sshPath := filepath.ToSlash(abs)
-	if strings.ContainsAny(sshPath, "\"\\") || strings.IndexFunc(sshPath, unicode.IsControl) >= 0 {
+	if strings.ContainsAny(sshPath, "\"\\") || strings.ContainsFunc(sshPath, unicode.IsControl) {
 		return "", fmt.Errorf("SSH pin file path %q has a quote, backslash or control character", abs)
 	}
 	return `GlobalKnownHostsFile="` + sshPath + `"`, nil

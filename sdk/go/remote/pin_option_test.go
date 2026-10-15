@@ -21,7 +21,7 @@ func TestGlobalKnownHostsFileOption(t *testing.T) {
 			t.Fatalf("got %q, want %q", got, want)
 		}
 	}
-	bad := []string{"", `a"b`, "a\nb", "a\tb", "a\x00b", "a\x7fb", "a\u0085b"}
+	bad := []string{"", `a"b`, "a\nb", "a\tb", "a\x00b", "a\x7fb", "a\u0085b", "\n/../pins"}
 	if runtime.GOOS != "windows" {
 		bad = append(bad, `a\b`)
 	}
