@@ -1,7 +1,7 @@
 package database
 
 // Purpose: import only the bundle's metadata without altering unrelated live tables.
-// Inputs: raw per-table Hasura records. Outputs: one additive reconcile bulk plan.
+// Inputs: raw table and function Hasura records. Outputs: one additive reconcile bulk plan.
 // Constraints: conflicts fail before Apply; never untrack, drop or replace_metadata.
 import (
 	"context"
@@ -12,15 +12,20 @@ import (
 )
 
 func BuildAdditivePlan(ctx context.Context, cfg *config.Config, tables []map[string]any) (ReconcilePlan, error) {
-	live, err := fetchLiveTables(ctx, cfg)
+	live, functions, err := fetchAdditiveMetadata(ctx, cfg)
 	if err != nil {
 		return ReconcilePlan{}, errors.New("live metadata read failed")
 	}
-	return additivePlan(tables, live)
+	return additivePlan(tables, live, functions)
 }
-func additivePlan(tables []map[string]any, live map[string]hasuraTable) (ReconcilePlan, error) {
+func additivePlan(tables []map[string]any, live map[string]hasuraTable, liveFunctions ...[]map[string]any) (ReconcilePlan, error) {
 	repo := map[string]hasuraTable{}
+	var functions []map[string]any
 	for _, raw := range tables {
+		if _, ok := raw["function"]; ok {
+			functions = append(functions, raw)
+			continue
+		}
 		b, err := json.Marshal(raw)
 		if err != nil {
 			return ReconcilePlan{}, errors.New("invalid import metadata")
@@ -70,6 +75,15 @@ func additivePlan(tables []map[string]any, live map[string]hasuraTable) (Reconci
 			}
 		}
 	}
+	var existing []map[string]any
+	if len(liveFunctions) > 0 {
+		existing = liveFunctions[0]
+	}
+	ops, err := additiveFunctionOps(functions, existing)
+	if err != nil {
+		return ReconcilePlan{}, err
+	}
+	plan.BulkOps = append(plan.BulkOps, ops...)
 	return plan, nil
 }
 func ApplyAdditivePlan(ctx context.Context, cfg *config.Config, plan ReconcilePlan) error {

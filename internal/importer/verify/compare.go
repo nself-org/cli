@@ -105,6 +105,18 @@ func CompareState(state State, m portable.Manifest, users []User, metadata Metad
 	}
 	for id, want := range metadata {
 		got, ok := state.Metadata[id]
+		if _, function := want["function"]; function {
+			if !ok {
+				add("function_not_tracked", id, "function is not tracked", "metadata")
+				continue
+			}
+			for _, field := range []struct{ key, kind string }{{"configuration", "function_configuration"}, {"permissions", "function_permission"}} {
+				if !equalFunctionField(field.key, want[field.key], got[field.key]) {
+					add(field.kind, id, "function metadata differs", "metadata")
+				}
+			}
+			continue
+		}
 		if !ok {
 			add("table_not_tracked", id, "table is not tracked", "metadata")
 			continue

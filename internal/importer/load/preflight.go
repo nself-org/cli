@@ -47,6 +47,11 @@ func preflight(ctx context.Context, cfg *config.Config, db *pgx.Conn, r *portabl
 	for _, t := range m.DB.Tables {
 		tables = append(tables, metadata[t.Schema+"."+t.Name])
 	}
+	for _, record := range metadata {
+		if _, ok := record["function"]; ok {
+			tables = append(tables, record)
+		}
+	}
 	// A conflict between the bundle's metadata and the metadata already live for the same tables
 	// is decidable now, so refuse before any write. The plan is rebuilt after the restore because
 	// only then do the imported tables exist; that late check stays as the guard for anything that

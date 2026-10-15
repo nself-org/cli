@@ -73,6 +73,10 @@ func ReadMetadata(r *portable.Reader) (Metadata, error) {
 		return nil, err
 	}
 	for id, t := range tables {
+		if _, ok := t["function"]; ok {
+			out[id] = t
+			continue
+		}
 		if _, ok := out[id]; ok {
 			out[id] = t
 		}
@@ -82,8 +86,9 @@ func ReadMetadata(r *portable.Reader) (Metadata, error) {
 func ParseMetadata(b []byte) (Metadata, error) {
 	var doc struct {
 		Sources []struct {
-			Name   string           `json:"name"`
-			Tables []map[string]any `json:"tables"`
+			Name      string           `json:"name"`
+			Tables    []map[string]any `json:"tables"`
+			Functions []map[string]any `json:"functions"`
 		} `json:"sources"`
 	}
 	if json.Unmarshal(b, &doc) != nil {
@@ -105,6 +110,18 @@ func ParseMetadata(b []byte) (Metadata, error) {
 				return nil, errors.New("invalid metadata table")
 			}
 			out[schema+"."+name] = t
+		}
+		for _, f := range src.Functions {
+			ref, ok := f["function"].(map[string]any)
+			if !ok {
+				return nil, errors.New("invalid metadata function")
+			}
+			schema, sok := ref["schema"].(string)
+			name, nok := ref["name"].(string)
+			if !sok || !nok || schema == "" || name == "" {
+				return nil, errors.New("invalid metadata function")
+			}
+			out["function "+schema+"."+name] = f
 		}
 	}
 	return out, nil

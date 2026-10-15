@@ -49,7 +49,7 @@ when the source holds files) and the target, and writes nothing.
 | Tables | One repeatable-read snapshot of every schema except `auth`, `hdb_catalog` and nSelf's own, including `storage.files` and `storage.buckets` and the foreign keys your tables hold into `auth.users` and `storage.files`. |
 | Users | Every row of `auth.users` with its roles, email, phone, display name, metadata and password hash. Hashes are bcrypt in both stacks and carry over unchanged. A hash in another format is listed in `users.reset_required` and the user resets the password. |
 | Files | Every `storage.files` row with an uploaded object is fetched from the bucket, checked against the recorded size, hashed (SHA-256) and written to the target store under the same bucket name and key (the file id), so point the target's file service at a bucket with that name. A row whose object is missing stops the import. |
-| Metadata | Tracked tables, relationships, computed fields and permissions for the tables that came across. Tracked functions are recorded in the bundle and the SQL functions come across with the schema, but the load does not track them in Hasura yet: track them again after the import. |
+| Metadata | Tracked tables, relationships, computed fields and permissions for the tables that came across. Tracked functions come across with their configuration and role permissions and are tracked in Hasura after the schema restore. |
 
 Not carried: event triggers, actions, remote schemas, cron triggers, inherited roles,
 query collections and any Hasura database source other than `default`. Tracked views,
@@ -58,9 +58,7 @@ the `auth` tables) are not carried either, so their relationships and permission
 not recreated: re-create them on the target after the import. Every tracked table,
 function and extra source that is left out is listed in the report's `exemptions` with
 the reason `kind: metadata`, and the manifest counts the skipped actions and remote
-schemas. Tracked functions are recorded in the bundle and the SQL functions come across
-with the schema, but the load does not track them in Hasura yet: track them again after
-the import. A user's custom default role is not carried yet: every user lands with the
+schemas. Verification compares tracked functions, their configuration and their role permissions. A user's custom default role is not carried yet: every user lands with the
 `user` default role.
 
 ## Result
