@@ -25,9 +25,10 @@ import "strings"
 
 // ImageInput is one row of the table.
 type ImageInput struct {
-	Service string   // compose service name; also the lock pin key
-	Entry   string   // image lock entry the generator renders for it
-	Vars    []string // variables that feed the rendered reference, precedence order
+	Service            string   // compose service name; also the lock pin key
+	Entry              string   // image lock entry the generator renders for it
+	Vars               []string // variables that feed the rendered reference, precedence order
+	alsoDefaultEntries []string // explicit compatibility defaults that render this entry
 	// NotInitDefault marks an entry whose version nself init never writes into .env
 	// (hasura: init writes v2.44.0, the hasura-v14 entry). Setting a variable to that
 	// version is a deliberate choice, so it is an override and not a default.
@@ -39,24 +40,24 @@ var imageInputs = []ImageInput{
 	// POSTGRES_VERSION picks the tag, and POSTGRES_EXTENSIONS=pgvector picks the
 	// pgvector repository from the major version.
 	{Service: "postgres", Entry: "postgres", Vars: []string{"POSTGRES_IMAGE", "POSTGRES_VERSION"}},
-	{Service: "postgres", Entry: "pgvector", Vars: []string{"POSTGRES_IMAGE", "POSTGRES_VERSION"}},
+	{Service: "postgres", Entry: "pgvector", Vars: []string{"POSTGRES_IMAGE", "POSTGRES_VERSION"}, alsoDefaultEntries: []string{"postgres"}},
 	// hasura: the current release (v2.51.0). init does not write it, so a project that
 	// sets HASURA_VERSION to it moves off a lock pin of v2.44.0 (P7-LIVE-23).
-	{Service: "hasura", Entry: "hasura", Vars: []string{"HASURA_VERSION"}, NotInitDefault: true},
+	{Service: "hasura", Entry: "hasura", Vars: []string{"HASURA_VERSION"}, alsoDefaultEntries: []string{"hasura-v14"}, NotInitDefault: true},
 	// hasura-v14: graphql-engine v2.44.0, what v1.4 runs and the version nself init
 	// writes into .env (core_services.go, P7-LIVE-23); the same variable picks the tag.
 	{Service: "hasura", Entry: "hasura-v14", Vars: []string{"HASURA_VERSION"}},
-	{Service: "auth", Entry: "auth", Vars: []string{"AUTH_VERSION"}},
+	{Service: "auth", Entry: "auth", Vars: []string{"AUTH_VERSION"}, alsoDefaultEntries: []string{"auth-v14"}},
 	// auth-v14: nhost/auth 0.36.0, what v1.4 runs and v1.5 until AUTH_ENCRYPTION_KEY is
 	// set (core_services_auth_nginx.go, P7-LIVE-20); the same variable picks the tag.
-	{Service: "auth", Entry: "auth-v14", Vars: []string{"AUTH_VERSION"}},
+	{Service: "auth", Entry: "auth-v14", Vars: []string{"AUTH_VERSION"}, alsoDefaultEntries: []string{"auth"}},
 	// nginx renders ImageRef("nginx", ""): NGINX_VERSION (written by nself init) is
 	// parsed into the config but never reaches the image.
 	{Service: "nginx", Entry: "nginx"},
 	{Service: "redis", Entry: "redis", Vars: []string{"REDIS_VERSION"}},
 	// valkey: the same service and variable when REDIS_ENGINE=valkey or the lock pins
 	// a valkey image (cache_service.go, P7-LIVE-19); the engine decides the entry.
-	{Service: "redis", Entry: "valkey", Vars: []string{"REDIS_VERSION"}},
+	{Service: "redis", Entry: "valkey", Vars: []string{"REDIS_VERSION"}, alsoDefaultEntries: []string{"redis"}},
 	{Service: "minio", Entry: "minio", Vars: []string{"MINIO_VERSION"}},
 	{Service: "seaweedfs", Entry: "seaweedfs", Vars: []string{"SEAWEEDFS_VERSION"}},
 	{Service: "mailpit", Entry: "mailpit", Vars: []string{"MAILPIT_VERSION"}},
@@ -77,6 +78,7 @@ func ImageInputs() []ImageInput {
 	out := make([]ImageInput, len(imageInputs))
 	for i, in := range imageInputs {
 		in.Vars = append([]string(nil), in.Vars...)
+		in.alsoDefaultEntries = append([]string(nil), in.alsoDefaultEntries...)
 		out[i] = in
 	}
 	return out
@@ -118,27 +120,30 @@ func inputFor(service, image string) ImageInput {
 }
 
 // Set returns the first variable of the row that is explicitly set, in
-// precedence order, or "". A variable holding nothing, or the default of one of
-// the service's lock entries (what nself init writes into .env; Ref.IsDefaultVersion,
-// the test ImageRef applies), is not set: it renders the CLI default, so it must
-// not drop a pin.
+// precedence order, or "". A variable holding nothing, or the default of this
+// selected row's lock entry (what nself init writes into .env;
+// Ref.IsDefaultVersion, the test ImageRef applies), is not set: it renders the
+// CLI default, so it must not drop a pin. alsoDefaultEntries lists the few
+// compatibility values the generator maps to this row; every other entry's
+// default is an explicit value.
 func (in ImageInput) Set(getenv func(string) string) string {
 	for _, v := range in.Vars {
-		if val := strings.TrimSpace(getenv(v)); val != "" && !isServiceDefault(in.Service, val) {
+		if val := strings.TrimSpace(getenv(v)); val != "" && !in.isDefault(val) {
 			return v
 		}
 	}
 	return ""
 }
 
-// isServiceDefault reports whether val is the default version of any lock entry
-// the service renders (postgres: the postgres entry and the pgvector entry).
-func isServiceDefault(service, val string) bool {
-	for _, row := range imageInputs {
-		if row.Service != service || row.NotInitDefault {
-			continue
+// isDefault reports whether val is a default version of this row's lock entry.
+func (in ImageInput) isDefault(val string) bool {
+	if !in.NotInitDefault {
+		if r, ok := LockedRef(in.Entry); ok && r.IsDefaultVersion(val) {
+			return true
 		}
-		if r, ok := LockedRef(row.Entry); ok && r.IsDefaultVersion(val) {
+	}
+	for _, entry := range in.alsoDefaultEntries {
+		if r, ok := LockedRef(entry); ok && r.IsDefaultVersion(val) {
 			return true
 		}
 	}
