@@ -52,7 +52,7 @@ func extensionFixture(t *testing.T, env string) *l03Project {
 	return p
 }
 
-func localPluginRegistry(t *testing.T) {
+func localPluginRegistry(t *testing.T, beforeDownload ...func()) {
 	t.Helper()
 	files := map[string]string{
 		"plugin.json":      `{"name":"zzfixture","version":"1.0.0","description":"fixture","category":"utility","license":"MIT"}`,
@@ -81,6 +81,9 @@ func localPluginRegistry(t *testing.T) {
 	releaseSig := signedFixtureEntry(t, "zzfixture", "1.0.0", checksum)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/tarball") {
+			for _, hook := range beforeDownload {
+				hook()
+			}
 			_, _ = w.Write(archive.Bytes())
 			return
 		}

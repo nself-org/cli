@@ -20,6 +20,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/nself-org/cli/internal/bundle"
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/reconcile"
@@ -152,87 +153,90 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 	}
 
 	pluginDir := resolvePluginDir()
-	stage := beginInstallStage(pluginDir) // D-0433: what this run creates is undone if the reconcile refuses
+	// D-0795: keep bundle writers out until staging, ledger marks and reconcile finish.
+	return bundle.LedgerStore(pluginDir).Operation(ctx, "plugin install", func() error {
+		stage := beginInstallStage(pluginDir) // D-0433: what this run creates is undone if the reconcile refuses
 
-	// Install each named plugin. Collect per-plugin errors so that a failure on
-	// one plugin does not abort the remaining installs.
-	var failures []string
-	var installed []string
-	installedCount := 0
-	for _, name := range officialNames {
-		// S58-T03: EOL gate — check status before attempting install.
-		if eolErr := plugin.CheckEOLBlock(ctx, name, allowEOL); eolErr != nil {
-			fmt.Fprintf(os.Stderr, "  %v\n", eolErr)
-			failures = append(failures, name)
-			continue
+		// Install each named plugin. Collect per-plugin errors so that a failure on
+		// one plugin does not abort the remaining installs.
+		var failures []string
+		var installed []string
+		installedCount := 0
+		for _, name := range officialNames {
+			// S58-T03: EOL gate — check status before attempting install.
+			if eolErr := plugin.CheckEOLBlock(ctx, name, allowEOL); eolErr != nil {
+				fmt.Fprintf(os.Stderr, "  %v\n", eolErr)
+				failures = append(failures, name)
+				continue
+			}
+
+			fmt.Fprintf(os.Stderr, "Installing plugin %q...\n", name)
+			if err := plugin.Install(ctx, cfg, name, pluginDir); err != nil {
+				fmt.Fprintf(os.Stderr, "  error installing %q: %v\n", name, err)
+				failures = append(failures, name)
+				continue
+			}
+			fmt.Fprintf(os.Stderr, "Plugin %q installed successfully.\n", name)
+			installedCount++
+			installed = append(installed, name)
+			// compat.V15(P7-LIVE-06): post-install build hint -> automatic reconcile
+			if !compat.V15() {
+				printPluginPostInstallHint(name)
+			}
+
+			// S20: Fire install telemetry for free-tier keys (non-blocking).
+			currentKey := os.Getenv("NSELF_PLUGIN_LICENSE_KEY")
+			if plugin.IsFreeKey(currentKey) {
+				plugin.SendFreeInstallTelemetry(pingURL, currentKey, name)
+			}
 		}
 
-		fmt.Fprintf(os.Stderr, "Installing plugin %q...\n", name)
-		if err := plugin.Install(ctx, cfg, name, pluginDir); err != nil {
-			fmt.Fprintf(os.Stderr, "  error installing %q: %v\n", name, err)
-			failures = append(failures, name)
-			continue
-		}
-		fmt.Fprintf(os.Stderr, "Plugin %q installed successfully.\n", name)
-		installedCount++
-		installed = append(installed, name)
-		// compat.V15(P7-LIVE-06): post-install build hint -> automatic reconcile
-		if !compat.V15() {
-			printPluginPostInstallHint(name)
+		// CLI-R16: third-party URL installs — never touch the registry, no
+		// license/EOL/telemetry handling (none of that is meaningful without a
+		// registry entry). Each one requires interactive confirmation naming the
+		// source host first, unless --yes was passed.
+		for _, srcURL := range thirdPartyURLs {
+			if err := confirmThirdPartyInstall(cmd, srcURL, yes); err != nil {
+				fmt.Fprintf(os.Stderr, "  %v\n", err)
+				failures = append(failures, installSourceIdentity(srcURL)) // P7-SURF-13: the failure message reaches the error envelope
+				continue
+			}
+			fmt.Fprintf(os.Stderr, "Installing plugin from %s...\n", srcURL)
+			if err := plugin.InstallFromURL(ctx, cfg, srcURL, pluginDir, checksum); err != nil {
+				fmt.Fprintf(os.Stderr, "  error installing from %q: %v\n", srcURL, err)
+				failures = append(failures, installSourceIdentity(srcURL)) // P7-SURF-13: the failure message reaches the error envelope
+				continue
+			}
+			installedCount++
+			installed = append(installed, srcURL)
 		}
 
-		// S20: Fire install telemetry for free-tier keys (non-blocking).
-		currentKey := os.Getenv("NSELF_PLUGIN_LICENSE_KEY")
-		if plugin.IsFreeKey(currentKey) {
-			plugin.SendFreeInstallTelemetry(pingURL, currentKey, name)
+		recordExplicitInstalls(os.Stderr, pluginDir, installed) // P7-PLUG-19: explicit in the bundle ledger
+		recordInstall(cmd, installed, nil)                      // P7-SURF-13: the envelope lists what this run installed
+		// S20: Upsell prompt after 3rd successful free-plugin install.
+		if installedCount > 0 {
+			maybeShowFreeUpsell(installedCount)
 		}
-	}
-
-	// CLI-R16: third-party URL installs — never touch the registry, no
-	// license/EOL/telemetry handling (none of that is meaningful without a
-	// registry entry). Each one requires interactive confirmation naming the
-	// source host first, unless --yes was passed.
-	for _, srcURL := range thirdPartyURLs {
-		if err := confirmThirdPartyInstall(cmd, srcURL, yes); err != nil {
-			fmt.Fprintf(os.Stderr, "  %v\n", err)
-			failures = append(failures, installSourceIdentity(srcURL)) // P7-SURF-13: the failure message reaches the error envelope
-			continue
-		}
-		fmt.Fprintf(os.Stderr, "Installing plugin from %s...\n", srcURL)
-		if err := plugin.InstallFromURL(ctx, cfg, srcURL, pluginDir, checksum); err != nil {
-			fmt.Fprintf(os.Stderr, "  error installing from %q: %v\n", srcURL, err)
-			failures = append(failures, installSourceIdentity(srcURL)) // P7-SURF-13: the failure message reaches the error envelope
-			continue
-		}
-		installedCount++
-		installed = append(installed, srcURL)
-	}
-
-	recordExplicitInstalls(os.Stderr, pluginDir, installed) // P7-PLUG-19: explicit in the bundle ledger
-	recordInstall(cmd, installed, nil)                      // P7-SURF-13: the envelope lists what this run installed
-	// S20: Upsell prompt after 3rd successful free-plugin install.
-	if installedCount > 0 {
-		maybeShowFreeUpsell(installedCount)
-	}
-	var reconcileErr error
-	readyNames := stage.readinessNames(installed)
-	// compat.V15(P7-LIVE-06): plugin install leaves generated state for a later build -> reconcile now
-	ferr := finishPluginInstall(compat.V15(), readyNames, failures, func() error {
-		reconcileErr = stage.reconcile(ctx, cfg, os.Stderr, func() error {
-			return reconcileAfterExtension(cmd, reconcile.Trigger{Kind: reconcile.TriggerPlugin, Subject: strings.Join(installSourceIdentities(installed), ",")})
+		var reconcileErr error
+		readyNames := stage.readinessNames(installed)
+		// compat.V15(P7-LIVE-06): plugin install leaves generated state for a later build -> reconcile now
+		ferr := finishPluginInstall(compat.V15(), readyNames, failures, func() error {
+			reconcileErr = stage.reconcile(ctx, cfg, os.Stderr, func() error {
+				return reconcileAfterExtension(cmd, reconcile.Trigger{Kind: reconcile.TriggerPlugin, Subject: strings.Join(installSourceIdentities(installed), ",")})
+			})
+			return reconcileErr
 		})
-		return reconcileErr
+		// P7-PLUG-19: wait for boot migrations of what was installed (plugin_install_readiness.go).
+		// Not after a failed reconcile: the stack would start from stale generated files.
+		var rerr error
+		if reconcileErr == nil {
+			rerr = pluginInstallReadiness(cmd, pluginDir, readyNames)
+		}
+		if ferr == nil {
+			return rerr
+		}
+		return errors.Join(ferr, rerr)
 	})
-	// P7-PLUG-19: wait for boot migrations of what was installed (plugin_install_readiness.go).
-	// Not after a failed reconcile: the stack would start from stale generated files.
-	var rerr error
-	if reconcileErr == nil {
-		rerr = pluginInstallReadiness(cmd, pluginDir, readyNames)
-	}
-	if ferr == nil {
-		return rerr
-	}
-	return errors.Join(ferr, rerr)
 }
 
 // runPluginInstallDryRun simulates bundle installation and shows what would change

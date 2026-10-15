@@ -6,6 +6,8 @@
 nself plugin install {name}
 ```
 
+Plugin installs and removals share the bundle operation lock for the same plugin directory. A concurrent mutation waits with progress until the running command finishes, keeping bundle references consistent through the final ledger update. Read-only previews and dry runs do not take this lock.
+
 For free plugins, the CLI may prompt you to create a free account the first time:
 
 ```

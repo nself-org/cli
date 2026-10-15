@@ -61,33 +61,36 @@ func runPluginRemove(cmd *cobra.Command, args []string) error {
 
 	ctx := context.Background()
 
-	// P7-PLUG-20: a plugin an installed bundle references is refused (E133) unless --force.
-	if err := bundle.GuardPluginRemove(os.Stderr, pluginDir, name, force); err != nil {
-		return err
-	}
-	// D-0330: deleting data needs --yes or a terminal answer, --force or not.
-	if err := confirmPluginDeleteData(cmd, name, data); err != nil {
-		return err
-	}
-	if data.notice != "" {
-		fmt.Fprintln(os.Stderr, data.notice)
-	}
+	// D-0795: the reference guard and the final ledger write are one operation.
+	return bundle.LedgerStore(pluginDir).Operation(ctx, "plugin remove "+name, func() error {
+		// P7-PLUG-20: a plugin an installed bundle references is refused (E133) unless --force.
+		if err := bundle.GuardPluginRemove(os.Stderr, pluginDir, name, force); err != nil {
+			return err
+		}
+		// D-0330: deleting data needs --yes or a terminal answer, --force or not.
+		if err := confirmPluginDeleteData(cmd, name, data); err != nil {
+			return err
+		}
+		if data.notice != "" {
+			fmt.Fprintln(os.Stderr, data.notice)
+		}
 
-	fmt.Fprintf(os.Stderr, "Removing plugin %q...\n", name)
-	if err := pluginRemoveFn(ctx, cfg, name, pluginDir, data.keep, force); err != nil {
-		return fmt.Errorf("removing plugin %q: %w", name, err)
-	}
-	if err := bundle.ForgetPlugin(pluginDir, name); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: plugin %q is removed but the bundle ledger could not be updated: %v\n", name, err)
-	}
+		fmt.Fprintf(os.Stderr, "Removing plugin %q...\n", name)
+		if err := pluginRemoveFn(ctx, cfg, name, pluginDir, data.keep, force); err != nil {
+			return fmt.Errorf("removing plugin %q: %w", name, err)
+		}
+		if err := bundle.ForgetPlugin(pluginDir, name); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: plugin %q is removed but the bundle ledger could not be updated: %v\n", name, err)
+		}
 
-	recordRemove(cmd, []string{name}, nil, nil) // P7-SURF-13
-	fmt.Fprintf(os.Stderr, "Plugin %q removed successfully.\n", name)
-	// compat.V15(P7-LIVE-06): plugin removal leaves generated state for a later build -> reconcile now
-	if compat.V15() {
-		return reconcileAfterExtension(cmd, reconcile.Trigger{Kind: reconcile.TriggerPlugin, Subject: name})
-	}
-	return nil
+		recordRemove(cmd, []string{name}, nil, nil) // P7-SURF-13
+		fmt.Fprintf(os.Stderr, "Plugin %q removed successfully.\n", name)
+		// compat.V15(P7-LIVE-06): plugin removal leaves generated state for a later build -> reconcile now
+		if compat.V15() {
+			return reconcileAfterExtension(cmd, reconcile.Trigger{Kind: reconcile.TriggerPlugin, Subject: name})
+		}
+		return nil
+	})
 }
 
 func runPluginUpdate(cmd *cobra.Command, args []string) error {
