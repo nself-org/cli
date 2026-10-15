@@ -58,6 +58,32 @@ For the full plugin and command-rename map, see [[Plugin-Catalog]] and [[Command
 
 v0.9.9 exported env vars from `.nself/config.sh` via `source`. v1.x reads the cascade: `.env.dev → .env.local → .env.staging/.env.prod → .env.secrets → .env.computed`. Use the per-project migration in step 2 above to translate `config.sh` exports into `.env.dev` lines.
 
+## Check legacy Compose project names before starting
+
+If a Bash-era installation set `COMPOSE_PROJECT_NAME` to a different value from
+`PROJECT_NAME`, `nself build` (including `--check`) warns before returning. The
+generated Compose file and `.nself/compose.env` use `PROJECT_NAME`. A later CLI
+Compose call passes `.env` first and `.nself/compose.env` last, so the generated
+name wins unless the process exports `COMPOSE_PROJECT_NAME` or the call supplies
+an explicit `-p` project name. `nself start` and `nself restart` load the project
+environment into the process, preserving the legacy name. Compose invocations
+without that inherited value can mount new empty volumes while the old data
+remains intact.
+
+For an old name of `legacy-stack`, locate the existing volumes before starting:
+
+```bash
+docker volume ls --filter label=com.docker.compose.project=legacy-stack
+```
+
+Default names include `legacy-stack_postgres_data`, `legacy-stack_minio_data`,
+and `legacy-stack_meilisearch_data` or `legacy-stack_typesense_data` when those
+services were enabled. Explicitly named or external volumes can have other
+names. Check the old Compose file and `docker volume inspect <volume>` too.
+Align `PROJECT_NAME` with the old project name before rebuilding if you intend
+to keep that identity, or back up and migrate the volumes deliberately. Do not
+remove the old volumes while verifying the migration.
+
 ## Rollback
 
 If anything goes wrong, the home-state shim leaves the legacy directory in place under `~/.nself/v099-state.migrated.<timestamp>/`. Move it back if needed:

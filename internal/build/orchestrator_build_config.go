@@ -40,6 +40,12 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("loading config: %w", err)
 	}
+	if legacy := os.Getenv("COMPOSE_PROJECT_NAME"); legacy != "" && legacy != st.cfg.ProjectName {
+		slog.Warn("COMPOSE_PROJECT_NAME differs from PROJECT_NAME; generated compose.env uses PROJECT_NAME, so Compose without the legacy process environment may mount new empty volumes. Existing data remains in the legacy project's volumes; inspect them before starting",
+			"COMPOSE_PROJECT_NAME", legacy, "PROJECT_NAME", st.cfg.ProjectName,
+			"possible_legacy_volumes", []string{legacy + "_postgres_data", legacy + "_minio_data", legacy + "_meilisearch_data", legacy + "_typesense_data"},
+			"inspect", fmt.Sprintf("docker volume ls --filter %q", "label=com.docker.compose.project="+legacy))
+	}
 	// ── Step 1.2: v1.5 object storage preflight (E138) before any write ──
 	if err := compose.ObjectStoragePreflight(st.cfg, st.opts.Profile); err != nil {
 		return nil, err
