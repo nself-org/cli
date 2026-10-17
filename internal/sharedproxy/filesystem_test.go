@@ -80,38 +80,51 @@ func TestRestore(t *testing.T) {
 }
 
 func TestMkdirPrivate(t *testing.T) {
-	stop := t.TempDir()
-	deep := filepath.Join(stop, "a", "b")
-	if err := mkdirPrivate(deep, stop); err != nil {
+	top := t.TempDir()
+	if err := os.Mkdir(filepath.Join(top, "shared"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.OpenRoot(top)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	deep := filepath.Join("shared", "a", "b")
+	if err := mkdirPrivate(root, deep, "shared"); err != nil {
 		t.Fatal(err)
 	}
 	if runtime.GOOS != "windows" {
-		fi, err := os.Stat(deep)
-		if err != nil || fi.Mode().Perm() != 0o700 {
-			t.Errorf("want a 0700 directory, got %v, %v", fi, err)
+		for _, rel := range []string{filepath.Join("shared", "a"), deep} {
+			fi, err := os.Stat(filepath.Join(top, rel))
+			if err != nil || fi.Mode().Perm() != 0o700 {
+				t.Errorf("want a 0700 directory at %s, got %v, %v", rel, fi, err)
+			}
+		}
+		fi, err := os.Stat(filepath.Join(top, "shared"))
+		if err != nil || fi.Mode().Perm() != 0o755 {
+			t.Errorf("the shared directory keeps its mode, got %v, %v", fi, err)
 		}
 	}
-	if err := mkdirPrivate(deep, stop); err != nil {
+	if err := mkdirPrivate(root, deep, "shared"); err != nil {
 		t.Errorf("an existing path should pass: %v", err)
 	}
-	if err := mkdirPrivate(filepath.Join(stop, "..", "elsewhere"), stop); err == nil {
-		t.Error("a path outside stop should be refused")
+	if err := mkdirPrivate(root, filepath.Join("..", "elsewhere"), "shared"); err == nil {
+		t.Error("a path outside the root should be refused")
 	}
-	file := filepath.Join(stop, "file")
+	file := filepath.Join(top, "shared", "file")
 	if err := os.WriteFile(file, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := mkdirPrivate(filepath.Join(file, "x"), stop); err == nil {
+	if err := mkdirPrivate(root, filepath.Join("shared", "file", "x"), "shared"); err == nil {
 		t.Error("a regular file on the way should be refused")
 	}
 	if runtime.GOOS == "windows" {
 		return
 	}
-	link := filepath.Join(stop, "link")
-	if err := os.Symlink(deep, link); err != nil {
+	if err := os.Symlink(filepath.Join(top, "shared", "a"), filepath.Join(top, "shared", "link")); err != nil {
 		t.Fatal(err)
 	}
-	if err := mkdirPrivate(filepath.Join(link, "x"), stop); err == nil {
+	if err := mkdirPrivate(root, filepath.Join("shared", "link", "x"), "shared"); err == nil {
 		t.Error("a symlink on the way should be refused")
 	}
 }

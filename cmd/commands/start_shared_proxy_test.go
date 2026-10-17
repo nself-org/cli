@@ -207,13 +207,23 @@ func TestLeaveSharedProxyOnlyForFronted(t *testing.T) {
 		left = append(left, ownerDir+"|"+project)
 		return nil, nil
 	}
-	leaveSharedProxy(context.Background(), owner)
-	leaveSharedProxy(context.Background(), t.TempDir())
+	_ = leaveSharedProxy(context.Background(), owner)
+	_ = leaveSharedProxy(context.Background(), t.TempDir())
 	if len(left) != 0 {
 		t.Fatalf("only a fronted project leaves: %v", left)
 	}
-	leaveSharedProxy(context.Background(), b.ProjectDir)
+	if err := leaveSharedProxy(context.Background(), b.ProjectDir); err != nil {
+		t.Errorf("a clean leave: %v", err)
+	}
 	if len(left) != 1 || left[0] != owner+"|b" {
 		t.Errorf("left = %v", left)
+	}
+
+	// A failed leave is returned, so uninstall cannot report full removal.
+	spLeave = func(context.Context, string, string) ([]string, error) {
+		return nil, errors.New("registration dir is read-only")
+	}
+	if err := leaveSharedProxy(context.Background(), b.ProjectDir); err == nil {
+		t.Error("a failed leave must be returned to the caller")
 	}
 }

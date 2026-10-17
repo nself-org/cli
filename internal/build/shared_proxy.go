@@ -167,6 +167,9 @@ func (st *buildState) sharedDetect() (*sharedProxy, error) {
 	sp.sharedDir = sharedproxy.DirOf(sp.ownerRoot)
 	sp.sitesDir = filepath.Join(ownerNginx, "sites")
 	sp.sslDir, _ = nginxtopo.ServedSSLDir(sp.ownerRoot, "")
+	if err := st.lockShared(sp); err != nil {
+		return nil, err
+	}
 	if sp.set, err = sharedproxy.Load(sp.sharedDir, sp.ownerRoot); err != nil {
 		return nil, errs.New("E503", "a registration under "+sp.sharedDir+" does not validate: "+err.Error()).
 			WithFix("Fix or delete that file (it is written by `nself build` in the project it names), then build again.")

@@ -172,10 +172,13 @@ func uninstallProject(cmd *cobra.Command) (res UninstallResult, done bool, err e
 			ui.C(ui.Yellow, ui.IconWarning), err)
 	}
 
-	leaveSharedProxy(cmd.Context(), cwd) // R2b: files and registration leave the owner
-
 	removed := []string{}
 	var failed []error
+	// R2b: files and registration leave the owner; a failure counts as an
+	// incomplete removal, never as success.
+	if err := leaveSharedProxy(cmd.Context(), cwd); err != nil {
+		failed = append(failed, err)
+	}
 	record := func(rel string, remove func(string) error) {
 		var err error
 		removed, err = recordIfExists(removed, cwd, rel, remove)

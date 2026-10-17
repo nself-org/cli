@@ -74,6 +74,7 @@ func (st *buildState) finishFronted(sp *sharedProxy) error {
 		dir        string
 		action     certAction
 		haveSource bool
+		generated  bool // plan mode: this build's certificates effect creates the pair
 	}
 	var steps []step
 	for dir := range sp.certDirs {
@@ -89,14 +90,18 @@ func (st *buildState) finishFronted(sp *sharedProxy) error {
 				return err
 			}
 		}
-		steps = append(steps, step{dir, action, have})
+		steps = append(steps, step{dir, action, have, !have && st.certPlanned(dir, sp)})
 	}
 	files := keys(sp.files)
 	for _, s := range steps {
 		switch s.action {
 		case certCopy, certReplace:
 			if !s.haveSource {
-				if !st.planning() {
+				if s.generated {
+					// The pair does not exist yet at plan time but the apply will generate it, so
+					// the registration lists it in both (the plan-bound apply compares bytes).
+					files = append(files, "ssl/certificates/"+s.dir+"/fullchain.pem", "ssl/certificates/"+s.dir+"/privkey.pem")
+				} else if !st.planning() {
 					warnOnce("shared proxy: " + sp.project + " has no certificate pair in ssl/certificates/" + s.dir + " to copy to the owner yet; its confs will not load until it does")
 				}
 				continue
@@ -115,6 +120,21 @@ func (st *buildState) finishFronted(sp *sharedProxy) error {
 		st.removeListed(sp, sp.prev.Files, reg.Files)
 	}
 	return st.writeRegistration(sp, sharedproxy.FileName(sp.project), reg)
+}
+
+// certPlanned reports, in plan mode, whether this build records a certificates
+// effect that creates the pair for dir in the fronted project's own ssl tree.
+func (st *buildState) certPlanned(dir string, sp *sharedProxy) bool {
+	if !st.planning() {
+		return false
+	}
+	want := filepath.Join(sp.workdir, "ssl", "certificates", dir)
+	for _, e := range st.fx.Recorded() {
+		if e.Kind == EffectCertificates && filepath.Clean(e.Target) == want {
+			return true
+		}
+	}
+	return false
 }
 
 // removeListed removes each path of old that is not in keep and that

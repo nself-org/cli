@@ -257,3 +257,86 @@ func TestSharedProxyCertsUnwritableOwner(t *testing.T) {
 		t.Error("a refused build wrote into the owner's nginx tree")
 	}
 }
+
+// TestInstallCertUnderPlanBoundApply: a plan-bound apply (expectSink) installs the
+// pair on disk. The bytes are a runtime effect, so the plan cannot list them and the
+// sink would refuse them as "not in the plan" (found by the P7-ADOPT-21 e2e).
+func TestInstallCertUnderPlanBoundApply(t *testing.T) {
+	root := t.TempDir()
+	workdir, ownerSSL := filepath.Join(root, "owner", "b"), filepath.Join(root, "owner", "ssl")
+	writeCert(t, filepath.Join(workdir, "ssl", "certificates", "b-test"), time.Now().Add(48*time.Hour))
+	if err := os.MkdirAll(filepath.Join(ownerSSL, "certificates"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	st := &buildState{sink: newExpectSink(workdir, &PlannedBuild{Files: map[string]PlannedFile{}})}
+	sp := &sharedProxy{project: "bproj", workdir: workdir, sslDir: ownerSSL}
+	if err := st.installCert(sp, "b-test", false); err != nil {
+		t.Fatalf("installCert under a plan-bound apply: %v", err)
+	}
+	for _, f := range certFiles {
+		if _, err := os.Stat(filepath.Join(ownerSSL, "certificates", "b-test", f)); err != nil {
+			t.Errorf("%s not installed: %v", f, err)
+		}
+	}
+}
+
+// TestPlanRegistrationListsPlannedCertificates: a fronted project whose pair does
+// not exist yet (first build, SSL_MODE=local) lists it in the planned registration,
+// because the apply generates and lists it; otherwise a plan-bound apply fails with
+// "would be written with different content than the plan" (found by the P7-ADOPT-21 e2e).
+func TestPlanRegistrationListsPlannedCertificates(t *testing.T) {
+	x := newSharedFx(t)
+	x.mustBuild(t, x.owner, x.ownerEnv())
+	for _, kv := range os.Environ() {
+		if key, _, ok := strings.Cut(kv, "="); ok && isBuildEnvKey(key) {
+			_ = os.Unsetenv(key)
+		}
+	}
+	plan, err := Build(x.backend(), BuildOptions{Mode: ModePlan, EnvOverlay: map[string][]byte{
+		".env": []byte(x.frontedEnv("bproj", "b.test", "SSL_MODE=local")),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reg string
+	for k, f := range plan.Planned.Files {
+		if strings.HasSuffix(k, "/nginx/shared/bproj.json") {
+			reg = string(f.Data)
+		}
+	}
+	if !strings.Contains(reg, "ssl/certificates/b-test/fullchain.pem") || !strings.Contains(reg, "ssl/certificates/b-test/privkey.pem") {
+		t.Fatalf("planned registration does not list the pair the apply will generate:\n%s", reg)
+	}
+}
+
+// TestInstallCertPlannedPairGoesThroughSink: when the plan lists the pair (it existed
+// at plan time), the apply stages it through the sink so verify() finds it.
+func TestInstallCertPlannedPairGoesThroughSink(t *testing.T) {
+	root := t.TempDir()
+	workdir, ownerSSL := filepath.Join(root, "owner", "b"), filepath.Join(root, "owner", "ssl")
+	src := filepath.Join(workdir, "ssl", "certificates", "b-test")
+	writeCert(t, src, time.Now().Add(48*time.Hour))
+	target := filepath.Join(ownerSSL, "certificates", "b-test")
+	if err := os.MkdirAll(filepath.Join(ownerSSL, "certificates"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	exp := &PlannedBuild{Files: map[string]PlannedFile{}}
+	keyer := newMemSink(workdir, "")
+	for name, perm := range map[string]os.FileMode{"fullchain.pem": 0o644, "privkey.pem": 0o600} {
+		data, err := os.ReadFile(filepath.Join(src, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		exp.Files[keyer.key(filepath.Join(target, name))] = PlannedFile{Data: data, Perm: perm}
+	}
+	exp.Files[keyer.key(filepath.Join(target, sharedproxy.CertMarker))] = PlannedFile{Data: []byte("bproj\n"), Perm: 0o600}
+	sink := newExpectSink(workdir, exp)
+	st := &buildState{sink: sink}
+	sp := &sharedProxy{project: "bproj", workdir: workdir, sslDir: ownerSSL}
+	if err := st.installCert(sp, "b-test", false); err != nil {
+		t.Fatalf("installCert with a planned pair: %v", err)
+	}
+	if err := sink.verify(); err != nil {
+		t.Fatalf("the planned pair was not staged through the sink: %v", err)
+	}
+}

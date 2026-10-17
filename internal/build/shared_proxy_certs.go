@@ -184,8 +184,9 @@ func probeWritable(target string) error {
 }
 
 // installCert writes the pair for dir into the owner's ssl. In write mode a
-// temp directory is renamed into place so a pair never half exists; in plan
-// mode the files go through the sink.
+// temp directory is renamed into place so a pair never half exists (also under a
+// plan-bound apply, where the pair is a runtime effect); in plan mode the files
+// go through the sink.
 func (st *buildState) installCert(sp *sharedProxy, dir string, replace bool) error {
 	src := filepath.Join(sp.workdir, "ssl", "certificates", dir)
 	target := filepath.Join(sp.sslDir, "certificates", dir)
@@ -199,7 +200,18 @@ func (st *buildState) installCert(sp *sharedProxy, dir string, replace bool) err
 	}
 	modes := map[string]os.FileMode{"fullchain.pem": 0o644, "privkey.pem": 0o600}
 	marker := []byte(sp.project + "\n")
-	if _, disk := st.sink.(*diskSink); !disk {
+	// Certificate bytes are a runtime effect (generated during the apply), so a
+	// plan-bound apply (expectSink) installs them on disk like a plain write when the
+	// plan does not list them; plan mode routes the pair through its recording sink.
+	_, disk := st.sink.(*diskSink)
+	// A pair the plan already lists (it existed at plan time) goes through the sink, so
+	// the apply stages and verifies it; only a pair the plan could not list is installed directly.
+	held := false
+	if es, ok := st.sink.(*expectSink); ok {
+		_, planned := es.exp.Files[es.keyr.key(filepath.Join(target, sharedproxy.CertMarker))]
+		held = !planned
+	}
+	if !disk && !held {
 		if err := st.sink.MkdirAll(target, 0o700); err != nil {
 			return err
 		}

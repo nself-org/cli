@@ -119,7 +119,10 @@ const CertMarker = ".nself-project"
 // Removable reports whether project may delete rel (owner-relative): a valid
 // registered path that no other project lists, that does not pass through a
 // symlink (an ACME-managed pair is a symlink, and is never removed here) and,
-// for a certificate file, that sits in a directory this project created.
+// for a certificate file, that sits in a directory this project created and,
+// for a site file, that is named `<project>.*` and carries this project's
+// generated-by marker (siteOwnedBy). A registration alone never makes another
+// project's file, or the owner's own, removable.
 func (s Set) Removable(ownerDir, project, rel string) bool {
 	if !ValidFile(rel) || hasSymlink(ownerDir, rel) {
 		return false
@@ -135,6 +138,9 @@ func (s Set) Removable(ownerDir, project, rel string) bool {
 		dir := filepath.Dir(filepath.Join(ownerDir, filepath.FromSlash(rel)))
 		got, err := os.ReadFile(filepath.Join(dir, CertMarker))
 		return err == nil && strings.TrimSpace(string(got)) == project
+	}
+	if strings.HasPrefix(rel, "nginx/sites/") {
+		return siteOwnedBy(ownerDir, rel, project)
 	}
 	return true
 }
@@ -165,45 +171,4 @@ func Write(dir, name string, r Registration) error {
 		return err
 	}
 	return os.Rename(tmp.Name(), filepath.Join(dir, name))
-}
-
-// Unregister removes every file project's registration lists (only those
-// Removable allows), empty certificate directories left behind, and then the
-// registration itself. It returns the owner-relative files it removed. A
-// missing registration is not an error. `nself uninstall` in a fronted project
-// calls this.
-func Unregister(ownerDir, project string) ([]string, error) {
-	dir := DirOf(ownerDir)
-	set, err := Load(dir, ownerDir)
-	if err != nil {
-		return nil, err
-	}
-	reg := set.Find(project)
-	if reg == nil {
-		return nil, nil
-	}
-	var removed []string
-	certDirs := map[string]bool{}
-	for _, rel := range reg.Files {
-		if !set.Removable(ownerDir, project, rel) {
-			continue
-		}
-		path := filepath.Join(ownerDir, filepath.FromSlash(rel))
-		if err := os.Remove(path); err == nil {
-			removed = append(removed, rel)
-		} else if !os.IsNotExist(err) {
-			return removed, err
-		}
-		if strings.HasPrefix(rel, "ssl/certificates/") {
-			certDirs[filepath.Dir(path)] = true
-		}
-	}
-	for d := range certDirs { // the marker goes last, then the directory if empty
-		_ = os.Remove(filepath.Join(d, CertMarker))
-		_ = os.Remove(d)
-	}
-	if err := os.Remove(filepath.Join(dir, FileName(project))); err != nil && !os.IsNotExist(err) {
-		return removed, err
-	}
-	return removed, nil
 }

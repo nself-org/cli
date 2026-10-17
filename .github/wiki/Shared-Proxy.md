@@ -1,6 +1,6 @@
 # Shared Proxy
 
-One Nginx can serve several ɳSelf projects on a host. The project that owns the Nginx sets `NGINX_MODE=shared`. Each other project is nested in a sub-directory of the owner and sets `NGINX_FRONTED_BY=<owner directory name>`. This page covers what `nself build` does for each side. Starting, attaching networks and reloading Nginx belong to `nself start` and are not described here.
+One Nginx can serve several ɳSelf projects on a host. The project that owns the Nginx sets `NGINX_MODE=shared`. Each other project is nested in a sub-directory of the owner and sets `NGINX_FRONTED_BY=<owner directory name>`. This page covers what `nself build` does for each side and what `nself start` and `nself stop` do at run time (see Runtime).
 
 Without `NGINX_MODE=shared` on the owner nothing changes: a fronted project still writes plain, unprefixed site files into the owner's `nginx/sites`, exactly as before.
 
@@ -53,12 +53,54 @@ When the owner has `nginx/shared/` with a `_owner.json` (the owner's build write
 | Any other symlink on the path, or no write permission | `E503`, nothing written |
 | This project has no local pair yet (first build, or `ssl/` cleaned) and the directory exists in the owner's `ssl/` | Own directory: kept and stays listed. Anyone else's: `E503` (it cannot be proven identical) |
 
+## Runtime
+
+A fronted project publishes no port 80 or 443 and runs no Nginx of its own. The owner's Nginx serves its domains by joining the fronted project's own `<project>_network`, so each fronted project stays unreachable from every other fronted project (the owner's Nginx is the only foreign container on a fronted network).
+
+| Command | What happens |
+|---|---|
+| `nself start` in a fronted project | After the stack is healthy: connect the owner's Nginx to `<project>_network` (no change when already connected), run `nginx -t`, then `nginx -s reload`. |
+| `nself start` in the owner | Does the same for every registration whose network exists. A registered project that is stopped gives one warning per project; the owner still starts. |
+| `nself stop`, `restart`, `start --fresh`, `reset`, `uninstall` in a fronted project | Before compose takes the project down, the owner's Nginx is disconnected from `<project>_network`. Compose cannot remove a network while a foreign container is attached, so without this step `nself stop` would fail. |
+| `nself uninstall` in a fronted project | Also removes the project's files and registration from the owner and reloads the owner's Nginx. If that cannot be done (for example a registration cannot be read, `nginx/shared/quarantine` or a certificate directory is a symlink, or the owner's Nginx cannot be looked up), uninstall returns `E506` and does not report the files as removed. |
+
+A fronted `nself start` returns `E506` when the registrations under the owner cannot be read (one invalid registration file of any project is enough), because its domains would not be served. The owner's own start only warns. Before a compose down, the same condition is a warning that names the cause; the down continues.
+
+Changes to one owner's shared proxy (attach, detach, leave, quarantine, restore, and a `nself build` that writes into the owner) take turns: each holds an exclusive lock on `nginx/shared/.lock` in the owner's directory (mode 0600) for the whole call and waits up to 60 seconds. A wait that runs out is an `E506`. A build holds the lock from the moment it reads the registrations until it returns; `nself build --check` and plan mode write nothing and do not wait. An attach drops a project whose registration was removed or changed while it waited. On Windows the lock only covers one nself process.
+
+If the owner's Nginx is not running, the fronted project starts and stops anyway with one warning ("start the owner project first"). Nothing is attached in that case; run `nself start` in the fronted project again once the owner is up, or `nself start` in the owner, which attaches every running registered project.
+
+### Restarting the owner's Nginx
+
+A restarted or recreated Nginx container loses its extra networks. Run `nself start` in the owner afterwards: it reattaches every registered, running project.
+
+### A failed `nginx -t` (E506)
+
+The test always runs before the reload, so a broken conf never replaces the running configuration. When `nginx -t` fails after an attach:
+
+1. The files of the project the error output names are moved to `nginx/shared/quarantine/<project>/` in the owner's directory (directories 0700, keys 0600; symlinks are refused). That project may be a different one than the project that was starting.
+2. The test runs again. If the output now names another registered project, that project is quarantined too and the test repeats (once per project). If it still fails, every connection made by this call is undone, the owner keeps its previous configuration and `nself start` returns `E506` with the Nginx error.
+3. Whenever a start fails, the files it had just restored from quarantine go back into quarantine, so `nginx/sites` never keeps a conf that fails `nginx -t`.
+4. The next successful `nself start` of the quarantined project restores its files.
+
+`E506` is also returned when the connect or the reload itself fails on a network that exists. A missing network or a stopped owner is a warning, not an error.
+
+### Troubleshooting
+
+| Symptom | Check |
+|---|---|
+| Domain of a fronted project answers 502 or not at all | `docker inspect <owner>_nginx --format '{{json .NetworkSettings.Networks}}'` should list `<project>_network`. Run `nself start` in the fronted project. |
+| `nself stop` in a fronted project warns that the owner's Nginx is not running | Harmless: nothing was attached. |
+| `E506` naming a conf file | Fix that conf in the project that owns it (`nself build`), then `nself start` there. |
+| Registration lists a conf you did not expect | A site file is moved or removed for a project only when it is named `<project>.*` and starts with `# Generated by nself build (project <project>)`. A hand-edited registration cannot move the owner's own confs. |
+| Files under `nginx/shared/quarantine/` | Left by a failed test; the owning project restores them on its next successful start. |
+
 ## Refusals
 
 | Code | When |
 |---|---|
 | `E503` | A project name that equals one of its own conf stems (`PROJECT_NAME=hasura`); a server name or certificate directory is already served by the owner or another registered project; a registration does not validate; the owner's `ssl/` cannot be written safely |
-| `E504` | An upstream host that stays as written (a single label, such as `sidecar`) is a service name or upstream host of the owner or another registered project |
+| `E504` | An upstream host that stays as written (a single label, such as `sidecar`) is a service name or upstream host of the owner or another registered project, or the container name (`<project>_<service>`) of one of that project's services |
 | `E505` | `NGINX_MODE` is not `shared`; `NGINX_MODE=shared` together with `NGINX_FRONTED_BY`; `NGINX_MODE=shared` with a proxy provider other than nginx |
 
 The checks run before any file is written, so a refused build changes nothing. `E505` for an unknown mode or for `shared` with `NGINX_FRONTED_BY` is a warning in v1.4 and an error from v1.5. `NGINX_MODE=shared` with the traefik provider is an error in both.

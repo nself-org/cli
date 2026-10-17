@@ -58,8 +58,8 @@ func (x *sharedFx) env(project, domain string, extra ...string) string {
 	return strings.Join(lines, "\n") + "\n" + fixtureSecrets
 }
 
-// build writes dir/.env and builds dir, with a clean build environment each time.
-func (x *sharedFx) build(t *testing.T, dir, env string) error {
+// prepare writes dir/.env and sets a clean build environment for dir.
+func (x *sharedFx) prepare(t *testing.T, dir, env string) {
 	t.Helper()
 	for _, kv := range os.Environ() {
 		if k, _, ok := strings.Cut(kv, "="); ok && isBuildEnvKey(k) {
@@ -73,6 +73,12 @@ func (x *sharedFx) build(t *testing.T, dir, env string) error {
 		t.Fatal(err)
 	}
 	writeFixtureFile(t, filepath.Join(dir, ".env"), env, 0o600)
+}
+
+// build writes dir/.env and builds dir, with a clean build environment each time.
+func (x *sharedFx) build(t *testing.T, dir, env string) error {
+	t.Helper()
+	x.prepare(t, dir, env)
 	_, err := Build(dir, BuildOptions{Force: true})
 	return err
 }
@@ -118,7 +124,7 @@ func readText(t *testing.T, path string) string {
 	return string(b)
 }
 
-// treeDigest hashes every file below dirs (path, mode, bytes), so a refusal can
+// treeDigest hashes every file below dirs (path, mode, bytes, not the owner lock file), so a refusal can
 // prove nothing changed. A missing dir hashes as empty.
 func treeDigest(t *testing.T, dirs ...string) string {
 	t.Helper()
@@ -133,6 +139,9 @@ func treeDigest(t *testing.T, dirs ...string) string {
 		})
 		sort.Strings(paths)
 		for _, p := range paths {
+			if filepath.Base(p) == sharedproxy.LockFile {
+				continue // the owner lock file is created by any write-mode build; it holds no content
+			}
 			fi, err := os.Lstat(p)
 			if err != nil {
 				continue
