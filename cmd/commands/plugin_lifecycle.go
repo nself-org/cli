@@ -110,7 +110,7 @@ func runPluginUpdate(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		fmt.Fprintf(os.Stderr, "Updating plugin %q...\n", name)
-		if err := plugin.Update(ctx, cfg, name, pluginDir); err != nil {
+		if err := updatePluginWithOperation(ctx, cfg, name, pluginDir); err != nil {
 			return fmt.Errorf("updating plugin %q: %w", name, err)
 		}
 		fmt.Fprintf(os.Stderr, "Plugin %q updated successfully.\n", name)
@@ -130,7 +130,7 @@ func runPluginUpdate(cmd *cobra.Command, args []string) error {
 	var failures []string
 	for _, p := range plugins {
 		fmt.Fprintf(os.Stderr, "Updating %s...\n", p.Name)
-		if err := plugin.Update(ctx, cfg, p.Name, pluginDir); err != nil {
+		if err := updatePluginWithOperation(ctx, cfg, p.Name, pluginDir); err != nil {
 			fmt.Fprintf(os.Stderr, "  Failed to update %s: %v\n", p.Name, err)
 			failures = append(failures, p.Name)
 			continue

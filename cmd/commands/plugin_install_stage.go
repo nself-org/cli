@@ -8,15 +8,14 @@ package commands
 // plugins that were removed again.
 // Constraints: a literal temp-dir stage is not possible because the reconcile
 // plans from the plugin dir, so the plugin has to be on disk for the plan. The
-// stage instead records which plugin directories exist before the install and
-// removes only the ones that appeared during it (dependencies included).
+// stage records newly created directories during each locked install call
+// (dependencies included), then rolls back only those directory identities.
 // Plugins that were already installed are never touched, so an in-place
 // upgrade of one is not undone. Any reconcile error undoes, not only the
 // refusals (E403/E480/E481): the plugin is kept only once the plan is confirmed
-// and the write succeeded. The snapshot is not taken under the install lock, so
-// a second process installing into the same plugin dir during a refused run
-// would have its new plugin undone too. v1.4 never reconciles here, so it
-// never undoes anything.
+// and the write succeeded. Command install/update and bundle operations share
+// the operation lock, so another invocation cannot enter an ownership capture.
+// v1.4 never reconciles here, so it never undoes anything.
 
 import (
 	"context"
@@ -24,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -35,42 +35,69 @@ import (
 // undoPluginInstall reverses one fresh install; a seam so tests can fail it.
 var undoPluginInstall = plugin.UndoInstall
 
-// installStage remembers which plugin directories existed before an install run.
+// installStage remembers only directory identities created by this invocation.
 type installStage struct {
 	pluginDir string
-	before    map[string]bool
+	owned     map[string]os.FileInfo
 }
 
-// beginInstallStage snapshots the plugin subdirectories of pluginDir. A missing
-// directory is an empty set.
+// beginInstallStage starts an empty ownership record, without a racy snapshot.
 func beginInstallStage(pluginDir string) *installStage {
-	return &installStage{pluginDir: pluginDir, before: stagePluginNames(pluginDir)}
+	return &installStage{pluginDir: pluginDir, owned: map[string]os.FileInfo{}}
 }
 
-// stagePluginNames lists the plugin subdirectories of dir as a set. Dot
-// directories and ".prev" backups are not plugins.
-func stagePluginNames(dir string) map[string]bool {
-	names := map[string]bool{}
+// install captures newly created directories under the shared operation lock.
+// Capture also runs on failure: a failed target may leave installed dependencies.
+func (s *installStage) install(ctx context.Context, fn func() error) error {
+	return withPluginInstallOperation(ctx, s.pluginDir, func() error {
+		before := stagePluginNames(s.pluginDir)
+		err := fn()
+		for name := range stagePluginNames(s.pluginDir) {
+			previous, owned := before[name], s.owned[name]
+			if previous == nil || (owned != nil && os.SameFile(owned, previous)) {
+				if info, statErr := os.Stat(filepath.Join(s.pluginDir, name)); statErr == nil {
+					s.owned[name] = pinIdentity(info)
+				}
+			}
+		}
+		return err
+	})
+}
+
+// pinIdentity forces the file identity to load now. On Windows os.SameFile
+// resolves a FileInfo's identity lazily from its path, so an unpinned record
+// would follow a directory that was later renamed and replaced.
+func pinIdentity(info os.FileInfo) os.FileInfo {
+	_ = os.SameFile(info, info)
+	return info
+}
+
+// stagePluginNames lists plugin directory identities. Dot directories, shared
+// command binaries, and ".prev" backups are not plugin installations.
+func stagePluginNames(dir string) map[string]os.FileInfo {
+	names := map[string]os.FileInfo{}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return names
 	}
 	for _, e := range entries {
 		n := e.Name()
-		if !e.IsDir() || strings.HasPrefix(n, ".") || strings.HasSuffix(n, ".prev") {
+		if !e.IsDir() || n == "bin" || strings.HasPrefix(n, ".") || strings.HasSuffix(n, ".prev") {
 			continue
 		}
-		names[n] = true
+		if info, err := e.Info(); err == nil {
+			names[n] = pinIdentity(info)
+		}
 	}
 	return names
 }
 
-// created returns, sorted, the plugin directories present now that were not
-// present when the stage began.
+// created returns owned directories still present with their original identity.
+// A replacement installed by a later invocation must survive this rollback.
 func (s *installStage) created() []string {
 	var out []string
-	for n := range stagePluginNames(s.pluginDir) {
-		if !s.before[n] {
+	for n, owned := range s.owned {
+		if now, err := os.Stat(filepath.Join(s.pluginDir, n)); err == nil && os.SameFile(owned, now) {
 			out = append(out, n)
 		}
 	}
@@ -104,11 +131,18 @@ func (s *installStage) reconcile(ctx context.Context, cfg *config.Config, w io.W
 	if rerr == nil {
 		return nil
 	}
+	return errors.Join(rerr, withPluginInstallOperation(ctx, s.pluginDir, func() error {
+		return s.undo(ctx, cfg, w)
+	}))
+}
+
+// undo checks ownership and removes directories while other operations wait.
+func (s *installStage) undo(ctx context.Context, cfg *config.Config, w io.Writer) error {
 	names := s.created()
 	if len(names) == 0 {
-		return rerr
+		return nil
 	}
-	errsOut := []error{rerr}
+	var errsOut []error
 	for _, name := range names {
 		if err := undoPluginInstall(ctx, cfg, name, s.pluginDir); err != nil {
 			errsOut = append(errsOut, fmt.Errorf("undoing the install of plugin %q: %w", name, err))

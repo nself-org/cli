@@ -47,6 +47,17 @@ func autoInstallPlugin(slug, version string) (string, error) {
 	}
 	// The caller (a bootstrap) runs no `nself build`, and the installer's hint to do so is noise here.
 	ctx := plugin.WithCallerReconciles(context.Background())
+	var bin string
+	err = withPluginInstallOperation(ctx, resolvePluginDir(), func() error {
+		var installErr error
+		bin, installErr = autoInstallPluginLocked(ctx, cfg, slug, version)
+		return installErr
+	})
+	return bin, err
+}
+
+// autoInstallPluginLocked includes move-aside and rollback in the operation.
+func autoInstallPluginLocked(ctx context.Context, cfg *config.Config, slug, version string) (string, error) {
 	manifest, reg, err := autoInstallResolve(ctx, slug, version)
 	if err != nil {
 		return "", err
