@@ -223,17 +223,9 @@ func installCALinux(caPath string) error {
 // ── Windows ───────────────────────────────────────────────────────────────────
 
 func isCAInstalledWindows(caPath string) (bool, error) {
-	// certutil -store Root lists all trusted root certs. We check for exit 0
-	// with the thumbprint. Simple approach: just check if certutil exits 0.
-	ctx, cancel := context.WithTimeout(context.Background(), mkcertCATimeout)
-	defer cancel()
-	out, err := sysexec.Stdout(ctx, "certutil", "-store", "Root")
-	if err != nil {
-		return false, nil
-	}
-	// Read the cert to get its subject for matching.
-	_ = out
-	// On Windows, we treat it as not installed if we can't verify; InstallCA is idempotent.
+	// Verification is not implemented on Windows: report "not installed" so
+	// the caller runs installCAWindows, which is idempotent (certutil
+	// -addstore Root). The constant false is deliberate, not a swallowed error.
 	return false, nil
 }
 

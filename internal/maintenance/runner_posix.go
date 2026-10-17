@@ -3,6 +3,7 @@
 package maintenance
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -83,7 +84,16 @@ func reclaimRunnerWork(root string, dryRun bool) (bytes int64, reclaimed []Recla
 	workDir := filepath.Join(root, "_work")
 	entries, err := os.ReadDir(workDir)
 	if err != nil {
-		return 0, nil, nil // no _work dir yet (fresh install) — nothing to do
+		if errors.Is(err, fs.ErrNotExist) {
+			return 0, nil, nil // no _work dir yet (fresh install) — nothing to do
+		}
+		// Unreadable (EACCES, ENOTDIR, EIO) is not "empty": report it so a
+		// cleanup that reclaimed nothing is not mistaken for a healthy no-op.
+		skipped = append(skipped, SkipEntry{
+			Path:   workDir,
+			Reason: fmt.Sprintf("cannot read _work: %v", err),
+		})
+		return 0, nil, skipped
 	}
 
 	for _, e := range entries {

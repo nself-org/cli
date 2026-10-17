@@ -190,7 +190,7 @@ func Status(name string) (*PluginStatus, error) {
 
 // health performs an HTTP health check against a plugin by sending a GET
 // request to http://localhost:{port}/health. It returns true if the response
-// status is 200 OK.
+// status is 200 OK, and a non-nil error when the plugin cannot be reached.
 func health(ctx context.Context, name string, port int) (bool, error) {
 	url := fmt.Sprintf("http://localhost:%d/health", port)
 
@@ -202,7 +202,9 @@ func health(ctx context.Context, name string, port int) (bool, error) {
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return false, nil
+		// Unreachable is "not healthy", but the dial error is the reason; the
+		// start loop keeps it as lastErr instead of a generic timeout.
+		return false, fmt.Errorf("health check for %s: %w", name, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
