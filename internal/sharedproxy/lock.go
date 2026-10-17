@@ -58,7 +58,7 @@ func Lock(ctx context.Context, ownerDir string) (func(), error) {
 	if fi, err := root.Lstat(lockRel); err == nil && !fi.Mode().IsRegular() {
 		return noop, e506("cannot lock the shared proxy", fmt.Errorf("%s is not a regular file", lockRel), "")
 	}
-	f, err := root.OpenFile(lockRel, os.O_RDWR|os.O_CREATE, 0o600)
+	f, err := openLockFile(root, sharedRel, lockRel)
 	if err != nil {
 		return noop, e506("cannot open the shared proxy lock file", err, "")
 	}
@@ -84,6 +84,28 @@ func Lock(ctx context.Context, ownerDir string) (func(), error) {
 		case <-time.After(lockPoll):
 		}
 	}
+}
+
+// openLockFile opens (creating) the lock file. Two processes or goroutines
+// creating it at once can make the loser's openat report ENOENT although the
+// directory exists (seen under os.Root), so a not-exist result is retried while
+// the directory is still there.
+func openLockFile(root *os.Root, sharedRel, lockRel string) (*os.File, error) {
+	var err error
+	for range 20 {
+		var f *os.File
+		if f, err = root.OpenFile(lockRel, os.O_RDWR|os.O_CREATE, 0o600); err == nil {
+			return f, nil
+		}
+		if !os.IsNotExist(err) {
+			return nil, err
+		}
+		if _, serr := root.Lstat(sharedRel); serr != nil {
+			return nil, err // the directory itself is gone
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return nil, err
 }
 
 // locked runs fn under Lock(ownerDir).
