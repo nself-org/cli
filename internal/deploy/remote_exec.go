@@ -9,8 +9,8 @@ package deploy
 //          host string ("user@host:/remote/path"), plus the remote command
 //          argv to run.
 // Outputs: Combined stdout+stderr and an error wrapping any SSH/exec failure.
-// Constraints: Reuses the exact SSH flag set + key resolution already used by
-//              `nself deploy` (remote.BaseOptions/remote.DefaultKeyPath/splitHost) so remote
+// Constraints: Reuses the SSH host-key policy + key resolution already used by
+//              `nself deploy` (acceptNewPolicy/remote.DefaultKeyPath) so remote
 //              auth behavior is identical across every remote-targeting
 //              command in the CLI — no second SSH convention.
 // SPORT: cli/internal/deploy — see gap #9.
@@ -149,11 +149,11 @@ func RunRemoteCommand(ctx context.Context, rt RemoteTarget, command string) (str
 	if err != nil {
 		return "", err
 	}
-	// Historical argv and inherited environment, byte-identical to the
-	// pre-sdk implementation: options, destination, one command element, no
-	// "--". sdk/go/remote owns the exec funnel; the legacy shape lives here
-	// so the sdk's public API has no relaxed mode.
-	args := append(remote.BaseOptions(rt.KeyPath), spec.SSHArgs()...)
+	// Use deploy's isolated TOFU policy in v1.5; v1.4 retains its historical
+	// accept-new argv. sdk/go/remote still owns the exec funnel.
+	args := append([]string{"-i", rt.KeyPath}, acceptNewPolicy()...)
+	args = append(args, "-o", "ForwardAgent=no")
+	args = append(args, spec.SSHArgs()...)
 	args = append(args, command)
 	sc, err := remote.Command(ctx, "ssh", args...)
 	if err != nil {

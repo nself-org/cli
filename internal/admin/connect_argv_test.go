@@ -198,6 +198,7 @@ func TestAdminSSHV15TrustedKeyExact(t *testing.T) {
 	want := []string{
 		"-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=30",
 		"-o", "StrictHostKeyChecking=yes",
+		"-o", "ControlMaster=no", "-o", "ControlPath=none",
 		"-o", `GlobalKnownHostsFile="` + e.pinFile() + `"`,
 		"-p", "2222", "--", "u@host.test", "true",
 	}
