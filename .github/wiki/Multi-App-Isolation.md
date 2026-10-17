@@ -48,7 +48,7 @@ Also enforced:
 ```bash
 nself build
 nself start
-nself db migrate --migration-dir migrations
+nself db migrate up --migration-dir migrations
 nself db reconcile --apply
 ```
 

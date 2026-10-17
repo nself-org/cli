@@ -231,7 +231,7 @@ func TestMultiAppFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	steps := []string{"nself build", "nself start", "nself db migrate --migration-dir migrations", "nself db reconcile"}
+	steps := []string{"nself build", "nself start", "nself db migrate up --migration-dir migrations", "nself db reconcile"}
 	if !reflect.DeepEqual(m.NextSteps, steps) || len(m.RequiredPlugins) != 0 || m.Version != "1.0.0" {
 		t.Errorf("manifest = %+v, want next_steps %v, version 1.0.0 and no required plugins", m, steps)
 	}

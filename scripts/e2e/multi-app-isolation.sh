@@ -51,7 +51,7 @@ for f in README.md manifest.json nself.yml .env.example migrations/001_multi_app
   test -f "$f" || fail "overlay did not write $f"
 done
 test ! -e flutter || fail 'overlay wrote a flutter/ folder'
-for step in 'nself build' 'nself start' 'nself db migrate --migration-dir migrations' 'nself db reconcile'; do
+for step in 'nself build' 'nself start' 'nself db migrate up --migration-dir migrations' 'nself db reconcile'; do
   grep -qx "    $step" "$W/overlay.out" || fail "overlay next steps lack: $step"
 done
 pass 'template overlay wrote the multi-app files and printed its four next steps'
@@ -84,8 +84,8 @@ nself start --timeout 300 --skip-build >>"$LOG" 2>&1 || fail 'start'
 PGDB="$(cat .env .env.local 2>/dev/null | sed -n 's/^POSTGRES_DB=//p' | tail -1)"
 PGDB="${PGDB:-${NAME//-/_}}"
 pg() { docker exec "${NAME}_postgres" psql -X -U postgres -d "$PGDB" -v ON_ERROR_STOP=1 -At -c "$1"; }
-nself db migrate --migration-dir migrations >>"$LOG" 2>&1 || fail 'migrate'
-nself db migrate --migration-dir migrations >>"$LOG" 2>&1 || fail 'migrate is not re-runnable'
+nself db migrate up --migration-dir migrations >>"$LOG" 2>&1 || fail 'migrate'
+nself db migrate up --migration-dir migrations >>"$LOG" 2>&1 || fail 'migrate is not re-runnable'
 test "$(pg "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('app_members','notes','projects')")" = 3 || fail 'tables missing'
 nself db reconcile >"$W/reconcile-plan.out" 2>>"$LOG" || fail 'reconcile dry run'
 for t in notes projects app_members; do

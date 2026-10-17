@@ -44,7 +44,7 @@ hasura-auth then puts the user's `metadata.source_account_id` into the
 ```bash
 nself build
 nself start
-nself db migrate --migration-dir migrations
+nself db migrate up --migration-dir migrations
 nself db reconcile            # dry run: prints the plan
 nself db reconcile --apply    # pushes it
 ```
