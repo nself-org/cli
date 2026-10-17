@@ -240,11 +240,12 @@ func TestProxyProviderInstalled(t *testing.T) {
 		writeFixtureFile(t, filepath.Join(f.plugins, "traefik", pluginComposeFilename), "version: '3.8'\nservices:\n  traefik:\n    image: traefik:v3.3\n", 0644)
 		before := proxyHashes(t, f.workdir)
 		fx := &planEffects{}
-		files, err := discoverPluginComposeFilesFx(fx, newMemSink(f.workdir, ""), f.workdir, f.plugins)
-		if err != nil || !reflect.DeepEqual(files, []string{filepath.Join(f.plugins, "traefik", pluginComposeFilename)}) {
+		sink := newMemSink(f.workdir, "")
+		files, err := discoverPluginComposeFilesFx(fx, sink, f.workdir, f.plugins)
+		if err != nil || !reflect.DeepEqual(files, []string{filepath.Join(f.workdir, ".nself", "plugins", "traefik", pluginComposeFilename)}) {
 			t.Fatalf("dry discovery: files=%v error=%v", files, err)
 		}
-		if len(fx.Recorded()) == 0 {
+		if len(sink.files) == 0 {
 			t.Fatal("fixture must exercise planned normalization")
 		}
 		if !reflect.DeepEqual(before, proxyHashes(t, f.workdir)) {
