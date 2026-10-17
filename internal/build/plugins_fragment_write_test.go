@@ -25,7 +25,7 @@ func TestLicensedPluginFragmentWriteFailure(t *testing.T) {
 	}
 	sink := &fragmentWriteFailureSink{Sink: newDiskSink(dir), err: fs.ErrPermission}
 	paths, err := discoverPluginComposeFilesFx(&planEffects{}, sink, dir, dir)
-	if sink.path != path || !bytes.Contains(sink.data, []byte(entitlementMount)) {
+	if sink.path != filepath.Join(dir, ".nself", "plugins", "fixture", pluginComposeFilename) || !bytes.Contains(sink.data, []byte(entitlementMount)) {
 		t.Fatalf("guard write not attempted: path=%q data=%s", sink.path, sink.data)
 	}
 	if !errors.Is(err, fs.ErrPermission) || len(paths) != 0 {
