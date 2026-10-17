@@ -124,3 +124,19 @@ func TestSharedProxyForgedCertRegistration(t *testing.T) {
 		t.Fatalf("the owner's key was deleted: %v", err)
 	}
 }
+
+// A route to another project's container name (<project>_<service>) reaches
+// that project's service through the shared nginx just as a bare name does.
+func TestSharedProxyQualifiedUpstreamRefused(t *testing.T) {
+	x := newSharedFx(t)
+	x.mustBuild(t, x.owner, x.ownerEnv())
+	route := func(target string) []string {
+		return []string{"INTERNAL_ROUTE_1_NAME=legacy", "INTERNAL_ROUTE_1_SUBDOMAIN=legacy", "INTERNAL_ROUTE_1_TARGET=" + target}
+	}
+	wantCode(t, x.build(t, x.backend(), x.frontedEnv("bproj", "b.test", route("http://owna_hasura:8080")...)), "E504", "owna_hasura", "owna")
+	wantCode(t, x.build(t, x.backend(), x.frontedEnv("bproj", "b.test", route("http://OWNA_Hasura.:8080")...)), "E504", "owna_hasura")
+	// The project's own container name is allowed.
+	x.mustBuild(t, x.backend(), x.frontedEnv("bproj", "b.test", route("http://bproj_hasura:8080")...))
+	// So is a registered project's container name for another registered project: refused.
+	wantCode(t, x.build(t, x.other(), x.frontedEnv("cproj", "c.test", route("http://bproj_hasura:8080")...)), "E504", "bproj_hasura", "bproj")
+}

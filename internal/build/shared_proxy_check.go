@@ -146,7 +146,12 @@ func (sp *sharedProxy) check() error {
 			}
 		}
 		for _, h := range sp.facts.verbatim {
-			if !ambiguousHost(h) || (!inSorted(other.ServiceNames, h) && !inSorted(other.UpstreamHosts, h)) {
+			if !ambiguousHost(h) {
+				continue
+			}
+			// A bare name another project registered, or that project's container name
+			// (<project>_<service>): the shared nginx reaches both.
+			if !inSorted(other.ServiceNames, h) && !inSorted(other.UpstreamHosts, h) && !isContainerOf(h, other) {
 				continue
 			}
 			msg := fmt.Sprintf("upstream host %q is left as written by project %q and is also a service or upstream host of project %q (%s)", h, sp.project, other.Project, other.ProjectDir)
