@@ -88,9 +88,9 @@ func restoreMode(rel string) os.FileMode {
 	return 0o644
 }
 
-// Quarantine moves the files of reg into the quarantine tree and returns the
-// owner-relative paths it moved.
-func Quarantine(ownerDir string, set Set, reg Registration) ([]string, error) {
+// quarantine moves the files of reg into the quarantine tree and returns the
+// owner-relative paths it moved. Callers hold the owner lock (Quarantine).
+func quarantine(ownerDir string, set Set, reg Registration) ([]string, error) {
 	root, err := os.OpenRoot(ownerDir)
 	if err != nil {
 		return nil, err
@@ -136,11 +136,11 @@ func Quarantine(ownerDir string, set Set, reg Registration) ([]string, error) {
 	return moved, nil
 }
 
-// Restore moves quarantined files of reg back. A path a newer build already
+// restore moves quarantined files of reg back (Restore is the locked entry). A path a newer build already
 // wrote again stays as built and the stale quarantined copy is deleted. A
 // quarantine tree that passes through a symlink is refused. It returns the
 // paths put back.
-func Restore(ownerDir string, reg Registration) ([]string, error) {
+func restore(ownerDir string, reg Registration) ([]string, error) {
 	base := quarantineBase(ownerDir, reg.Project)
 	if _, err := os.Lstat(base); err != nil {
 		return nil, nil // nothing quarantined

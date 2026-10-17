@@ -19,15 +19,18 @@ package sharedproxy
 // connected; networks are never created or removed here; `nginx -s reload`
 // runs only after a passing `nginx -t`. A failed test leaves the running
 // configuration alone: the project(s) the output names are quarantined, the
-// test is repeated, and when it still fails every connection made by this call
-// is undone. All docker calls go through internal/docker.
+// test is repeated (once more per further project the output names), and when
+// it still fails every connection made by this call is undone. On every failed
+// exit the files this call restored from quarantine go back into it, so a
+// conf known to fail `nginx -t` never stays in nginx/sites. The public entry
+// points (Attach, Detach, ...) hold the owner lock (lock.go); the bodies are
+// lower case. All docker calls go through internal/docker.
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
@@ -76,9 +79,26 @@ func ownerNginxAny(ctx context.Context, ownerDir string) (name, state string, er
 	return name, state, err
 }
 
-// networkOK reports whether r names a network this package may touch.
-func networkOK(r Registration) bool {
-	return ValidProject(r.Project) && r.Network == r.Project+"_network"
+// networkOK reports whether r names a network this package may touch: a valid
+// project's own `<project>_network`, and never the owner's own project or
+// network (the build refuses that registration; the runtime does too).
+func networkOK(set Set, r Registration) bool {
+	if !ValidProject(r.Project) || r.Network != r.Project+"_network" {
+		return false
+	}
+	if o := set.Owner; o != nil && (r.Project == o.Project || (o.Network != "" && r.Network == o.Network)) {
+		return false
+	}
+	return true
+}
+
+// ownerErr turns a failure to find the owner's nginx into an E506 error; the
+// not-running sentinel stays matchable with errors.Is.
+func ownerErr(err error) error {
+	if err == nil || errors.Is(err, ErrOwnerNotRunning) {
+		return err
+	}
+	return e506("cannot find the owner's nginx container", err, "")
 }
 
 func e506(msg string, cause error, text string) error {
@@ -90,133 +110,6 @@ func e506(msg string, cause error, text string) error {
 		e = e.WithWhy(cause.Error())
 	}
 	return e
-}
-
-// Attach connects the owner nginx to the network of every registration in regs
-// whose network exists, restores any quarantined files of those projects, then
-// tests and reloads nginx once. self names the attaching project ("" when the
-// owner attaches all of them); it is the fallback culprit when `nginx -t`
-// names no registered file.
-func Attach(ctx context.Context, ownerDir, self string, regs []Registration) (Outcome, error) {
-	var out Outcome
-	if len(regs) == 0 {
-		return out, nil
-	}
-	nginx, state, err := ownerNginxAny(ctx, ownerDir)
-	if err != nil {
-		return out, err
-	}
-	// A fronted project's start never touches a stopped owner. The owner's own
-	// start does: a cold nginx cannot resolve a fronted upstream until it
-	// joins that network, so it is stopped (crash loop), attached, started.
-	cold := state != "running"
-	if cold && self != "" {
-		return out, fmt.Errorf("%w (project dir %s, container %s is %s)", ErrOwnerNotRunning, ownerDir, nginx, state)
-	}
-	set, err := Load(DirOf(ownerDir), ownerDir)
-	if err != nil {
-		return out, e506("the shared proxy registrations are not readable", err, "")
-	}
-	if state == "restarting" {
-		if err := docker.StopContainer(ctx, nginx); err != nil {
-			return out, e506("cannot stop the restarting owner nginx "+nginx, err, "")
-		}
-	}
-	before, err := docker.ContainerNetworks(ctx, nginx)
-	if err != nil {
-		return out, e506("cannot read the owner nginx's networks", err, "")
-	}
-	var connected []Registration // connected by this call, for the rollback
-	undo := func() {
-		for _, r := range connected {
-			_ = docker.NetworkDisconnect(ctx, r.Network, nginx)
-		}
-	}
-	for _, r := range regs {
-		if !networkOK(r) {
-			undo()
-			return out, e506(fmt.Sprintf("registration %q names the network %q, not %s_network", r.Project, r.Network, r.Project), nil, "")
-		}
-		exists, err := docker.NetworkExists(ctx, r.Network)
-		if err != nil {
-			undo()
-			return out, e506("cannot check network "+r.Network, err, "")
-		}
-		if !exists {
-			out.Missing = append(out.Missing, r.Project)
-			continue
-		}
-		if _, err := Restore(ownerDir, r); err != nil {
-			undo()
-			return out, e506("cannot restore the quarantined files of "+r.Project, err, "")
-		}
-		if err := docker.NetworkConnect(ctx, r.Network, nginx); err != nil {
-			undo()
-			return out, e506(fmt.Sprintf("cannot connect %s to %s", nginx, r.Network), err, "")
-		}
-		if !slices.Contains(before, r.Network) {
-			connected = append(connected, r)
-		}
-		out.Attached = append(out.Attached, r.Project)
-	}
-	if cold && len(out.Attached) > 0 {
-		if err := startAndWait(ctx, nginx); err != nil {
-			undo()
-			out.Attached = nil
-			return out, e506("the owner's nginx did not start after it was attached", err, "")
-		}
-	}
-	if len(out.Attached) == 0 {
-		return out, nil
-	}
-
-	_, stderr, terr := nginxTest(ctx, nginx)
-	if terr == nil {
-		return out, reload(ctx, nginx, &out, undo)
-	}
-	// R3: quarantine the project(s) whose file the output names; the attaching
-	// project only when it names none.
-	bad := Implicated(set, stderr)
-	if len(bad) == 0 && self != "" {
-		if r := set.Find(self); r != nil {
-			bad = []Registration{*r}
-		}
-	}
-	if len(bad) == 0 {
-		undo()
-		out.Attached = nil
-		return out, e506("nginx -t rejected the shared proxy configuration; nothing was changed", terr, stderr)
-	}
-	for _, r := range bad {
-		if _, err := Quarantine(ownerDir, set, r); err != nil {
-			undo()
-			out.Attached = nil
-			return out, e506("cannot quarantine the files of "+r.Project, err, stderr)
-		}
-		out.Quarantined = append(out.Quarantined, r.Project)
-		// Only a connection this call made is undone: a project that was
-		// already attached keeps working, and a registration that was not
-		// part of this call is never disconnected.
-		if i := slices.IndexFunc(connected, func(c Registration) bool { return c.Project == r.Project }); i >= 0 && networkOK(r) {
-			_ = docker.NetworkDisconnect(ctx, r.Network, nginx)
-			connected = slices.Delete(connected, i, i+1)
-		}
-		out.Attached = slices.DeleteFunc(out.Attached, func(p string) bool { return p == r.Project })
-	}
-	if _, stderr2, err2 := nginxTest(ctx, nginx); err2 != nil {
-		// The attribution was wrong: put the files back, undo the connections.
-		for _, r := range bad {
-			_, _ = Restore(ownerDir, r)
-		}
-		undo()
-		msg := "nginx -t still fails after quarantining " + strings.Join(out.Quarantined, ", ") + "; the files were put back"
-		out.Attached, out.Quarantined = nil, nil
-		return out, e506(msg, err2, stderr2)
-	}
-	if err := reload(ctx, nginx, &out, undo); err != nil {
-		return out, err
-	}
-	return out, e506(fmt.Sprintf("nginx -t rejected the files of %s; they were moved to nginx/shared/quarantine/ and the owner keeps serving", strings.Join(out.Quarantined, ", ")), terr, stderr)
 }
 
 // startPoll and startWait bound how long startAndWait waits for the container
@@ -262,18 +155,22 @@ func reload(ctx context.Context, nginx string, out *Outcome, undo func()) error 
 	return nil
 }
 
-// Detach disconnects the owner nginx (running or stopped) from the network of
+// detach disconnects the owner nginx (running or stopped) from the network of
 // every registration in regs. A network that is absent or not connected is
-// success. It does not
-// reload: nginx resolves upstreams per request.
-func Detach(ctx context.Context, ownerDir string, regs ...Registration) error {
+// success. It does not reload: nginx resolves upstreams per request. Detach is
+// the locked entry.
+func detach(ctx context.Context, ownerDir string, regs ...Registration) error {
 	nginx, _, err := ownerNginxAny(ctx, ownerDir)
 	if err != nil {
-		return err
+		return ownerErr(err)
+	}
+	set, err := Load(DirOf(ownerDir), ownerDir)
+	if err != nil {
+		return e506("the shared proxy registrations are not readable", err, "")
 	}
 	var errList []error
 	for _, r := range regs {
-		if !networkOK(r) {
+		if !networkOK(set, r) {
 			continue
 		}
 		if err := docker.NetworkDisconnect(ctx, r.Network, nginx); err != nil {

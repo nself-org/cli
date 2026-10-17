@@ -93,7 +93,7 @@ func (f *proxyFixture) project(name string) Registration {
 	if err := Write(DirOf(f.owner), FileName(name), r); err != nil {
 		f.t.Fatal(err)
 	}
-	f.write(filepath.Join(f.owner, "nginx", "sites", name+".api.conf"), "server {}\n")
+	f.write(filepath.Join(f.owner, "nginx", "sites", name+".api.conf"), siteMarker(name)+"\nserver {}\n")
 	f.write(filepath.Join(f.owner, "ssl", "certificates", name+"-cert", "fullchain.pem"), "cert\n")
 	f.write(filepath.Join(f.owner, "ssl", "certificates", name+"-cert", "privkey.pem"), "key\n")
 	f.write(filepath.Join(f.owner, "ssl", "certificates", name+"-cert", CertMarker), name+"\n")

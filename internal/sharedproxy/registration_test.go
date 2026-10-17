@@ -120,8 +120,8 @@ func TestUnregister(t *testing.T) {
 	if err := Write(dir, FileName("c"), c); err != nil {
 		t.Fatal(err)
 	}
-	put("nginx/sites/b.a.conf", "x")
-	put("nginx/sites/c.x.conf", "x")
+	put("nginx/sites/b.a.conf", siteMarker("b")+"\nx\n")
+	put("nginx/sites/c.x.conf", siteMarker("c")+"\nx\n")
 	put("ssl/certificates/b-test/fullchain.pem", "x")
 	put("ssl/certificates/b-test/"+CertMarker, "b\n")
 	gen := filepath.Join(root, "ssl", "certificates", ".acme.gen-1")
@@ -201,6 +201,15 @@ func TestValidShapes(t *testing.T) {
 
 func TestRemovableRefusesOtherProjectsFile(t *testing.T) {
 	root := t.TempDir()
+	for _, f := range []struct{ name, project string }{{"b.x.conf", "b"}, {"c.y.conf", "c"}} {
+		p := filepath.Join(root, "nginx", "sites", f.name)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(siteMarker(f.project)+"\nserver {}\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	set := Set{Projects: []Registration{{Project: "b", Files: []string{"nginx/sites/b.x.conf"}}, {Project: "c", Files: []string{"nginx/sites/b.x.conf"}}}}
 	if set.Removable(root, "b", "nginx/sites/b.x.conf") {
 		t.Fatal("a path another registration lists must not be removable")

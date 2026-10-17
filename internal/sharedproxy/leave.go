@@ -9,6 +9,10 @@ package sharedproxy
 // Outputs: the owner-relative files removed.
 // Constraints: the reload happens only after a passing `nginx -t`; an owner
 // whose nginx is not running is not an error (the files are gone either way).
+// The project's quarantine tree is removed inside an os.Root on the owner dir
+// after a plainDirs check, and before anything else is removed: a symlink on
+// the way (nginx/shared/quarantine pointing elsewhere) is an E506 error and
+// nothing is deleted.
 
 import (
 	"context"
@@ -16,26 +20,56 @@ import (
 	"os"
 )
 
-// Leave detaches, unregisters and reloads. A project with no registration is a
-// no-op.
-func Leave(ctx context.Context, ownerDir, project string) ([]string, error) {
+// removeQuarantine checks project's quarantine path and, when remove is true,
+// deletes the tree. A symlink on the way is refused, never followed.
+func removeQuarantine(ownerDir, project string, remove bool) error {
+	root, err := os.OpenRoot(ownerDir)
+	if err != nil {
+		return e506("cannot open the shared proxy owner dir "+ownerDir, err, "")
+	}
+	defer func() { _ = root.Close() }()
+	baseRel, err := ownerRel(ownerDir, quarantineBase(ownerDir, project))
+	if err != nil {
+		return e506("cannot remove the quarantine of "+project, err, "")
+	}
+	if err := plainDirs(root, baseRel); err != nil {
+		return e506("refusing to remove the quarantine of "+project, err, "")
+	}
+	if !remove {
+		return nil
+	}
+	if err := root.RemoveAll(baseRel); err != nil {
+		return e506("cannot remove the quarantine of "+project, err, "")
+	}
+	return nil
+}
+
+// leave detaches, unregisters and reloads. A project with no registration is a
+// no-op. Leave is the locked entry.
+func leave(ctx context.Context, ownerDir, project string) ([]string, error) {
 	set, err := Load(DirOf(ownerDir), ownerDir)
 	if err != nil {
-		return nil, err
+		return nil, e506("the shared proxy registrations are not readable", err, "")
 	}
 	reg := set.Find(project)
 	if reg == nil {
 		return nil, nil
 	}
-	detachErr := Detach(ctx, ownerDir, *reg)
+	// Checked first: a refused quarantine path leaves registration and files alone.
+	if err := removeQuarantine(ownerDir, project, false); err != nil {
+		return nil, err
+	}
+	detachErr := detach(ctx, ownerDir, *reg)
 	if errors.Is(detachErr, ErrOwnerNotRunning) {
 		detachErr = nil
 	}
-	removed, err := Unregister(ownerDir, project)
+	removed, err := unregister(ownerDir, project)
 	if err != nil {
 		return removed, err
 	}
-	_ = os.RemoveAll(quarantineBase(ownerDir, project))
+	if err := removeQuarantine(ownerDir, project, true); err != nil {
+		return removed, err
+	}
 	if nginx, nerr := OwnerNginx(ctx, ownerDir); nerr == nil {
 		if _, stderr, terr := nginxTest(ctx, nginx); terr != nil {
 			return removed, e506("the owner's nginx -t fails after removing "+project+"; it was not reloaded", terr, stderr)
