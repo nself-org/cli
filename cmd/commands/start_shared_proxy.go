@@ -12,7 +12,8 @@ package commands
 // Inputs: the loaded config and the project directory; for the hook only the
 // directory (the registration under the parent says what the project is).
 // Outputs: warnings on stderr; an E506 error when the attach of the starting
-// fronted project fails.
+// fronted project fails, when its registrations are unreadable, or when
+// uninstall cannot leave the proxy.
 // Constraints: nothing happens without nginx/shared/_owner.json, so a project
 // outside a shared proxy is untouched; the owner's start never fails because a
 // fronted project is down or broken (it warns and continues); a missing owner
@@ -27,6 +28,7 @@ import (
 
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/docker"
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/sharedproxy"
 	"github.com/nself-org/cli/internal/ui"
 )
@@ -48,6 +50,12 @@ func init() {
 func afterStartSharedProxy(ctx context.Context, cfg *config.Config, workdir string) error {
 	site, err := spLocate(workdir)
 	if err != nil {
+		// A fronted start that cannot read the registrations is not attached:
+		// its domains would not be served, so it fails. The owner's start (and
+		// any other project) only warns: it never fails for a fronted project.
+		if cfg != nil && cfg.Nginx.FrontedBy != "" {
+			return errs.New("E506", "the shared proxy registrations are not readable, so this project was not attached").WithWhy(err.Error())
+		}
 		ui.Warn(fmt.Sprintf("Shared proxy: registrations are not readable, nothing attached: %v", err))
 		return nil
 	}
@@ -105,7 +113,11 @@ func warnOutcome(out sharedproxy.Outcome, err error) {
 // disconnects the owner's nginx from its network before its network is removed.
 func beforeStopSharedProxy(ctx context.Context, workdir string) {
 	site, err := spLocate(workdir)
-	if err != nil || site.Role != sharedproxy.RoleFronted {
+	if err != nil {
+		ui.Warn(fmt.Sprintf("Shared proxy: registrations are not readable, so the owner's nginx was not disconnected and the network may stay in use: %v", err))
+		return
+	}
+	if site.Role != sharedproxy.RoleFronted {
 		return
 	}
 	switch err := spDetach(ctx, site.OwnerDir, *site.Reg); {
@@ -123,7 +135,11 @@ func beforeStopSharedProxy(ctx context.Context, workdir string) {
 // returned so uninstall does not report the project as fully removed.
 func leaveSharedProxy(ctx context.Context, workdir string) error {
 	site, err := spLocate(workdir)
-	if err != nil || site.Role != sharedproxy.RoleFronted {
+	if err != nil {
+		ui.Warn(fmt.Sprintf("Shared proxy: registrations are not readable: %v", err))
+		return errs.New("E506", "cannot leave the shared proxy: its registrations are not readable").WithWhy(err.Error())
+	}
+	if site.Role != sharedproxy.RoleFronted {
 		return nil
 	}
 	if _, err := spLeave(ctx, site.OwnerDir, site.Reg.Project); err != nil {
