@@ -279,3 +279,32 @@ func TestInstallCertUnderPlanBoundApply(t *testing.T) {
 		}
 	}
 }
+
+// TestPlanRegistrationListsPlannedCertificates: a fronted project whose pair does
+// not exist yet (first build, SSL_MODE=local) lists it in the planned registration,
+// because the apply generates and lists it; otherwise a plan-bound apply fails with
+// "would be written with different content than the plan" (found by the P7-ADOPT-21 e2e).
+func TestPlanRegistrationListsPlannedCertificates(t *testing.T) {
+	x := newSharedFx(t)
+	x.mustBuild(t, x.owner, x.ownerEnv())
+	for _, kv := range os.Environ() {
+		if key, _, ok := strings.Cut(kv, "="); ok && isBuildEnvKey(key) {
+			_ = os.Unsetenv(key)
+		}
+	}
+	plan, err := Build(x.backend(), BuildOptions{Mode: ModePlan, EnvOverlay: map[string][]byte{
+		".env": []byte(x.frontedEnv("bproj", "b.test", "SSL_MODE=local")),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reg string
+	for k, f := range plan.Planned.Files {
+		if strings.HasSuffix(k, "/nginx/shared/bproj.json") {
+			reg = string(f.Data)
+		}
+	}
+	if !strings.Contains(reg, "ssl/certificates/b-test/fullchain.pem") || !strings.Contains(reg, "ssl/certificates/b-test/privkey.pem") {
+		t.Fatalf("planned registration does not list the pair the apply will generate:\n%s", reg)
+	}
+}
