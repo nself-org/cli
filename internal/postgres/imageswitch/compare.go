@@ -21,20 +21,99 @@ import (
 var (
 	// dropLine matches the lines pg_dump and pg_dumpall write that vary between runs or
 	// servers: comments, session settings, and the random \restrict token of recent minors.
-	dropLine = regexp.MustCompile(`^(--|SET |SELECT pg_catalog\.set_config|\\restrict|\\unrestrict)`)
+	dropLine    = regexp.MustCompile(`^(--|SET |SELECT pg_catalog\.set_config|\\restrict|\\unrestrict)`)
+	dollarQuote = regexp.MustCompile(`^\$(?:[\pL_][\pL\pN_]*)?\$`)
 )
 
 // normalizeSQL removes the lines that legitimately differ between two dumps of one schema.
 func normalizeSQL(text string) []string {
 	var out []string
+	var lexical sqlLexical
 	for _, l := range strings.Split(text, "\n") {
-		l = strings.TrimRight(l, " \t\r")
-		if l == "" || dropLine.MatchString(l) {
+		protected := lexical.protected()
+		if !protected && (strings.TrimSpace(l) == "" || dropLine.MatchString(l)) {
 			continue
+		}
+		lexical.scan(l)
+		if !protected && !lexical.protected() {
+			l = strings.TrimRight(l, " \t\r")
 		}
 		out = append(out, l)
 	}
 	return out
+}
+
+// sqlLexical tracks quoted SQL text so only dump session lines are discarded.
+// Inputs: dump lines. Outputs: lexical state. Constraints: exact dollar tags,
+// escaped quotes and nested comments must not expose function body lines.
+type sqlLexical struct {
+	dollar  string
+	quote   byte
+	escape  bool
+	comment int
+}
+
+func (s *sqlLexical) protected() bool { return s.dollar != "" || s.quote != 0 || s.comment > 0 }
+
+// scan advances quote and comment state across one line of a schema dump.
+func (s *sqlLexical) scan(line string) {
+	for i := 0; i < len(line); {
+		switch {
+		case s.dollar != "":
+			if strings.HasPrefix(line[i:], s.dollar) {
+				i += len(s.dollar)
+				s.dollar = ""
+			} else {
+				i++
+			}
+		case s.quote != 0:
+			if s.escape && line[i] == '\\' && i+1 < len(line) {
+				i += 2
+			} else if line[i] == s.quote {
+				if i+1 < len(line) && line[i+1] == s.quote {
+					i += 2
+				} else {
+					s.quote = 0
+					i++
+				}
+			} else {
+				i++
+			}
+		case strings.HasPrefix(line[i:], "/*"):
+			s.comment++
+			i += 2
+		case s.comment > 0:
+			if strings.HasPrefix(line[i:], "*/") {
+				s.comment--
+				i += 2
+			} else {
+				i++
+			}
+		case strings.HasPrefix(line[i:], "--"):
+			return
+		default:
+			i += s.startQuote(line, i)
+		}
+	}
+}
+
+// startQuote recognizes a string, identifier or dollar delimiter outside comments.
+func (s *sqlLexical) startQuote(line string, i int) int {
+	if line[i] == '\'' || line[i] == '"' {
+		s.quote = line[i]
+		s.escape = s.quote == '\'' && i > 0 && (line[i-1] == 'E' || line[i-1] == 'e') && (i == 1 || !sqlIdentifierByte(line[i-2]))
+	} else if line[i] == '$' && (i == 0 || !sqlIdentifierByte(line[i-1])) {
+		if tag := dollarQuote.FindString(line[i:]); tag != "" {
+			s.dollar = tag
+			return len(tag)
+		}
+	}
+	return 1
+}
+
+// sqlIdentifierByte prevents recognizing dollar tags embedded in SQL identifiers.
+func sqlIdentifierByte(b byte) bool {
+	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '_' || b == '$' || b >= 128
 }
 
 // firstDiff returns the 1-based index of the first differing line of a and b, 0 when equal.

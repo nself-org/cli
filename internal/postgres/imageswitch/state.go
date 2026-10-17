@@ -88,7 +88,10 @@ func LoadState(projectDir string) (*State, error) {
 // State with an empty phase.
 func Incomplete(projectDir string) (*State, bool) {
 	if _, err := os.Stat(StatePath(projectDir)); err != nil {
-		return nil, false
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, false
+		}
+		return &State{Phase: ""}, true
 	}
 	st, err := LoadState(projectDir)
 	if err != nil {
