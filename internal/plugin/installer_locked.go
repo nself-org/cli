@@ -133,14 +133,10 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 		return err
 	}
 
-	// T23: Warn if this install would downgrade an already-installed plugin.
-	existingManifest, err := parseManifest(filepath.Join(pluginDir, name, "plugin.json"))
-	if err == nil {
-		// Plugin exists — check for downgrade
-		if compareSemver(existingManifest.Version, manifest.Version) > 0 {
-			fmt.Fprintf(os.Stderr, "⚠ Downgrading %s from %s to %s — this may cause data loss\n",
-				name, existingManifest.Version, manifest.Version)
-		}
+	// T23, D-0843: warn about (v1.4) or refuse (v1.5) a downgrade of an
+	// installed plugin, before anything is downloaded.
+	if err := checkDowngrade(pluginDir, name, manifest.Version); err != nil {
+		return err
 	}
 
 	// S43-T17: Validate inter-plugin communication contract (Consumes).

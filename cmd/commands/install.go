@@ -80,6 +80,7 @@ func init() {
 	installCmd.Flags().String("tier", "", `Force "free" or "licensed" for a slug served as both (e.g. cron, notify); default resolves by license entitlement`)
 	installCmd.Flags().String("version", "", "Install a specific version")
 	installCmd.Flags().Bool("allow-eol", false, "Allow installing an EOL plugin (not recommended)")
+	installCmd.Flags().Bool("allow-downgrade", false, "Install a registry version older than the installed one (v1.5 refuses by default)")
 	installCmd.Flags().Bool("preview", false, "Preview the dependency tree without installing")
 	installCmd.Flags().Bool("with-optional", false, "Include optional dependencies in --preview output")
 	installCmd.Flags().Bool("skip-sbom-check", false, "Skip SBOM verification (air-gapped installs only — sets NSELF_SKIP_SBOM_CHECK=1)")
