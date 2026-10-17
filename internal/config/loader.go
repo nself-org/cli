@@ -127,6 +127,12 @@ func LoadWithOptions(projectDir string, opts LoadOptions) (*Config, error) {
 		}
 	}
 
+	if opts.RemoteDeploy {
+		if err := ValidateRemoteEnv(loadedFromFiles); err != nil {
+			return nil, err
+		}
+	}
+
 	// Warn about env var names that are not in the known schema.
 	// Warnings go to stderr via slog.Warn and never cause a non-zero exit.
 	warnUnknownEnvVars(loadedFromFiles, knownEnvVars)

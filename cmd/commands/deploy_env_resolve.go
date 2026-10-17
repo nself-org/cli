@@ -50,6 +50,12 @@ func writeResolvedDeployEnv(workdir, target string) (path string, cleanup func()
 		}
 	}
 
+	if target != "local" {
+		if err := config.ValidateRemoteEnv(merged); err != nil {
+			return "", func() {}, err
+		}
+	}
+
 	snapshotName := fmt.Sprintf(".nself-deploy-env-%s-%d.tmp", target, time.Now().UnixNano())
 	snapshotPath := filepath.Join(workdir, snapshotName)
 

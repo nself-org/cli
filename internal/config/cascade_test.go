@@ -196,6 +196,8 @@ func TestLoad_CanonicalOrder_EnvAiIsIgnored(t *testing.T) {
 // and load .env.prod — not silently default to dev. This is the exact
 // shape of a bare `nself build` run on a checked-out prod project.
 func TestLoad_EnvResolvedFromDotEnvFile_WhenProcessEnvUnset(t *testing.T) {
+	t.Setenv("MINIO_ROOT_USER", "")
+	t.Setenv("MINIO_ROOT_PASSWORD", "")
 	_ = os.Unsetenv("ENV")
 	_ = os.Unsetenv(LegacyEnvOrderVar)
 	t.Cleanup(func() { _ = os.Unsetenv(cascadeTestVar) })

@@ -14,6 +14,7 @@ import (
 
 	"github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/compat/compattest"
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/deploy"
 )
 
@@ -60,6 +61,7 @@ func hashProject(t *testing.T, root, skipPrefix string) string {
 // seedProject is an operator project with everything a deploy must not disturb.
 func seedProject(t *testing.T) string {
 	t.Helper()
+	isolateDeployConfigEnv(t)
 	root := t.TempDir()
 	wf(t, filepath.Join(root, ".env"), "PROJECT_NAME=demo\n")
 	wf(t, filepath.Join(root, ".env.dev"), "ENV=dev\n")
@@ -178,5 +180,21 @@ func TestDeployBuildStepForMode(t *testing.T) {
 	got, err := deployBuildStepForMode(context.Background(), t.TempDir(), true, steps)
 	if err != nil || len(got) != 1 || got[0].Name != "keep" {
 		t.Fatalf("v1.5 remote: want a no-op, got %v %v", got, err)
+	}
+}
+
+// isolateDeployConfigEnv blanks every config key in the process. config.Load
+// exports project .env files into the process, so an earlier test can leave keys
+// that the remote-deploy guard would see as process-only config.
+func isolateDeployConfigEnv(t *testing.T) {
+	t.Helper()
+	for _, key := range config.KnownEnvVars() {
+		t.Setenv(key, "")
+	}
+	for _, entry := range os.Environ() {
+		key, value, _ := strings.Cut(entry, "=")
+		if value != "" && config.RemoteConfigKey(key) {
+			t.Setenv(key, "")
+		}
 	}
 }
