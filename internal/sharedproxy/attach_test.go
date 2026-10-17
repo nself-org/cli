@@ -277,6 +277,9 @@ func TestQuarantineAttribution(t *testing.T) {
 	// Fallback: the output names no registered file, so the attaching project is
 	// the suspect. Quarantining it does not help (the test still fails), so its
 	// files are put back and the attach is undone.
+	if err := Detach(ctx, f.owner, b); err != nil {
+		t.Fatal(err)
+	}
 	f.write(filepath.Join(f.fake, "broken.txt"), "nginx/sites/other.conf\n")
 	f.write(filepath.Join(f.owner, "nginx", "sites", "other.conf"), "bogus\n")
 	reloads := f.reloads()
