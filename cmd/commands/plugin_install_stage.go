@@ -56,12 +56,20 @@ func (s *installStage) install(ctx context.Context, fn func() error) error {
 			previous, owned := before[name], s.owned[name]
 			if previous == nil || (owned != nil && os.SameFile(owned, previous)) {
 				if info, statErr := os.Stat(filepath.Join(s.pluginDir, name)); statErr == nil {
-					s.owned[name] = info
+					s.owned[name] = pinIdentity(info)
 				}
 			}
 		}
 		return err
 	})
+}
+
+// pinIdentity forces the file identity to load now. On Windows os.SameFile
+// resolves a FileInfo's identity lazily from its path, so an unpinned record
+// would follow a directory that was later renamed and replaced.
+func pinIdentity(info os.FileInfo) os.FileInfo {
+	_ = os.SameFile(info, info)
+	return info
 }
 
 // stagePluginNames lists plugin directory identities. Dot directories, shared
@@ -78,7 +86,7 @@ func stagePluginNames(dir string) map[string]os.FileInfo {
 			continue
 		}
 		if info, err := e.Info(); err == nil {
-			names[n] = info
+			names[n] = pinIdentity(info)
 		}
 	}
 	return names
