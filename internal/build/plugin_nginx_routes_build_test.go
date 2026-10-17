@@ -99,7 +99,7 @@ func TestPluginRoutesInRoutesJSON(t *testing.T) {
 	byID, m, withPlugin := routesOf(t, f.workdir)
 
 	// nginx output: the only change is the copied snippet, byte for byte.
-	want := nginxGeneratedMarker + "\n" + strings.ReplaceAll(idmeSnippet, "${BASE_DOMAIN}", "example.test")
+	want := nginxGeneratedMarker + "\n" + nginxOwnerPrefix + "golden/idme\n" + strings.ReplaceAll(idmeSnippet, "${BASE_DOMAIN}", "example.test")
 	if after["sites/idme-idme.conf"] != want {
 		t.Errorf("copied snippet changed:\n%q", after["sites/idme-idme.conf"])
 	}
