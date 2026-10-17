@@ -30,7 +30,11 @@ func TestComposeEnvironmentRestoresOnFailureAndPanic(t *testing.T) {
 							t.Errorf("project variable %s leaked into Compose", key)
 						}
 					}
-					for _, key := range []string{"PATH", "HOME", "DOCKER_HOST", "DOCKER_CONTEXT", "SSH_AUTH_SOCK"} {
+					home := "HOME"
+					if runtime.GOOS == "windows" {
+						home = "USERPROFILE"
+					}
+					for _, key := range []string{"PATH", home, "DOCKER_HOST", "DOCKER_CONTEXT", "SSH_AUTH_SOCK"} {
 						if os.Getenv(key) == "" {
 							t.Errorf("runtime variable %s was removed", key)
 						}
@@ -47,6 +51,9 @@ func TestComposeEnvironmentRestoresOnFailureAndPanic(t *testing.T) {
 			}()
 			for _, entry := range before {
 				key, value, _ := strings.Cut(entry, "=")
+				if key == "" { // Windows per-drive entries such as "=C:=C:\\" cannot be set by name
+					continue
+				}
 				if got, exists := os.LookupEnv(key); !exists || got != value {
 					t.Errorf("caller environment was not restored for %s", key)
 				}
