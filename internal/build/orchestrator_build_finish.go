@@ -73,9 +73,14 @@ func (st *buildState) writeFinalArtifacts() (*BuildResult, error) {
 	// Resolves every ${VAR} reference the secret-templating pass (Step 8.7)
 	// emitted, plus plugin fragment vars (DOCKER_NETWORK, NSELF_PLUGIN_DIR,
 	// PLUGIN_*_INTERNAL_URL). Passed to docker compose via --env-file.
+	hostOwner := proxyHostOwner(st.cfg, st.workdir, st.pluginDir)
 	if err := writeComposeEnvVia(st.sink, st.workdir, st.cfg, st.secretMap,
-		withHostOwner(pluginEnvVars, proxyHostOwner(st.cfg, st.workdir, st.pluginDir))); err != nil {
+		withHostOwner(pluginEnvVars, hostOwner)); err != nil {
 		return nil, fmt.Errorf("writing %s: %w", composeEnvFile, err)
+	}
+	// The renderer runs as that owner; give it directories that owner already owns.
+	if err := prepareProxyOutputDirs(st.sink, st.workdir, hostOwner); err != nil {
+		return nil, err
 	}
 	st.filesGenerated++
 	if err := writeComposeEnvManifestVia(st.sink, st.workdir); err != nil {
