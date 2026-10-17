@@ -68,6 +68,8 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | D-0484 | pin store ancestor walk warns once and continues | refuses | `sdk/go/remote/knownhosts_compat.go` |
 | D-0676 | bare stream path streams as path:// with a notice | refused | `internal/backup/stream_dest_compat.go` |
 | D-0752 | plugin disable never confirmed | prod-class and hand-edit confirmation before the marker is written. | `cmd/commands/plugin_disable_gate.go` |
+| D-0842 | a URL install has no release signature and installs with a warning | refused with E107 unless --allow-unsigned | `internal/plugin/install_thirdparty.go` |
+| D-0842 | an unreadable registry skips the official-name check with a warning | refused | `internal/plugin/install_thirdparty.go` |
 | P7-ADOPT-01 | writable absolute bind allowed | E502 | `internal/compose/custom_service_v2.go` |
 | P7-ADOPT-03 | warn | E505 | `internal/build/shared_proxy.go` |
 | P7-ADOPT-13 | --project-ref and --supabase-key required | optional | `cmd/commands/db_import_src_supabase.go` |

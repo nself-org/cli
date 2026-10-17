@@ -23,6 +23,10 @@ package plugin
 //     user from the plugin's README or release notes), the same pattern
 //     `pip install --hash=` and Homebrew formulas use. An empty checksum
 //     skips verification with a visible warning.
+//     In v1.5 (compat.V15) that makes the install an E107 refusal unless the
+//     caller opts in with --allow-unsigned (NSELF_PLUGIN_ALLOW_UNSIGNED=1),
+//     and an archive that names a plugin the registry serves is refused (E106)
+//     so a URL can never replace an official plugin's directory.
 //   - The interactive warning + confirmation (naming the source host) is the
 //     CALLER's responsibility (cmd/commands/plugin.go), so it can honour
 //     --yes for non-interactive/CI use without this package depending on a
@@ -39,9 +43,37 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/version"
 )
+
+// thirdPartyRegistry reads the official registry for the name check. A seam so
+// tests stay off the network.
+var thirdPartyRegistry = func(ctx context.Context) (*Registry, error) {
+	return FetchRegistry(ctx, "", defaultCacheDir())
+}
+
+// checkNotRegistryPlugin refuses a URL archive that names a plugin the
+// official registry serves (E106): the install would replace the directory of
+// the signed official plugin with unsigned code. When the registry cannot be
+// read the name cannot be checked: v1.5 refuses, v1.4 warns and goes on.
+func checkNotRegistryPlugin(ctx context.Context, name string) error {
+	reg, err := thirdPartyRegistry(ctx)
+	if err != nil {
+		// compat.V15(D-0842): an unreadable registry skips the official-name check with a warning -> refused
+		if compat.V15() {
+			return errs.Wrap("E106", fmt.Sprintf("cannot check whether %q is an official plugin: the registry is unreadable", name), err)
+		}
+		fmt.Fprintf(os.Stderr, "warning: could not read the plugin registry (%v); not checking whether %q is an official plugin\n", err, name)
+		return nil
+	}
+	if _, ok := FindPluginByName(reg, name); ok {
+		return errs.Newf("E106", "%q is an official registry plugin: a URL install cannot replace it (install it by name: nself plugin install %s)", name, name)
+	}
+	return nil
+}
 
 // IsThirdPartyInstallSource reports whether ref looks like a URL rather than
 // a plain registry plugin name. Plugin names are validated elsewhere against
@@ -94,6 +126,10 @@ func InstallFromURL(ctx context.Context, cfg *config.Config, sourceURL string, p
 	u, err := ValidateThirdPartyURL(sourceURL)
 	if err != nil {
 		return err
+	}
+	// compat.V15(D-0842): a URL install has no release signature and installs with a warning -> refused with E107 unless --allow-unsigned
+	if compat.V15() && os.Getenv(allowUnsignedEnv) != "1" {
+		return errs.Newf("E107", "plugin from %s has no release signature; a URL install is unsigned. Pass --allow-unsigned to install it anyway", u.Host)
 	}
 
 	lock, err := acquireInstallLock(pluginDir)
@@ -166,6 +202,9 @@ func InstallFromURL(ctx context.Context, cfg *config.Config, sourceURL string, p
 	}
 
 	if err := ValidateName(manifest.Name); err != nil {
+		return err
+	}
+	if err := checkNotRegistryPlugin(ctx, manifest.Name); err != nil {
 		return err
 	}
 	// D-0259: refuse a command the proxy cannot serve or another installed

@@ -38,6 +38,7 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 	showGraph, _ := cmd.Flags().GetBool("show-graph")
 	yes, _ := cmd.Flags().GetBool("yes")
 	checksum, _ := cmd.Flags().GetString("checksum")
+	allowUnsigned, _ := cmd.Flags().GetBool("allow-unsigned")
 	tier, _ := cmd.Flags().GetString("tier")
 
 	// --tier overrides entitlement-based resolution for a slug served as both
@@ -71,6 +72,16 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 	}
 	if len(thirdPartyURLs) > 0 && (preview || dryRun || showGraph) {
 		return fmt.Errorf("--preview, --dry-run, and --show-graph require registry-resolved dependency data and are not supported for third-party URL installs")
+	}
+	// D-0842: a registry install is always signature-checked; the opt-out is for a URL install.
+	if allowUnsigned && len(thirdPartyURLs) == 0 {
+		return fmt.Errorf("--allow-unsigned applies only to a plugin URL install; a registry install is always signature-checked")
+	}
+	if allowUnsigned {
+		// Threaded by env like --tier: plugin.InstallFromURL reads it without a wider signature.
+		if err := os.Setenv("NSELF_PLUGIN_ALLOW_UNSIGNED", "1"); err != nil {
+			return fmt.Errorf("setting --allow-unsigned: %w", err)
+		}
 	}
 	if checksum != "" && len(thirdPartyURLs) != 1 {
 		return fmt.Errorf("--checksum applies to exactly one third-party URL install at a time (got %d); install it separately", len(thirdPartyURLs))

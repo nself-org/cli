@@ -154,6 +154,7 @@ func init() {
 	pluginInstallCmd.Flags().Bool("dry-run", false, "Show what would be installed without making changes")
 	pluginInstallCmd.Flags().Bool("show-graph", false, "Show dependency graph with topological sort order")
 	pluginInstallCmd.Flags().Bool("yes", false, "Skip the third-party source confirmation prompt (non-interactive/CI use)")
+	pluginInstallCmd.Flags().Bool("allow-unsigned", false, "Install an unsigned plugin from a URL (v1.5 refuses it otherwise; URL installs only)")
 	pluginInstallCmd.Flags().String("checksum", "", "Expected SHA-256 checksum of the downloaded archive (third-party URL installs only)")
 
 	// Flags on update.
