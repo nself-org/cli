@@ -28,11 +28,15 @@ func TestComposeSourcesMultiDocument(t *testing.T) {
 		{"build in second document", "services: {}\n---\nservices:\n  hasura:\n    build: ./evil\n", true},
 		{"empty second document", "services:\n  a:\n    image: x:1\n---\n", true},
 		{"two empty documents", "---\n---\nservices: {}\n", true},
+		{"image alias", "x-img: &img x:1\nservices:\n  a:\n    image: *img\n", false},
 	}
 	for _, c := range cases {
 		svcs, _, multi, err := ComposeSources([]byte(c.yaml))
 		if err != nil || multi != c.multi {
 			t.Errorf("%s: multi=%v err=%v, want multi=%v", c.name, multi, err, c.multi)
+		}
+		if c.name == "image alias" && svcs["a"].Image != "x:1" {
+			t.Errorf("image alias not resolved: %v", svcs)
 		}
 		if c.name == "single" && svcs["a"].Image != "x:1" {
 			t.Errorf("single: first document not read: %v", svcs)
@@ -202,5 +206,33 @@ func TestLockNormalizeAndParseGuards(t *testing.T) {
 	}
 	if l := (*Lock)(nil); len(l.Pins()) != 0 {
 		t.Error("nil lock has no pins")
+	}
+}
+
+// D-0825: a later file that clears a CLI-owned service's image with !reset (on
+// the image or on the service) leaves nothing to pin, so the earlier image must
+// not stay in the merged set and the service is reported unverifiable.
+func TestMergeDetailedResetClearsEarlierImage(t *testing.T) {
+	owned := func(s string) bool { return s == "hasura" }
+	base := "services:\n  hasura:\n    image: a/b:1\n"
+	for name, over := range map[string]string{
+		"image reset":   "services:\n  hasura:\n    image: !reset null\n",
+		"service reset": "services:\n  hasura: !reset {}\n",
+	} {
+		m, err := MergeDetailed([]SourceFile{{Name: "base.yml", Data: []byte(base)}, {Name: "o.yml", Data: []byte(over)}}, owned, true)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if _, kept := m.Images["hasura"]; kept {
+			t.Errorf("%s: the cleared image stayed in the merged set: %v", name, m.Images)
+		}
+		if len(m.Services) != 1 || m.Services[0] != "hasura" || len(m.Unverifiable) != 1 || !strings.Contains(m.Unverifiable[0], "cannot be verified") {
+			t.Errorf("%s: services=%v unverifiable=%v, want hasura reported", name, m.Services, m.Unverifiable)
+		}
+	}
+	// !override with a literal image is a plain replacement.
+	m, err := MergeDetailed([]SourceFile{{Name: "base.yml", Data: []byte(base)}, {Name: "o.yml", Data: []byte("services:\n  hasura: !override\n    image: c/d:2\n")}}, owned, true)
+	if err != nil || m.Images["hasura"] != "c/d:2" || len(m.Unverifiable) != 0 {
+		t.Errorf("override: images=%v unverifiable=%v err=%v", m.Images, m.Unverifiable, err)
 	}
 }
