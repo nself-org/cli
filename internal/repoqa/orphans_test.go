@@ -12,8 +12,8 @@ import (
 // orphanBasis is the set of plain-line orphans recorded at the branch point
 // (EPIC G1). orphans.txt's plain lines must EQUAL this set: a new orphan is
 // rejected, and a wired-up or deleted package forces a visible edit here, so
-// the list can never refill after a shrink. `pending:` lines are outside the
-// basis; they name a Ticket that gives the package its first importer.
+// the list can never refill after a shrink. No pending exceptions are approved;
+// reject them rather than trust ticket identifiers without live status checks.
 // -update drops stale plain lines and prints the literal to paste.
 var orphanBasis = map[string]bool{
 	"internal/aiprofile":        true,
@@ -84,7 +84,8 @@ func orphansOf(g graph, spec layersSpec) map[string]bool {
 }
 
 // staleOrphanLines returns the plain entries that are stale: the package has
-// importers, or no longer exists. Pending lines for a missing package are valid.
+// importers, or no longer exists. Pending markers are rejected separately by
+// checkOrphans, even when their packages do not exist yet.
 func staleOrphanLines(g graph, spec layersSpec, entries []orphanEntry) map[string]string {
 	orphans := orphansOf(g, spec)
 	out := map[string]string{}
@@ -106,6 +107,9 @@ func checkOrphans(g graph, spec layersSpec, entries []orphanEntry, basis map[str
 	listed := map[string]bool{}
 	plain := map[string]bool{}
 	for _, e := range entries {
+		if e.Pending != "" {
+			out = append(out, fmt.Sprintf("D9: %s pending:%s: pending orphan exceptions are not permitted; wire or delete the package", e.Pkg, e.Pending))
+		}
 		listed[e.Pkg] = true
 		if e.Pending == "" {
 			plain[e.Pkg] = true
@@ -113,7 +117,7 @@ func checkOrphans(g graph, spec layersSpec, entries []orphanEntry, basis map[str
 	}
 	for p := range orphansOf(g, spec) {
 		if !listed[p] {
-			out = append(out, fmt.Sprintf("D9: %s has no importer; wire it, delete it, or add \"%s pending:<ticket-id>\" to orphans.txt", p, p))
+			out = append(out, fmt.Sprintf("D9: %s has no importer; wire it or delete it; pending:<ticket-id> is not an exemption", p))
 		}
 	}
 	for p, why := range staleOrphanLines(g, spec, entries) {
@@ -121,7 +125,7 @@ func checkOrphans(g graph, spec layersSpec, entries []orphanEntry, basis map[str
 	}
 	for p := range plain {
 		if !basis[p] {
-			out = append(out, fmt.Sprintf("D9: %s is a plain orphans.txt line outside orphanBasis; new orphans are rejected (wire it, or use pending:)", p))
+			out = append(out, fmt.Sprintf("D9: %s is a plain orphans.txt line outside orphanBasis; new orphans are rejected (wire it or delete it)", p))
 		}
 	}
 	for p := range basis {

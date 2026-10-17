@@ -144,10 +144,12 @@ func isCmd(pkg string) bool { return pkg == "cmd" || strings.HasPrefix(pkg, "cmd
 
 // checkLayering applies D1, D2 and D3 to the graph and checks layers.yaml for
 // stale or loosened entries. ratchetBasis is the hard-coded set the ratchet
-// list must equal (EPIC G1). It returns sorted findings; none means pass.
+// list must equal (EPIC G1). Accepted entries and source exemptions also match
+// explicit bases. It returns sorted findings; none means pass.
 // Edge findings read `D<n>: <a> imports <b> (<la> -> <lb>): <fix>`.
-func checkLayering(g graph, spec layersSpec, ratchetBasis map[edge]bool) []string {
-	var out []string
+func checkLayering(g graph, spec layersSpec, ratchetBasis map[edge]bool, accepted map[edgeEntry]bool, sources map[sourceImport]bool) []string {
+	out := checkAcceptedEdges(spec.Edges, accepted)
+	out = append(out, checkSourceLayering(g.source, spec, sources)...)
 	add := func(format string, a ...any) { out = append(out, fmt.Sprintf(format, a...)) }
 	ratchet := entrySet(spec.Ratchet, true)
 	forbidden := entrySet(spec.Forbidden, true)
@@ -183,7 +185,7 @@ func checkLayering(g graph, spec layersSpec, ratchetBasis map[edge]bool) []strin
 			case layerRank[lb] > layerRank[la] && !ratchet[pair]:
 				add("D3: %s: imports point down; move the code down, or invert the dependency", head)
 			case layerRank[lb] == layerRank[la] && (la == layerL1 || la == layerL2) && !listed[pair] && !ratchet[pair]:
-				add("D3: %s: unlisted same-layer edge; add {from: %s, to: %s} to edges in layers.yaml and the line to overview section 4.2", head, pair.From, pair.To)
+				add("D3: %s: unlisted same-layer edge; architecture review must update acceptedBasis, layers.yaml and overview section 4.2", head)
 			}
 		}
 	}
