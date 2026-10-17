@@ -86,19 +86,47 @@ func traefikConfigSpec(raw []byte, roots []string) (docker.RunSpec, error) {
 
 // under reports whether p is inside one of roots (a root itself does not count).
 func under(p string, roots []string) bool {
-	real := func(x string) string { // a symlink inside a root must not lead out of it
-		if r, err := filepath.EvalSymlinks(x); err == nil {
-			return r
-		}
-		return filepath.Clean(x)
+	p, err := resolveMountSource(p)
+	if err != nil {
+		return false
 	}
-	p = real(p)
 	for _, r := range roots {
-		if rel, err := filepath.Rel(real(r), p); err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		r, err := resolveMountSource(r)
+		if err != nil {
+			continue
+		}
+		if rel, err := filepath.Rel(r, p); err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			return true
 		}
 	}
 	return false
+}
+
+// resolveMountSource resolves the deepest existing ancestor before appending
+// missing components. Lstat preserves dangling symlinks as existing ancestors:
+// their resolution errors, like permission errors and loops, must fail closed.
+func resolveMountSource(p string) (string, error) {
+	ancestor := p
+	for {
+		if _, err := os.Lstat(ancestor); err == nil {
+			real, err := filepath.EvalSymlinks(ancestor)
+			if err != nil {
+				return "", err
+			}
+			suffix, err := filepath.Rel(ancestor, p)
+			if err != nil {
+				return "", err
+			}
+			return filepath.Join(real, suffix), nil
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return "", err
+		}
+		parent := filepath.Dir(ancestor)
+		if parent == ancestor {
+			return "", fs.ErrNotExist
+		}
+		ancestor = parent
+	}
 }
 
 // Seams for the ownership hand-over.
