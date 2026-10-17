@@ -65,9 +65,24 @@ func pgDumpCmd(ctx context.Context, pgURL string) (*exec.Cmd, string, error) {
 	}
 	cmd := exec.CommandContext(ctx, "pg_dump", "--format=custom", "--no-password", connURL)
 	if password != "" {
-		cmd.Env = append(os.Environ(), "PGPASSWORD="+password)
+		cmd.Env = pgPasswordEnv(password)
 	}
 	return cmd, password, nil
+}
+
+// pgPasswordEnv builds a child environment for an explicit URI password.
+// Inherited libpq service credentials override PGPASSWORD, so omit service
+// settings and the old password while preserving unrelated environment values.
+func pgPasswordEnv(password string) []string {
+	env := os.Environ()
+	child := make([]string, 0, len(env)+1)
+	for _, entry := range env {
+		if strings.HasPrefix(entry, "PGSERVICE=") || strings.HasPrefix(entry, "PGSERVICEFILE=") || strings.HasPrefix(entry, "PGPASSWORD=") {
+			continue
+		}
+		child = append(child, entry)
+	}
+	return append(child, "PGPASSWORD="+password)
 }
 
 // ageEncryptStream pipes r through the age binary and writes ciphertext to w.
