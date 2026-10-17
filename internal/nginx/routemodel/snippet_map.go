@@ -184,25 +184,6 @@ func (a *locAcc) apply(d *Block) {
 	}
 }
 
-// limitExcept maps `limit_except M... { deny all; }` to methods when the
-// scope is closed (satisfy any or an allow would let other methods in).
-func (a *locAcc) limitExcept(d *Block) {
-	ok := d.Block && len(d.Args) > 0 && len(d.Children) == 1
-	if ok {
-		c := d.Children[0]
-		ok = c.Name == "deny" && len(c.Args) == 1 && c.Arg(0) == "all" && !c.Block
-		a.s.sn.disp[c] = "mapped"
-	}
-	var ms []string
-	for _, m := range unquoteAll(d.Args) {
-		ok = ok && methRE.MatchString(m)
-		ms = appendUnique(ms, m)
-	}
-	if a.take(d, ok && a.g.closed()) {
-		a.loc.Methods = ms
-	}
-}
-
 // proxyPass resolves the target to scheme, host and port. A `set` variable is
 // substituted literally when it is the only variable, is set once in its scope
 // and nothing else could skip or change that set (guard); a hostname behind a
