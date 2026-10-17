@@ -113,14 +113,14 @@ func Attach(ctx context.Context, ownerDir, self string, regs []Registration) (Ou
 	if cold && self != "" {
 		return out, fmt.Errorf("%w (project dir %s, container %s is %s)", ErrOwnerNotRunning, ownerDir, nginx, state)
 	}
+	set, err := Load(DirOf(ownerDir), ownerDir)
+	if err != nil {
+		return out, e506("the shared proxy registrations are not readable", err, "")
+	}
 	if state == "restarting" {
 		if err := docker.StopContainer(ctx, nginx); err != nil {
 			return out, e506("cannot stop the restarting owner nginx "+nginx, err, "")
 		}
-	}
-	set, err := Load(DirOf(ownerDir), ownerDir)
-	if err != nil {
-		return out, e506("the shared proxy registrations are not readable", err, "")
 	}
 	before, err := docker.ContainerNetworks(ctx, nginx)
 	if err != nil {
