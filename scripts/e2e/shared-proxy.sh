@@ -23,6 +23,9 @@ W=$(mktemp -d "${E2E_TMP:-${RUNNER_TEMP:-/tmp}}/shared-proxy.XXXXXX")
 EVIDENCE=${E2E_EVIDENCE:-$W/evidence}
 mkdir -p "$EVIDENCE"
 OWNER=e2e-adopt-a PB=e2e-adopt-b PC=e2e-adopt-c
+# Host-published ports must differ per project; the proxy ports (80/443) belong to A alone.
+PORTS_B=(AUTH_PORT=4001 HASURA_PORT=8081 POSTGRES_EXPOSE_PORT=5433)
+PORTS_C=(AUTH_PORT=4002 HASURA_PORT=8082 POSTGRES_EXPOSE_PORT=5434)
 A=$W/a B=$W/a/b C=$W/a/c
 NSELF_BIN=$W/nself
 PASS=0
@@ -135,8 +138,8 @@ step 'project files'
 write_env "$A" $OWNER a.local.nself.org NGINX_MODE=shared
 nself "$A" build --yes --no-monorepo >"$W/build-a.log" 2>&1 || { cat "$W/build-a.log"; die 'owner build failed'; }
 pin_credentials "$A"
-write_env "$B" $PB b.local.nself.org NGINX_FRONTED_BY=a
-write_env "$C" $PC c.local.nself.org NGINX_FRONTED_BY=a
+write_env "$B" $PB b.local.nself.org NGINX_FRONTED_BY=a "${PORTS_B[@]}"
+write_env "$C" $PC c.local.nself.org NGINX_FRONTED_BY=a "${PORTS_C[@]}"
 for p in "$B" "$C"; do
   nself "$p" build --yes >"$W/build-$(basename "$p").log" 2>&1 || { cat "$W/build-$(basename "$p").log"; die "build failed in $p"; }
   pin_credentials "$p"
@@ -191,7 +194,7 @@ nself "$B" reset --yes --no-monorepo >"$W/reset-b.log" 2>&1 || { cat "$W/reset-b
 serves api.a.local.nself.org
 ok 'restart, start --fresh and reset --yes in B exit 0 while A nginx is attached'
 # reset removes generated files; rebuild and start B again for the next legs.
-write_env "$B" $PB b.local.nself.org NGINX_FRONTED_BY=a
+write_env "$B" $PB b.local.nself.org NGINX_FRONTED_BY=a "${PORTS_B[@]}"
 nself "$B" build --yes >"$W/build-b2.log" 2>&1 || { cat "$W/build-b2.log"; die 'rebuild of B failed'; }
 pin_credentials "$B"
 nself "$B" start --timeout 240 >"$W/start-b4.log" 2>&1 || die 'start after reset failed'
