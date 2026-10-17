@@ -29,6 +29,7 @@ All ɳSelf project configuration lives in `.env` (and optionally `.env.local` fo
 - [Custom Services (CS\_N)](#custom-services-cs_n)
 - [Licensing](#licensing)
 - [Observability / Profiling](#observability--profiling)
+- [Compose Interpolation Environment](#compose-interpolation-environment)
 - [Computed Variables](#computed-variables)
 
 ---
@@ -489,6 +490,12 @@ If you are upgrading a long-lived deployment, rename any `BIOS_*` entry in your
 `BIOS_ENVIRONMENT` become `NSELF_ENV`, `BIOS_PROJECT` and `BIOS_PROJECT_NAME`
 become `NSELF_PROJECT_NAME`, and the others drop the prefix change directly
 (`BIOS_ADMIN_EMAIL` to `NSELF_ADMIN_EMAIL`, and so on).
+
+## Compose Interpolation Environment
+
+`nself start` and `nself restart` run Docker Compose with a clean process environment. Project values reach Compose only through `--env-file`, so variables that the config loader exported into the nself process (for example `POSTGRES_PASSWORD` from a `.env` file) cannot override the file values during interpolation.
+
+Only these variables pass through to Compose: executable discovery and temp paths (`PATH`, `HOME`, `USERPROFILE`, `SYSTEMROOT`, `WINDIR`, `PATHEXT`, `TMPDIR`, `TMP`, `TEMP`, `XDG_CONFIG_HOME`, `XDG_RUNTIME_DIR`), Docker transport and auth (`DOCKER_HOST`, `DOCKER_CONTEXT`, `DOCKER_CONFIG`, `DOCKER_CERT_PATH`, `DOCKER_TLS`, `DOCKER_TLS_VERIFY`, `DOCKER_API_VERSION`), SSH agent (`SSH_AUTH_SOCK`, `SSH_AGENT_PID`), proxy settings (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `ALL_PROXY` and their lowercase forms) and TLS roots (`SSL_CERT_FILE`, `SSL_CERT_DIR`). `COMPOSE_*` variables and project configuration do not pass through. The caller's environment is restored afterwards.
 
 ## Computed Variables
 
