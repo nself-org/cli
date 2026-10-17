@@ -101,10 +101,17 @@ func relocateBreakout(cmdName string, args []string) (handled bool, err error) {
 		installed := readInstalledVersion(resolvePluginDir(), row.Plugin)
 		_, _ = fmt.Fprintf(relocateWarnOut, "warning: 'nself %s' now comes from the %s plugin; installed %s@%s\n", old, row.Plugin, row.Plugin, installed)
 	}
-	if err := plugin.ProxyBinary(filepath.Base(bin), row.Plugin, pluginArgs); err != nil {
+	if err := plugin.ProxyBinary(proxyBinaryName(bin), row.Plugin, pluginArgs); err != nil {
 		return true, reportProxyFailure(os.Stderr, err)
 	}
 	return true, nil
+}
+
+// proxyBinaryName turns the path the installer published into the bare name
+// ProxyBinary wants. On Windows the installer appends ".exe" and ProxyBinary
+// appends it again, so the suffix is dropped here.
+func proxyBinaryName(published string) string {
+	return strings.TrimSuffix(filepath.Base(published), ".exe")
 }
 
 // breakoutRow finds the break-out row `nself <cmdName> <args...>` belongs to and

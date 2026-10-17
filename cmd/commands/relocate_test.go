@@ -476,3 +476,15 @@ func execSitesWithoutExecEnv(t *testing.T, name, src string) []string {
 	}
 	return bad
 }
+
+func TestProxyBinaryName(t *testing.T) {
+	for in, want := range map[string]string{
+		"/p/bin/nself-ci":     "nself-ci",
+		`/p/bin/nself-ci.exe`: "nself-ci",
+		"nself-runner":        "nself-runner",
+	} {
+		if got := proxyBinaryName(in); got != want {
+			t.Errorf("proxyBinaryName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
