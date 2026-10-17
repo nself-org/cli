@@ -272,6 +272,11 @@ func injectPluginNginxRoutesVia(sink Sink, workdir, pluginDir string, cfg *confi
 			if err := checkNginxDestCollision(destOwner, destName, pluginName, match); err != nil {
 				return count, err
 			}
+			owner := cfg.ProjectName + "/" + pluginName
+			if err := checkNginxSiteOwner(sink, sitesDir, destName, owner); err != nil {
+				return count, err
+			}
+			rendered = stampNginxOwner(rendered, owner)
 
 			// A duplicate server_name across two site files is not a warning
 			// — nginx silently serves only one of them ("conflicting server
