@@ -10,8 +10,8 @@ package build
 // Outputs: sets st.filesGenerated (initialized here), st.sslResult,
 //          st.pluginDir, st.missingPlugins; may mutate st.cfg.Redis.Enabled.
 //          Returns error on any generation failure.
-// Constraints: pure move, same checks/output/errors/order, no behavior
-//              change.
+// Constraints: the route snapshot is written after plugin installation and
+//              injection so it includes plugins installed by this build.
 
 import (
 	"context"
@@ -120,10 +120,6 @@ func (st *buildState) generateSSLAndNginx() error {
 	if err != nil {
 		return fmt.Errorf("generating nginx config: %w", err)
 	}
-	if err := st.writeRoutesJSON(st.routes); err != nil {
-		return err
-	}
-
 	// Write each nginx config file. Per-service site route confs
 	// ("nginx/sites/...") are redirected to sitesDir; everything else
 	// (nginx.conf, conf.d/default.conf, includes/rate-limits.conf) stays
@@ -171,6 +167,9 @@ func (st *buildState) generateSSLAndNginx() error {
 		return fmt.Errorf("injecting plugin nginx routes: %w", err)
 	}
 	st.filesGenerated += pluginRoutes
+	if err := st.writeRoutesJSON(st.routes); err != nil {
+		return err
+	}
 
 	// Monitoring configs: handled by nself-monitoring plugin (RenderPluginConfigs above)
 
