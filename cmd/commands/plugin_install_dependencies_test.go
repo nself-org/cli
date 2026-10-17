@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -106,8 +107,10 @@ func TestInstallStageReadinessIgnoresNewBinaryDirectory(t *testing.T) {
 	dir := t.TempDir()
 	stageWritePlugin(t, dir, "existing")
 	stage := beginInstallStage(dir)
-	stageWritePlugin(t, dir, "dep")
-	if err := os.Mkdir(filepath.Join(dir, "bin"), 0o755); err != nil {
+	if err := stage.install(context.Background(), func() error {
+		stageWritePlugin(t, dir, "dep")
+		return os.Mkdir(filepath.Join(dir, "bin"), 0o755)
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if got := stage.readinessNames([]string{"root"}); !reflect.DeepEqual(got, []string{"root", "dep"}) {
