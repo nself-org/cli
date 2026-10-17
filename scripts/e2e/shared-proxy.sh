@@ -260,7 +260,10 @@ step 'ACME dry run in a fronted project'
 # The ACME client reads the age key; keep it inside the scratch tree, never in the real home.
 export SECRETS_AGE_KEY_PATH=$W/age-key.txt
 nself "$B" secrets init >"$W/secrets-init.log" 2>&1 || { cat "$W/secrets-init.log"; die 'secrets init failed'; }
-nself "$B" trust ssl renew --acme --dry-run --email e2e@example.test --agree-tos >"$W/acme-dry.log" 2>&1 || { cat "$W/acme-dry.log"; die 'ssl renew --acme --dry-run failed'; }
+# No lineage is set up in this fixture, so the command resolves the stack, prints it and then refuses
+# with E151 "no lineages"; that refusal is the only accepted failure.
+set +e; nself "$B" trust ssl renew --acme --dry-run --email e2e@example.test --agree-tos >"$W/acme-dry.log" 2>&1; rc=$?; set -e
+if [[ $rc != 0 ]] && ! grep -q 'no lineages are managed' "$W/acme-dry.log"; then cat "$W/acme-dry.log"; die 'ssl renew --acme --dry-run failed for another reason'; fi
 grep -q "${OWNER}_nginx" "$W/acme-dry.log" || { cat "$W/acme-dry.log"; die 'dry run does not name the owner nginx'; }
 grep -q "$A/ssl" "$W/acme-dry.log" || { cat "$W/acme-dry.log"; die "dry run does not name $A/ssl"; }
 ok 'dry run targets the owner nginx and its ssl dir'
