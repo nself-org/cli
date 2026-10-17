@@ -257,6 +257,9 @@ nself "$C" start --timeout 240 >"$W/start-c2.log" 2>&1 || { cat "$W/start-c2.log
 serves api.c.local.nself.org
 
 step 'ACME dry run in a fronted project'
+# The ACME client reads the age key; keep it inside the scratch tree, never in the real home.
+export SECRETS_AGE_KEY_PATH=$W/age-key.txt
+nself "$B" secrets init >"$W/secrets-init.log" 2>&1 || { cat "$W/secrets-init.log"; die 'secrets init failed'; }
 nself "$B" trust ssl renew --acme --dry-run >"$W/acme-dry.log" 2>&1 || { cat "$W/acme-dry.log"; die 'ssl renew --acme --dry-run failed'; }
 grep -q "${OWNER}_nginx" "$W/acme-dry.log" || { cat "$W/acme-dry.log"; die 'dry run does not name the owner nginx'; }
 grep -q "$A/ssl" "$W/acme-dry.log" || { cat "$W/acme-dry.log"; die "dry run does not name $A/ssl"; }
