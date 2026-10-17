@@ -97,16 +97,13 @@ var secretsRotateCmd = &cobra.Command{
 			return err
 		}
 		dualWindow, _ := cmd.Flags().GetBool("dual-window")
-		if dualWindow {
-			if err := secrets.RotateDualWindow(cwd, secretsEnvFlag, args[0]); err != nil {
-				return err
-			}
-			fmt.Printf("Secret %s rotated with dual-key window. Both _CURRENT and _PREVIOUS are active.\n", args[0])
-			return nil
-		}
-		newValue, err := secrets.Rotate(cwd, secretsEnvFlag, args[0])
+		newValue, err := rotateCommandSecret(cwd, secretsEnvFlag, args[0], dualWindow)
 		if err != nil {
 			return err
+		}
+		if dualWindow {
+			fmt.Printf("Secret %s rotated with dual-key window. Both _CURRENT and _PREVIOUS are active.\n", args[0])
+			return nil
 		}
 		switch {
 		case newValue == "":

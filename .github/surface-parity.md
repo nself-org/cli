@@ -13,12 +13,12 @@ One row per top-level command (CLI-R17), scored against the four surfaces a comm
 | Command | Group | Wiki Page | MCP Tool | Env Vars | OpenAPI Route |
 |---|---|---|---|---|---|
 | `nself add` | — | yes | yes | n/a | n/a (see below) |
-| `nself backup` | data | yes | yes | undocumented: PATH | n/a (see below) |
-| `nself build` | core | yes | yes | undocumented: NSELF_L03_REF_BIN, NSELF_PROFILE, PATH, UPDATE_GOLDEN | n/a (see below) |
+| `nself backup` | data | yes | yes | documented | n/a (see below) |
+| `nself build` | core | yes | yes | undocumented: NSELF_L03_REF_BIN, NSELF_PROFILE, UPDATE_GOLDEN | n/a (see below) |
 | `nself clean` | core | yes | no | n/a | n/a (see below) |
 | `nself config` | config | yes | yes | undocumented: NSELF_REQUIRE_AGE | n/a (see below) |
 | `nself db` | data | yes | yes | n/a | n/a (see below) |
-| `nself deploy` | deploy | yes | yes | undocumented: API_URL, LAPTOP_ONLY, M_DEV, M_PROD, M_QA, M_SEC, NSELF_DEPLOY_ENV, NSELF_DEPLOY_HOST_, NSELF_DEPLOY_HOST_OPS, NSELF_FEATURE_BLUE_GREEN_DEPLOY, NSELF_HASURA_METADATA_STRICT, NSELF_REMOTE_PATH_, OPS_DEPLOY_HOST, PATH, VERCEL_TOKEN | n/a (see below) |
+| `nself deploy` | deploy | yes | yes | undocumented: API_URL, LAPTOP_ONLY, M_DEV, M_PROD, M_QA, M_SEC, NSELF_DEPLOY_ENV, NSELF_DEPLOY_HOST_, NSELF_DEPLOY_HOST_OPS, NSELF_FEATURE_BLUE_GREEN_DEPLOY, NSELF_HASURA_METADATA_STRICT, NSELF_REMOTE_PATH_, OPS_DEPLOY_HOST, VERCEL_TOKEN | n/a (see below) |
 | `nself doctor` | core | yes | yes | undocumented: NSELF_PING_API_URL, OLLAMA_BASE_URL, OLLAMA_HOST, PLUGIN_AI_INTERNAL_URL, PLUGIN_INTERNAL_SECRET | n/a (see below) |
 | `nself exec` | core | yes | no | n/a | n/a (see below) |
 | `nself init` | core | yes | no | documented | n/a (see below) |
@@ -33,4 +33,4 @@ One row per top-level command (CLI-R17), scored against the four surfaces a comm
 | `nself stop` | core | yes | yes | n/a | n/a (see below) |
 | `nself update` | account | yes | no | undocumented: NSELF_PLUGIN_REGISTRY | n/a (see below) |
 
-Total: 20 commands. Missing wiki page: 0. No MCP tool: 8. Env vars found but undocumented: 9.
+Total: 20 commands. Missing wiki page: 0. No MCP tool: 8. Env vars found but undocumented: 8.

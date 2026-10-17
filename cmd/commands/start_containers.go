@@ -103,7 +103,10 @@ func startPostgresPhase(ctx context.Context, opts startOpts, cfg *config.Config,
 		for _, ref := range composepkg.LockedImages() {
 			refs = append(refs, docker.LockedImage{Name: ref.Name, Repository: ref.Repository, Version: ref.Version, IndexDigest: ref.IndexDigest, Mirror: ref.Mirror})
 		}
-		if _, pullErr := ensureStartImages(ctx, projectDir, compose, refs); pullErr != nil {
+		if pullErr := config.WithComposeEnvironment(func() error {
+			_, imageErr := ensureStartImages(ctx, projectDir, compose, refs)
+			return imageErr
+		}); pullErr != nil {
 			return compose, nil, errs.Wrap("E465", "image unavailable: "+pullErr.Error(), pullErr)
 		}
 		if files, readErr := build.ReadComposeManifest(projectDir); readErr == nil {
@@ -126,7 +129,7 @@ func startPostgresPhase(ctx context.Context, opts startOpts, cfg *config.Config,
 		}
 		donePull := ui.FirstRunProgress(opts.quiet)
 		pullCtx, pullCancel := context.WithTimeout(ctx, 10*time.Minute)
-		pullErr := compose.ComposePullDiagnosed(pullCtx, projectDir)
+		pullErr := config.WithComposeEnvironment(func() error { return compose.ComposePullDiagnosed(pullCtx, projectDir) })
 		pullCancel()
 		donePull()
 		if pullErr != nil {
@@ -150,8 +153,8 @@ func startPostgresPhase(ctx context.Context, opts startOpts, cfg *config.Config,
 	if opts.cleanStart {
 		sp := ui.NewSpinner("Removing existing containers...")
 		sp.Start()
-		if err := compose.ComposeDown(ctx, projectDir, docker.DownOptions{
-			RemoveOrphans: true,
+		if err := config.WithComposeEnvironment(func() error {
+			return compose.ComposeDown(ctx, projectDir, docker.DownOptions{RemoveOrphans: true})
 		}); err != nil {
 			sp.Fail(fmt.Sprintf("Cleanup failed: %v", err))
 			// Non-fatal: continue with startup.
@@ -164,7 +167,7 @@ func startPostgresPhase(ctx context.Context, opts startOpts, cfg *config.Config,
 	if opts.fresh && !opts.cleanStart {
 		sp := ui.NewSpinner("Forcing container recreation...")
 		sp.Start()
-		if err := compose.ComposeDown(ctx, projectDir, docker.DownOptions{}); err != nil {
+		if err := config.WithComposeEnvironment(func() error { return compose.ComposeDown(ctx, projectDir, docker.DownOptions{}) }); err != nil {
 			sp.Fail(fmt.Sprintf("Recreation cleanup failed: %v", err))
 			// Non-fatal: continue with startup.
 		} else {
@@ -187,7 +190,7 @@ func startPostgresPhase(ctx context.Context, opts startOpts, cfg *config.Config,
 		}
 	}
 
-	if err := compose.ComposeUp(ctx, projectDir, "postgres"); err != nil {
+	if err := config.WithComposeEnvironment(func() error { return compose.ComposeUp(ctx, projectDir, "postgres") }); err != nil {
 		sp.Fail("Failed to start PostgreSQL")
 		ui.UXError(
 			"Failed to start PostgreSQL",
@@ -261,40 +264,5 @@ func initializeDatabasePhase(ctx context.Context, cfg *config.Config, opts start
 		return fmt.Errorf("database init: %w", err)
 	}
 	dbSp.Success("Database initialized (schemas, extensions, grants)")
-	return nil
-}
-
-// startRemainingServicesPhase runs `docker compose up` for the rest of the
-// stack (Step 6), then kicks off a best-effort background cleanup of exited
-// init containers (meilisearch-init) and zombie containers from interrupted
-// starts.
-func startRemainingServicesPhase(ctx context.Context, compose *docker.Compose, projectDir string, cfg *config.Config) error {
-	svcSp := ui.NewSpinner("Running docker compose up...")
-	svcSp.Start()
-	if err := compose.ComposeUp(ctx, projectDir); err != nil {
-		svcSp.Fail("Docker compose up failed")
-		ui.UXError(
-			"Failed to start services",
-			err.Error(),
-			[]string{
-				"Check Docker is running: docker info",
-				"Review logs: nself logs",
-				"Try a clean start: nself start --clean-start",
-				"Rebuild: nself build --force",
-			},
-		)
-		return fmt.Errorf("compose up: %w", err)
-	}
-	svcSp.Success("All services started")
-
-	// Post-start cleanup: remove init containers (meilisearch-init)
-	// that completed and are sitting in exited state, plus zombie containers
-	// from interrupted starts.
-	go func() {
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cleanupCancel()
-		_ = docker.RunPostStartCleanup(cleanupCtx, cfg.ProjectName)
-	}()
-
 	return nil
 }
