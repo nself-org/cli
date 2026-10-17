@@ -67,7 +67,7 @@ func TestPluginSnippetRoutes(t *testing.T) {
 		t.Fatalf("inject: %d %v", n, err)
 	}
 	got, err := os.ReadFile(filepath.Join(workdir, "nginx", "sites", "idme-idme.conf"))
-	want := nginxGeneratedMarker + "\n" + strings.ReplaceAll(unitSnippet, "${BASE_DOMAIN}", "example.test")
+	want := nginxGeneratedMarker + "\n" + nginxOwnerPrefix + "unit/idme\n" + strings.ReplaceAll(unitSnippet, "${BASE_DOMAIN}", "example.test")
 	if err != nil || string(got) != want {
 		t.Errorf("injected snippet changed: %v\n%q", err, got)
 	}
