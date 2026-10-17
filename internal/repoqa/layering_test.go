@@ -21,7 +21,7 @@ var ratchetBasis = map[edge]bool{
 func TestLayering(t *testing.T) {
 	g := loadGraph(t)
 	spec := loadLayersSpec(t, filepath.Join(repoRoot(t), layersFile))
-	if problems := checkLayering(g, spec, ratchetBasis); len(problems) > 0 {
+	if problems := checkLayering(g, spec, ratchetBasis, acceptedBasis, sourceBasis); len(problems) > 0 {
 		t.Fatalf("%d layering finding(s):\n%s", len(problems), strings.Join(problems, "\n"))
 	}
 }
@@ -135,7 +135,7 @@ func TestLayeringRules(t *testing.T) {
 			if basis == nil {
 				basis = ratchetBasis
 			}
-			got := strings.Join(checkLayering(synthGraph(tc.edges), spec, basis), "\n")
+			got := strings.Join(checkLayering(synthGraph(tc.edges), spec, basis, acceptedEntries(mustSpec(t).Edges), nil), "\n")
 			if len(tc.want) == 0 && got != "" {
 				t.Fatalf("expected no findings, got:\n%s", got)
 			}
@@ -152,7 +152,7 @@ func TestLayeringRules(t *testing.T) {
 	t.Run("domain entry with no pair is stale", func(t *testing.T) {
 		spec := mustSpec(t)
 		spec.Edges = append(spec.Edges, edgeEntry{From: "internal/doctor", To: "internal/deploy"})
-		got := strings.Join(checkLayering(synthGraph(baseEdges()), spec, ratchetBasis), "\n")
+		got := strings.Join(checkLayering(synthGraph(baseEdges()), spec, ratchetBasis, acceptedEntries(mustSpec(t).Edges), nil), "\n")
 		if !strings.Contains(got, "stale: layers.yaml edge internal/doctor -> internal/deploy") {
 			t.Fatalf("stale domain entry not reported:\n%s", got)
 		}
@@ -218,8 +218,9 @@ func TestLayeringOrphanRules(t *testing.T) {
 	check("basis larger than list", g, []string{"internal/user", "internal/zznew"},
 		map[string]bool{"internal/user": true, "internal/zznew": true, "internal/old": true},
 		"drop internal/old from orphanBasis")
-	check("pending for a package that does not exist yet passes", g,
-		[]string{"internal/later pending:P7-ZZ-01", "internal/user", "internal/zznew"}, base)
+	check("pending for a package that does not exist is rejected", g,
+		[]string{"internal/later pending:P7-ZZ-01", "internal/user", "internal/zznew"}, base,
+		"pending orphan exceptions are not permitted")
 	check("pending for a package that now has an importer is stale", g,
 		[]string{"internal/old pending:P7-ZZ-01", "internal/user", "internal/zznew"}, base,
 		"internal/old is listed in orphans.txt but has importers")
