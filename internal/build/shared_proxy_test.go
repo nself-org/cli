@@ -124,7 +124,7 @@ func readText(t *testing.T, path string) string {
 	return string(b)
 }
 
-// treeDigest hashes every file below dirs (path, mode, bytes), so a refusal can
+// treeDigest hashes every file below dirs (path, mode, bytes, not the owner lock file), so a refusal can
 // prove nothing changed. A missing dir hashes as empty.
 func treeDigest(t *testing.T, dirs ...string) string {
 	t.Helper()
@@ -139,6 +139,9 @@ func treeDigest(t *testing.T, dirs ...string) string {
 		})
 		sort.Strings(paths)
 		for _, p := range paths {
+			if filepath.Base(p) == sharedproxy.LockFile {
+				continue // the owner lock file is created by any write-mode build; it holds no content
+			}
 			fi, err := os.Lstat(p)
 			if err != nil {
 				continue

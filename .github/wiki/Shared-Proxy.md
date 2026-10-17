@@ -62,11 +62,11 @@ A fronted project publishes no port 80 or 443 and runs no Nginx of its own. The 
 | `nself start` in a fronted project | After the stack is healthy: connect the owner's Nginx to `<project>_network` (no change when already connected), run `nginx -t`, then `nginx -s reload`. |
 | `nself start` in the owner | Does the same for every registration whose network exists. A registered project that is stopped gives one warning per project; the owner still starts. |
 | `nself stop`, `restart`, `start --fresh`, `reset`, `uninstall` in a fronted project | Before compose takes the project down, the owner's Nginx is disconnected from `<project>_network`. Compose cannot remove a network while a foreign container is attached, so without this step `nself stop` would fail. |
-| `nself uninstall` in a fronted project | Also removes the project's files and registration from the owner and reloads the owner's Nginx. If that cannot be done (for example a registration cannot be read, or `nginx/shared/quarantine` is a symlink), uninstall returns `E506` and does not report the files as removed. |
+| `nself uninstall` in a fronted project | Also removes the project's files and registration from the owner and reloads the owner's Nginx. If that cannot be done (for example a registration cannot be read, `nginx/shared/quarantine` or a certificate directory is a symlink, or the owner's Nginx cannot be looked up), uninstall returns `E506` and does not report the files as removed. |
 
 A fronted `nself start` returns `E506` when the registrations under the owner cannot be read (one invalid registration file of any project is enough), because its domains would not be served. The owner's own start only warns. Before a compose down, the same condition is a warning that names the cause; the down continues.
 
-Changes to one owner's shared proxy (attach, detach, leave, quarantine, restore) take turns: each holds an exclusive lock on `nginx/shared/.lock` in the owner's directory (mode 0600) for the whole call and waits up to 60 seconds. A wait that runs out is an `E506`. On Windows the lock only covers one nself process.
+Changes to one owner's shared proxy (attach, detach, leave, quarantine, restore, and a `nself build` that writes into the owner) take turns: each holds an exclusive lock on `nginx/shared/.lock` in the owner's directory (mode 0600) for the whole call and waits up to 60 seconds. A wait that runs out is an `E506`. A build holds the lock from the moment it reads the registrations until it returns; `nself build --check` and plan mode write nothing and do not wait. An attach drops a project whose registration was removed or changed while it waited. On Windows the lock only covers one nself process.
 
 If the owner's Nginx is not running, the fronted project starts and stops anyway with one warning ("start the owner project first"). Nothing is attached in that case; run `nself start` in the fronted project again once the owner is up, or `nself start` in the owner, which attaches every running registered project.
 
@@ -100,7 +100,7 @@ The test always runs before the reload, so a broken conf never replaces the runn
 | Code | When |
 |---|---|
 | `E503` | A project name that equals one of its own conf stems (`PROJECT_NAME=hasura`); a server name or certificate directory is already served by the owner or another registered project; a registration does not validate; the owner's `ssl/` cannot be written safely |
-| `E504` | An upstream host that stays as written (a single label, such as `sidecar`) is a service name or upstream host of the owner or another registered project |
+| `E504` | An upstream host that stays as written (a single label, such as `sidecar`) is a service name or upstream host of the owner or another registered project, or the container name (`<project>_<service>`) of one of that project's services |
 | `E505` | `NGINX_MODE` is not `shared`; `NGINX_MODE=shared` together with `NGINX_FRONTED_BY`; `NGINX_MODE=shared` with a proxy provider other than nginx |
 
 The checks run before any file is written, so a refused build changes nothing. `E505` for an unknown mode or for `shared` with `NGINX_FRONTED_BY` is a warning in v1.4 and an error from v1.5. `NGINX_MODE=shared` with the traefik provider is an error in both.
