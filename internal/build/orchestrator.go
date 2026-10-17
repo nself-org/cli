@@ -161,6 +161,7 @@ func Build(workdir string, opts BuildOptions) (*BuildResult, error) {
 		defer SnapshotEnv()() // planning never leaves the project's env in the process
 	}
 	st := newBuildState(workdir, opts)
+	defer st.sharedUnlock()
 
 	// Acquire exclusive build lock to prevent concurrent builds from
 	// producing inconsistent compose artifacts. Plan mode records the lock as
@@ -276,6 +277,7 @@ type buildState struct {
 	cfg                  *config.Config
 	routes               *routemodel.Model
 	shared               *sharedProxy // P7-ADOPT-03: shared host proxy plan (nil before modelRoutes)
+	sharedRelease        func()       // releases the owner lock (shared_proxy_lock.go)
 
 	// sink receives every file the pipeline writes; fx performs or records
 	// every host effect. Both are chosen by newBuildState from opts.Mode.
