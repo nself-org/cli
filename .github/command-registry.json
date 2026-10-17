@@ -2168,7 +2168,7 @@
           "shorthand": null,
           "type": "bool",
           "default": "false",
-          "usage": "Skip confirmation",
+          "usage": "Skip local confirmation; production requires the project name",
           "hidden": false,
           "deprecated": null,
           "required": false,
