@@ -73,7 +73,7 @@ func TestLegacyAliasTable(t *testing.T) {
 		}
 		for _, f := range r.Flags {
 			found := false
-			for _, cf := range cmd.Flags {
+			for _, cf := range use.WithInheritedFlags(cmd).Flags {
 				found = found || cf.Name == f.Flag
 			}
 			if !found {
