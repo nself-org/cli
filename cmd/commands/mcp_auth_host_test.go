@@ -11,6 +11,7 @@ package commands
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net"
 	"net/http"
@@ -24,6 +25,38 @@ import (
 )
 
 const hostTestToken = "fake-secret-value-0001"
+
+// TestMCPHostCheckASCII calls the handler directly because net/http rejects
+// non-ASCII Host bytes on the wire before this middleware runs.
+func TestMCPHostCheckASCII(t *testing.T) {
+	for _, tc := range []struct {
+		host string
+		want int
+	}{
+		{"FAKE.EXAMPLE:3857", http.StatusOK},
+		{"fa\u212Ae.example:3857", http.StatusMisdirectedRequest},
+		{"FA\u212AE.EXAMPLE:3857", http.StatusMisdirectedRequest},
+	} {
+		t.Run(tc.host, func(t *testing.T) {
+			ran := false
+			h := mcpHostCheck([]string{"fake.example"})(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				ran = true
+				w.WriteHeader(http.StatusOK)
+			}))
+			r := httptest.NewRequest(http.MethodGet, "http://localhost:3857/", nil)
+			r.Host = tc.host
+			r = r.WithContext(context.WithValue(r.Context(), http.LocalAddrContextKey, &net.TCPAddr{Port: 3857}))
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, r)
+			if w.Code != tc.want || ran != (tc.want == http.StatusOK) {
+				t.Fatalf("status %d, ran %v; want status %d with handler run only on acceptance", w.Code, ran, tc.want)
+			}
+			if tc.want != http.StatusOK && w.Body.String() != mcpHostRefusal {
+				t.Fatalf("refusal body %q, want %q", w.Body.String(), mcpHostRefusal)
+			}
+		})
+	}
+}
 
 // hostServer starts the handler chain built by mcpAuthPolicy and returns the
 // server, its port and a counter of inner-handler runs.
