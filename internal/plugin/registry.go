@@ -35,6 +35,9 @@ type registryHTTPClient struct {
 	cacheDir    string
 	cacheTTL    time.Duration
 	httpClient  *http.Client
+	// exclusive makes Fetch ask only primaryURL: no fallback host, no stale
+	// cache, and a cache is used only if it records primaryURL as its origin.
+	exclusive bool
 }
 
 // NewRegistryClient creates a RegistryClient that fetches from the given
@@ -78,14 +81,19 @@ func (c *registryHTTPClient) Fetch(ctx context.Context) (*Registry, error) {
 	// Try primary endpoint.
 	reg, err := c.fetchFromURL(ctx, c.primaryURL)
 	if err == nil {
+		reg.Origin = c.primaryURL
 		_ = c.writeCache(reg)
 		return reg, nil
 	}
 	primaryErr := err
+	if c.exclusive {
+		return nil, fmt.Errorf("registry fetch failed (%s only, no fallback): %w", c.primaryURL, primaryErr)
+	}
 
 	// Try fallback endpoint.
 	reg, err = c.fetchFromURL(ctx, c.fallbackURL)
 	if err == nil {
+		reg.Origin = c.fallbackURL
 		_ = c.writeCache(reg)
 		return reg, nil
 	}
@@ -119,7 +127,24 @@ func (c *registryHTTPClient) GetPlugin(ctx context.Context, name string) (*Plugi
 //  1. registryURL (default: https://plugins.nself.org/registry.json)
 //  2. GitHub raw fallback
 //  3. Stale cache at cacheDir/registry.json
+//
+// A cached file answers only for the registry it was fetched from (or the
+// fallback host, or a file with no recorded origin); see FetchRegistryExclusive
+// for the mode that accepts nothing else.
 func FetchRegistry(ctx context.Context, registryURL string, cacheDir string) (*Registry, error) {
+	return newFetchRegistryClient(registryURL, cacheDir, false).Fetch(ctx)
+}
+
+// FetchRegistryExclusive fetches from the configured registry only (registryURL,
+// else NSELF_PLUGIN_REGISTRY, else the default). It never uses the GitHub
+// fallback or a stale cache, and it reads a cache file only if that file records
+// the same registry as its origin. A failure is an error. The returned Registry
+// carries Origin, so WriteRegistryCache pins it as scoped to that registry.
+func FetchRegistryExclusive(ctx context.Context, registryURL string, cacheDir string) (*Registry, error) {
+	return newFetchRegistryClient(registryURL, cacheDir, true).Fetch(ctx)
+}
+
+func newFetchRegistryClient(registryURL, cacheDir string, exclusive bool) RegistryClient {
 	if registryURL == "" {
 		if envURL := os.Getenv("NSELF_PLUGIN_REGISTRY"); envURL != "" {
 			registryURL = envURL
@@ -129,7 +154,8 @@ func FetchRegistry(ctx context.Context, registryURL string, cacheDir string) (*R
 		registryURL = enforceRegistryHTTPS(registryURL)
 	}
 	client := newRegistryClient(registryURL, cacheDir, DefaultCacheTTL)
-	return client.Fetch(ctx)
+	client.(*registryHTTPClient).exclusive = exclusive
+	return client
 }
 
 // ParseRegistry parses a registry response body (the object or the array
