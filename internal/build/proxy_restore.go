@@ -66,6 +66,9 @@ func cleanupOutputDir(sink Sink, workdir, dir string) error {
 		return proxyKeep(dir, "it is not a directory")
 	}
 	if ok, why := proxyOwnedDir(workdir, dir); !ok {
+		if emptyPrecreatedDir(workdir, dir) {
+			return sink.Remove(dir) // pre-created by prepareProxyOutputDirs, never written
+		}
 		return proxyKeep(dir, why)
 	}
 	// Decide before any removal so plan and apply see the same thing: the
@@ -177,4 +180,20 @@ func removeTree(sink Sink, dir string) error {
 		return err
 	}
 	return sink.Remove(dir)
+}
+
+// emptyPrecreatedDir reports whether dir is exactly <workdir>/.nself/generated/<name>,
+// reached through no symlink, and holds nothing: the leftover of a build that
+// pre-created it for a renderer that never ran. Removing it deletes no data.
+func emptyPrecreatedDir(workdir, dir string) bool {
+	root, err := filepath.EvalSymlinks(workdir)
+	if err != nil {
+		return false
+	}
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil || real != proxyOutputPath(root, filepath.Base(dir)) {
+		return false
+	}
+	entries, err := os.ReadDir(dir)
+	return err == nil && len(entries) == 0
 }

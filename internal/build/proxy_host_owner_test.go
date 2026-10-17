@@ -32,6 +32,12 @@ func TestProxyHostOwner(t *testing.T) {
 		if got := strings.Contains(env, uid) && strings.Contains(env, gid); got != want {
 			t.Fatalf("host owner exported = %v, want %v\n%s", got, want, env)
 		}
+		// D-0782: the renderer's directories exist, user-owned, before Docker can create them.
+		for _, name := range proxyOutputNames {
+			if got := exists(proxyOutputPath(f.workdir, name)); got != want {
+				t.Fatalf("%s pre-created = %v, want %v", name, got, want)
+			}
+		}
 	})
 	t.Run("nginx compose.env carries no host owner", func(t *testing.T) {
 		f := freshProxyFixture(t)
