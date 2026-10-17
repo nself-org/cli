@@ -32,7 +32,7 @@ jobs:
       matrix:
         os:
           - ubuntu-latest
-          - macos-14          # Apple Silicon (darwin/arm64) — primary wasmtime target
+          - macos-15          # Apple Silicon (darwin/arm64) — primary wasmtime target
           - macos-15-intel    # Intel (darwin/amd64) — macos-13 retired Dec 2025
 
     steps:
@@ -65,7 +65,7 @@ jobs:
       matrix:
         os:
           - ubuntu-latest
-          - macos-14
+          - macos-15
 
     steps:
       - uses: actions/checkout@v7.0.1

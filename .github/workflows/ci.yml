@@ -80,7 +80,7 @@ jobs:
           - ubuntu-latest
           - ubuntu-24.04-arm   # linux/arm64 — first execution test before ship
           - macos-15-intel     # macOS Intel (darwin/amd64) — macos-13 retired Dec 2025
-          - macos-14           # Apple Silicon (darwin/arm64)
+          - macos-15           # Apple Silicon (darwin/arm64)
           - windows-2022       # Windows — pure-Go only; Docker tests skipped
         include:
           # Windows: skip Docker-dependent integration tests.
@@ -211,14 +211,14 @@ jobs:
 
   # S49-T06: Apple Silicon (darwin/arm64) smoke test.
   # The darwin/arm64 binary is cross-compiled on ubuntu-latest but never tested natively
-  # before this job was added. This job runs on macos-14 (Apple Silicon runner) and
+  # before this job was added. This job runs on macos-15 (Apple Silicon runner) and
   # executes the binary smoke sequence: version + doctor + init + build.
   #
   # nself start is intentionally NOT run — Docker on macOS runners is unreliable.
   # build generates docker-compose.yml without running containers.
   apple-silicon-smoke:
     name: Apple Silicon smoke (darwin/arm64)
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 10
 
     env:
@@ -268,7 +268,7 @@ jobs:
       - name: Smoke — nself doctor
         run: |
           # Doctor checks Docker + system dependencies.
-          # Docker is not available on macos-14 runners — skip Docker checks.
+          # Docker is not available on macos-15 runners — skip Docker checks.
           # Verify the command exits cleanly (even with Docker missing).
           ./nself doctor || true
           echo "INFO: nself doctor ran (Docker may not be available on runner)"
@@ -298,7 +298,7 @@ jobs:
             exit 1
           }
           echo "PASS: nself build succeeded"
-          # nself start intentionally NOT run — Docker on macos-14 is unreliable
+          # nself start intentionally NOT run — Docker on macos-15 is unreliable
 
   # UA-07: Meta-monitoring and dispatch-dashboard steps.
   # These steps require three org secrets that are NOT provisioned by default:
