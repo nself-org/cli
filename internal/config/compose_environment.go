@@ -8,6 +8,7 @@ package config
 
 import (
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 )
@@ -42,6 +43,15 @@ func WithComposeEnvironment(operation func() error) error {
 // daemon transport, proxy and SSH-agent settings. COMPOSE_* and project
 // configuration deliberately do not enter Compose's interpolation environment.
 func composeRuntimeVariable(key string) bool {
+	if runtime.GOOS == "windows" {
+		// Windows names are case-insensitive ("Path", "SystemRoot").
+		key = strings.ToUpper(key)
+		switch key {
+		case "COMSPEC", "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "PROGRAMFILES",
+			"PROGRAMFILES(X86)", "USERNAME", "HOMEDRIVE", "HOMEPATH":
+			return true
+		}
+	}
 	switch key {
 	case "PATH", "HOME", "USERPROFILE", "SYSTEMROOT", "WINDIR", "PATHEXT",
 		"TMPDIR", "TMP", "TEMP", "XDG_CONFIG_HOME", "XDG_RUNTIME_DIR",

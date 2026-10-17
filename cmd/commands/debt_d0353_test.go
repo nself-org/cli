@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -52,6 +53,9 @@ func TestD0353JSONKeyRotation(t *testing.T) {
 }
 
 func TestD0353ComposeCascadeDoesNotChangeHash(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the stub docker is a POSIX shell script")
+	}
 	for _, operation := range []string{"restart", "up"} {
 		t.Run(operation, func(t *testing.T) {
 			dir := t.TempDir()
