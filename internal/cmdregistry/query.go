@@ -47,11 +47,13 @@ func (r *Registry) WithInheritedFlags(cmd *Command) *Command {
 	}
 	var extra []Flag
 	seen := map[string]bool{}
+	walked := map[string]bool{cmd.Path: true}
 	for p := cmd.Parent; p != ""; {
 		parent, ok := r.Lookup(p)
-		if !ok || parent.Path == cmd.Path {
+		if !ok || walked[parent.Path] { // a parent cycle ends the walk
 			break
 		}
+		walked[parent.Path] = true
 		for _, f := range parent.Flags {
 			if f.Persistent && !have[f.Name] && !seen[f.Name] {
 				seen[f.Name] = true
