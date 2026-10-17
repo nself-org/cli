@@ -226,6 +226,7 @@ func TestRestoreFailures(t *testing.T) {
 		}
 	})
 	t.Run("the destination directory is read-only", func(t *testing.T) {
+		skipOnWindows(t)
 		skipIfRoot(t)
 		f := newProxyFixture(t)
 		f.owner0()

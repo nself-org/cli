@@ -46,6 +46,7 @@ func TestLockRefusals(t *testing.T) {
 		}
 	})
 	t.Run("the lock file cannot be created", func(t *testing.T) {
+		skipOnWindows(t)
 		skipIfRoot(t)
 		owner := t.TempDir()
 		shared := DirOf(owner)
@@ -83,6 +84,7 @@ func TestLockWaitCancelled(t *testing.T) {
 }
 
 func TestTryLock(t *testing.T) {
+	skipOnWindows(t)
 	path := filepath.Join(t.TempDir(), "lock")
 	a, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
@@ -115,6 +117,7 @@ func TestTryLock(t *testing.T) {
 func TestWriteFailures(t *testing.T) {
 	reg := Registration{Project: "demo", ProjectDir: "/p", Files: []string{"nginx/sites/a.conf"}}
 	t.Run("the directory is read-only", func(t *testing.T) {
+		skipOnWindows(t)
 		skipIfRoot(t)
 		dir := t.TempDir()
 		if err := os.Chmod(dir, 0o500); err != nil {

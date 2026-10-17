@@ -42,6 +42,7 @@ func TestPlainDirs(t *testing.T) {
 }
 
 func TestDirHelpersSurfaceFilesystemErrors(t *testing.T) {
+	skipOnWindows(t)
 	skipIfRoot(t)
 	top := t.TempDir()
 	root := openRoot(t, top)
@@ -74,6 +75,7 @@ func TestDirHelpersSurfaceFilesystemErrors(t *testing.T) {
 }
 
 func TestMkdirPrivateTightensExistingDirs(t *testing.T) {
+	skipOnWindows(t)
 	top := t.TempDir()
 	root := openRoot(t, top)
 	if err := os.MkdirAll(filepath.Join(top, "shared", "q", "p"), 0o755); err != nil {
