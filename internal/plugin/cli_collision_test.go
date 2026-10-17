@@ -127,6 +127,7 @@ func TestCheckCLIBinaries_RefusesCoreVerbAndBadNames(t *testing.T) {
 // plugin's published binary changes.
 func TestInstallFromURL_RefusedReinstallKeepsTheOldInstall(t *testing.T) {
 	pluginsDir := collisionHome(t)
+	t.Setenv(allowUnsignedEnv, "1") // v1.5 refuses an unsigned URL install without the opt-in (D-0842)
 	extractFake(t, pluginsDir, "alpha", `,"cliCommands":[{"name":"media-server"}]`, "nself-media-server")
 	oldBeta := extractFake(t, pluginsDir, "beta", `,"pluginType":"cli","binaryName":"nself-beta"`, "nself-beta")
 
