@@ -15,10 +15,20 @@ import (
 	"github.com/nself-org/cli/internal/compat"
 )
 
+// localOnlyConfigKeys are process variables that point the local CLI at its own
+// directories or registry; the remote host never reads them.
+var localOnlyConfigKeys = map[string]bool{
+	"AI_AUTO_INSTALL":          true,
+	"NSELF_PLUGIN_DIR":         true,
+	"NSELF_PLUGIN_CACHE":       true,
+	"NSELF_PLUGIN_REGISTRY":    true,
+	"NSELF_REGISTRY_CACHE_TTL": true,
+}
+
 // ValidateRemoteEnv requires every populated config key in the process to
 // exist in the remote file cascade. ENV is the explicit deploy target selector,
 // set by deploy itself; it is not a credential or a value to copy to the host.
-// AI_AUTO_INSTALL only controls local CLI tool installation, not build config.
+// Keys in localOnlyConfigKeys steer the local CLI only and never shape a remote build.
 func ValidateRemoteEnv(fromFiles map[string]string) error {
 	known := make(map[string]bool, len(knownEnvVars))
 	for _, key := range knownEnvVars {
@@ -27,7 +37,7 @@ func ValidateRemoteEnv(fromFiles map[string]string) error {
 	var missing []string
 	for _, entry := range os.Environ() {
 		key, value, ok := strings.Cut(entry, "=")
-		if !ok || value == "" || key == "ENV" || key == "AI_AUTO_INSTALL" {
+		if !ok || value == "" || key == "ENV" || localOnlyConfigKeys[key] {
 			continue
 		}
 		if _, present := fromFiles[key]; present {

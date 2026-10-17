@@ -69,3 +69,14 @@ func isolateRemoteConfigEnv(t *testing.T) {
 		}
 	}
 }
+
+func TestRemoteDeployIgnoresLocalOnlyKeys(t *testing.T) {
+	compattest.Set(t, true)
+	isolateRemoteConfigEnv(t)
+	for key := range localOnlyConfigKeys {
+		t.Setenv(key, "/local/only")
+	}
+	if err := ValidateRemoteEnv(map[string]string{}); err != nil {
+		t.Fatalf("local-only CLI keys must not block a remote deploy: %v", err)
+	}
+}
