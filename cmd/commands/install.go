@@ -115,6 +115,15 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		}
 		return err
 	}
+	// A fresh process has an empty bundle catalog; load it (the loader the bundle
+	// command uses) so a bundle name routes to the bundle install, not to a plugin.
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := bundle.Load(ctx); err != nil {
+		return err
+	}
 	var bundles, plugins []string
 	for _, name := range args {
 		if resolvesToBundle(name) {
