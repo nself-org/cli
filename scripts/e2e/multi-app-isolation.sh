@@ -37,7 +37,6 @@ pass() { echo "PASS: $1"; }
 
 F_PG=FAKE-MULTIAPP-POSTGRES-PASSWORD-00000000
 F_HASURA=FAKE-MULTIAPP-HASURA-ADMIN-SECRET-000000000
-F_JWT=FAKE-MULTIAPP-JWT-KEY-000000000000000000000000
 B=$((24000 + RANDOM % 2000))
 HASURA="http://127.0.0.1:$((B + 480))"
 AUTH="http://127.0.0.1:$((B + 400))"
@@ -61,7 +60,6 @@ pass 'template overlay wrote the multi-app files and printed its four next steps
 ENV=dev
 POSTGRES_PASSWORD=$F_PG
 HASURA_GRAPHQL_ADMIN_SECRET=$F_HASURA
-HASURA_JWT_KEY=$F_JWT
 AUTH_EMAIL_SIGNIN_EMAIL_VERIFIED_REQUIRED=false
 AUTH_SMTP_HOST=mailpit
 POSTGRES_PORT=$((B + 432))
@@ -101,6 +99,8 @@ pass 'migrate and targeted reconcile applied; a second reconcile is a no-op'
 # ---- helpers: admin header, HS256 without the key on any command line -------------------------
 umask 077
 printf 'X-Hasura-Admin-Secret: %s\n' "$F_HASURA" >"$W/admin.hdr"
+# The JWT key stays the one `nself init` generated for this throwaway project: .env.local does not
+# override it, because `nself config get` reads .env and would then disagree with what Hasura runs.
 JWT_KEY="$(nself config get HASURA_JWT_KEY --reveal 2>>"$LOG")" || fail 'config get HASURA_JWT_KEY'
 JWT_KEY="${JWT_KEY#HASURA_JWT_KEY=}"
 test -n "$JWT_KEY" || fail 'empty JWT key'
@@ -160,7 +160,8 @@ signup() {
   rm -f "$W/signup-$1.json"
 }
 mint "$W/probe.hdr" 00000000-0000-0000-0000-000000000001 app_a
-test "$(nrows "$W/probe.hdr" notes)" = 0 || fail 'minted token rejected or leaking'
+test "$(nrows "$W/probe.hdr" notes)" = 0 ||
+  fail "minted token rejected or leaking: $(gql "$W/probe.hdr" '{ notes { id } }' | jq -r '.errors[0].message // "no error"')"
 pass 'HS256 tokens minted with openssl are accepted by Hasura'
 
 # ---- users: three real hasura-auth sign-ups ---------------------------------------------------
