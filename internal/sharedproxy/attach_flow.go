@@ -50,6 +50,28 @@ func (a *attachRun) requarantine() error {
 	return errors.Join(errList...)
 }
 
+// stillRegistered keeps the incoming registrations that the set loaded under
+// the lock still holds with the same project, network and project dir, and
+// returns the loaded copy of each. A project that left (Leave) since the
+// caller read its registration is not attached. A registration that names a
+// network this package may not touch is kept as it is: run refuses it with an
+// E506, so tampered input stays an error and is never a silent drop.
+func stillRegistered(set Set, regs []Registration) []Registration {
+	var out []Registration
+	for _, r := range regs {
+		if !networkOK(set, r) {
+			out = append(out, r)
+			continue
+		}
+		cur := set.Find(r.Project)
+		if cur == nil || cur.Network != r.Network || !sameDir(cur.ProjectDir, r.ProjectDir) {
+			continue
+		}
+		out = append(out, *cur)
+	}
+	return out
+}
+
 // attach is Attach without the lock.
 func attach(ctx context.Context, ownerDir, self string, regs []Registration) (Outcome, error) {
 	if len(regs) == 0 {
@@ -82,6 +104,9 @@ func (a *attachRun) run(regs []Registration) (settled bool, err error) {
 	}
 	if a.set, err = Load(DirOf(a.ownerDir), a.ownerDir); err != nil {
 		return false, e506("the shared proxy registrations are not readable", err, "")
+	}
+	if regs = stillRegistered(a.set, regs); len(regs) == 0 {
+		return false, nil // every project left between the caller's read and the lock
 	}
 	if state == "restarting" {
 		if err := docker.StopContainer(a.ctx, nginx); err != nil {

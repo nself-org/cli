@@ -70,7 +70,14 @@ func leave(ctx context.Context, ownerDir, project string) ([]string, error) {
 	if err := removeQuarantine(ownerDir, project, true); err != nil {
 		return removed, err
 	}
-	if nginx, nerr := OwnerNginx(ctx, ownerDir); nerr == nil {
+	nginx, nerr := OwnerNginx(ctx, ownerDir)
+	switch {
+	case errors.Is(nerr, ErrOwnerNotRunning):
+		// Warning level: the files are gone and a stopped owner serves nothing.
+	case nerr != nil:
+		// The files are gone but nginx still serves them; say so.
+		return removed, errors.Join(ownerErr(nerr), detachErr)
+	default:
 		if _, stderr, terr := nginxTest(ctx, nginx); terr != nil {
 			return removed, e506("the owner's nginx -t fails after removing "+project+"; it was not reloaded", terr, stderr)
 		}
