@@ -42,8 +42,8 @@ Also enforced:
 
 ## Setup
 
-1. Add the line from `.env.example` to `.env.local`. It makes hasura-auth copy the user's `metadata.source_account_id` into the `x-hasura-source-account-id` claim.
-2. Run the template's next steps:
+1. Add the `AUTH_JWT_CUSTOM_CLAIMS` and `ENV_ALLOWLIST` lines from `.env.example` to `.env.local`. The first makes hasura-auth copy the user's `metadata.source_account_id` into the `x-hasura-source-account-id` claim.
+2. Run the template's next steps. The migration references `auth.users`, so auth must be enabled (`AUTH_ENABLED=true`, the default) and `nself start` must have created the auth schema before `nself db migrate up` runs:
 
 ```bash
 nself build
@@ -57,6 +57,7 @@ Plain `nself db reconcile` is a dry run: it prints the plan and writes nothing. 
 3. Sign users up with their app id, then add the membership with the admin secret:
 
 ```bash
+AUTH_URL=http://localhost:4000   # your AUTH_PORT
 curl -fsS "$AUTH_URL/signup/email-password" -H 'Content-Type: application/json' \
   -d '{"email":"user@example.com","password":"...","options":{"metadata":{"source_account_id":"app_a"}}}'
 ```

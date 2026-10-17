@@ -50,8 +50,14 @@ for f in README.md manifest.json nself.yml .env.example migrations/001_multi_app
   test -f "$f" || fail "overlay did not write $f"
 done
 test ! -e flutter || fail 'overlay wrote a flutter/ folder'
-migrate_step='nself db migrate up'
-for step in 'nself build' 'nself start' "$migrate_step --migration-dir migrations" 'nself db reconcile'; do
+# One step per line: the flag audit reads a flag against the nearest `nself` word on its line.
+steps=(
+  'nself build'
+  'nself start'
+  'nself db migrate up --migration-dir migrations'
+  'nself db reconcile'
+)
+for step in "${steps[@]}"; do
   grep -qx "    $step" "$W/overlay.out" || fail "overlay next steps lack: $step"
 done
 pass 'template overlay wrote the multi-app files and printed its four next steps'
@@ -73,7 +79,7 @@ MAILPIT_UI_PORT=$((B + 426))
 NSELF_ADMIN_ENABLED=false
 ENV
   # The shipped template line that maps user metadata to the x-hasura-source-account-id claim.
-  grep '^AUTH_JWT_CUSTOM_CLAIMS=' .env.example
+  grep -E '^(AUTH_JWT_CUSTOM_CLAIMS|ENV_ALLOWLIST)=' .env.example
 } >>.env.local
 chmod 600 .env.local
 

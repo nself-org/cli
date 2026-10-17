@@ -29,9 +29,14 @@ app's id and has no `app_members` row reads and inserts nothing. Inserts set
 `source_account_id` from the token, so a client cannot choose it. Updates
 cannot change `source_account_id`.
 
+## Requirements
+
+The migration references `auth.users`, so auth must be enabled (`AUTH_ENABLED=true`, the default) and
+`nself start` must have run once before `nself db migrate up`.
+
 ## Claim setup
 
-Copy the `AUTH_JWT_CUSTOM_CLAIMS` line from `.env.example` into `.env.local`.
+Copy the `AUTH_JWT_CUSTOM_CLAIMS` and `ENV_ALLOWLIST` lines from `.env.example` into `.env.local`.
 hasura-auth then puts the user's `metadata.source_account_id` into the
 `x-hasura-source-account-id` claim. Sign users up with it:
 
