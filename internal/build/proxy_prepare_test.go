@@ -5,6 +5,7 @@ package build
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -29,7 +30,7 @@ func TestPrepareProxyOutputDirs(t *testing.T) {
 			if err != nil || !fi.IsDir() {
 				t.Fatalf("%s not created: %v", name, err)
 			}
-			if fi.Mode().Perm() != 0o755 {
+			if runtime.GOOS != "windows" && fi.Mode().Perm() != 0o755 {
 				t.Fatalf("%s mode %v", name, fi.Mode().Perm())
 			}
 		}
