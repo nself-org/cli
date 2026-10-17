@@ -1,0 +1,43 @@
+name: Shared proxy e2e
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - cmd/commands/start_shared_proxy*.go
+      - cmd/commands/restart_strategies.go
+      - cmd/commands/uninstall.go
+      - cmd/commands/reset.go
+      - internal/sharedproxy/**
+      - internal/docker/network*.go
+      - internal/docker/compose*.go
+      - internal/docker/container_state.go
+      - internal/docker/service_container.go
+      - scripts/e2e/shared-proxy.sh
+      - .github/workflows/shared-proxy-e2e.yml
+
+permissions:
+  contents: read
+
+jobs:
+  shared-proxy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      E2E_EVIDENCE: ${{ github.workspace }}/.e2e-evidence/shared-proxy
+    steps:
+      - name: Checkout CLI
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Two-project shared proxy e2e
+        run: bash scripts/e2e/shared-proxy.sh
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: shared-proxy-evidence
+          path: ${{ env.E2E_EVIDENCE }}
+          if-no-files-found: warn
