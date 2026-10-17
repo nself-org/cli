@@ -47,7 +47,7 @@ func init() {
 	backupRestoreCmd.Flags().String("only", "", "Restore subset: pg,minio,metadata (comma-separated)")
 	backupRestoreCmd.Flags().String("point-in-time", "", "ISO8601 timestamp for PITR")
 	backupRestoreCmd.Flags().String("decrypt-key", "", "Path to age identity file")
-	backupRestoreCmd.Flags().Bool("yes", false, "Skip confirmation")
+	backupRestoreCmd.Flags().Bool("yes", false, "Skip local confirmation; production requires the project name")
 
 	// backup verify flags
 	backupVerifyCmd.Flags().Bool("restore-test", false, "Spin up test container and restore")

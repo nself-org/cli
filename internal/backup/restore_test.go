@@ -472,43 +472,33 @@ func TestAutoKeyRestoreCancelRemovesDecryptedDump(t *testing.T) {
 	}
 }
 
-// pg_restore exits 1 with a data-loss error line (and no FATAL). v1.4 keeps
-// succeeding but warns with the count and first lines; v1.5 fails.
-func TestAutoKeyRestoreErrorLinesAreFatalInV15(t *testing.T) {
-	home, _, logs := autoKeyEnv(t)
+// A local restore cannot accept archive errors in either compatibility mode:
+// only a complete scratch database is eligible for the live swap.
+func TestAutoKeyLocalRestoreErrorLinesAreAlwaysFatal(t *testing.T) {
+	home, _, _ := autoKeyEnv(t)
 	key := filepath.Join(home, "k")
 	newAgeKey(t, key)
 	dir := t.TempDir()
 	ageEncrypt(t, key, "PGDMP-x", filepath.Join(dir, "p_full_1.dump.age"))
 	bin := t.TempDir()
-	_ = os.WriteFile(filepath.Join(bin, "docker"), []byte("#!/bin/sh\ncat >/dev/null\necho 'pg_restore: error: COPY failed for table x' >&2\necho 'pg_restore: error: second' >&2\nexit 1\n"), 0o755)
+	_ = os.WriteFile(filepath.Join(bin, "docker"), []byte("#!/bin/sh\ncase \"$*\" in\n*pg_restore*) cat >/dev/null; echo 'pg_restore: error: COPY failed for table x' >&2; echo 'pg_restore: error: second' >&2; exit 1;;\n*) exit 0;;\nesac\n"), 0o755)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	cfg := localBackupCfg(dir)
 	run := func() error {
 		return Restore(context.Background(), cfg, RestoreOptions{BackupID: "p_full_1.dump.age", DecryptKey: key, Only: []string{"pg"}})
 	}
 	compattest.Both(t, func(t *testing.T) {
-		logs.Reset()
 		err := run()
-		if os.Getenv("NSELF_V15") == "1" {
-			if err == nil || !strings.Contains(err.Error(), "COPY failed for table x") {
-				t.Fatalf("v1.5 must fail on a pg_restore error line, got %v", err)
-			}
-			return
-		}
-		if err != nil {
-			t.Fatalf("v1.4 keeps succeeding: %v", err)
-		}
-		if l := logs.String(); !strings.Contains(l, "errors=2") || !strings.Contains(l, "COPY failed for table x") {
-			t.Errorf("v1.4 must warn with the count and first lines, got: %s", l)
+		if err == nil || !strings.Contains(err.Error(), "COPY failed for table x") {
+			t.Fatalf("local restore must fail on a pg_restore error line, got %v", err)
 		}
 	})
-	// an allowlisted line is not fatal in v1.5 (the drill's one list)
+	// Drill allowlists do not weaken a live local restore.
 	compattest.Set(t, true)
 	allowedRestoreErrors = []string{"COPY failed for table x", "second"}
 	defer func() { allowedRestoreErrors = nil }()
-	if err := run(); err != nil {
-		t.Fatalf("allowlisted errors must not fail: %v", err)
+	if err := run(); err == nil || !strings.Contains(err.Error(), "COPY failed for table x") {
+		t.Fatalf("allowlisted drill errors must still fail local restore: %v", err)
 	}
 }
 

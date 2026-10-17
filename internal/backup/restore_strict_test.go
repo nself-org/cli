@@ -21,15 +21,15 @@ func fakeDockerPgRestoreError(t *testing.T) {
 		t.Skip("docker stub is a shell script")
 	}
 	bin := t.TempDir()
-	script := "#!/bin/sh\ncat >/dev/null\necho 'pg_restore: error: ERROR:  cannot drop table x' >&2\nexit 1\n"
+	script := "#!/bin/sh\ncase \"$*\" in\n*pg_restore*) cat >/dev/null; echo 'pg_restore: error: ERROR:  cannot drop table x' >&2; exit 1;;\n*) exit 0;;\nesac\n"
 	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
-// Strict fails on a pg_restore error line in v1.4 compat mode; the default
-// keeps the v1.4 warning for every other caller.
+// Local restores always fail on a pg_restore error line. Compatibility mode
+// cannot weaken this rule because the target swap requires a complete archive.
 func TestRestorePgDumpStrictFailsOnErrorLineInV14(t *testing.T) {
 	compattest.Set(t, false)
 	fakeDockerPgRestoreError(t)
@@ -40,8 +40,8 @@ func TestRestorePgDumpStrictFailsOnErrorLineInV14(t *testing.T) {
 	if err := restorePgDumpErr(dump, true); err == nil || !errors.Is(err, errs.ErrBackupRestoreFailed) || !strings.Contains(err.Error(), "cannot drop table x") {
 		t.Fatalf("strict restore must fail on the error line, got %v", err)
 	}
-	if err := restorePgDumpErr(dump, false); err != nil {
-		t.Fatalf("non-strict v1.4 restore must keep warning only, got %v", err)
+	if err := restorePgDumpErr(dump, false); err == nil || !errors.Is(err, errs.ErrBackupRestoreFailed) || !strings.Contains(err.Error(), "cannot drop table x") {
+		t.Fatalf("non-strict local restore must also fail on the error line, got %v", err)
 	}
 }
 

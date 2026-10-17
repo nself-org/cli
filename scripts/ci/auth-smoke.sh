@@ -15,7 +15,7 @@
 #            6. rollback, unsupported path: pin back to auth-v14 WITHOUT restoring the
 #               backup; the breakage is shown and counts as the PASS
 #            7. rollback, supported path: stop auth and hasura, restore the pre-switch
-#               backup (after nself db reset --yes when the plain restore fails), keep the
+#               backup over the migrated database (plain restore, no db reset), keep the
 #               auth-v14 pin, start cleanly; user A signs in, B's TOTP sign-in works,
 #               the post-switch user C is gone
 # Usage:   NSELF_V15=1 bash scripts/ci/auth-smoke.sh [path-to-nself-binary]
@@ -487,29 +487,7 @@ nsf backup restore "$BID" --only pg --yes
 if [ "$RC" -eq 0 ]; then
   pass "restore: nself backup restore --only pg --yes exits 0 on the migrated database"
 else
-  # Observed limit: pg_restore --clean cannot drop auth.users while objects that the
-  # newer auth release added still depend on it. The plain failure is asserted as
-  # observed (E207 with the "cannot drop" reason), not hidden. Only then is the database
-  # reset with the CLI (nself db reset --yes: drop, create, re-initialise schemas and
-  # extensions; it runs no migrations or seeds) and the restore repeated.
-  RESTORE_E="$(grep -o 'E207' "$WORK/err" | head -1)"
-  RESTORE_WHY="$(grep -o 'cannot drop [a-z ]*[a-z._]* because other objects depend on it' "$WORK/err" | head -1)"
-  if [ -z "$RESTORE_E" ] || [ -z "$RESTORE_WHY" ]; then
-    fatal "plain restore failed for the expected reason (E207, cannot drop)" "rc=$RC observed: $(nsf_tail)"
-  fi
-  # The reset target must be this run's own postgres.
-  if [ "$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "${PROJECT}_postgres" 2>/dev/null)" != "$PROJECT" ]; then
-    fatal "db reset target ${PROJECT}_postgres carries this run's compose project label" "refusing to run nself db reset"
-  fi
-  pass "db reset target ${PROJECT}_postgres carries this run's compose project label"
-  nsf db reset --yes
-  if [ "$RC" -eq 0 ]; then pass "restore: nself db reset --yes exits 0"; else fail "restore: nself db reset --yes exits 0" "rc=$RC $(nsf_tail)"; fi
-  nsf backup restore "$BID" --only pg --yes
-  if [ "$RC" -eq 0 ]; then
-    pass "restore-over-migrated-db-needs-a-db-reset (plain restore failed $RESTORE_E: $RESTORE_WHY; after nself db reset --yes the restore exits 0)"
-  else
-    fail "restore after nself db reset --yes exits 0" "rc=$RC $(nsf_tail)"
-  fi
+  fail "restore: nself backup restore --only pg --yes exits 0 on the migrated database" "rc=$RC $(nsf_tail)"
 fi
 build_start "restore" || true
 if [ "$(compose_auth_image)" = "$REF_V14" ] && [ "$(running_auth_image)" = "$REF_V14" ]; then

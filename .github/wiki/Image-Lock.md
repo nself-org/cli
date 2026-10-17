@@ -86,9 +86,8 @@ Signed-in users stay signed in: a refresh token issued by 0.36.0 is accepted onc
 Auth migrates its schema one way, so rolling back means restoring the backup from step 1:
 
 1. `nself stop auth hasura`, so neither reconnects during the restore.
-2. `nself db reset --yes` recreates the database. A plain restore over the migrated database fails (E207: `pg_restore --clean` cannot drop `auth.users` while objects the newer release added depend on it; debt D-0663).
-3. `nself backup restore <id> --only pg --yes`.
-4. Put the saved `nself.lock.yaml` back. A project without a lock removes `AUTH_VERSION=0.52.0` and `AUTH_ENCRYPTION_KEY` instead (keep a copy of the key): while the key is set, v1.5 renders 0.52.0 again and re-migrates the restored database.
+2. `nself backup restore <id> --only pg --yes`. The restore loads the backup into a scratch database and swaps it in only after `pg_restore` succeeds, so a migrated database needs no `nself db reset`; a failed restore leaves the current database untouched.
+3. Put the saved `nself.lock.yaml` back. A project without a lock removes `AUTH_VERSION=0.52.0` and `AUTH_ENCRYPTION_KEY` instead (keep a copy of the key): while the key is set, v1.5 renders 0.52.0 again and re-migrates the restored database.
 5. `nself build`, then `nself start`.
 
 Pinning back without the restore is unsupported: 0.36.0 starts on the migrated schema, but every TOTP sign-in fails because the secrets are now encrypted. `scripts/ci/auth-smoke.sh` proves the upgrade and both rollback paths on Linux with users, sessions, a refresh token and a TOTP user (`NSELF_V15=1 bash scripts/ci/auth-smoke.sh`; it needs Docker, Go, curl, python3 and free ports 80, 443, 4000, 5432 and 8080).
@@ -119,7 +118,7 @@ Hasura v2.51.0 does not change the metadata format or the migration contract. `s
 Treat the catalog migrations as one way: a Hasura release that raises the catalog version may leave an older engine unable to use the database (Hasura ships its own downgrade command for that). Rolling back means restoring the backup from step 1:
 
 1. `nself stop hasura`.
-2. `nself backup restore <id> --only pg --yes`. If it fails on dependencies of the newer catalog (E207), run `nself db reset --yes` first and repeat the restore (debt D-0663).
+2. `nself backup restore <id> --only pg --yes`. The restore loads the backup into a scratch database and swaps it in only after `pg_restore` succeeds, so no `nself db reset` is needed over the newer catalog.
 3. Put the saved `nself.lock.yaml` back (the v2.44.0 pin) together with the database backup. On a project with a lock this is the route: the build that applied `HASURA_VERSION=v2.51.0` rewrote the lock pin, so removing the variable from the env alone leaves the lock and the compose file on v2.51.0. Only a project without `nself.lock.yaml` can go back by removing `HASURA_VERSION=v2.51.0` from the env.
 4. `nself build`, then `nself start`.
 
