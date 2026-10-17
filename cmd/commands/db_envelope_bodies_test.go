@@ -102,6 +102,29 @@ func TestDataBodiesTypedRows(t *testing.T) {
 		}
 	})
 
+	// D-0528: a ledger that still needs its legacy upgrade says so in the data.
+	t.Run("db migrate status ledger_needs_upgrade", func(t *testing.T) {
+		upgradeBin := writeUpgradeDocker(t)
+		prependPath(t, upgradeBin)
+		proj := dataProject(t)
+		mig := filepath.Join(proj, "migs")
+		if err := os.MkdirAll(mig, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(mig, "20260101_init.sql"), []byte("SELECT 1;\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		out, err := runTypedBody(t, dbMigrateStatusCmd, map[string]string{"migration-dir": mig})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var raw map[string]json.RawMessage
+		dataOf(t, out, "db migrate status", &raw)
+		if string(raw["ledger_needs_upgrade"]) != "true" {
+			t.Fatalf("ledger_needs_upgrade = %s, want true\n%s", raw["ledger_needs_upgrade"], out)
+		}
+	})
+
 	t.Run("db drift scan", func(t *testing.T) {
 		dataProject(t)
 		out, err := runTypedBody(t, dbDriftScanCmd, map[string]string{})

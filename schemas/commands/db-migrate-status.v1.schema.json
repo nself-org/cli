@@ -4,6 +4,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "ledger_needs_upgrade": {
+      "type": "boolean"
+    },
     "migrations": {
       "items": {
         "additionalProperties": false,
@@ -35,7 +38,8 @@
     }
   },
   "required": [
-    "migrations"
+    "migrations",
+    "ledger_needs_upgrade"
   ],
   "type": "object"
 }

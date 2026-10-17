@@ -20,6 +20,10 @@ For each pending migration file:
 - **Transactional DDL** (default): the migration SQL and both INSERT statements run inside a single `BEGIN … COMMIT` block. `SET LOCAL lock_timeout = '5s'` and `SET LOCAL statement_timeout = '60s'` are applied before the DDL to prevent blocking production deployments.
 - **Non-transactional DDL** (`CREATE INDEX CONCURRENTLY`, `ALTER TYPE ADD VALUE`, etc.): the DDL runs outside a transaction (required by PostgreSQL). Immediately after, both INSERT statements are wrapped in their own `BEGIN … COMMIT` block so that the recording step is still atomic.
 
+The 60s `statement_timeout` is the default. A migration that needs longer, such as a data backfill, sets its own with a comment line anywhere in the file: `-- nself:statement-timeout=600s` raises it to 10 minutes and `-- nself:statement-timeout=0` removes the limit. The directive applies to `up` and `down`, with or without `--migration-dir`; `lock_timeout` stays at 5s.
+
+`nself db migrate status` is read-only (SELECT statements only). If the ledger still has legacy rows that `up` or `down` would upgrade, status warns on stderr and reports `ledger_needs_upgrade: true` in its `--json` data and in the `nself_db_migrate_status` MCP result.
+
 In both cases, a failure rolls back to a clean state — no orphan rows are left in either tracking table.
 
 ## Revert (`nself db migrate down`)

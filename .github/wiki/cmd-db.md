@@ -47,6 +47,8 @@ nself db migrate up [--dry-run] [--migration-dir <path>] [--plugin <name>]
 
 With `--migration-dir` and `--dry-run`, the command lists the pending files of that directory and applies nothing. It reads the ledger (`np_common.schema_versions`, plus the `nself_ops.migrations` checksums) with SELECT statements only: no table is created, no row is written, and nothing is run inside a rolled-back transaction. It fails, as the real run would, when an applied file was edited after apply or when a pending file is rejected by the SQL lint or the ALTER prerequisite check. With `--env`/`--server`, `db migrate up` forwards `--migration-dir`, `--dry-run` and `--plugin` to the remote host, so a plugin-scoped or directory-scoped run stays scoped there. (`db migrate status` forwards `--plugin` too, but only `up` uses it to scope the run.) A `--dry-run` on a remote target first probes the remote with `nself version --json` and proceeds only when the remote advertises the `db-dry-run-safe` capability (an older remote nself may ignore `--dry-run` and apply for real). `--allow-version-drift` never relaxes that probe: it only skips the version match check for ordinary, non-dry-run commands. An invalid `--plugin` name is refused before any SSH call.
 
+Each file runs with `statement_timeout = 60s` and `lock_timeout = 5s`. A file that needs longer (a data backfill) raises or removes the statement timeout with a comment line anywhere in the file: `-- nself:statement-timeout=600s` (10 minutes) or `-- nself:statement-timeout=0` (no limit). The directive works for `up`, `down`, and both with `--migration-dir`; `lock_timeout` stays at 5s.
+
 `up --migration-dir` creates the two ledger tables in one exec and reads the ledger (applied names and stored checksums) once per run, then applies each pending file in its own transaction, so a run that has nothing to apply costs the same few database calls for 1 file or 500. Before each pending file it prints `[n/total] <file>` on stderr (`total` is the number of pending files); stdout is unchanged (`Applied N migration(s) from <dir>.` or `No pending migrations in directory.`).
 
 In directory mode (`up --migration-dir`, `down --migration-dir`) the CLI runs each migration in one transaction with its ledger change, in two layers that never parse SQL:
@@ -129,6 +131,8 @@ nself db migrate status
 ```
 
 Reports: migration name, status (applied/pending), and timestamp for applied migrations.
+
+`status` is a safe read: it issues SELECT statements only. It creates no table and rewrites no ledger row, and a missing ledger just means nothing is applied. When the ledger still holds legacy rows (old prefix ids in `nself_ops.migrations`, or a nested `up.sql` row), status resolves them in memory and prints one warning line on stderr: `nself db migrate up` (or `down`) performs the ledger upgrade, with the same `--migration-dir` if you used one. With `--json` the same fact is `data.ledger_needs_upgrade` (boolean); the `nself_db_migrate_status` MCP tool returns the same `ledger_needs_upgrade` field. Scripts and agents read the flag instead of parsing stderr.
 
 ### db migrate create
 
