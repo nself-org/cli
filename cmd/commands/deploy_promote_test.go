@@ -24,6 +24,7 @@ import (
 
 func promoteFixture(t *testing.T) string {
 	t.Helper()
+	isolateDeployConfigEnv(t)
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, ".nself"), 0o755); err != nil {
 		t.Fatal(err)

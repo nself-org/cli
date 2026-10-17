@@ -11,6 +11,7 @@ import (
 
 func TestResolvedDeployEnvProcessOnlyRefusal(t *testing.T) {
 	compattest.Set(t, true)
+	isolateDeployConfigEnv(t)
 	t.Setenv("POSTGRES_PASSWORD", "shell-secret-sentinel")
 	dir := t.TempDir()
 	path, cleanup, err := writeResolvedDeployEnv(dir, "staging")
@@ -31,6 +32,7 @@ func TestResolvedDeployEnvFileWins(t *testing.T) {
 	compattest.Set(t, true)
 	for _, value := range []string{"file-secret", ""} {
 		t.Run(value, func(t *testing.T) {
+			isolateDeployConfigEnv(t)
 			t.Setenv("POSTGRES_PASSWORD", "shell-secret-sentinel")
 			t.Setenv("UNRELATED_SHELL_SECRET", "unrelated-sentinel")
 			dir := t.TempDir()

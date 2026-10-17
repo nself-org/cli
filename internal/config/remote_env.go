@@ -25,6 +25,15 @@ var localOnlyConfigKeys = map[string]bool{
 	"NSELF_REGISTRY_CACHE_TTL": true,
 }
 
+// remoteExtraConfigKeys are build-shaping keys read outside the known-vars
+// schema; a process-only value for them must also be refused.
+var remoteExtraConfigKeys = map[string]bool{
+	"SSL_PROVIDER":        true,
+	"SSL_WILDCARD_DOMAIN": true,
+	"CLOUDFLARE_API_KEY":  true,
+	"WAF_MODE":            true,
+}
+
 // ValidateRemoteEnv requires every populated config key in the process to
 // exist in the remote file cascade. ENV is the explicit deploy target selector,
 // set by deploy itself; it is not a credential or a value to copy to the host.
@@ -43,7 +52,7 @@ func ValidateRemoteEnv(fromFiles map[string]string) error {
 		if _, present := fromFiles[key]; present {
 			continue
 		}
-		if known[key] || remoteDynamicConfigKey(key) {
+		if known[key] || remoteExtraConfigKeys[key] || remoteDynamicConfigKey(key) {
 			missing = append(missing, key)
 		}
 	}
@@ -58,6 +67,12 @@ func ValidateRemoteEnv(fromFiles map[string]string) error {
 		return nil
 	}
 	return err
+}
+
+// RemoteConfigKey reports whether key is a build-shaping config key outside the
+// known-vars list (extra keys and dynamic collections); tests use it to isolate.
+func RemoteConfigKey(key string) bool {
+	return remoteExtraConfigKeys[key] || remoteDynamicConfigKey(key)
 }
 
 // remoteDynamicConfigKey recognizes the dynamic collections and passthrough

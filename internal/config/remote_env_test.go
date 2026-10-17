@@ -62,6 +62,9 @@ func isolateRemoteConfigEnv(t *testing.T) {
 	for _, key := range knownEnvVars {
 		t.Setenv(key, "")
 	}
+	for key := range remoteExtraConfigKeys {
+		t.Setenv(key, "")
+	}
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
 		if remoteDynamicConfigKey(key) {
