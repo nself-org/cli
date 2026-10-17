@@ -55,7 +55,7 @@ steps=(
   'nself build'
   'nself start'
   'nself db migrate up --migration-dir migrations'
-  'nself db reconcile'
+  'nself db reconcile --apply'
 )
 for step in "${steps[@]}"; do
   grep -qx "    $step" "$W/overlay.out" || fail "overlay next steps lack: $step"

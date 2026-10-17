@@ -7,6 +7,8 @@ nself init --non-interactive
 nself init --template multi-app . --force   # overlay the template files
 ```
 
+The overlay replaces the `.env.example` and `nself.yml` that `nself init` wrote with the template's own. Keep your own values in `.env` and `.env.local`.
+
 `--dry-run` lists what it would write: `README.md`, `manifest.json`, `nself.yml`, `.env.example`, `migrations/001_multi_app.sql`, `hasura/metadata.json` and `hasura/metadata/databases/default/tables/tables.yaml` (the layout `nself db reconcile` reads; both hold the same tables). No plugins are required, and there is no UI starter.
 
 ## The model
@@ -18,6 +20,8 @@ nself init --template multi-app . --force   # overlay the template files
 | `public.notes`, `public.projects` | Example per-app tables (`projects` also has a `name`). |
 
 `source_account_id` separates apps that share a deploy. It is not `tenant_id`, which separates paying customers; never interchange them.
+
+**One identity pool, one app per user.** All apps share one hasura-auth user table. An email can sign up once, so the same email cannot join a second app, and signup for app B reports "email already in use" for an address registered in app A. Login does not check the app: app A credentials entered in app B's login form return an app A token, which reads nothing of app B. Rows inserted by the admin secret without the column land in `primary`.
 
 ## The permission filter
 
@@ -43,7 +47,7 @@ Also enforced:
 ## Setup
 
 1. Add the `AUTH_JWT_CUSTOM_CLAIMS` and `ENV_ALLOWLIST` lines from `.env.example` to `.env.local`. The first makes hasura-auth copy the user's `metadata.source_account_id` into the `x-hasura-source-account-id` claim.
-2. Run the template's next steps. The migration references `auth.users`, so auth must be enabled (`AUTH_ENABLED=true`, the default) and `nself start` must have created the auth schema before `nself db migrate up` runs:
+2. Run the template's next steps. The migration references `auth.users`, so hasura-auth must be running: `nself start` must have started it before `nself db migrate up` runs:
 
 ```bash
 nself build

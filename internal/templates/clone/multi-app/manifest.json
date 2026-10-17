@@ -7,6 +7,6 @@
     "nself build",
     "nself start",
     "nself db migrate up --migration-dir migrations",
-    "nself db reconcile"
+    "nself db reconcile --apply"
   ]
 }

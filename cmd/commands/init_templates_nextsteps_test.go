@@ -52,7 +52,7 @@ func TestInitTemplateNextSteps(t *testing.T) {
 		var buf bytes.Buffer
 		printTemplateNextSteps(&buf, "/tmp/app", m)
 		want := "\n  Next steps:\n    cd /tmp/app\n    nself build\n    nself start\n" +
-			"    nself db migrate up --migration-dir migrations\n    nself db reconcile\n\n"
+			"    nself db migrate up --migration-dir migrations\n    nself db reconcile --apply\n\n"
 		if buf.String() != want {
 			t.Errorf("output = %q, want %q", buf.String(), want)
 		}
@@ -95,7 +95,7 @@ func TestTemplateInfoBundledOffline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"multi-app v1.0.0", "nself build", "nself db migrate up --migration-dir migrations", "nself db reconcile"} {
+	for _, want := range []string{"multi-app v1.0.0", "nself build", "nself db migrate up --migration-dir migrations", "nself db reconcile --apply"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("info output lacks %q:\n%s", want, out)
 		}

@@ -31,8 +31,8 @@ cannot change `source_account_id`.
 
 ## Requirements
 
-The migration references `auth.users`, so auth must be enabled (`AUTH_ENABLED=true`, the default) and
-`nself start` must have run once before `nself db migrate up`.
+The migration references `auth.users`, so hasura-auth must be running: `nself start` must have
+started it once before `nself db migrate up`.
 
 ## Claim setup
 
