@@ -14,7 +14,7 @@ export LC_ALL=C
 export NSELF_PING_URL=http://127.0.0.1:9
 [[ $(uname -s) == Linux ]] || echo 'PROVISIONAL (Constitution §10.3): Linux evidence is required'
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-for tool in docker curl jq openssl python3 go; do
+for tool in docker curl jq openssl python3 go age; do
   command -v "$tool" >/dev/null || { echo "FAIL: required tool missing: $tool" >&2; exit 1; }
 done
 docker compose version >/dev/null || { echo 'FAIL: Docker Compose is unavailable' >&2; exit 1; }
