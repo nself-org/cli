@@ -308,3 +308,35 @@ func TestPlanRegistrationListsPlannedCertificates(t *testing.T) {
 		t.Fatalf("planned registration does not list the pair the apply will generate:\n%s", reg)
 	}
 }
+
+// TestInstallCertPlannedPairGoesThroughSink: when the plan lists the pair (it existed
+// at plan time), the apply stages it through the sink so verify() finds it.
+func TestInstallCertPlannedPairGoesThroughSink(t *testing.T) {
+	root := t.TempDir()
+	workdir, ownerSSL := filepath.Join(root, "owner", "b"), filepath.Join(root, "owner", "ssl")
+	src := filepath.Join(workdir, "ssl", "certificates", "b-test")
+	writeCert(t, src, time.Now().Add(48*time.Hour))
+	target := filepath.Join(ownerSSL, "certificates", "b-test")
+	if err := os.MkdirAll(filepath.Join(ownerSSL, "certificates"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	exp := &PlannedBuild{Files: map[string]PlannedFile{}}
+	keyer := newMemSink(workdir, "")
+	for name, perm := range map[string]os.FileMode{"fullchain.pem": 0o644, "privkey.pem": 0o600} {
+		data, err := os.ReadFile(filepath.Join(src, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		exp.Files[keyer.key(filepath.Join(target, name))] = PlannedFile{Data: data, Perm: perm}
+	}
+	exp.Files[keyer.key(filepath.Join(target, sharedproxy.CertMarker))] = PlannedFile{Data: []byte("bproj\n"), Perm: 0o600}
+	sink := newExpectSink(workdir, exp)
+	st := &buildState{sink: sink}
+	sp := &sharedProxy{project: "bproj", workdir: workdir, sslDir: ownerSSL}
+	if err := st.installCert(sp, "b-test", false); err != nil {
+		t.Fatalf("installCert with a planned pair: %v", err)
+	}
+	if err := sink.verify(); err != nil {
+		t.Fatalf("the planned pair was not staged through the sink: %v", err)
+	}
+}

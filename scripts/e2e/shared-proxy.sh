@@ -24,9 +24,11 @@ EVIDENCE=${E2E_EVIDENCE:-$W/evidence}
 mkdir -p "$EVIDENCE"
 OWNER=e2e-adopt-a PB=e2e-adopt-b PC=e2e-adopt-c
 # Host-published ports must differ per project; the proxy ports (80/443) belong to A alone.
-PORTS_B=(AUTH_PORT=4001 HASURA_PORT=8081 POSTGRES_EXPOSE_PORT=false)
-PORTS_C=(AUTH_PORT=4002 HASURA_PORT=8082 POSTGRES_EXPOSE_PORT=false)
+PORTS_B=(AUTH_PORT=4001 HASURA_PORT=8081 POSTGRES_EXPOSE_PORT=false POSTGRES_PORT=5433)
+PORTS_C=(AUTH_PORT=4002 HASURA_PORT=8082 POSTGRES_EXPOSE_PORT=false POSTGRES_PORT=5434)
 A=$W/a B=$W/a/b C=$W/a/c
+# Optional: run the curl/openssl probes elsewhere (a Mac with Colima cannot bind 80/443; use E2E_HOST_EXEC='colima ssh --').
+read -r -a HOSTX <<<"${E2E_HOST_EXEC:-}"
 NSELF_BIN=$W/nself
 PASS=0
 step() { printf '\n== %s\n' "$*"; }
@@ -114,7 +116,7 @@ PY
 }
 
 # serves HOST: 200 on /healthz through the owner nginx, printing the status.
-status_of() { curl -sk --noproxy '*' --max-time 10 --resolve "$1:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$1/healthz" || true; }
+status_of() { ${HOSTX[@]+"${HOSTX[@]}"} curl -sk --noproxy '*' --max-time 10 --resolve "$1:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$1/healthz" || true; }
 serves() {
   local host=$1 code
   for _ in $(seq 1 30); do
@@ -160,7 +162,7 @@ ok 'api.a, api.b and api.c answer 200 through the owner nginx'
 ! container_exists ${PC}_nginx || die "${PC}_nginx exists"
 if docker ps --filter "name=${PB}_" --format '{{.Ports}}' | grep -Eq ':(80|443)->'; then die "a $PB container binds 80/443"; fi
 ok 'fronted projects run no nginx and bind neither 80 nor 443'
-san=$(openssl s_client -connect 127.0.0.1:443 -servername api.b.local.nself.org </dev/null 2>/dev/null | openssl x509 -noout -ext subjectAltName)
+san=$(${HOSTX[@]+"${HOSTX[@]}"} sh -c 'openssl s_client -connect 127.0.0.1:443 -servername api.b.local.nself.org </dev/null 2>/dev/null | openssl x509 -noout -ext subjectAltName')
 grep -q 'api.b.local.nself.org' <<<"$san" || die "B is not served with its own certificate: $san"
 ok "api.b is served with B's certificate"
 
