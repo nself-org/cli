@@ -28,11 +28,15 @@ func TestComposeSourcesMultiDocument(t *testing.T) {
 		{"build in second document", "services: {}\n---\nservices:\n  hasura:\n    build: ./evil\n", true},
 		{"empty second document", "services:\n  a:\n    image: x:1\n---\n", true},
 		{"two empty documents", "---\n---\nservices: {}\n", true},
+		{"image alias", "x-img: &img x:1\nservices:\n  a:\n    image: *img\n", false},
 	}
 	for _, c := range cases {
 		svcs, _, multi, err := ComposeSources([]byte(c.yaml))
 		if err != nil || multi != c.multi {
 			t.Errorf("%s: multi=%v err=%v, want multi=%v", c.name, multi, err, c.multi)
+		}
+		if c.name == "image alias" && svcs["a"].Image != "x:1" {
+			t.Errorf("image alias not resolved: %v", svcs)
 		}
 		if c.name == "single" && svcs["a"].Image != "x:1" {
 			t.Errorf("single: first document not read: %v", svcs)

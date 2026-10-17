@@ -108,6 +108,10 @@ func ComposeSources(data []byte) (services map[string]ServiceSource, include, mu
 				return nil, false, false, fmt.Errorf("lock: parse compose service %s: %w", name, err)
 			}
 		}
+		// An anchored image (image: *img) is resolved to its target.
+		for s.Image.Kind == yaml.AliasNode && s.Image.Alias != nil {
+			s.Image = *s.Image.Alias
+		}
 		src := ServiceSource{Extends: s.Extends.Kind != 0, Build: s.Build.Kind != 0,
 			Reset: node.Tag == "!reset" || s.Image.Tag == "!reset", Override: node.Tag == "!override"}
 		if !src.Reset && s.Image.Kind == yaml.ScalarNode {
