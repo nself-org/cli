@@ -183,11 +183,15 @@ func runDBMigrateStatus(cmd *cobra.Command, _ []string) error {
 		return runDBMigrateStatusDetect(cmd, cfg, migrationDir)
 	}
 
-	statuses, err := database.MigrateStatus(cmd.Context(), cfg, migrationDir)
+	rep, err := database.MigrateStatusReport(cmd.Context(), cfg, migrationDir)
 	if err != nil {
 		return fmt.Errorf("migrate status: %w", err)
 	}
-	setData(cmd, newMigrateStatusData(statuses))
+	if w := rep.Warning(); w != "" {
+		_, _ = fmt.Fprintln(os.Stderr, w)
+	}
+	statuses := rep.Migrations
+	setData(cmd, newMigrateStatusData(rep))
 	if len(statuses) == 0 {
 		fmt.Println("No migrations found.")
 		return nil

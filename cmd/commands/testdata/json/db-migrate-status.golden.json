@@ -2,6 +2,7 @@
   "schema_version": "1",
   "command": "db migrate status",
   "data": {
-    "migrations": []
+    "migrations": [],
+    "ledger_needs_upgrade": false
   }
 }

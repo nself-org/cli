@@ -220,9 +220,9 @@ func seedRows(seeds []seed.SeedFile) []dbSeedRow {
 }
 
 // newMigrateStatusData converts the ledger rows of `db migrate status`.
-func newMigrateStatusData(statuses []database.MigrationStatus) dbMigrateStatusData {
-	d := dbMigrateStatusData{Migrations: []dbMigrationRow{}}
-	for _, s := range statuses {
+func newMigrateStatusData(rep database.StatusReport) dbMigrateStatusData {
+	d := dbMigrateStatusData{Migrations: []dbMigrationRow{}, LedgerNeedsUpgrade: rep.LedgerNeedsUpgrade}
+	for _, s := range rep.Migrations {
 		row := dbMigrationRow{Name: s.Name, Status: "pending"}
 		if s.Applied {
 			row.Status = "applied"

@@ -18,6 +18,9 @@ type dbMigrationRow struct {
 
 type dbMigrateStatusData struct {
 	Migrations []dbMigrationRow `json:"migrations"`
+	// LedgerNeedsUpgrade: the ledger holds legacy rows that `db migrate up` or
+	// `down` would upgrade (status never writes) (D-0528).
+	LedgerNeedsUpgrade bool `json:"ledger_needs_upgrade"`
 }
 
 type dbMigrationAuditRow struct {

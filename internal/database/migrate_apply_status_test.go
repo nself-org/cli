@@ -315,3 +315,40 @@ func TestMigrateUpDir_NoopRerunExecBudget(t *testing.T) {
 		t.Errorf("%d execs on a flat no-op rerun, want <= 4", execs())
 	}
 }
+
+// TestMigrateStatusReport_ReturnsNeedsUpgradeFlag (D-0528): the structured
+// status call hands the needs-upgrade bool to the caller (the --json envelope
+// and the MCP result read it) and prints no stderr warning of its own.
+func TestMigrateStatusReport_ReturnsNeedsUpgradeFlag(t *testing.T) {
+	cases := map[string]struct {
+		answers map[string]string
+		want    bool
+	}{
+		"legacy up row": {map[string]string{
+			"q_legacy_exists": "yes", "q_ops_exists": "yes", "q_ops_legacy_count": "0",
+			"q_applied": "up.sql|2026-10-04T10:00:00Z", "q_up_count": "1", "q_ops_ids": "001\n",
+		}, true},
+		"clean ledger": {map[string]string{
+			"q_legacy_exists": "yes", "q_ops_exists": "yes", "q_ops_legacy_count": "0",
+			"q_applied": "001_x|2026-10-04T10:00:00Z", "q_up_count": "0",
+		}, false},
+		"no ledger": {map[string]string{"q_legacy_exists": "no", "q_ops_exists": "no"}, false},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			warn := swapStatusWarn(t)
+			sd := fakeDockerState(t, tc.answers)
+			rep, err := MigrateStatusReport(context.Background(), fakeCfg, nestedDir(t, "001_x", "002_y"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rep.LedgerNeedsUpgrade != tc.want || len(rep.Migrations) != 2 {
+				t.Fatalf("report = %+v, want LedgerNeedsUpgrade=%v and 2 migrations", rep, tc.want)
+			}
+			assertNoWrites(t, recordedCalls(t, sd))
+			if warn.Len() != 0 {
+				t.Errorf("the report call printed %q; only MigrateStatus warns", warn.String())
+			}
+		})
+	}
+}

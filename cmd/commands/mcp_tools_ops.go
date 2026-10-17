@@ -120,7 +120,8 @@ type MigrationStatusEntry struct {
 
 // MigrateStatusResult wraps the migration status slice.
 type MigrateStatusResult struct {
-	Migrations []MigrationStatusEntry `json:"migrations"`
+	Migrations         []MigrationStatusEntry `json:"migrations"`
+	LedgerNeedsUpgrade bool                   `json:"ledger_needs_upgrade"`
 }
 
 func mcpDBMigrateStatusHandler() server.ToolHandlerFunc {
@@ -129,15 +130,15 @@ func mcpDBMigrateStatusHandler() server.ToolHandlerFunc {
 		if err != nil {
 			return mcpErrorResult("Error: %v", err)
 		}
-		statuses, err := database.MigrateStatus(ctx, cfg, "")
+		rep, err := database.MigrateStatusReport(ctx, cfg, "")
 		if err != nil {
 			return mcpErrorResult("Error: %v", err)
 		}
-		out := make([]MigrationStatusEntry, 0, len(statuses))
-		for _, s := range statuses {
+		out := make([]MigrationStatusEntry, 0, len(rep.Migrations))
+		for _, s := range rep.Migrations {
 			out = append(out, MigrationStatusEntry{Name: s.Name, Applied: s.Applied, AppliedAt: s.Timestamp})
 		}
-		return mcp.NewToolResultStructuredOnly(MigrateStatusResult{Migrations: out}), nil
+		return mcp.NewToolResultStructuredOnly(MigrateStatusResult{Migrations: out, LedgerNeedsUpgrade: rep.LedgerNeedsUpgrade}), nil
 	}
 }
 

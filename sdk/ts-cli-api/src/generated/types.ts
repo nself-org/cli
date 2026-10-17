@@ -4130,6 +4130,7 @@ export interface DbMigrateRequest {
 export type DbMigrateStatusArgs = [];
 
 export interface DbMigrateStatusData {
+  ledger_needs_upgrade: boolean;
   migrations: null | Array<{
     applied_at: null | string;
     name: string;
