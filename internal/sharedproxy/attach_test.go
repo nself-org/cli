@@ -3,7 +3,8 @@ package sharedproxy
 // Tests for attach.go, quarantine.go and leave.go. A fake `docker` shell
 // script goes first on PATH. It keeps state in $FAKE_DIR: the networks that
 // exist (existing.txt), the networks the owner nginx is on (nets.txt), the
-// calls (calls.log) and a list of owner-relative files that make `nginx -t`
+// owner container's state (state; default running; `docker start` and `docker
+// stop` rewrite it), the calls (calls.log) and a list of owner-relative files that make `nginx -t`
 // fail while they exist (broken.txt).
 
 import (
@@ -26,8 +27,11 @@ case "$1" in
   inspect)
     case "$3" in
       '{{json .NetworkSettings.Networks}}') nets_json ;;
-      *) printf '{"Id":"ownerid","Name":"/owner_nginx","State":{"Status":"running"},"Config":{"Labels":{"com.docker.compose.service":"nginx","com.docker.compose.project.working_dir":"%s"}}}' "$OWNER_DIR" ;;
+      *) st=$(cat "$FAKE_DIR/state" 2>/dev/null || echo running)
+         printf '{"Id":"ownerid","Name":"/owner_nginx","State":{"Status":"%s"},"Config":{"Labels":{"com.docker.compose.service":"nginx","com.docker.compose.project.working_dir":"%s"}}}' "$st" "$OWNER_DIR" ;;
     esac ;;
+  start) echo running > "$FAKE_DIR/state" ;;
+  stop) echo exited > "$FAKE_DIR/state" ;;
   network)
     case "$2" in
       inspect) n=$(eval echo \$$#); if grep -qx "$n" "$FAKE_DIR/existing.txt"; then echo "$n"; else echo "Error: No such network: $n" >&2; exit 1; fi ;;

@@ -70,7 +70,9 @@ func restartFull(ctx context.Context, comp *docker.Compose, workdir string, cfg 
 	}
 	ui.Success("All services started")
 
-	return nil
+	// The compose down detached the shared proxy's nginx from this project (or,
+	// in the owner, recreated nginx without its attachments): attach again.
+	return afterStartSharedProxy(ctx, cfg, workdir)
 }
 
 // restartServices restarts only the specified services.
@@ -186,6 +188,10 @@ func restartSmart(ctx context.Context, comp *docker.Compose, workdir string, cfg
 			return fmt.Errorf("applying updated config: %w", err)
 		}
 		ui.Success("Services restarted with updated configuration")
+		// Recreated containers lose the owner nginx's attachments.
+		if err := afterStartSharedProxy(ctx, cfg, workdir); err != nil {
+			return err
+		}
 	} else {
 		if configChanged && skipBuild {
 			ui.Warn("Configuration changed but --skip-build specified, performing quick restart")

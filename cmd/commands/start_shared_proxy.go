@@ -119,13 +119,16 @@ func beforeStopSharedProxy(ctx context.Context, workdir string) {
 
 // leaveSharedProxy is `nself uninstall` in a fronted project (review R2b): it
 // removes the project's files and registration from the owner and reloads the
-// owner's nginx. A project outside a shared proxy is untouched.
-func leaveSharedProxy(ctx context.Context, workdir string) {
+// owner's nginx. A project outside a shared proxy is untouched. A failure is
+// returned so uninstall does not report the project as fully removed.
+func leaveSharedProxy(ctx context.Context, workdir string) error {
 	site, err := spLocate(workdir)
 	if err != nil || site.Role != sharedproxy.RoleFronted {
-		return
+		return nil
 	}
 	if _, err := spLeave(ctx, site.OwnerDir, site.Reg.Project); err != nil {
 		ui.Warn(fmt.Sprintf("Shared proxy: leaving %s: %v", site.OwnerDir, err))
+		return fmt.Errorf("leaving the shared proxy at %s: %w", site.OwnerDir, err)
 	}
+	return nil
 }

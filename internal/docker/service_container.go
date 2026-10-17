@@ -12,7 +12,9 @@ package docker
 // project name that identify the stack).
 // Outputs: the matching container's name; sentinel errors for zero or several
 // matches (errors.Is); a container's mounts as the existing Mount type.
-// Constraints: only running containers match (a stopped nginx serves nothing);
+// Constraints: only running containers match unless ServiceMatch.AnyState is
+// set (a stopped nginx serves nothing, but a shared proxy still has to detach
+// a stopped owner nginx from a network that compose is about to remove);
 // every docker call goes through this package (the docker funnel); a docker
 // failure is returned as-is and is never reported as "not found".
 
@@ -41,11 +43,13 @@ var ErrServiceContainerAmbiguous = errors.New("service container is ambiguous")
 // ServiceMatch selects a compose service's container. A container matches
 // when its com.docker.compose.service label equals Service and either its
 // com.docker.compose.project.working_dir label is one of WorkingDirs or its
-// com.docker.compose.project label equals Project (ignored when empty).
+// com.docker.compose.project label equals Project (ignored when empty). Only
+// running containers match unless AnyState is set.
 type ServiceMatch struct {
 	Service     string
 	WorkingDirs []string
 	Project     string
+	AnyState    bool
 }
 
 // FindServiceContainer returns the name of the single running container that
@@ -78,7 +82,7 @@ func FindServiceContainer(ctx context.Context, m ServiceMatch) (string, error) {
 			}
 			return "", fmt.Errorf("find service container %q: %w", m.Service, ierr)
 		}
-		if info.State != "running" || info.Labels[composeServiceLabel] != m.Service {
+		if (info.State != "running" && !m.AnyState) || info.Labels[composeServiceLabel] != m.Service {
 			continue
 		}
 		wd := info.Labels[composeWorkingDirLabel]
@@ -91,8 +95,12 @@ func FindServiceContainer(ctx context.Context, m ServiceMatch) (string, error) {
 
 	switch len(names) {
 	case 0:
-		return "", fmt.Errorf("%w: no running %q container in working dirs %v or project %q",
-			ErrServiceContainerNotFound, m.Service, m.WorkingDirs, m.Project)
+		kind := "running "
+		if m.AnyState {
+			kind = ""
+		}
+		return "", fmt.Errorf("%w: no %s%q container in working dirs %v or project %q",
+			ErrServiceContainerNotFound, kind, m.Service, m.WorkingDirs, m.Project)
 	case 1:
 		return names[0], nil
 	default:
