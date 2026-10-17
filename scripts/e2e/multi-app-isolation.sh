@@ -51,7 +51,8 @@ for f in README.md manifest.json nself.yml .env.example migrations/001_multi_app
   test -f "$f" || fail "overlay did not write $f"
 done
 test ! -e flutter || fail 'overlay wrote a flutter/ folder'
-for step in 'nself build' 'nself start' 'nself db migrate up --migration-dir migrations' 'nself db reconcile'; do
+migrate_step='nself db migrate up'
+for step in 'nself build' 'nself start' "$migrate_step --migration-dir migrations" 'nself db reconcile'; do
   grep -qx "    $step" "$W/overlay.out" || fail "overlay next steps lack: $step"
 done
 pass 'template overlay wrote the multi-app files and printed its four next steps'

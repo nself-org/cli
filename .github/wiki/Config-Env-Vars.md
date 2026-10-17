@@ -216,6 +216,7 @@ Authentication is provided by nHost Auth. These variables configure the Auth ser
 | `AUTH_MEM_LIMIT` | string | `256m` | No | Docker memory limit for the Auth container. |
 | `AUTH_CPU_LIMIT` | string | `0.25` | No | Docker CPU core limit for the Auth container. |
 | `AUTH_LOG_LEVEL` | string | `info` | No | Auth service log verbosity. Accepted values: `debug`, `info`, `warn`, `error`. |
+| `AUTH_JWT_CUSTOM_CLAIMS` | JSON | *(empty)* | No | Custom JWT claims built from user metadata. The `multi-app` template sets `{"source-account-id":"metadata.source_account_id"}` so every Hasura permission filter can compare against `x-hasura-source-account-id`. See [[Multi-App-Isolation]]. |
 
 ### SMTP (for Auth emails)
 
