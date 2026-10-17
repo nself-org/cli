@@ -257,3 +257,25 @@ func TestSharedProxyCertsUnwritableOwner(t *testing.T) {
 		t.Error("a refused build wrote into the owner's nginx tree")
 	}
 }
+
+// TestInstallCertUnderPlanBoundApply: a plan-bound apply (expectSink) installs the
+// pair on disk. The bytes are a runtime effect, so the plan cannot list them and the
+// sink would refuse them as "not in the plan" (found by the P7-ADOPT-21 e2e).
+func TestInstallCertUnderPlanBoundApply(t *testing.T) {
+	root := t.TempDir()
+	workdir, ownerSSL := filepath.Join(root, "owner", "b"), filepath.Join(root, "owner", "ssl")
+	writeCert(t, filepath.Join(workdir, "ssl", "certificates", "b-test"), time.Now().Add(48*time.Hour))
+	if err := os.MkdirAll(filepath.Join(ownerSSL, "certificates"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	st := &buildState{sink: newExpectSink(workdir, &PlannedBuild{Files: map[string]PlannedFile{}})}
+	sp := &sharedProxy{project: "bproj", workdir: workdir, sslDir: ownerSSL}
+	if err := st.installCert(sp, "b-test", false); err != nil {
+		t.Fatalf("installCert under a plan-bound apply: %v", err)
+	}
+	for _, f := range certFiles {
+		if _, err := os.Stat(filepath.Join(ownerSSL, "certificates", "b-test", f)); err != nil {
+			t.Errorf("%s not installed: %v", f, err)
+		}
+	}
+}
