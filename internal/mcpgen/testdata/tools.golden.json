@@ -3408,7 +3408,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -3477,7 +3483,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -3571,6 +3583,11 @@
                 "description": "Print the planned actions without installing",
                 "type": "boolean"
               },
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              },
               "force": {
                 "default": false,
                 "description": "Re-install even if already installed; skips same-version check (repair/upgrade path). License is still validated.",
@@ -3655,6 +3672,11 @@
           "flags": {
             "additionalProperties": false,
             "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              },
               "installed": {
                 "default": false,
                 "description": "Show only bundles with at least one active plugin",
@@ -3809,7 +3831,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -3882,7 +3910,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -3944,7 +3978,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -4025,7 +4065,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -4146,7 +4192,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -4209,7 +4261,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -4276,7 +4334,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -4358,6 +4422,11 @@
               "arch": {
                 "default": "",
                 "description": "Server architecture: amd64|arm64",
+                "type": "string"
+              },
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
                 "type": "string"
               },
               "host": {
@@ -4520,6 +4589,11 @@
                 "default": false,
                 "description": "Include hidden servers (no host configured)",
                 "type": "boolean"
+              },
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
               }
             },
             "type": "object"
@@ -4603,7 +4677,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -4662,6 +4742,11 @@
           "flags": {
             "additionalProperties": false,
             "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              },
               "refresh": {
                 "default": false,
                 "description": "Bypass the 60-second probe cache",
@@ -4758,7 +4843,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -4816,7 +4907,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -4875,7 +4972,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -5051,7 +5154,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -5120,7 +5229,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -5178,7 +5293,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -5230,7 +5351,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -5347,7 +5474,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -5449,12 +5582,18 @@
             "type": "array"
           },
           "env": {
-            "description": "Deprecated: Env suffix (dev/staging/prod); not available on machine surfaces in v1.5.",
+            "description": "Deprecated: Env suffix (dev/staging/prod). Use flags.env.",
             "type": "string"
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           },
           "key": {
@@ -5530,6 +5669,11 @@
                 "default": false,
                 "description": "Show what would change without writing",
                 "type": "boolean"
+              },
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
               },
               "force": {
                 "default": false,
@@ -5642,7 +5786,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -5715,7 +5865,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -5803,6 +5959,11 @@
               "base-url": {
                 "default": "",
                 "description": "nSelf API base URL (overrides NSELF_API_URL)",
+                "type": "string"
+              },
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
                 "type": "string"
               }
             },
@@ -5912,6 +6073,11 @@
           "flags": {
             "additionalProperties": false,
             "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              },
               "table": {
                 "default": "",
                 "description": "Audit a single table by name (default: all np_* tables)",
@@ -6001,7 +6167,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -6084,7 +6256,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -6274,6 +6452,11 @@
           "flags": {
             "additionalProperties": false,
             "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              },
               "force": {
                 "default": false,
                 "description": "Confirm pending hand-edited generated file overwrites",
@@ -6342,7 +6525,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -6401,6 +6590,11 @@
           "flags": {
             "additionalProperties": false,
             "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              },
               "open": {
                 "default": false,
                 "description": "Open the plugin marketplace page in a browser",
@@ -6476,7 +6670,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -6566,6 +6766,11 @@
                 "default": false,
                 "description": "Show detailed information",
                 "type": "boolean"
+              },
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
               },
               "installed": {
                 "default": false,
@@ -6676,7 +6881,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -6742,7 +6953,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -6801,6 +7018,11 @@
           "flags": {
             "additionalProperties": false,
             "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              },
               "free": {
                 "default": false,
                 "description": "Show only free (MIT) plugins",
@@ -6906,7 +7128,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -6969,6 +7197,11 @@
                 "default": false,
                 "description": "Show detailed status",
                 "type": "boolean"
+              },
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
               }
             },
             "type": "object"
@@ -7043,7 +7276,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -7107,6 +7346,11 @@
                 "description": "Allow updating to/from an EOL plugin (not recommended)",
                 "type": "boolean"
               },
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              },
               "tier": {
                 "default": "",
                 "description": "Switch the plugin to \"free\" or \"licensed\" on purpose (needs a plugin name); default keeps the installed tier",
@@ -7164,7 +7408,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -7300,7 +7550,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "dev",
+                "description": "Environment (dev, staging, prod)",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -7371,7 +7627,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "dev",
+                "description": "Environment (dev, staging, prod)",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -7423,7 +7685,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "dev",
+                "description": "Environment (dev, staging, prod)",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -7494,7 +7762,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "dev",
+                "description": "Environment (dev, staging, prod)",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -7565,7 +7839,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "dev",
+                "description": "Environment (dev, staging, prod)",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -7645,6 +7925,11 @@
           "flags": {
             "additionalProperties": false,
             "properties": {
+              "env": {
+                "default": "dev",
+                "description": "Environment (dev, staging, prod)",
+                "type": "string"
+              },
               "project": {
                 "default": "",
                 "description": "Project directory (default current directory)",
@@ -7725,6 +8010,11 @@
           "flags": {
             "additionalProperties": false,
             "properties": {
+              "env": {
+                "default": "dev",
+                "description": "Environment (dev, staging, prod)",
+                "type": "string"
+              },
               "remove": {
                 "default": "",
                 "description": "Public key to remove from recipients",
@@ -7847,7 +8137,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "dev",
+                "description": "Environment (dev, staging, prod)",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -7969,6 +8265,11 @@
                 "default": false,
                 "description": "Keep old key as _PREVIOUS during overlap window",
                 "type": "boolean"
+              },
+              "env": {
+                "default": "dev",
+                "description": "Environment (dev, staging, prod)",
+                "type": "string"
               }
             },
             "type": "object"
@@ -8077,6 +8378,11 @@
           "flags": {
             "additionalProperties": false,
             "properties": {
+              "env": {
+                "default": "dev",
+                "description": "Environment (dev, staging, prod)",
+                "type": "string"
+              },
               "secret": {
                 "default": "",
                 "description": "Filter log to a specific secret name",
@@ -8154,6 +8460,11 @@
           "flags": {
             "additionalProperties": false,
             "properties": {
+              "env": {
+                "default": "dev",
+                "description": "Environment (dev, staging, prod)",
+                "type": "string"
+              },
               "every": {
                 "default": "",
                 "description": "Rotation interval in days, e.g. 90d (requires --secret)",
@@ -8270,7 +8581,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "dev",
+                "description": "Environment (dev, staging, prod)",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -8382,7 +8699,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "dev",
+                "description": "Environment (dev, staging, prod)",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -8515,6 +8838,11 @@
                 "description": "Print what would be done without writing files",
                 "type": "boolean"
               },
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              },
               "force": {
                 "default": false,
                 "description": "Overwrite existing service directory",
@@ -8584,6 +8912,11 @@
           "flags": {
             "additionalProperties": false,
             "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              },
               "provider": {
                 "default": "",
                 "description": "Email provider preset name",
@@ -8647,7 +8980,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -8705,7 +9044,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -8762,6 +9107,11 @@
                 "default": false,
                 "description": "List the service catalog (required vs optional) instead of this project's status",
                 "type": "boolean"
+              },
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
               }
             },
             "type": "object"
@@ -8851,7 +9201,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -8932,7 +9288,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -8994,7 +9356,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -9052,7 +9420,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -9110,7 +9484,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -9168,7 +9548,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -9230,7 +9616,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -9296,12 +9688,17 @@
             "type": "string"
           },
           "env": {
-            "description": "Deprecated: Env suffix (dev/staging/prod); not available on machine surfaces in v1.5.",
+            "description": "Deprecated: Env suffix (dev/staging/prod). Use flags.env.",
             "type": "string"
           },
           "flags": {
             "additionalProperties": false,
             "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              },
               "force": {
                 "default": false,
                 "description": "Allow overwriting hand-edited generated files",
@@ -9607,12 +10004,17 @@
             "type": "array"
           },
           "env": {
-            "description": "Deprecated: Env suffix (dev/staging/prod); not available on machine surfaces in v1.5.",
+            "description": "Deprecated: Env suffix (dev/staging/prod). Use flags.env.",
             "type": "string"
           },
           "flags": {
             "additionalProperties": false,
             "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              },
               "format": {
                 "default": "table",
                 "description": "Output format: table|yaml|json",
@@ -9656,7 +10058,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -9719,7 +10127,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -9771,7 +10185,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -9823,7 +10243,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -9879,7 +10305,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -9963,6 +10395,11 @@
                 "default": false,
                 "description": "ACME client: print the resolved stack, lineage and webroot; write nothing",
                 "type": "boolean"
+              },
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
               },
               "nginx-container": {
                 "default": "",
@@ -10105,6 +10542,11 @@
               "email": {
                 "default": "",
                 "description": "ACME client: ACME contact (default: stored contact, ACME_EMAIL, ADMIN_EMAIL)",
+                "type": "string"
+              },
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
                 "type": "string"
               },
               "force": {
@@ -10269,6 +10711,11 @@
                 "description": "Email for Let's Encrypt registration",
                 "type": "string"
               },
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              },
               "install-cron": {
                 "default": false,
                 "description": "Install a systemd timer for automatic certificate renewal (Linux only)",
@@ -10405,7 +10852,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -10458,6 +10911,11 @@
           "flags": {
             "additionalProperties": false,
             "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              },
               "project": {
                 "default": "",
                 "description": "Path to nself project directory",
@@ -10539,7 +10997,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Target environment (reads .env.{env})",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -15840,6 +16304,11 @@
                 "default": "",
                 "description": "Path to the SQL migration file to apply",
                 "type": "string"
+              },
+              "plugin": {
+                "default": "",
+                "description": "Migrate specific plugin schema",
+                "type": "string"
               }
             },
             "type": "object"
@@ -15893,7 +16362,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "plugin": {
+                "default": "",
+                "description": "Migrate specific plugin schema",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -16000,6 +16475,11 @@
                 "description": "Resolve migration names against this directory instead of the auto-detected one",
                 "type": "string"
               },
+              "plugin": {
+                "default": "",
+                "description": "Migrate specific plugin schema",
+                "type": "string"
+              },
               "yes": {
                 "default": false,
                 "description": "Skip interactive confirmation (required for non-interactive/CI use)",
@@ -16063,7 +16543,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "plugin": {
+                "default": "",
+                "description": "Migrate specific plugin schema",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -16124,6 +16610,11 @@
               "migration-dir": {
                 "default": "",
                 "description": "Revert migrations of this directory using \u003cname\u003e_down.sql or \u003cname\u003e.down.sql (default: the auto-detected directory, last migration only)",
+                "type": "string"
+              },
+              "plugin": {
+                "default": "",
+                "description": "Migrate specific plugin schema",
                 "type": "string"
               },
               "steps": {
@@ -16264,6 +16755,11 @@
                 "description": "Directory to write migration files into",
                 "type": "string"
               },
+              "plugin": {
+                "default": "",
+                "description": "Migrate specific plugin schema",
+                "type": "string"
+              },
               "yes": {
                 "default": false,
                 "description": "Auto-accept the proposal without interactive confirmation",
@@ -16327,7 +16823,13 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "plugin": {
+                "default": "",
+                "description": "Migrate specific plugin schema",
+                "type": "string"
+              }
+            },
             "type": "object"
           }
         },
@@ -16390,6 +16892,11 @@
               "migration-dir": {
                 "default": "",
                 "description": "Lint migrations in this directory instead of the auto-detected one",
+                "type": "string"
+              },
+              "plugin": {
+                "default": "",
+                "description": "Migrate specific plugin schema",
                 "type": "string"
               }
             },
@@ -16461,6 +16968,11 @@
               "migration-dir": {
                 "default": "",
                 "description": "Report status for migrations in this directory instead of the auto-detected one",
+                "type": "string"
+              },
+              "plugin": {
+                "default": "",
+                "description": "Migrate specific plugin schema",
                 "type": "string"
               },
               "server": {
@@ -16557,6 +17069,11 @@
               "migration-dir": {
                 "default": "",
                 "description": "Apply all .sql files in this directory in lexicographic order (skips already-applied)",
+                "type": "string"
+              },
+              "plugin": {
+                "default": "",
+                "description": "Migrate specific plugin schema",
                 "type": "string"
               },
               "server": {
@@ -24611,7 +25128,33 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Environment to load config for",
+                "type": "string"
+              },
+              "interval": {
+                "default": 10,
+                "description": "Watch interval in seconds",
+                "type": "integer"
+              },
+              "quiet": {
+                "default": false,
+                "description": "Only output on failure",
+                "type": "boolean"
+              },
+              "retries": {
+                "default": 3,
+                "description": "Retry count on failure",
+                "type": "integer"
+              },
+              "timeout": {
+                "default": 30,
+                "description": "Check timeout in seconds",
+                "type": "integer"
+              }
+            },
             "type": "object"
           }
         },
@@ -24698,7 +25241,33 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Environment to load config for",
+                "type": "string"
+              },
+              "interval": {
+                "default": 10,
+                "description": "Watch interval in seconds",
+                "type": "integer"
+              },
+              "quiet": {
+                "default": false,
+                "description": "Only output on failure",
+                "type": "boolean"
+              },
+              "retries": {
+                "default": 3,
+                "description": "Retry count on failure",
+                "type": "integer"
+              },
+              "timeout": {
+                "default": 30,
+                "description": "Check timeout in seconds",
+                "type": "integer"
+              }
+            },
             "type": "object"
           }
         },
@@ -24768,7 +25337,33 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Environment to load config for",
+                "type": "string"
+              },
+              "interval": {
+                "default": 10,
+                "description": "Watch interval in seconds",
+                "type": "integer"
+              },
+              "quiet": {
+                "default": false,
+                "description": "Only output on failure",
+                "type": "boolean"
+              },
+              "retries": {
+                "default": 3,
+                "description": "Retry count on failure",
+                "type": "integer"
+              },
+              "timeout": {
+                "default": 30,
+                "description": "Check timeout in seconds",
+                "type": "integer"
+              }
+            },
             "type": "object"
           }
         },
@@ -24824,7 +25419,33 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Environment to load config for",
+                "type": "string"
+              },
+              "interval": {
+                "default": 10,
+                "description": "Watch interval in seconds",
+                "type": "integer"
+              },
+              "quiet": {
+                "default": false,
+                "description": "Only output on failure",
+                "type": "boolean"
+              },
+              "retries": {
+                "default": 3,
+                "description": "Retry count on failure",
+                "type": "integer"
+              },
+              "timeout": {
+                "default": 30,
+                "description": "Check timeout in seconds",
+                "type": "integer"
+              }
+            },
             "type": "object"
           }
         },
@@ -24932,7 +25553,33 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {},
+            "properties": {
+              "env": {
+                "default": "",
+                "description": "Environment to load config for",
+                "type": "string"
+              },
+              "interval": {
+                "default": 10,
+                "description": "Watch interval in seconds",
+                "type": "integer"
+              },
+              "quiet": {
+                "default": false,
+                "description": "Only output on failure",
+                "type": "boolean"
+              },
+              "retries": {
+                "default": 3,
+                "description": "Retry count on failure",
+                "type": "integer"
+              },
+              "timeout": {
+                "default": 30,
+                "description": "Check timeout in seconds",
+                "type": "integer"
+              }
+            },
             "type": "object"
           }
         },
