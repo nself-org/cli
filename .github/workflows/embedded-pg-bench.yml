@@ -30,7 +30,7 @@ jobs:
       matrix:
         os:
           - ubuntu-latest
-          - macos-14          # Apple Silicon — primary deployment target
+          - macos-15          # Apple Silicon — primary deployment target
 
     steps:
       - uses: actions/checkout@v7.0.1
