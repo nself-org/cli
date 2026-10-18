@@ -276,3 +276,22 @@ func TestScrubErrKeepsExitStatus(t *testing.T) {
 		t.Errorf("code lost: %#v", out)
 	}
 }
+
+// TestScrubRedactsHeldTokensAndSegmentedTokens: the tokens in the auth file are
+// redacted whatever their shape, and a base64url token split into short mixed
+// segments is not mistaken for a device name.
+func TestScrubRedactsHeldTokensAndSegmentedTokens(t *testing.T) {
+	home := isolateHome(t)
+	const held = "plain-held-session"
+	writeTestAuthFile(t, home, &auth.AuthFile{AccessToken: held + "-access", SessionToken: held})
+	const segmented = "aB3dE5fG7h_Jk2Lm4No6P_qR8sT0uV1w_Xy2Za4Bc6D"
+	got := newScrubber().str("a " + held + "-access b " + held + " c " + segmented)
+	for _, secret := range []string{held, segmented} {
+		if strings.Contains(got, secret) {
+			t.Errorf("secret survived: %q", got)
+		}
+	}
+	if keep := "Alis-MacBook-Pro-14-inch"; newScrubber().str(keep) != keep {
+		t.Error("device name rewritten")
+	}
+}

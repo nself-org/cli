@@ -18,6 +18,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/nself-org/cli/internal/auth"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/license"
 	"github.com/spf13/cobra"
@@ -29,6 +30,7 @@ var (
 	licenseKeyShape = regexp.MustCompile(`nself_[a-z]+_[A-Za-z0-9_-]{8,}`)
 	jwtShape        = regexp.MustCompile(`eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}(\.[A-Za-z0-9_-]*)?`)
 	tokenRun        = regexp.MustCompile(`[A-Za-z0-9_-]{24,}`)
+	uuidInside      = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
 	uuidShape       = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 	dateShape       = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}[T0-9Z.+-]*$`)
 	digitShape      = regexp.MustCompile(`[0-9]`)
@@ -42,11 +44,20 @@ const licenseScrubMax = 200
 
 // scrubber masks the keys it knows: the configured ones, the --key flag of
 // `license migrate`, and any extra the caller names.
-type scrubber struct{ keys []string }
+type scrubber struct{ keys, tokens []string }
 
 func newScrubber(extra ...string) scrubber {
 	keys := append(license.CollectLicenseKeys(), migrateKeyFlag)
-	return scrubber{keys: append(keys, extra...)}
+	sc := scrubber{keys: append(keys, extra...)}
+	// The tokens this machine holds are redacted whatever their shape.
+	if af, err := auth.ReadAuthFile(); err == nil && af != nil {
+		for _, tok := range []string{af.AccessToken, af.SessionToken} {
+			if len(tok) >= 8 {
+				sc.tokens = append(sc.tokens, tok)
+			}
+		}
+	}
+	return sc
 }
 
 // opaque reports whether a 24+ character run looks like an access or session
@@ -56,22 +67,31 @@ func opaque(run string) bool {
 	if uuidShape.MatchString(run) || dateShape.MatchString(run) || wordLike(run) {
 		return false
 	}
+	if uuidInside.MatchString(run) { // an id like "dev-<uuid>": judge what is around the UUID
+		for _, piece := range uuidInside.Split(run, -1) {
+			if piece = strings.Trim(piece, "-_"); len(piece) >= 16 && opaque(piece) {
+				return true
+			}
+		}
+		return false
+	}
 	if digitShape.MatchString(run) && letterShape.MatchString(run) {
 		return true
 	}
 	return upperShape.MatchString(run) && lowerShape.MatchString(run)
 }
 
-// wordLike reports whether a run is words joined by - or _ (a device name such
-// as "Alis-MacBook-Pro-14-inch"): three or more segments, none longer than 12
-// characters. A random base64url token almost never splits that finely.
+// wordLike reports whether a run is words and numbers joined by - or _ (a
+// device name such as "Alis-MacBook-Pro-14-inch"): three or more segments,
+// each either only letters or only digits, none longer than 12 characters. A
+// random token mixes letters and digits inside its segments.
 func wordLike(run string) bool {
 	segs := strings.FieldsFunc(run, func(r rune) bool { return r == '-' || r == '_' })
 	if len(segs) < 3 {
 		return false
 	}
 	for _, g := range segs {
-		if len(g) > 12 {
+		if len(g) > 12 || (digitShape.MatchString(g) && letterShape.MatchString(g)) {
 			return false
 		}
 	}
@@ -85,6 +105,9 @@ func (sc scrubber) secrets(s string) string {
 		if key != "" {
 			s = strings.ReplaceAll(s, key, license.MaskKey(key))
 		}
+	}
+	for _, tok := range sc.tokens {
+		s = strings.ReplaceAll(s, tok, "[REDACTED]")
 	}
 	s = jwtShape.ReplaceAllString(s, "[REDACTED]")
 	return licenseKeyShape.ReplaceAllStringFunc(s, license.MaskKey)
