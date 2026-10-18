@@ -11,6 +11,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	nbuild "github.com/nself-org/cli/internal/build"
@@ -133,19 +134,21 @@ func TestPlannedRecordPrunesUnderBuildPluginDir(t *testing.T) {
 }
 
 // TestPluginDirOnlyInProjectEnv (D-0607) runs the real plan and apply with
-// NSELF_PLUGIN_DIR set only in the project's .env: the fragment is recorded
-// as "@plugins/", keeps its entry across a build that does not rewrite it, a
-// hand-edit of it is refused without --force, and removing the plugin prunes
-// the entry.
+// NSELF_PLUGIN_DIR set only in the project's .env: the normalized fragment is
+// written as a project overlay (D-0318) and recorded under its project path,
+// the installation stays untouched, the record is kept across a rebuild, a
+// hand-edit of the overlay is refused without --force, and removing the plugin
+// drops its overlay from the compose manifest.
 func TestPluginDirOnlyInProjectEnv(t *testing.T) {
 	for _, tc := range shellPluginDirs {
 		t.Run(tc.name, func(t *testing.T) {
 			f := loadFixture(t, "dev-plugin")
 			env := readFile(t, filepath.Join(f.project, ".env"))
 			writeFile(t, filepath.Join(f.project, ".env"), env+"NSELF_PLUGIN_DIR="+f.plugins+"\n", 0o600)
-			frag := filepath.Join(f.plugins, "nself-alpha", "docker-compose.plugin.yml")
-			raw := readFile(t, frag)
-			key := PluginsPrefix + "nself-alpha/docker-compose.plugin.yml"
+			installed := filepath.Join(f.plugins, "nself-alpha", "docker-compose.plugin.yml")
+			raw := readFile(t, installed)
+			key := ".nself/plugins/nself-alpha/docker-compose.plugin.yml"
+			frag := filepath.Join(f.project, filepath.FromSlash(key))
 			// A write-mode build loads the project env into the process and
 			// keeps it, so the shell state is put back before every step.
 			apply := func(opt ApplyOptions) error {
@@ -173,7 +176,10 @@ func TestPluginDirOnlyInProjectEnv(t *testing.T) {
 			}
 			normalized := readFile(t, frag)
 			if normalized == raw {
-				t.Fatal("fixture precondition: the first build must rewrite the fragment")
+				t.Fatal("fixture precondition: the first build must normalize the fragment")
+			}
+			if readFile(t, installed) != raw {
+				t.Fatal("the build changed the installed fragment")
 			}
 
 			// A build that does not rewrite the fragment keeps its entry.
@@ -193,14 +199,17 @@ func TestPluginDirOnlyInProjectEnv(t *testing.T) {
 			}
 
 			// A removed plugin leaves the record.
+			writeFile(t, frag, normalized, 0o644)
 			if err := os.RemoveAll(filepath.Join(f.plugins, "nself-alpha")); err != nil {
 				t.Fatal(err)
 			}
 			if err := apply(ApplyOptions{Yes: true}); err != nil {
 				t.Fatal(err)
 			}
-			if recorded() {
-				t.Fatalf("a removed plugin's %s must leave the record", key)
+			// The overlay of a removed plugin is project debris, not an input: the
+			// compose manifest stops naming it.
+			if manifest := readFile(t, filepath.Join(f.project, ".nself", "compose-files.txt")); strings.Contains(manifest, "nself-alpha") {
+				t.Fatalf("a removed plugin's overlay is still in the compose manifest:\n%s", manifest)
 			}
 		})
 	}
