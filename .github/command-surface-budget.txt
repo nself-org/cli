@@ -1,30 +1,9 @@
-# CLI-R11 ratchet. Number of top-level commands the core binary may register.
-# May only go DOWN. Target is ~35 (approved core list in the DECISIONS section
-# of .claude/tasks/cli-review-tickets-2026-08-23.md).
-# internal/repoqa/command_surface_test.go fails if the real count rises above
-# this, and separately if this number is left higher than reality.
+# Command-surface ratchet (ADR 0016). Number of visible top-level commands the
+# v1.5 core binary registers; internal/repoqa/command_surface_test.go requires it
+# to EQUAL the real count (TestCommandSurfaceBudgetIsTight) and never to exceed the
+# canon verb list (TestCanonCeiling).
 #
-# 2026-08-26: +1 for `access` (issue #238). Deliberate exception, not
-# creep: hcloud only injects SSH keys at server-creation time and `nself
-# security` covers firewall/fail2ban/sshd only, so granting or revoking a
-# teammate's SSH key on an already-deployed host had no CLI path at all.
-# `nself access grant/revoke/list` is the command surface named directly
-# in #238's proposed shape.
-#
-# 2026-09-11: +1 for `server` (gap G-011). Deliberate exception, not
-# creep: `nself access` only manages SSH keys on an already-deployed host
-# and `nself security` only audits one — neither can create, list, resize,
-# or destroy the server itself, so an operator provisioning or tearing down
-# a box had no CLI path and fell back to raw `hcloud server create` /
-# `hcloud server delete`, with none of the backup/IP-protection safety this
-# command enforces. `nself server provision/list/resize/destroy` is the
-# surface G-011 names directly.
-#
-# 2026-09-11: +1 for `runner` (gap G-012). Deliberate exception, not
-# creep: onboarding a self-hosted CI runner host had no CLI path — the
-# dependency manifest (gh/zip/unzip/etc.) was installed and verified by
-# hand, which is exactly how one host silently drifted from another and
-# hid a job failure behind a misleading browser error for hours on
-# 2026-09-11. `nself runner provision/verify` is the surface G-012 names
-# directly.
-52
+# 2026-10-18 (P7-CANON-17): 52 -> 20, the v1.5 canon. Every other former top-level
+# command is a shim, a move, a plugin break-out or a mounted plugin family (see
+# .github/wiki/Command-Canon.md). Editing this number needs an ADR 0016 amendment.
+20

@@ -2,6 +2,98 @@
 
 All notable changes to the ɳSelf CLI are documented in this file. Format loosely
 follows Keep a Changelog, with Conventional Commit classification.
+
+## [Unreleased] - v1.5 command canon (ADR 0016)
+
+`nself --help` lists 20 verbs and fits one screen. Every other former top-level command moved, was shimmed, or left core for a plugin. Each old spelling keeps working through all v1.5.x releases with a deprecation warning and is removed at v1.6.0; break-outs and removals have no removal date. The full table is generated in [[Command-Canon]]; `scripts/ci/old-spellings.sh` lists the Go literals and doc lines that still name an old spelling.
+
+- feat(canon): final ratchet: surface budget 52 to 20 with equality restored (`TestCommandSurfaceBudgetIsTight`), permanent ceiling (`TestCanonCeiling`), no pending command (`TestCanonNoPending`), shim lifetime (`TestCanonShimLifetime`: fails at 1.6.0 until the rows are deleted), root help fits 45 lines (`TestHelpFits`) (P7-CANON-17)
+
+### Moved
+
+| Old | New | Removal at |
+|---|---|---|
+| `nself access` | `nself deploy access` | v1.6.0 |
+| `nself account` | `nself license account` | v1.6.0 |
+| `nself bundle` | `nself config bundles` | v1.6.0 |
+| `nself dev` | `nself start dev` | v1.6.0 |
+| `nself env` | `nself config env` | v1.6.0 |
+| `nself generate` | `nself db generate` | v1.6.0 |
+| `nself health` | `nself status health` | v1.6.0 |
+| `nself help-topics` | `nself help topics` | v1.6.0 |
+| `nself install` | `nself add` | v1.6.0 |
+| `nself login` | `nself license login` | v1.6.0 |
+| `nself logout` | `nself license logout` | v1.6.0 |
+| `nself migrate appwrite` | `nself db import appwrite` | v1.6.0 |
+| `nself migrate detect` | `nself update project detect` | v1.6.0 |
+| `nself migrate firebase` | `nself db import firebase` | v1.6.0 |
+| `nself migrate from-bash` | `nself update project from-bash` | v1.6.0 |
+| `nself migrate from-v099` | `nself update project from-v099` | v1.6.0 |
+| `nself migrate generate` | `nself db migrate generate` | v1.6.0 |
+| `nself migrate hasura-cloud` | `nself db import hasura-cloud` | v1.6.0 |
+| `nself migrate nhost` | `nself db import nhost` | v1.6.0 |
+| `nself migrate nself` | `nself db import nself` | v1.6.0 |
+| `nself migrate postgres` | `nself db import postgres` | v1.6.0 |
+| `nself migrate rollback` | `nself update project rollback` | v1.6.0 |
+| `nself migrate run` | `nself update project run` | v1.6.0 |
+| `nself migrate supabase` | `nself db import supabase` | v1.6.0 |
+| `nself migrate watch` | `nself db migrate watch` | v1.6.0 |
+| `nself oauth` | `nself config oauth` | v1.6.0 |
+| `nself ops deploy` | `nself deploy ops` | v1.6.0 |
+| `nself plugin` | `nself config plugins` | v1.6.0 |
+| `nself promote` | `nself deploy promote-env` | v1.6.0 |
+| `nself secrets` | `nself config secrets` | v1.6.0 |
+| `nself security audit` | `nself doctor security audit` | v1.6.0 |
+| `nself security setup` | `nself deploy security setup` | v1.6.0 |
+| `nself security status` | `nself doctor security status` | v1.6.0 |
+| `nself self-heal` | `nself doctor heal` | v1.6.0 |
+| `nself service` | `nself config services` | v1.6.0 |
+| `nself telemetry` | `nself config telemetry` | v1.6.0 |
+| `nself template` | `nself init template` | v1.6.0 |
+| `nself trust` | `nself config trust` | v1.6.0 |
+| `nself urls` | `nself status urls` | v1.6.0 |
+| `nself verify-sbom` | `nself update verify-sbom` | v1.6.0 |
+
+### Shimmed onto an equivalent command
+
+| Old | New | Removal at |
+|---|---|---|
+| `nself bundle remove` | `nself remove` | v1.6.0 |
+| `nself plugin install` | `nself add` | v1.6.0 |
+| `nself plugin remove` | `nself remove` | v1.6.0 |
+
+### Retired hubs (the old group forwards to its replacement)
+
+| Old | New | Removal at |
+|---|---|---|
+| `nself migrate` | `nself db` | v1.6.0 |
+| `nself ops` | `nself deploy ops` | v1.6.0 |
+| `nself security` | `nself doctor security` | v1.6.0 |
+
+### Broken out to a plugin (auto-added on first use; no removal date)
+
+| Old | New | Removal at |
+|---|---|---|
+| `nself ci` | `nself ci` (plugin ci) | — |
+| `nself functions` | `nself functions` (plugin functions) | — |
+| `nself plugin debug` | `nself plugin-dev debug` (plugin plugin-dev) | — |
+| `nself plugin dev` | `nself plugin-dev dev` (plugin plugin-dev) | — |
+| `nself plugin init` | `nself plugin-dev init` (plugin plugin-dev) | — |
+| `nself plugin link` | `nself plugin-dev link` (plugin plugin-dev) | — |
+| `nself plugin new` | `nself plugin-dev new` (plugin plugin-dev) | — |
+| `nself plugin test` | `nself plugin-dev test` (plugin plugin-dev) | — |
+| `nself plugin unlink` | `nself plugin-dev unlink` (plugin plugin-dev) | — |
+| `nself runner` | `nself ci nodes` (plugin ci) | — |
+| `nself server` | `nself infra server` (plugin infra) | — |
+
+### Removed
+
+| Old | New | Removal at |
+|---|---|---|
+| `nself plugin marketplace` | — | — |
+| `nself plugin submit` | — | — |
+
+
 ## [1.4.13] - 2026-10-10
 
 - fix(compose): pull MinIO from the maintained pgsty fork (#476)
