@@ -57,8 +57,8 @@ nself db reconcile --apply    # pushes it
 Reconcile sends targeted per-object calls and never replaces the whole Hasura
 metadata document, so hasura-auth's own tables stay tracked. Do not run
 `nself db hasura metadata apply` here. The metadata lives in
-`hasura/metadata/databases/default/tables/tables.yaml`; `hasura/metadata.json`
-holds the same tables.
+`hasura/metadata/databases/default/tables/tables.yaml`, and the template ships
+no `hasura/metadata.json` on purpose, because that command would read it.
 
 Add a member with the admin secret:
 
