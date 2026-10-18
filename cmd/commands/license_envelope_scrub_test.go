@@ -201,3 +201,25 @@ func TestAccountParentFailureIsScrubbed(t *testing.T) {
 	}
 	noSecrets(t, "license account error", err.Error(), hostileOtherKey)
 }
+
+// TestUsageErrorMasksLicenceKey: a licence key typed as the value of any flag
+// (here the bool --yes, which is not secret-named) is masked in the E401 text
+// that reaches the error envelope, for the parser's own wording and for a
+// shorthand tail.
+func TestUsageErrorMasksLicenceKey(t *testing.T) {
+	compattest.Set(t, true)
+	for _, msg := range []string{
+		`invalid argument "` + hostileOtherKey + `" for "--yes" flag: strconv.ParseBool: parsing "` + hostileOtherKey + `": invalid syntax`,
+		`unknown flag: --` + hostileOtherKey,
+	} {
+		err := codedUsageError(errors.New(msg))
+		if err == nil {
+			t.Fatalf("no error for %q", msg)
+		}
+		noSecrets(t, "usage error", err.Error(), hostileOtherKey)
+		var ce *errs.CLIError
+		if !errors.As(err, &ce) || ce.Code != "E401" {
+			t.Errorf("want E401, got %#v", err)
+		}
+	}
+}
