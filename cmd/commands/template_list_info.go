@@ -112,8 +112,30 @@ func runTemplateList(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// bundledTemplateInfo answers `nself template info <slug>` for a template the
+// binary embeds, offline; ok is false for any other name (the registry answers).
+func bundledTemplateInfo(cmd *cobra.Command, slug string) (ok bool, err error) {
+	m, merr := clone.GetManifest(slug)
+	if slug != "multi-app" || merr != nil {
+		return false, nil
+	}
+	e := templateEntry{Slug: m.Name, DisplayName: m.Name, Description: m.Description, Category: "bundled", Author: "nSelf", RequiredPlugins: nonNilStrings(m.RequiredPlugins), TemplateVersion: m.Version}
+	if jsonEnvelopeOn(cmd) {
+		return true, emitEnv(cmd, e, true)
+	}
+	if asJSON, _ := cmd.Flags().GetBool("json"); asJSON {
+		return true, ui.PrintJSON(e)
+	}
+	fmt.Printf("\n  %s v%s (bundled, no network required)\n  %s\n", m.Name, m.Version, m.Description)
+	printTemplateNextSteps(os.Stdout, "<dest-dir>", m)
+	return true, nil
+}
+
 func runTemplateInfo(cmd *cobra.Command, args []string) error {
 	slug := args[0]
+	if ok, err := bundledTemplateInfo(cmd, slug); ok {
+		return err
+	}
 	asJSON, _ := cmd.Flags().GetBool("json")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

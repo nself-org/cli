@@ -190,17 +190,17 @@ func initScaffoldResult(dir, env string, created []string, demo bool, wroteAgent
 }
 
 // templateNext lists the commands that bring a scaffolded template up. A clone
-// template mirrors printCloneNextSteps (init_templates.go), including the plugins
-// its manifest requires.
+// template reports its manifest's next_steps (manifestNextSteps), the same list
+// printTemplateNextSteps prints.
 func templateNext(template string) []string {
 	if !clonetemplate.IsCloneTemplate(template) {
 		return []string{"nself start"}
 	}
-	next := []string{"nself start", "nself db migrate", "nself db hasura metadata apply"}
-	if m, err := clonetemplate.GetManifest(template); err == nil && len(m.RequiredPlugins) > 0 {
-		next = append(next, "nself plugin install "+strings.Join(m.RequiredPlugins, " "))
+	m, err := clonetemplate.GetManifest(template)
+	if err != nil {
+		return []string{"nself start"}
 	}
-	return next
+	return manifestNextSteps(m)
 }
 
 // fileStamp identifies one file version in a tree snapshot.

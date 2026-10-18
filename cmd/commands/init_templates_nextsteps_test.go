@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -162,5 +163,48 @@ func TestInitMultiAppJSONNext(t *testing.T) {
 	}
 	if got := run("discord-clone"); len(got) < 3 || got[0] != "nself start" {
 		t.Errorf("discord-clone next = %v, want the generic clone steps", got)
+	}
+}
+
+// TestTemplateNextReadsManifest: the JSON envelope's next list and the printed
+// next steps come from one source, the manifest's next_steps (D-0916).
+func TestTemplateNextReadsManifest(t *testing.T) {
+	m, err := clonetemplate.GetManifest("multi-app")
+	if err != nil || len(m.NextSteps) == 0 {
+		t.Fatalf("multi-app manifest = %+v (%v), want next_steps", m, err)
+	}
+	if got := templateNext("multi-app"); strings.Join(got, "|") != strings.Join(m.NextSteps, "|") {
+		t.Errorf("templateNext(multi-app) = %v, want the manifest steps %v", got, m.NextSteps)
+	}
+	for _, name := range clonetemplate.All() {
+		if name == "multi-app" {
+			continue
+		}
+		m, err := clonetemplate.GetManifest(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []string{"nself start", "nself db migrate", "nself db hasura metadata apply"}
+		if len(m.RequiredPlugins) > 0 {
+			want = append(want, "nself plugin install "+strings.Join(m.RequiredPlugins, " "))
+		}
+		if got := templateNext(name); strings.Join(got, "|") != strings.Join(want, "|") {
+			t.Errorf("templateNext(%s) = %v, want %v", name, got, want)
+		}
+	}
+	if got := templateNext("go"); len(got) != 1 || got[0] != "nself start" {
+		t.Errorf("templateNext(go) = %v, want [nself start]", got)
+	}
+}
+
+// TestInitTemplateCommandsAreNotWrapped: init() only registers; the commands
+// run their own handlers (D-0916).
+func TestInitTemplateCommandsAreNotWrapped(t *testing.T) {
+	same := func(a, b any) bool { return reflect.ValueOf(a).Pointer() == reflect.ValueOf(b).Pointer() }
+	if !same(initCmd.RunE, runInit) {
+		t.Error("initCmd.RunE is not runInit: a wrapper was patched in at init()")
+	}
+	if !same(templateInfoCmd.RunE, runTemplateInfo) {
+		t.Error("templateInfoCmd.RunE is not runTemplateInfo: a wrapper was patched in at init()")
 	}
 }
