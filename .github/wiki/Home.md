@@ -166,11 +166,11 @@ Optional services (enable per project): **Redis** | **MinIO** (S3 storage) | **S
 <details>
 <summary><strong>Pro Plugins (62)</strong>, License key required, starting at $0.99/mo</summary>
 
-**AI and Automation:** [[plugin-nself-ai-gateway]] · [[plugin-nself-ai-mcp]] · [[plugin-nself-ai-mcp]] · [[plugin-claw]] · [[plugin-claw-web]] · [[plugin-claw-budget]] · [[plugin-mux]] · [[plugin-voice]] · [[plugin-browser]] · [[plugin-bots]] · [[plugin-workflows]]
+**AI and Automation:** `plugin-nself-ai-gateway` · `plugin-nself-ai-mcp` · `plugin-nself-ai-mcp` · [[plugin-claw]] · [[plugin-claw-web]] · [[plugin-claw-budget]] · [[plugin-mux]] · [[plugin-voice]] · [[plugin-browser]] · [[plugin-bots]] · [[plugin-workflows]]
 
-**Communication:** [[plugin-chat]] · [[plugin-livekit]] · [[plugin-streaming]] · [[plugin-realtime]] · [[plugin-podcast]] · [[plugin-meetings]] · [[plugin-recording]]
+**Communication:** [[plugin-chat]] · [[plugin-livekit]] · `plugin-streaming` · [[plugin-realtime]] · [[plugin-podcast]] · [[plugin-meetings]] · `plugin-recording`
 
-**Commerce and Payments:** `plugin-commerce` · [[plugin-stripe]] · [[plugin-paypal]] · [[plugin-shopify]] · `plugin-subscription` · `plugin-checkout` · [[plugin-donorbox-pro]] · [[plugin-entitlements]]
+**Commerce and Payments:** `plugin-commerce` · [[plugin-stripe]] · [[plugin-paypal]] · [[plugin-shopify]] · `plugin-subscription` · `plugin-checkout` · `plugin-donorbox-pro` · [[plugin-entitlements]]
 
 **Content and Social:** [[plugin-cms]] · `plugin-blog` · `plugin-pages` · [[plugin-social]] · [[plugin-activity-feed]] · [[plugin-moderation]] · [[plugin-knowledge-base]] · [[plugin-support]] · [[plugin-documents]] · [[plugin-calendar]] · [[plugin-post]]
 
@@ -180,9 +180,9 @@ Optional services (enable per project): **Redis** | **MinIO** (S3 storage) | **S
 
 **Infrastructure:** [[plugin-google]] · [[plugin-cloudflare]] · [[plugin-object-storage]] · [[plugin-cdn]] · [[plugin-observability]] · [[plugin-ddns]] · [[plugin-devices]] · [[plugin-vpn]] · [[plugin-mdns]]
 
-**Media:** `plugin-media` · [[plugin-media-processing]] · [[plugin-file-processing]] · [[plugin-photos]] · [[plugin-stream-gateway]] · [[plugin-epg]] · `plugin-transcoder` · `plugin-thumb` · `plugin-watermark` · `plugin-drm`
+**Media:** `plugin-media` · [[plugin-media-processing]] · [[plugin-file-processing]] · [[plugin-photos]] · `plugin-stream-gateway` · `plugin-epg` · `plugin-transcoder` · `plugin-thumb` · `plugin-watermark` · `plugin-drm`
 
-**Productivity:** [[plugin-cron-pro]] · [[plugin-notify-pro]] · `plugin-scheduler` · [[plugin-backup-pro]] · [[plugin-analytics]] · `plugin-reports` · `plugin-export` · `plugin-import`
+**Productivity:** `plugin-cron-pro` · `plugin-notify-pro` · `plugin-scheduler` · `plugin-backup-pro` · [[plugin-analytics]] · `plugin-reports` · `plugin-export` · `plugin-import`
 
 **Specialized:** [[plugin-tmdb]] · [[plugin-game-metadata]] · [[plugin-retro-gaming]] · [[plugin-rom-discovery]] · [[plugin-sports]] · [[plugin-geocoding]] · [[plugin-geolocation]] · [[plugin-home]] · [[plugin-web3]] · `plugin-flow` · [[plugin-content-acquisition]] · [[plugin-content-progress]] · [[plugin-torrent-manager]] · [[plugin-subtitle-manager]]
 

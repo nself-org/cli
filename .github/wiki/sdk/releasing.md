@@ -86,4 +86,4 @@ Rotate by repeating the `dart pub token add` step above and updating the secret.
 
 ---
 
-[[Home]] | [[plugin-sdk]] | [[Release-Process]]
+[[Home]] | [[Release-Process]]
