@@ -198,7 +198,7 @@ func TestFragmentNetworkNormalize(t *testing.T) {
 			}
 		}
 	})
-	t.Run("through discovery, written back", func(t *testing.T) {
+	t.Run("through discovery, project overlay", func(t *testing.T) {
 		compattest.Set(t, true)
 		dir := t.TempDir()
 		installPlugin(t, dir, "nself-audit", `{"name":"nself-audit","port":3843}`, fragDefaultNetwork)
@@ -206,10 +206,11 @@ func TestFragmentNetworkNormalize(t *testing.T) {
 		if _, err := discoverPluginComposeFilesFx(writeEffects{}, newDiskSink(dir), dir, dir); err != nil {
 			t.Fatal(err)
 		}
-		if got := readFragment(t, dir, "nself-audit"); strings.Contains(got, ":-nself_network") {
+		overlays := filepath.Join(dir, ".nself", "plugins")
+		if got := readFragment(t, overlays, "nself-audit"); strings.Contains(got, ":-nself_network") {
 			t.Fatalf("fragment on disk still has the default form:\n%s", got)
 		}
-		if got := readFragment(t, dir, "activity-feed"); !strings.Contains(got, "networks:\n      - ${DOCKER_NETWORK}") {
+		if got := readFragment(t, overlays, "activity-feed"); !strings.Contains(got, "networks:\n      - ${DOCKER_NETWORK}") {
 			t.Fatalf("fragment on disk has no network:\n%s", got)
 		}
 	})
