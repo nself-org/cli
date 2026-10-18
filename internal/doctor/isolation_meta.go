@@ -272,13 +272,26 @@ func inheritPerms(t *isoTable, name string, members []string) {
 	if _, own := t.Perms[name]["select"]; !own && len(branches) > 0 {
 		set(name, "select", isoPerm{Filter: map[string]any{"_or": branches}})
 	}
+	// A role may be literally named "name (via member)"; the label never reuses a real key.
+	labels := map[string]string{}
+	label := func(member string) string {
+		if l, ok := labels[member]; ok {
+			return l
+		}
+		l := name + " (via " + member + ")"
+		for t.Perms[l] != nil {
+			l += "'"
+		}
+		labels[member] = l
+		return l
+	}
 	for _, op := range []string{"insert", "update", "delete"} {
 		if _, own := t.Perms[name][op]; own {
 			continue
 		}
 		for _, member := range members {
 			if p, ok := t.Perms[member][op]; ok {
-				set(name+" (via "+member+")", op, p)
+				set(label(member), op, p)
 			}
 		}
 	}

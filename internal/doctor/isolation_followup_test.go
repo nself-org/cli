@@ -107,6 +107,30 @@ func TestIsolationFollowups(t *testing.T) {
 		}
 	})
 
+	t.Run("a real role named like a synthetic label is not overwritten", func(t *testing.T) {
+		doc := `{"version":3,"inherited_roles":[{"role_name":"reader","role_set":["user"]}],"sources":[{"name":"default","tables":[{"table":{"schema":"public","name":"notes"},` +
+			`"delete_permissions":[{"role":"user","permission":{"filter":{"source_account_id":{"_eq":"X-Hasura-Source-Account-Id"}}}},{"role":"reader (via user)","permission":{"filter":{}}}]}]}]}`
+		meta, err := parseIsolationMetadata([]byte(doc))
+		if err != nil {
+			t.Fatal(err)
+		}
+		perms := meta.Tables[0].Perms
+		if m, ok := perms["reader (via user)"]["delete"].Filter.(map[string]any); !ok || len(m) != 0 {
+			t.Errorf("the real role's unrestricted delete was replaced: %+v", perms["reader (via user)"]["delete"])
+		}
+		if _, ok := perms["reader (via user)'"]["delete"]; !ok {
+			t.Error("the inherited delete lost its own label")
+		}
+		cols := isoColumns{"public.notes": {"source_account_id": true}}
+		found := false
+		for _, f := range isolationRules(meta.Tables, cols, false) {
+			found = found || (f.Role == "reader (via user)" && f.Op == "delete" && f.Fail)
+		}
+		if !found {
+			t.Error("ISO-02 must fail the real role reader (via user)")
+		}
+	})
+
 	t.Run("a cyclic role set terminates", func(t *testing.T) {
 		doc := `{"version":3,"inherited_roles":[{"role_name":"a","role_set":["b"]},{"role_name":"b","role_set":["a","user"]}],` +
 			`"sources":[{"name":"default","tables":[{"table":{"schema":"public","name":"notes"},"select_permissions":[{"role":"user","permission":{"filter":{}}}]}]}]}`
