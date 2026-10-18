@@ -360,3 +360,39 @@ func TestScheduledRefreshStaysQuietOnStaleCache(t *testing.T) {
 		t.Fatalf("RunScheduled wrote to stderr: %q", buf.String())
 	}
 }
+
+// TestScheduledRefreshNeedsAPersistedReply: when the licence cache cannot be written the reply is
+// lost and the cache still holds the old token, so the run must fail instead of reporting it.
+func TestScheduledRefreshNeedsAPersistedReply(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	compattest.Set(t, true)
+	p := newArPing(t, time.Now(), "chat")
+	p.seedCache(t)
+	fakeTimer(t)
+	project := t.TempDir()
+	if _, err := RunScheduled(context.Background(), project); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.ReadFile(Path(project))
+	entry, _ := license.ReadCache()
+	entry.FetchedAt = time.Now().Add(-time.Hour).Unix() // the cache the run will fail to replace
+	if err := license.WriteCache(entry); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Dir(os.Getenv("LICENSE_CACHE_PATH"))
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	p.set("ok", time.Now().Add(time.Minute))
+	_, err := RunScheduled(context.Background(), project)
+	var failed *RefreshError
+	if !errors.As(err, &failed) || failed.Class != ClassCacheWrite {
+		t.Fatalf("err = %v, want class %s", err, ClassCacheWrite)
+	}
+	if after, _ := os.ReadFile(Path(project)); !bytes.Equal(before, after) {
+		t.Fatal("entitlement file changed")
+	}
+}

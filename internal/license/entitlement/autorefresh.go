@@ -88,6 +88,7 @@ const (
 	ClassWriteFailed     = "write-failed"
 	ClassInspect         = "plugin-inspect"
 	ClassTimerRemove     = "timer-remove-failed"
+	ClassCacheWrite      = "cache-write-failed"
 )
 
 // RefreshError is a scheduled refresh failure; Error never carries more than the class.
@@ -245,6 +246,7 @@ func revalidateClassified(ctx context.Context) (renewed []string, rejected map[s
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	rejected, class = map[string]bool{}, ClassNoLicence
+	started := time.Now().Unix()
 	for _, key := range license.CollectLicenseKeys() {
 		remote := &validationStatus{client: httptimeout.Default}
 		result, err := license.Validate(ctx, key, &license.ValidatorOptions{HTTPClient: remote, Clock: refreshClock, WarnOnce: func(string) {}})
@@ -252,9 +254,14 @@ func revalidateClassified(ctx context.Context) (renewed []string, rejected map[s
 		case err == nil && explicitRejection(remote, result):
 			rejected[license.HashKey(key)], class = true, ClassRejected
 		case err == nil && result != nil && result.CanProceed && !result.FromCache && result.Status == license.StatusValid:
-			if token, terr := cachedToken(); terr == nil {
+			entry, _ := license.ReadCache()
+			token, terr := cachedToken()
+			switch {
+			case entry == nil || entry.FetchedAt < started-1: // Validate could not persist the reply: the cache is the old one
+				class = ClassCacheWrite
+			case terr == nil:
 				renewed = append(renewed, token)
-			} else if class != ClassRejected {
+			case class != ClassRejected:
 				class = ClassTokenVerify
 			}
 		case remote.status == http.StatusOK && class != ClassRejected: // a 200 whose signature or JWT did not verify

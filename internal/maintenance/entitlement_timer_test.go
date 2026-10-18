@@ -514,7 +514,7 @@ func TestCronSelfDeleteKeepsForeignLines(t *testing.T) {
 		t.Fatalf("cron line failed: %v\n%s", err, out)
 	}
 	got, _ := os.ReadFile(store)
-	if strings.TrimRight(string(got), "\n") != strings.TrimRight(before+after, "\n") {
+	if string(got) != before+after {
 		t.Fatalf("foreign lines changed:\n got %q\nwant %q", got, before+after)
 	}
 }
