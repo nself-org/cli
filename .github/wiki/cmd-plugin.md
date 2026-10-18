@@ -84,6 +84,10 @@ Any *other* slug collision — two unrelated registry entries that happen to sha
 `nself plugin outdated` compares every installed plugin's version against the registry and lists the ones behind, with `--json` for scripting. It exits `0` when everything is current and `1` when at least one plugin is outdated, so it composes in CI.
 
 With no plugins installed it answers from local state and never contacts the registry, so it stays fast and works offline. The registry is only consulted once there is something to compare.
+
+### Downgrades (v1.5)
+
+A release signature proves who published a version, not that it is current. In v1.5, `nself plugin install` and `nself plugin update` refuse when the registry offers a version below the one installed, before anything is downloaded. Pass `--allow-downgrade` to accept it on purpose. In v1.4 the same case prints a warning and proceeds. The check compares against the installed copy, so it cannot protect a first install.
 ## Permissions
 
 `nself plugin info <name>` lists the permissions a plugin declares, and every

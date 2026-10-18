@@ -38,6 +38,11 @@
           "flags": {
             "additionalProperties": false,
             "properties": {
+              "allow-downgrade": {
+                "default": false,
+                "description": "Install a registry version older than the installed one (v1.5 refuses by default)",
+                "type": "boolean"
+              },
               "allow-eol": {
                 "default": false,
                 "description": "Allow installing an EOL plugin (not recommended)",
@@ -7102,6 +7107,11 @@
           "flags": {
             "additionalProperties": false,
             "properties": {
+              "allow-downgrade": {
+                "default": false,
+                "description": "Accept a registry version older than the installed one (v1.5 refuses by default)",
+                "type": "boolean"
+              },
               "allow-eol": {
                 "default": false,
                 "description": "Allow updating to/from an EOL plugin (not recommended)",

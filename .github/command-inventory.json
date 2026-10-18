@@ -5,6 +5,7 @@
     "short": "Install a plugin or bundle",
     "hidden": false,
     "flags": [
+      "--allow-downgrade",
       "--allow-eol",
       "--channel",
       "--checksum",
