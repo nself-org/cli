@@ -22,7 +22,6 @@ import (
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/license"
-	"github.com/nself-org/cli/internal/maintenance"
 )
 
 // arPing is a synthetic ping.nself.org that issues 24 h JWTs on a controllable clock.
@@ -137,17 +136,19 @@ type arTimer struct {
 func fakeTimer(t *testing.T) *arTimer {
 	t.Helper()
 	f := &arTimer{changed: true}
-	oldE, oldR, oldB, oldN := timerEnsure, timerRemove, selfBinary, timerNotes
-	t.Cleanup(func() { timerEnsure, timerRemove, selfBinary, timerNotes = oldE, oldR, oldB, oldN })
-	timerEnsure = func(dir, bin string) (maintenance.Result, error) {
-		f.ensured = append(f.ensured, dir+"|"+bin)
-		res := maintenance.Result{Backend: "cron", Changed: f.changed}
-		f.changed = false
-		return res, nil
-	}
-	timerRemove = func(dir string) (maintenance.RemoveResult, error) {
-		f.removed = append(f.removed, dir)
-		return maintenance.RemoveResult{Removed: !f.rootRequired, RootRequired: f.rootRequired}, nil
+	oldH, oldB, oldN := HostTimers, selfBinary, timerNotes
+	t.Cleanup(func() { HostTimers, selfBinary, timerNotes = oldH, oldB, oldN })
+	HostTimers = Timers{
+		Ensure: func(dir, bin string) (TimerInstall, error) {
+			f.ensured = append(f.ensured, dir+"|"+bin)
+			res := TimerInstall{Backend: "cron", Changed: f.changed}
+			f.changed = false
+			return res, nil
+		},
+		Remove: func(dir string) (TimerRemoval, error) {
+			f.removed = append(f.removed, dir)
+			return TimerRemoval{Removed: !f.rootRequired, RootRequired: f.rootRequired}, nil
+		},
 	}
 	selfBinary = func() (string, error) { return "/usr/local/bin/nself", nil }
 	timerNotes = &f.notes

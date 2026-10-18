@@ -14,7 +14,6 @@ import (
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/httptimeout"
 	"github.com/nself-org/cli/internal/license"
-	"github.com/nself-org/cli/internal/maintenance"
 )
 
 // Purpose: keep a paid online stack entitled with no operator command (P7-PLUG-64, review R1).
@@ -24,14 +23,59 @@ import (
 // removes the timer or touches the old file; no key, JWT or `sub` in any output.
 // SPORT: cap:cli.entitlement-autorefresh.
 
-// Seams for tests: the host timer API, the running binary and the one-line notice sink.
+// Timers is the host timer API (internal/maintenance), supplied by the command layer so this
+// package adds no same-layer import edge (repoqa D3). With no functions set no timer is managed.
+type Timers struct {
+	Ensure func(projectDir, bin string) (TimerInstall, error)
+	Remove func(projectDir string) (TimerRemoval, error)
+}
+
+// TimerInstall is the result of Timers.Ensure.
+type TimerInstall struct {
+	Backend string
+	Changed bool
+}
+
+// TimerRemoval is the result of Timers.Remove; RootRequired means root-owned systemd units remain.
+type TimerRemoval struct{ Removed, RootRequired bool }
+
+// Errors a Timers.Ensure may wrap so the build notice can name the reason.
 var (
+	ErrTimerUnsafePath = errors.New("unsafe-path")
+	ErrTimerNoBackend  = errors.New("no-backend")
+)
+
+// Seams: the host timers (wired by cmd/commands), the clock, the running binary and the notice sink.
+var (
+	HostTimers   Timers
 	refreshClock license.Clock // nil = wall clock; the simulation injects a fake one
-	timerEnsure                = maintenance.Ensure
-	timerRemove                = maintenance.Remove
 	selfBinary                 = defaultSelfBinary
 	timerNotes   io.Writer     = os.Stderr
 )
+
+// AutorefreshDisabled reports NSELF_ENTITLEMENT_AUTOREFRESH=false (also 0, no, off); the same
+// rule as maintenance.AutorefreshDisabled, which TestAutorefreshDisabledParity keeps equal.
+func AutorefreshDisabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("NSELF_ENTITLEMENT_AUTOREFRESH"))) {
+	case "false", "0", "no", "off":
+		return true
+	}
+	return false
+}
+
+func ensureTimer(dir, bin string) (TimerInstall, error) {
+	if HostTimers.Ensure == nil {
+		return TimerInstall{}, ErrTimerNoBackend
+	}
+	return HostTimers.Ensure(dir, bin)
+}
+
+func removeTimer(dir string) (TimerRemoval, error) {
+	if HostTimers.Remove == nil {
+		return TimerRemoval{}, nil
+	}
+	return HostTimers.Remove(dir)
+}
 
 // Failure classes printed by the scheduled refresh (`entitlement refresh failed: <class>`).
 const (
@@ -57,7 +101,7 @@ func (e *RefreshError) Unwrap() error { return e.Err }
 type Outcome struct {
 	Exp          time.Time // new token expiry (zero when nothing was refreshed)
 	Removed      bool      // the timer's reason is gone and it was removed
-	RootRequired bool      // systemd units remain; the caller exits maintenance.ExitGone
+	RootRequired bool      // systemd units remain; the caller exits 78 (maintenance.ExitGone)
 	Skipped      bool      // v1.4 mode or development keys: nothing to do
 	Reason       string    // why the timer was removed
 }
@@ -88,7 +132,7 @@ func defaultPluginDir(pluginDir string) bool {
 // in the default plugin directory and autorefresh not disabled. Used by doctor (E132).
 func TimerWanted() bool {
 	// compat.V15(P7-PLUG-64): no unattended refresh -> doctor expects a timer for licensed stacks
-	if !compat.V15() || DevKeyMode() || maintenance.AutorefreshDisabled() || !defaultPluginDir("") {
+	if !compat.V15() || DevKeyMode() || AutorefreshDisabled() || !defaultPluginDir("") {
 		return false
 	}
 	installed, err := HasLicensedInstalled()
@@ -102,8 +146,8 @@ func reconcileTimer(projectDir string, names []string, pluginDir string) {
 	if !compat.V15() || DevKeyMode() || !defaultPluginDir(pluginDir) {
 		return
 	}
-	if len(names) == 0 || maintenance.AutorefreshDisabled() {
-		if res, err := timerRemove(projectDir); err == nil && res.Removed {
+	if len(names) == 0 || AutorefreshDisabled() {
+		if res, err := removeTimer(projectDir); err == nil && res.Removed {
 			note("entitlement refresh timer removed")
 		}
 		return
@@ -112,9 +156,9 @@ func reconcileTimer(projectDir string, names []string, pluginDir string) {
 	if err != nil {
 		return
 	}
-	res, err := timerEnsure(projectDir, bin)
+	res, err := ensureTimer(projectDir, bin)
 	switch {
-	case errors.Is(err, maintenance.ErrUnsafePath):
+	case errors.Is(err, ErrTimerUnsafePath):
 		note("warning: entitlement refresh timer not installed (unsafe-path); nself doctor reports E132")
 	case err != nil:
 		note("warning: entitlement refresh timer not installed (" + installFailure(err) + "); nself doctor reports E132")
@@ -124,7 +168,7 @@ func reconcileTimer(projectDir string, names []string, pluginDir string) {
 }
 
 func installFailure(err error) string {
-	if errors.Is(err, maintenance.ErrNoBackend) {
+	if errors.Is(err, ErrTimerNoBackend) {
 		return "no-backend"
 	}
 	msg := strings.Join(strings.Fields(err.Error()), " ")
@@ -148,12 +192,12 @@ func RunScheduled(ctx context.Context, projectDir string) (Outcome, error) {
 	if err != nil {
 		return Outcome{}, &RefreshError{Class: ClassInspect, Err: err}
 	}
-	if len(names) == 0 || maintenance.AutorefreshDisabled() {
+	if len(names) == 0 || AutorefreshDisabled() {
 		reason := "no licensed plugin installed"
-		if maintenance.AutorefreshDisabled() {
+		if AutorefreshDisabled() {
 			reason = "autorefresh disabled"
 		}
-		res, _ := timerRemove(projectDir)
+		res, _ := removeTimer(projectDir)
 		return Outcome{Removed: res.Removed, RootRequired: res.RootRequired, Reason: reason}, nil
 	}
 	renewed, rejected, class := revalidateClassified(ctx)

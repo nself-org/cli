@@ -276,3 +276,17 @@ func TestScheduledRefreshExitCodes(t *testing.T) {
 		})
 	}
 }
+
+// TestAutorefreshDisabledParity keeps the entitlement package's opt-out rule equal to the
+// maintenance one (the entitlement package may not import maintenance).
+func TestAutorefreshDisabledParity(t *testing.T) {
+	for _, v := range []string{"", "false", "FALSE", " false ", "0", "no", "off", "true", "1", "yes", "garbage"} {
+		t.Setenv("NSELF_ENTITLEMENT_AUTOREFRESH", v)
+		if entitlement.AutorefreshDisabled() != maintenance.AutorefreshDisabled() {
+			t.Fatalf("value %q: entitlement=%v maintenance=%v", v, entitlement.AutorefreshDisabled(), maintenance.AutorefreshDisabled())
+		}
+	}
+	if entitlement.HostTimers.Ensure == nil || entitlement.HostTimers.Remove == nil {
+		t.Fatal("cmd/commands did not wire entitlement.HostTimers")
+	}
+}

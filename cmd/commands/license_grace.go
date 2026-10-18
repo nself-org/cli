@@ -210,7 +210,31 @@ func publishEntitlement(cmd *cobra.Command, projectDir string) error {
 	return nil
 }
 
+// timerAdapter maps internal/maintenance onto entitlement.Timers (entitlement may not import it).
+func timerAdapter() entitlement.Timers {
+	wrap := func(err error) error {
+		switch {
+		case errors.Is(err, maintenance.ErrUnsafePath):
+			return fmt.Errorf("%w: %v", entitlement.ErrTimerUnsafePath, err)
+		case errors.Is(err, maintenance.ErrNoBackend):
+			return fmt.Errorf("%w: %v", entitlement.ErrTimerNoBackend, err)
+		}
+		return err
+	}
+	return entitlement.Timers{
+		Ensure: func(dir, bin string) (entitlement.TimerInstall, error) {
+			res, err := maintenance.Ensure(dir, bin)
+			return entitlement.TimerInstall{Backend: res.Backend, Changed: res.Changed}, wrap(err)
+		},
+		Remove: func(dir string) (entitlement.TimerRemoval, error) {
+			res, err := maintenance.Remove(dir)
+			return entitlement.TimerRemoval{Removed: res.Removed, RootRequired: res.RootRequired}, err
+		},
+	}
+}
+
 func init() {
+	entitlement.HostTimers = timerAdapter()
 	licenseRefreshCmd.Flags().String("project", "", "Project directory (default: the project around the working directory)")
 	licenseRefreshCmd.Flags().Bool("quiet", false, "Print at most one line (used by the unattended refresh timer)")
 	licenseRefreshCmd.Flags().Bool("remove-timer", false, "Remove the unattended entitlement refresh timer and exit")
