@@ -678,7 +678,7 @@ func TestSurfaceNoHandSurface(t *testing.T) {
 			if rerr != nil {
 				return nil
 			}
-			rel := filepath.ToSlash(strings.TrimPrefix(path, "../../"))
+			rel := strings.TrimPrefix(filepath.ToSlash(path), "../../")
 			files = append(files, rel)
 			// The HTTP API lives in internal/httpapi and is wired by internal/builtin/admin.
 			routes := strings.HasPrefix(rel, "internal/httpapi/") || strings.HasPrefix(rel, "internal/builtin/admin/")
