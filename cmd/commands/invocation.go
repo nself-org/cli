@@ -288,8 +288,7 @@ var (
 // sanitizeUsageMessage removes user-typed values from a cobra usage error
 // before it becomes an E401 message (which reaches stderr and, from v1.5, the
 // error envelope): the argument tail of an unknown shorthand, and the value of
-// an invalid flag argument. Everything else goes through observability.Redact,
-// then the licence scrubber (a key or token typed as any flag's value).
+// an invalid flag argument. The rest is redacted and has licence keys masked.
 func sanitizeUsageMessage(msg string) string {
 	msg = shorthandEcho.ReplaceAllString(msg, "${1}-<redacted>")
 	// The value is echoed again by the parser tail (`strconv.ParseInt: parsing
