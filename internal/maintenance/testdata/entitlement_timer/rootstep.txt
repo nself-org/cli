@@ -1,0 +1,3 @@
+if test "$EXIT_STATUS" = 78; then systemctl disable --now nself-entitlement-HASH0.timer; rm -f /etc/systemd/system/nself-entitlement-HASH0.service /etc/systemd/system/nself-entitlement-HASH0.timer; systemctl daemon-reload; fi
+if test "$EXIT_STATUS" = 78; then systemctl disable --now nself-entitlement-afa5d2ace4d74d45.timer; rm -f /etc/systemd/system/nself-entitlement-afa5d2ace4d74d45.service /etc/systemd/system/nself-entitlement-afa5d2ace4d74d45.timer; systemctl daemon-reload; fi
+if test "$EXIT_STATUS" = 78; then systemctl disable --now nself-entitlement-929633a958b12bf2.timer; rm -f /etc/systemd/system/nself-entitlement-929633a958b12bf2.service /etc/systemd/system/nself-entitlement-929633a958b12bf2.timer; systemctl daemon-reload; fi

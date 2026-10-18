@@ -991,7 +991,14 @@
         "name": "refresh",
         "path": "nself license refresh",
         "short": "Force-refresh license validation against ping.nself.org",
-        "hidden": false
+        "hidden": false,
+        "flags": [
+          "--all",
+          "--install-timer-dry-run",
+          "--project",
+          "--quiet",
+          "--remove-timer"
+        ]
       },
       {
         "name": "remove",

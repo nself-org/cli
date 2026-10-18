@@ -48,6 +48,7 @@ func RefreshForPlugins(ctx context.Context, projectDir, pluginDir string) error 
 	if err != nil {
 		return errs.Wrap("E125", "could not inspect installed plugin entitlements", err)
 	}
+	defer reconcileTimer(projectDir, names, pluginDir) // P7-PLUG-64: unattended refresh timer
 	token, _ := cachedToken()
 	candidates := []string{token, retainedToken(Path(projectDir))}
 	var rejected map[string]bool

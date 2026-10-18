@@ -20,7 +20,7 @@ The `github.com/nself-org/cli/sdk/go/v2/licensing` package verifies compact EdDS
 
 The SDK rejects symlinked entitlement files as well as non-regular files. Kubernetes Secret and ConfigMap mounts normally expose files through symlinks and therefore fail closed with HTTP 503 when used directly as the entitlement path. The CLI currently emits Compose single-file bind mounts. For Kubernetes, copy the token to a regular file and configure `NSELF_ENTITLEMENT_FILE` to that file; refresh that copy when the secret changes.
 
-The grace period (`EntitlementGracePeriod`) ends thirty days after the signed `exp`, including the endpoint. Local file timestamps and refresh times do not extend grace. When a licensed plugin is installed, doctor reports E126 (exit class 1) for a missing, empty, directory, invalid, or stale entitlement file, including when its verified `exp` is more than seven days old. Without installed licensed plugins, doctor ignores the file. Unattended refresh scheduling is a separate feature.
+The grace period (`EntitlementGracePeriod`) ends thirty days after the signed `exp`, including the endpoint. Local file timestamps and refresh times do not extend grace. When a licensed plugin is installed, doctor reports E126 (exit class 1) for a missing, empty, directory, invalid, or stale entitlement file, including when its verified `exp` is more than seven days old. Without installed licensed plugins, doctor ignores the file. The unattended refresh timer (see Automatic refresh below) keeps the file fresh between builds.
 
 The HTTP guard re-reads the file every twenty-four hours and caches the verified expiry and plugin decision on each reload. If a reload encounters a read error or an incomplete JWT, it keeps a previously verified decision through that token's original signed `exp` plus grace. Subsequent requests retry the read under a mutex at most once every five seconds. Deleting or making the file unreadable after startup therefore does not immediately revoke a verified token; it can only serve until the original signed deadline. Neither retries nor file deletion extend the D8 grace anchor.
 
@@ -31,3 +31,40 @@ Until v1.6.0, an **unset** `NSELF_ENTITLEMENT_FILE` permits serving and logs one
 Key rotation must ship the SDK with the next public key first, rebuild and distribute licensed plugin images second, and switch ping to the new signing key last. Keep the old public key while old tokens remain within grace. No replacement key is invented here. `TestKeysCompiled()` reports builds tagged `nself_testkeys`; Guard logs one loud warning for these builds. The plugins-pro release gate must inspect `go version -m <bin>` and refuse a binary whose build tags include `nself_testkeys`.
 
 Runtime entitlement is best effort on self-hosted code: an operator can modify the guard, and a copied valid token grants at most its remaining signed grace. Plugin code linked into the same binary is trusted code; the committed-key guarantee prevents environment and file overrides, rather than changes by linked code. Licence-gated downloads provide the primary control. Free plugins and security capabilities do not perform entitlement checks.
+
+## Automatic refresh
+
+The entitlement JWT lives 24 hours and the grace is thirty days after its signed `exp`, so a paid server that nobody touches would answer 503 after about 31 idle days. In v1.5 mode, every build, start and `nself license set` that finds a licensed plugin installs one host timer per project. The timer runs `nself license refresh --project DIR --quiet` every 6 hours with jitter. The refresh revalidates the key online, verifies the new JWT, checks that it covers every installed licensed plugin, and only then rewrites `.nself/state/entitlement.jwt` in place (mode `0600`). The signed `exp` stays the only time anchor. The timer needs no ping change.
+
+| Host | Backend | Notes |
+|---|---|---|
+| Linux, root | systemd system timer `nself-entitlement-HASH.timer` | Runs as the project owner (`User=<uid>`); `OnBootSec=15min`, `OnUnitActiveSec=6h`, `RandomizedDelaySec=30m`. |
+| Linux, non-root | user crontab line tagged `# nself-entitlement:HASH` | Minute derived from HASH, hours `*/6`. Needs the `crontab` command. |
+| macOS | user LaunchAgent `org.nself.entitlement.HASH` | `StartInterval` 21600 s. |
+
+HASH is the first 16 hex characters of the SHA-256 of the project directory. Installing is idempotent: the build checks the timer first, writes only on a difference, and prints one line when it installs. A failed install prints a warning and never fails build or start; `nself doctor` then reports E132. Windows has no timer backend.
+
+**Opt out.** Set `NSELF_ENTITLEMENT_AUTOREFRESH=false` (also `0`, `no`, `off`). Nothing is installed. A timer that already exists is removed by `nself license refresh --remove-timer`, or by its next run when the variable is in the timer's own environment (systemd manager environment, crontab environment).
+
+**Path safety.** The project directory and the `nself` binary must be absolute, match `^/[A-Za-z0-9._/-]+$`, contain no `..`, resolve to the same rule, be owned by the project owner (the binary may be owned by root), and be neither group- nor world-writable, nor may any parent directory be. Otherwise nothing is installed and doctor reports E132 with reason `unsafe-path`. On Intel macOS, Homebrew's group-writable `/usr/local/bin` fails this rule; install the binary elsewhere or refresh from your own scheduler.
+
+**Custom plugin directory.** The timer carries no environment, so it only sees `~/.nself/plugins`. With `NSELF_PLUGIN_DIR` set, no timer is installed and doctor does not expect one; run `nself license refresh` from your own scheduler.
+
+**The timer removes itself** when its reason is gone. Only these four conditions remove it; a failed refresh (network, ping 5xx, invalid or revoked licence) never does:
+
+1. the project directory is gone,
+2. the `nself` binary is gone (for example after `brew upgrade` removes the old version; the next build installs a new timer),
+3. no licensed plugin remains installed,
+4. autorefresh is disabled.
+
+The first two are checked by a shell guard in the unit, crontab line or LaunchAgent script, independent of the binary. The last two are checked by each run of the refresh. For the root systemd backend the refresh runs as the project owner and cannot delete root-owned units, so it exits 78 and a root `ExecStopPost` step, which names only fixed unit paths derived from HASH, removes the units (`SuccessExitStatus=78` keeps the run from counting as failed).
+
+**By hand.** `nself license refresh --remove-timer [--project DIR | --all]` removes timers. Root-owned systemd units need root: the command prints the exact `sudo nself license refresh --remove-timer ...` line to run.
+
+**Quiet output.** With `--quiet` a run prints at most one line: `entitlement refreshed exp=<RFC3339>` or `entitlement refresh failed: <class>` (`ping-unavailable`, `licence-rejected`, `token-verify`, `no-licence`, `not-covered`, `write-failed`, `plugin-inspect`). It never prints the key, its masked form, the JWT, any JWT segment or the `sub` value. A failed run exits 1 and leaves the old entitlement file intact, so a ping outage or a revoked licence still ends only at the last signed `exp` + 30 days.
+
+**Offline and air-gapped.** While ping is unreachable the timer keeps trying every 6 hours and the plugin keeps serving until the last JWT's `exp` + 30 days. When ping returns, the next refresh rewrites the file and the guard picks it up at its next 24-hour re-read, with no restart. An air-gapped host runs `nself license export` on a connected machine and `nself license import <file>` on the host; an import that carries a JWT rewrites the entitlement file.
+
+**Diagnostics.** E132 (doctor, exit class 1): a licensed v1.5 stack has no active timer. Reasons: `not-installed`, `unsafe-path`, `no-backend`. The hidden `nself license refresh --install-timer-dry-run` prints the units, crontab line and plist that would be installed.
+
+**Limits.** The timer runs with an empty environment as the project owner, so it reads the licence key from the CLI's own store (`nself license set`), never from `NSELF_LICENSE_KEY_*` variables in a shell, and it looks for plugins in the owner's `~/.nself/plugins`. Build as the project owner, not as root on someone else's project: the root build would see root's plugins while the unit (running as the owner) sees none, and removes itself. The guard uses `test -x` on the binary, so a binary that is only briefly not executable during an upgrade also counts as gone. Two builds of different projects at the same instant can race on the user's crontab (the last writer wins); the next build repairs it. The in-place file rewrite is the one build already uses, and the guard keeps its last verified decision through a torn read. Root on a host without systemd gets no timer (`no-backend`): a root crontab would run a binary the project owner can replace. A cron line over about 900 bytes is refused as unsafe-path because cron truncates long lines. If the cache file cannot be written, the scheduled refresh fails with `cache-write-failed` and the licence library may print its own cache warning first.
