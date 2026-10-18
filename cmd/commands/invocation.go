@@ -296,5 +296,5 @@ func sanitizeUsageMessage(msg string) string {
 	if m := badValueEcho.FindStringSubmatch(msg); m != nil && m[1] != "" && secretFlag.MatchString(m[2]) {
 		msg = strings.ReplaceAll(msg, m[1], "<redacted>")
 	}
-	return newScrubber().secrets(observability.Redact(msg))
+	return usageScrub(observability.Redact(msg))
 }

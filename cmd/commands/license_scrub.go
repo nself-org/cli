@@ -52,7 +52,7 @@ func newScrubber(extra ...string) scrubber {
 	// The tokens this machine holds are redacted whatever their shape.
 	if af, err := auth.ReadAuthFile(); err == nil && af != nil {
 		for _, tok := range []string{af.AccessToken, af.SessionToken} {
-			if len(tok) >= 8 {
+			if len(tok) >= 4 {
 				sc.tokens = append(sc.tokens, tok)
 			}
 		}
