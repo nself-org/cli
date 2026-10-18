@@ -28,7 +28,7 @@ var (
 	// part); jwtShape a JWT; tokenRun a token-like run of 24+ characters.
 	licenseKeyShape = regexp.MustCompile(`nself_[a-z]+_[A-Za-z0-9_-]{8,}`)
 	jwtShape        = regexp.MustCompile(`eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}(\.[A-Za-z0-9_-]*)?`)
-	tokenRun        = regexp.MustCompile(`[A-Za-z0-9_.-]{24,}`)
+	tokenRun        = regexp.MustCompile(`[A-Za-z0-9_-]{24,}`)
 	uuidShape       = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 	dateShape       = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}[T0-9Z.+-]*$`)
 	digitShape      = regexp.MustCompile(`[0-9]`)
@@ -53,7 +53,7 @@ func newScrubber(extra ...string) scrubber {
 // token, and is neither a UUID nor a date: letters and digits mixed, or upper
 // and lower case mixed (an identifier like a unit name is single-case).
 func opaque(run string) bool {
-	if uuidShape.MatchString(run) || dateShape.MatchString(run) {
+	if uuidShape.MatchString(run) || dateShape.MatchString(run) || wordLike(run) {
 		return false
 	}
 	if digitShape.MatchString(run) && letterShape.MatchString(run) {
@@ -62,15 +62,37 @@ func opaque(run string) bool {
 	return upperShape.MatchString(run) && lowerShape.MatchString(run)
 }
 
-// str masks every licence key in s, drops every JWT and every opaque token.
-func (sc scrubber) str(s string) string {
+// wordLike reports whether a run is words joined by - or _ (a device name such
+// as "Alis-MacBook-Pro-14-inch"): three or more segments, none longer than 12
+// characters. A random base64url token almost never splits that finely.
+func wordLike(run string) bool {
+	segs := strings.FieldsFunc(run, func(r rune) bool { return r == '-' || r == '_' })
+	if len(segs) < 3 {
+		return false
+	}
+	for _, g := range segs {
+		if len(g) > 12 {
+			return false
+		}
+	}
+	return true
+}
+
+// secrets masks every licence key in s and drops every JWT. It leaves other
+// long words alone, so it is safe on text a person reads (usage errors).
+func (sc scrubber) secrets(s string) string {
 	for _, key := range sc.keys {
 		if key != "" {
 			s = strings.ReplaceAll(s, key, license.MaskKey(key))
 		}
 	}
 	s = jwtShape.ReplaceAllString(s, "[REDACTED]")
-	s = licenseKeyShape.ReplaceAllStringFunc(s, license.MaskKey)
+	return licenseKeyShape.ReplaceAllStringFunc(s, license.MaskKey)
+}
+
+// str is secrets, and also drops every opaque token.
+func (sc scrubber) str(s string) string {
+	s = sc.secrets(s)
 	return tokenRun.ReplaceAllStringFunc(s, func(run string) string {
 		if opaque(run) {
 			return "[REDACTED]"
@@ -192,6 +214,11 @@ func scrubErr(err error) error {
 		c := *ce
 		c.What, c.Why, c.Fix = sc.str(c.What), sc.str(c.Why), sc.str(c.Fix)
 		out.err = &c
+	}
+	// An explicit exit status wraps the scrubbed error, so it survives.
+	var xe *errs.ExitError
+	if errors.As(err, &xe) && xe.Err != nil {
+		return &errs.ExitError{Code: xe.Code, Err: out}
 	}
 	return out
 }
