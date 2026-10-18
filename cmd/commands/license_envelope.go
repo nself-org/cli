@@ -18,6 +18,7 @@ import (
 	"errors"
 
 	"github.com/nself-org/cli/internal/license"
+	"github.com/nself-org/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -57,12 +58,22 @@ func newLicenseStatusData() licenseStatusData {
 // emitLicenseShow writes the `license show` document in its legacy-compatible
 // form; out is nil when no key is configured.
 func emitLicenseShow(cmd *cobra.Command, out *licenseShowJSON) error {
+	if out == nil && output.LegacyBare() {
+		// The pre-contract no-key answer (D-0980).
+		return emitDoc(cmd, licenseShowNoKeyLegacy{Error: "no license key configured"}, true)
+	}
 	doc := licenseShowData{Bundles: []string{}}
 	if out != nil {
 		doc = licenseShowData{Configured: true, KeyPrefix: out.KeyPrefix, Tier: out.Tier, Bundles: nonNilStrings(out.Bundles),
 			PluginsCount: out.PluginsCount, DaysToExpire: out.DaysToExpire, CacheExpiry: out.CacheExpiry}
 	}
 	return emitDoc(cmd, doc, true)
+}
+
+// licenseShowNoKeyLegacy is the bare `license show --json` answer with no key
+// configured, before the v1 contract.
+type licenseShowNoKeyLegacy struct {
+	Error string `json:"error"`
 }
 
 // exportCacheSummary answers `license export` in JSON mode: the cache summary,

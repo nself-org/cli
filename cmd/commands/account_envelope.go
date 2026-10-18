@@ -16,6 +16,7 @@ import (
 
 	"github.com/nself-org/cli/internal/auth"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -78,4 +79,26 @@ func accountLiveStatus(af *auth.AuthFile, email, name, tier string, verified, mf
 // emitAccountStatus writes a status document.
 func emitAccountStatus(cmd *cobra.Command, doc accountStatusData) error {
 	return emitDoc(cmd, doc, true)
+}
+
+// accountCachedLegacy is the bare `account status --json` answer served from
+// the auth file before the v1 contract: no status member, cached=true. Fields
+// stay in key order because the old output was a sorted map.
+type accountCachedLegacy struct {
+	Bundles     []string `json:"bundles"`
+	Cached      bool     `json:"cached"`
+	DisplayName string   `json:"display_name"`
+	Email       string   `json:"email"`
+	Tier        string   `json:"tier"`
+}
+
+// emitAccountCachedStatus writes the cached status: the v1 document, or the
+// pre-contract bare shape under NSELF_JSON_LEGACY (D-0980).
+func emitAccountCachedStatus(cmd *cobra.Command, af *auth.AuthFile) error {
+	doc := accountCachedStatus(af, "cached")
+	if output.LegacyBare() {
+		return emitDoc(cmd, accountCachedLegacy{Bundles: af.Bundles, Cached: true, DisplayName: doc.DisplayName,
+			Email: doc.Email, Tier: doc.Tier}, true)
+	}
+	return emitAccountStatus(cmd, doc)
 }

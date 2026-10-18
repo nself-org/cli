@@ -1,0 +1,9 @@
+{
+  "bundles": [
+    "chat"
+  ],
+  "cached": true,
+  "display_name": "",
+  "email": "alice@example.test",
+  "tier": "plus"
+}

@@ -41,6 +41,12 @@ func EmitLegacyCompatible(w Writer, command string, data any) error {
 	return nil
 }
 
+// LegacyBare reports whether EmitLegacyCompatible will print bare JSON: v1.5
+// mode with NSELF_JSON_LEGACY=1 or true. A command whose pre-contract shape
+// differs from its v1 data document (not just wrapped by the envelope) uses it
+// to choose which document to hand over.
+func LegacyBare() bool { return compat.V15() && legacyRequested() }
+
 // legacyRequested reports whether NSELF_JSON_LEGACY selects bare output.
 func legacyRequested() bool {
 	v := os.Getenv(LegacyEnvVar)

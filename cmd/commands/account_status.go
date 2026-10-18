@@ -63,7 +63,7 @@ func runAccountStatus(cmd *cobra.Command, _ []string) error {
 	if infoErr != nil {
 		// Fall back to cached data.
 		if jsonEnvelopeOn(cmd) {
-			return emitAccountStatus(cmd, accountCachedStatus(af, "cached"))
+			return emitAccountCachedStatus(cmd, af)
 		}
 		if jsonOut {
 			return printCachedAccountJSON(af)
