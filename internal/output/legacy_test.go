@@ -158,3 +158,17 @@ func TestLegacyMarshalFailureIsReturned(t *testing.T) {
 		}
 	}
 }
+
+// LegacyRequested is the one NSELF_JSON_LEGACY check; cmd/commands and the
+// admin package call it instead of keeping copies that can drift (D-0914).
+func TestLegacyRequested(t *testing.T) {
+	for _, tc := range []struct {
+		val  string
+		want bool
+	}{{"", false}, {"1", true}, {"true", true}, {"TRUE", true}, {"True", true}, {"0", false}, {"false", false}, {"yes", false}} {
+		t.Setenv(LegacyEnvVar, tc.val)
+		if got := LegacyRequested(); got != tc.want {
+			t.Errorf("%s=%q: LegacyRequested() = %v, want %v", LegacyEnvVar, tc.val, got, tc.want)
+		}
+	}
+}

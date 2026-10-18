@@ -20,6 +20,7 @@ import (
 	"os"
 
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/output"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/ui"
 
@@ -105,7 +106,7 @@ func runPluginOutdated(cmd *cobra.Command, args []string) error {
 	}
 
 	if jsonEnvelopeOn(cmd) {
-		if rows == nil && !legacyBare() {
+		if rows == nil && !output.LegacyRequested() {
 			rows = []outdatedPluginRow{} // the envelope data is an array; the bare legacy form printed null
 		}
 		if err := emitEnv(cmd, rows, true); err != nil { // P7-SURF-13

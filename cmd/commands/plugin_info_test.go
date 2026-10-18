@@ -263,9 +263,9 @@ func infoFailure(t *testing.T, out string) (reason, cause string) {
 }
 
 // TestPluginInfoJSONThroughRoot (CR M1, S2): `nself plugin info <n> --json`
-// works through the root command. v1.5 prints the JSON (the registry row is
-// json legacy, so the E402 gate lets it through); v1.4 still ignores the flag
-// and prints the table.
+// works through the root command. v1.5 prints the v1 envelope (the registry row
+// is a document envelope, so the E402 gate lets it through); v1.4 still ignores
+// the flag and prints the table.
 func TestPluginInfoJSONThroughRoot(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
 		infoFixture(t, "free")
@@ -328,8 +328,9 @@ func TestPluginInfoLegacyEnvFailureIsOneBareDocument(t *testing.T) {
 	if err == nil {
 		t.Fatalf("an unresolved tier must still fail, got output %s", out)
 	}
-	if !strings.Contains(err.Error(), "exit status") || !strings.Contains(err.Error(), "tier unresolved") {
-		t.Fatalf("want a non-zero exit and the reported failure on stderr, got %v", err)
+	// An uncoded failure exits 1 (the cause's class); the report is on stderr, not a second document.
+	if !strings.Contains(err.Error(), "exit status 1:") || !strings.Contains(err.Error(), "tier unresolved") {
+		t.Fatalf("want exit class 1 and the reported failure on stderr, got %v", err)
 	}
 	dec := json.NewDecoder(strings.NewReader(out))
 	var doc map[string]json.RawMessage
@@ -355,6 +356,43 @@ func TestPluginInfoLegacyEnvFailureIsOneBareDocument(t *testing.T) {
 	_ = json.Unmarshal(doc["tier_error"], &cause)
 	if reason != "unresolved" || cause == "" {
 		t.Fatalf("tier_reason %q tier_error %q", reason, cause)
+	}
+}
+
+// TestPluginInfoLegacyEnvFailureRedactsSecrets: the licence lookup error carries
+// the registry's bundle slug. A slug that holds credentials must not reach
+// either the bare document's tier_error or the stderr report.
+func TestPluginInfoLegacyEnvFailureRedactsSecrets(t *testing.T) {
+	compattest.Set(t, true)
+	t.Setenv(output.LegacyEnvVar, "1")
+	const userinfoSecret, tokenSecret = "s3cretpw", "abc123"
+	bundle := "https://user" + ":" + userinfoSecret + "@license.example.test/check?token=" + tokenSecret
+	infoFixtureRegistry(t, "", `{"plugins":[`+
+		`{"name":"notify","tier":"free","version":"1.0.0","description":"first entry","tier_pair":true},`+
+		`{"name":"notify","tier":"pro","version":"2.0.0","description":"second entry","tier_pair":true,"bundles":["`+bundle+`"]}]}`)
+	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "synthetic-licence-key")
+	t.Setenv("LICENSE_PING_URL", "http://127.0.0.1:1") // refuses the connection at once
+	out, err := runInfoRoot(t, "--json")
+	if err == nil {
+		t.Fatalf("an unresolved tier must still fail, got output %s", out)
+	}
+	if !strings.Contains(err.Error(), "exit status 1:") || !strings.Contains(err.Error(), "tier unresolved") {
+		t.Fatalf("want exit class 1 and the reported failure on stderr, got %v", err)
+	}
+	var doc struct {
+		TierReason string `json:"tier_reason"`
+		TierError  string `json:"tier_error"`
+	}
+	if jerr := json.Unmarshal([]byte(out), &doc); jerr != nil {
+		t.Fatalf("not one bare JSON document: %v\n%s", jerr, out)
+	}
+	if doc.TierReason != "unresolved" || !strings.Contains(doc.TierError, "checking entitlement") {
+		t.Fatalf("tier_reason %q tier_error %q: the lookup failure is missing", doc.TierReason, doc.TierError)
+	}
+	for _, secret := range []string{userinfoSecret, tokenSecret, "synthetic-licence-key"} {
+		if strings.Contains(out, secret) || strings.Contains(err.Error(), secret) {
+			t.Errorf("secret %q leaked:\nstdout %s\nstderr %v", secret, out, err)
+		}
 	}
 }
 

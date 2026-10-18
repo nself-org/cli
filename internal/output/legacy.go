@@ -29,7 +29,7 @@ func EmitLegacyCompatible(w Writer, command string, data any) error {
 	if !compat.V15() {
 		return writeBare(w, data)
 	}
-	if !legacyRequested() {
+	if !LegacyRequested() {
 		return EmitData(w, command, data)
 	}
 	if err := writeBare(w, data); err != nil {
@@ -41,8 +41,11 @@ func EmitLegacyCompatible(w Writer, command string, data any) error {
 	return nil
 }
 
-// legacyRequested reports whether NSELF_JSON_LEGACY selects bare output.
-func legacyRequested() bool {
+// LegacyRequested reports whether NSELF_JSON_LEGACY selects the pre-contract
+// bare form ("1" or "true", any case). It is the one copy of that check:
+// callers outside this package (cmd/commands, the admin builtin) use it to
+// decide whether an empty list may still print `null`.
+func LegacyRequested() bool {
 	v := os.Getenv(LegacyEnvVar)
 	return v == "1" || strings.EqualFold(v, "true")
 }

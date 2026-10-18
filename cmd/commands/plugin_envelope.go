@@ -281,13 +281,6 @@ func pluginHubBody(run func(*cobra.Command, []string) error) func(*cobra.Command
 	}
 }
 
-// legacyBare reports whether NSELF_JSON_LEGACY asks for the pre-contract bare
-// form: an empty list that printed `null` then must still print `null`.
-func legacyBare() bool {
-	v := os.Getenv(output.LegacyEnvVar)
-	return v == "1" || strings.EqualFold(v, "true")
-}
-
 func init() {
 	pluginCmd.RunE = pluginHubBody(pluginCmd.RunE)
 	for _, c := range []*cobra.Command{pluginUpdateCmd, pluginRefreshCmd, pluginStartCmd, pluginStopCmd, pluginDisableCmd, pluginEnableCmd} {

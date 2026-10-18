@@ -80,7 +80,7 @@ func runPluginInfo(cmd *cobra.Command, args []string) error {
 
 	// compat.V15(P7-PLUG-17): --json is ignored by plugin info -> prints the info with its tier and why as JSON
 	if asJSON, _ := cmd.Flags().GetBool("json"); asJSON && compat.V15() {
-		if tierErr != nil && jsonEnvelopeOn(cmd) && !legacyBare() {
+		if tierErr != nil && jsonEnvelopeOn(cmd) && !output.LegacyRequested() {
 			// P7-SURF-13: a failed lookup is a failure for machine callers (MCP derives isError
 			// from the error member): the v1 error envelope, one document, the cause's exit
 			// status. The reason and the cause travel in its message. NSELF_JSON_LEGACY=1 keeps

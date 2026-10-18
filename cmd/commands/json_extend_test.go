@@ -28,6 +28,7 @@ import (
 	"github.com/nself-org/cli/internal/canon"
 	"github.com/nself-org/cli/internal/cmdregistry"
 	"github.com/nself-org/cli/internal/compat/compattest"
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/invoke"
 	"github.com/nself-org/cli/internal/output"
 	"github.com/spf13/cobra"
@@ -350,8 +351,17 @@ func TestServicesBodies(t *testing.T) {
 	})
 	t.Run("ps without a compose file is an error, not an empty document", func(t *testing.T) {
 		fakeProject(t, "PROJECT_NAME=smoke\n")
-		if _, err := runExt(t, extendCmd(t, "config", "services", "ps"), nil, map[string]string{}); err == nil {
+		_, err := runExt(t, extendCmd(t, "config", "services", "ps"), nil, map[string]string{})
+		if err == nil {
 			t.Fatal("ps without docker-compose.yml succeeded")
+		}
+		// An uncoded failure surfaces as the generic E400 error envelope with a non-zero exit.
+		d := errs.Describe(err)
+		if d == nil || d.Code != "E400" || errs.ExitCodeFor(err) == 0 {
+			t.Fatalf("ps without a compose file = %v (%+v), want an E400 failure", err, d)
+		}
+		if !strings.Contains(err.Error(), "docker-compose.yml not found") {
+			t.Fatalf("ps failure does not name the missing file: %v", err)
 		}
 	})
 	t.Run("group answers with its subcommands", func(t *testing.T) {
