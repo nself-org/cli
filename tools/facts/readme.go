@@ -52,6 +52,9 @@ func FillReadme(text string, f model.Facts) (string, error) {
 	for {
 		i := strings.Index(rest, beginPrefix)
 		if i < 0 {
+			if strings.Contains(rest, endPrefix) {
+				return "", fmt.Errorf("END marker without a BEGIN marker near %q", clip(rest[strings.Index(rest, endPrefix):]))
+			}
 			out.WriteString(rest)
 			return out.String(), nil
 		}
@@ -77,6 +80,9 @@ func FillReadme(text string, f model.Facts) (string, error) {
 		}
 		lineStart := i == 0 || rest[i-1] == '\n'
 		lineEnd := strings.HasPrefix(tail, "\n") || strings.HasPrefix(tail, "\r\n")
+		if strings.Contains(rest[:i], endPrefix) {
+			return "", fmt.Errorf("END marker without a BEGIN marker before %q", key)
+		}
 		out.WriteString(rest[:i])
 		out.WriteString(begin)
 		if lineStart && lineEnd {

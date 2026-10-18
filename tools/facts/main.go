@@ -77,6 +77,18 @@ func run(root string, check bool, readme string, stdout, stderr io.Writer) int {
 		say(stderr, "facts: %v\n", err)
 		return 2
 	}
+	var old []byte
+	var filled string
+	if readme != "" {
+		if old, err = os.ReadFile(readme); err != nil {
+			say(stderr, "facts: %v\n", err)
+			return 2
+		}
+		if filled, err = FillReadme(string(old), f); err != nil {
+			say(stderr, "facts: %s: %v\n", readme, err)
+			return 2
+		}
+	}
 	target := filepath.Join(root, factsPath)
 	stale := false
 	have, err := readOptional(target)
@@ -93,25 +105,13 @@ func run(root string, check bool, readme string, stdout, stderr io.Writer) int {
 			return 2
 		}
 	}
-	if readme != "" {
-		old, err := os.ReadFile(readme)
-		if err != nil {
+	if readme != "" && filled != string(old) {
+		if check {
+			say(stderr, "facts: %s has stale facts blocks; run `go run ./tools/facts -readme %s`\n", readme, readme)
+			stale = true
+		} else if err := os.WriteFile(readme, []byte(filled), 0o644); err != nil {
 			say(stderr, "facts: %v\n", err)
 			return 2
-		}
-		filled, err := FillReadme(string(old), f)
-		if err != nil {
-			say(stderr, "facts: %s: %v\n", readme, err)
-			return 2
-		}
-		if filled != string(old) {
-			if check {
-				say(stderr, "facts: %s has stale facts blocks; run `go run ./tools/facts -readme %s`\n", readme, readme)
-				stale = true
-			} else if err := os.WriteFile(readme, []byte(filled), 0o644); err != nil {
-				say(stderr, "facts: %v\n", err)
-				return 2
-			}
 		}
 	}
 	if stale {

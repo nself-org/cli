@@ -39,6 +39,8 @@ func TestBuildRejects(t *testing.T) {
 		"empty":        {"", testRegistry},
 		"bad registry": {"1.5.0", `{`},
 		"no verbs":     {"1.5.0", `{"counts":{}}`},
+		"no counts":    {"1.5.0", `{"verbs":["init"]}`},
+		"count drift":  {"1.5.0", `{"verbs":["init"],"counts":{"top_level":2}}`},
 	}
 	for name, c := range cases {
 		if _, err := Build([]byte(c[0]), []byte(c[1]), nil); err == nil {

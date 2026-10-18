@@ -26,7 +26,7 @@ var (
 // registryDoc is the part of the command registry the facts read.
 type registryDoc struct {
 	Verbs  []string `json:"verbs"`
-	Counts struct {
+	Counts *struct {
 		Commands    int      `json:"commands"`
 		Core        int      `json:"core"`
 		CoreMissing []string `json:"core_missing"`
@@ -52,6 +52,9 @@ func Build(version, registry, openapi []byte) (model.Facts, error) {
 	}
 	if len(reg.Verbs) == 0 {
 		return model.Facts{}, fmt.Errorf("command-registry.json: no verbs")
+	}
+	if reg.Counts == nil || reg.Counts.TopLevel != len(reg.Verbs) {
+		return model.Facts{}, fmt.Errorf("command-registry.json: counts.top_level must exist and equal the number of verbs (%d)", len(reg.Verbs))
 	}
 	f := model.Facts{
 		Generated:    model.Generated,

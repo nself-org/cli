@@ -76,3 +76,14 @@ func TestFillReadmeErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestFillReadmeStrayEnd(t *testing.T) {
+	for name, in := range map[string]string{
+		"end only":         "x <!-- END GENERATED:facts:version --> y",
+		"end before begin": "<!-- END GENERATED:facts:verbs -->\n<!-- BEGIN GENERATED:facts:version --><!-- END GENERATED:facts:version -->",
+	} {
+		if _, err := FillReadme(in, testFacts("1.5.0")); err == nil {
+			t.Errorf("%s: want error", name)
+		}
+	}
+}

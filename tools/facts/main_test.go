@@ -57,7 +57,7 @@ func TestRunDetectsSourceChange(t *testing.T) {
 	gh := filepath.Join(root, ".github")
 	for name, body := range map[string]string{
 		"VERSION":               "1.4.15\n",
-		"command-registry.json": strings.Replace(testRegistry, `"top_level":2`, `"top_level":3`, 1),
+		"command-registry.json": strings.Replace(testRegistry, `"commands":5`, `"commands":6`, 1),
 		"openapi.json":          `{}`,
 	} {
 		path := filepath.Join(gh, name)
