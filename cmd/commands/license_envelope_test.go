@@ -327,6 +327,11 @@ func TestLicenseShowV14Bytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Exact bytes: the output is the pre-contract struct, encoded as v1.4 does.
+	// The expected bytes are written out, taken from the pre-contract encoder.
+	const want = "{\"key_prefix\":\"...1234\",\"tier\":\"ɳSelf Pro\",\"bundles_unlocked\":[\"ɳSelf Pro\"],\"plugins_available_count\":0}\n"
+	if out != want {
+		t.Fatalf("v1.4 show --json bytes changed:\n got %q\nwant %q", out, want)
+	}
 	var legacy licenseShowJSON
 	dec := json.NewDecoder(strings.NewReader(out))
 	dec.DisallowUnknownFields()

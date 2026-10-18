@@ -38,8 +38,54 @@ func licenseDataEnvCmds() []*cobra.Command {
 
 func init() {
 	for _, c := range licenseDataEnvCmds() {
-		c.RunE = dataEnv(c.RunE)
+		c.RunE = licenseEnv(c.RunE)
 	}
+}
+
+// scrubbedError carries scrubbed text and keeps the original in the chain, so
+// the error classification (errors.Is / errors.As) is unchanged.
+type scrubbedError struct {
+	msg string
+	err error
+}
+
+func (e *scrubbedError) Error() string { return e.msg }
+func (e *scrubbedError) Unwrap() error { return e.err }
+
+// licenseEnv is dataEnv plus: in an envelope invocation a failure's text is
+// scrubbed before it reaches the error envelope (it can echo server text, a
+// URL or a key). Human and v1.4 output are unchanged.
+func licenseEnv(run func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
+	wrapped := dataEnv(run)
+	return func(cmd *cobra.Command, args []string) error {
+		err := wrapped(cmd, args)
+		if err == nil || !jsonEnvelopeOn(cmd) {
+			return err
+		}
+		return &scrubbedError{msg: licenseScrub(err.Error(), migrateKeyFlag), err: err}
+	}
+}
+
+// licenseScrubShape masks keys and drops JWTs but keeps other text intact (a
+// timestamp or an account UUID is longer than a token run), for server fields
+// like expiry and account id.
+func licenseScrubShape(s string, extra ...string) string {
+	for _, key := range append(license.CollectLicenseKeys(), extra...) {
+		if key != "" {
+			s = strings.ReplaceAll(s, key, license.MaskKey(key))
+		}
+	}
+	s = jwtShape.ReplaceAllString(s, "[REDACTED]")
+	return licenseKeyShape.ReplaceAllStringFunc(s, license.MaskKey)
+}
+
+// licenseScrubAll scrubs every element: plugin names from a server or cache.
+func licenseScrubAll(in []string) []string {
+	out := make([]string, 0, len(in))
+	for _, v := range in {
+		out = append(out, licenseScrub(v))
+	}
+	return out
 }
 
 // licenseProductName is the display name of a detected product, or fallback.
@@ -108,7 +154,7 @@ func exportCacheSummary(cmd *cobra.Command) error {
 	if entry == nil {
 		return errNoCacheToExport
 	}
-	setData(cmd, licenseExportData{Tier: entry.Tier, PluginsAllowed: nonNilStrings(entry.PluginsAllowed),
+	setData(cmd, licenseExportData{Tier: licenseScrub(entry.Tier), PluginsAllowed: licenseScrubAll(entry.PluginsAllowed),
 		FetchedAt: entry.FetchedAt, ExpiresAt: entry.ExpiresAt, Signed: entry.VerifySignature()})
 	return nil
 }

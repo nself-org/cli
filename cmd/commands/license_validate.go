@@ -250,7 +250,7 @@ Requires network connectivity.`,
 			return fmt.Errorf("license is invalid: %s", result.Message)
 		}
 
-		rev := licenseRevalidateData{Tier: result.Tier}
+		rev := licenseRevalidateData{Tier: licenseScrub(result.Tier)}
 		if !result.ExpiresAt.IsZero() {
 			rev.ExpiresAt = result.ExpiresAt.Format("2006-01-02")
 		}

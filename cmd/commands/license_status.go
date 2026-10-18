@@ -121,14 +121,14 @@ func runLicenseStatus(cmd *cobra.Command, args []string) error {
 		}
 
 		allProducts = append(allProducts, productName)
-		doc.Keys = append(doc.Keys, licenseStatusKey{Key: masked, Product: productName, Status: status, Expires: expires, Plugins: nonNilStrings(rowPlugins)})
+		doc.Keys = append(doc.Keys, licenseStatusKey{Key: masked, Product: licenseScrub(productName), Status: status, Expires: licenseScrubShape(expires), Plugins: licenseScrubAll(rowPlugins)})
 		tbl.AddRow(masked, productName, status, expires, plugins)
 	}
 
 	tbl.Render()
-	doc.Products = nonNilStrings(uniqueStrings(allProducts))
+	doc.Products = licenseScrubAll(uniqueStrings(allProducts))
 	for p := range allPlugins {
-		doc.Plugins = append(doc.Plugins, p)
+		doc.Plugins = append(doc.Plugins, licenseScrub(p))
 	}
 	sort.Strings(doc.Plugins)
 	if pluginFilter != "" {
