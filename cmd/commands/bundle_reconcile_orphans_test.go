@@ -7,6 +7,8 @@ package commands
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -112,4 +114,37 @@ func TestExtensionReconcileProdRefusalKeepsContainers(t *testing.T) {
 			t.Fatalf("a refused apply must not touch containers, got %v %v", *removed, *started)
 		}
 	})
+}
+
+// The swap start must see plugin services: they are defined in the fragments
+// of .nself/compose-files.txt, so the compose call has to list them (D-0432).
+func TestExtensionComposeUsesProjectManifest(t *testing.T) {
+	dir := t.TempDir()
+	base := filepath.Join(dir, "docker-compose.yml")
+	frag := filepath.Join(dir, ".nself", "plugins", "traefik", "docker-compose.plugin.yml")
+	for _, p := range []string{base, frag} {
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("services: {}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for rel, body := range map[string]string{
+		".nself/compose-files.txt": base + "\n" + frag + "\n",
+		".env":                     "A=1\n",
+		".nself/compose.env":       "B=2\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, rel), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := extensionCompose(dir)
+	if !reflect.DeepEqual(c.ComposeFiles, []string{base, frag}) {
+		t.Fatalf("compose files must come from the manifest: %v", c.ComposeFiles)
+	}
+	wantEnv := []string{filepath.Join(dir, ".env"), filepath.Join(dir, ".nself", "compose.env")}
+	if !reflect.DeepEqual(c.EnvFiles, wantEnv) {
+		t.Fatalf("env files must follow the project: %v", c.EnvFiles)
+	}
 }

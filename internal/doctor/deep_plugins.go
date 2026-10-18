@@ -68,8 +68,17 @@ func probePluginHTTP(client *http.Client, pluginName string, port int) CheckResu
 	}
 }
 
-// PluginHealthChecks verifies every installed plugin's health endpoint.
+// PluginHealthChecks verifies every installed plugin's health endpoint, then
+// appends the checks registered through RegisterExternal (P7-CI-53: the
+// installed plugins' own doctors). The external checks run even when the
+// container probe returns early (no Docker, no containers): a CLI plugin has
+// no container.
 func PluginHealthChecks(ctx context.Context, projectDir string, verbose bool) []CheckResult {
+	return append(pluginContainerChecks(ctx, projectDir, verbose), ExternalChecks(ctx, projectDir)...)
+}
+
+// pluginContainerChecks probes every running plugin container.
+func pluginContainerChecks(ctx context.Context, projectDir string, verbose bool) []CheckResult {
 	var results []CheckResult
 
 	// Step 1: verify Docker daemon is reachable.

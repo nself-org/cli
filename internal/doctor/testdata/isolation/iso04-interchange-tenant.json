@@ -1,0 +1,84 @@
+{
+ "description": "np_cloud_jobs tenant_id compared to X-Hasura-Source-Account-Id",
+ "strict": false,
+ "columns": {
+  "public.docs": [
+   "tenant_id"
+  ],
+  "public.np_cloud_jobs": [
+   "tenant_id"
+  ]
+ },
+ "metadata": {
+  "resource_version": 7,
+  "metadata": {
+   "version": 3,
+   "sources": [
+    {
+     "name": "default",
+     "kind": "postgres",
+     "tables": [
+      {
+       "table": {
+        "schema": "public",
+        "name": "docs"
+       },
+       "select_permissions": [
+        {
+         "role": "user",
+         "permission": {
+          "columns": [
+           "id"
+          ],
+          "filter": {
+           "tenant_id": {
+            "_eq": "X-Hasura-Tenant-Id"
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "table": {
+        "schema": "public",
+        "name": "np_cloud_jobs"
+       },
+       "select_permissions": [
+        {
+         "role": "user",
+         "permission": {
+          "columns": [
+           "id"
+          ],
+          "filter": {
+           "tenant_id": {
+            "_eq": "X-Hasura-Source-Account-Id"
+           }
+          }
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "want": [
+  {
+   "rule": "ISO-03",
+   "table": "public.np_cloud_jobs",
+   "role": "user",
+   "op": "select",
+   "fail": true
+  },
+  {
+   "rule": "ISO-04",
+   "table": "public.np_cloud_jobs",
+   "role": "user",
+   "op": "select",
+   "fail": true
+  }
+ ]
+}

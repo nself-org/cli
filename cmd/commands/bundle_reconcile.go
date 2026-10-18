@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/errs"
@@ -81,9 +82,24 @@ var (
 	extensionRuntime       reconcile.ContainerRuntime // nil: the docker CLI
 	extensionRemoveOrphans = docker.RemoveOrphans
 	extensionStartServices = func(ctx context.Context, projectDir string, services []string) error {
-		return docker.NewCompose().ComposeUp(ctx, projectDir, services...)
+		return extensionCompose(projectDir).ComposeUp(ctx, projectDir, services...)
 	}
 )
+
+// extensionCompose returns the compose invocation for the project as the plan
+// just rewrote it. Plugin services (the traefik proxy among them) live in the
+// fragments listed in .nself/compose-files.txt, not in docker-compose.yml, so
+// a bare compose call would answer "no such service". A manifest that cannot be
+// read falls back to the default file discovery, as start and stop do.
+func extensionCompose(projectDir string) *docker.Compose {
+	files, err := build.ReadComposeManifest(projectDir)
+	if err != nil {
+		files = nil
+	}
+	c := docker.NewCompose(files...)
+	c.EnvFiles = build.ComposeEnvFiles(projectDir)
+	return c
+}
 
 // swapContainers finishes a proxy swap after the files are written: it removes
 // the orphans the applied plan listed, then starts the services the plan says

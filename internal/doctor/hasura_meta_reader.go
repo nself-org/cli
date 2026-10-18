@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compat"
 	"gopkg.in/yaml.v3"
 )
 
@@ -36,12 +37,21 @@ type hasuraTableYAML struct {
 		Schema string `yaml:"schema"`
 		Name   string `yaml:"name"`
 	} `yaml:"table"`
-	SelectPermissions []struct {
-		Role       string `yaml:"role"`
-		Permission struct {
-			Filter map[string]interface{} `yaml:"filter"`
-		} `yaml:"permission"`
-	} `yaml:"select_permissions"`
+	SelectPermissions []hasuraPermYAML `yaml:"select_permissions"`
+	InsertPermissions []hasuraPermYAML `yaml:"insert_permissions"`
+	UpdatePermissions []hasuraPermYAML `yaml:"update_permissions"`
+	DeletePermissions []hasuraPermYAML `yaml:"delete_permissions"`
+}
+
+// hasuraPermYAML is one {role, permission} entry; filter, check and set are the
+// parts that can carry a session variable (ADR 0004 interchange check).
+type hasuraPermYAML struct {
+	Role       string `yaml:"role"`
+	Permission struct {
+		Filter map[string]interface{} `yaml:"filter"`
+		Check  map[string]interface{} `yaml:"check"`
+		Set    map[string]interface{} `yaml:"set"`
+	} `yaml:"permission"`
 }
 
 // hasuraTablePermsYAML holds the aggregated permission info for one table,
@@ -49,6 +59,7 @@ type hasuraTableYAML struct {
 type hasuraTablePermsYAML struct {
 	hasUserRole bool
 	filterRefs  string // lowercase concatenation of filter map keys
+	interchange string // role whose permission swaps the two isolation variables (ADR 0004)
 }
 
 // CheckHasuraMetadataYAML implements PERM-HASURA-01.
@@ -158,6 +169,24 @@ func CheckHasuraMetadataYAML(_ context.Context, projectDir string, strict bool) 
 		hasTID := strings.Contains(p.filterRefs, "tenant_id")
 		hasSAID := strings.Contains(p.filterRefs, "source_account_id")
 
+		// P7-ADOPT-05: source_account_id compared to X-Hasura-Tenant-Id (or the reverse)
+		// is the interchange ADR 0004 forbids; any role's filter, check or set counts.
+		if p.interchange != "" {
+			st := "warn"
+			// compat.V15(P7-ADOPT-05): interchange passes -> fail
+			if compat.V15() {
+				st = "fail"
+			}
+			violations = append(violations, CheckResult{
+				Section: "security",
+				Name:    fmt.Sprintf("%s: %s", HasuraMetaCheckID, tableName),
+				Status:  st,
+				Message: fmt.Sprintf("HASURA-FILTER-INTERCHANGE table=%s role=%s: permission compares source_account_id to X-Hasura-Tenant-Id or tenant_id to X-Hasura-Source-Account-Id — the two walls must not be interchanged", tableName, p.interchange),
+				FixCmd:  fmt.Sprintf("compare source_account_id to X-Hasura-Source-Account-Id and tenant_id to X-Hasura-Tenant-Id in the %s permission for %s", p.interchange, tableName),
+			})
+			continue
+		}
+
 		// No isolation column detected in the filter — check if the table even
 		// has a user-role permission entry.
 		if !p.hasUserRole {
@@ -209,7 +238,17 @@ func mergeTablePerms(tableMap map[string]hasuraTablePermsYAML, t hasuraTableYAML
 		return
 	}
 	p := tableMap[name]
+	for _, list := range [][]hasuraPermYAML{t.InsertPermissions, t.UpdatePermissions, t.DeletePermissions} {
+		for _, mp := range list {
+			if p.interchange == "" && (interchange(mp.Permission.Filter) || interchange(mp.Permission.Check) || interchange(mp.Permission.Set)) {
+				p.interchange = mp.Role
+			}
+		}
+	}
 	for _, sp := range t.SelectPermissions {
+		if p.interchange == "" && (interchange(sp.Permission.Filter) || interchange(sp.Permission.Check) || interchange(sp.Permission.Set)) {
+			p.interchange = sp.Role
+		}
 		if sp.Role != "user" {
 			continue
 		}

@@ -1,0 +1,36 @@
+{
+ "description": "no table has either column: no findings",
+ "strict": false,
+ "columns": {},
+ "metadata": {
+  "resource_version": 7,
+  "metadata": {
+   "version": 3,
+   "sources": [
+    {
+     "name": "default",
+     "tables": [
+      {
+       "table": {
+        "schema": "public",
+        "name": "posts"
+       },
+       "select_permissions": [
+        {
+         "role": "user",
+         "permission": {
+          "columns": [
+           "id"
+          ],
+          "filter": {}
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "want": []
+}

@@ -1,0 +1,412 @@
+{
+ "description": "a second source with tables cannot be checked: reported by name, never passed",
+ "strict": false,
+ "columns": {
+  "public.notes": [
+   "source_account_id"
+  ],
+  "public.projects": [
+   "source_account_id"
+  ],
+  "public.app_members": [
+   "source_account_id"
+  ]
+ },
+ "metadata": {
+  "resource_version": 7,
+  "metadata": {
+   "version": 3,
+   "sources": [
+    {
+     "name": "default",
+     "tables": [
+      {
+       "table": {
+        "schema": "public",
+        "name": "notes"
+       },
+       "select_permissions": [
+        {
+         "role": "user",
+         "permission": {
+          "columns": [
+           "id",
+           "source_account_id",
+           "title",
+           "created_at"
+          ],
+          "filter": {
+           "_and": [
+            {
+             "source_account_id": {
+              "_eq": "X-Hasura-Source-Account-Id"
+             }
+            },
+            {
+             "_exists": {
+              "_table": {
+               "schema": "public",
+               "name": "app_members"
+              },
+              "_where": {
+               "user_id": {
+                "_eq": "X-Hasura-User-Id"
+               },
+               "source_account_id": {
+                "_eq": "X-Hasura-Source-Account-Id"
+               }
+              }
+             }
+            }
+           ]
+          }
+         }
+        }
+       ],
+       "insert_permissions": [
+        {
+         "role": "user",
+         "permission": {
+          "check": {
+           "_and": [
+            {
+             "source_account_id": {
+              "_eq": "X-Hasura-Source-Account-Id"
+             }
+            },
+            {
+             "_exists": {
+              "_table": {
+               "schema": "public",
+               "name": "app_members"
+              },
+              "_where": {
+               "user_id": {
+                "_eq": "X-Hasura-User-Id"
+               },
+               "source_account_id": {
+                "_eq": "X-Hasura-Source-Account-Id"
+               }
+              }
+             }
+            }
+           ]
+          },
+          "columns": [
+           "title"
+          ],
+          "set": {
+           "source_account_id": "X-Hasura-Source-Account-Id"
+          }
+         }
+        }
+       ],
+       "update_permissions": [
+        {
+         "role": "user",
+         "permission": {
+          "columns": [
+           "title"
+          ],
+          "filter": {
+           "_and": [
+            {
+             "source_account_id": {
+              "_eq": "X-Hasura-Source-Account-Id"
+             }
+            },
+            {
+             "_exists": {
+              "_table": {
+               "schema": "public",
+               "name": "app_members"
+              },
+              "_where": {
+               "user_id": {
+                "_eq": "X-Hasura-User-Id"
+               },
+               "source_account_id": {
+                "_eq": "X-Hasura-Source-Account-Id"
+               }
+              }
+             }
+            }
+           ]
+          },
+          "check": {
+           "_and": [
+            {
+             "source_account_id": {
+              "_eq": "X-Hasura-Source-Account-Id"
+             }
+            },
+            {
+             "_exists": {
+              "_table": {
+               "schema": "public",
+               "name": "app_members"
+              },
+              "_where": {
+               "user_id": {
+                "_eq": "X-Hasura-User-Id"
+               },
+               "source_account_id": {
+                "_eq": "X-Hasura-Source-Account-Id"
+               }
+              }
+             }
+            }
+           ]
+          }
+         }
+        }
+       ],
+       "delete_permissions": [
+        {
+         "role": "user",
+         "permission": {
+          "filter": {
+           "_and": [
+            {
+             "source_account_id": {
+              "_eq": "X-Hasura-Source-Account-Id"
+             }
+            },
+            {
+             "_exists": {
+              "_table": {
+               "schema": "public",
+               "name": "app_members"
+              },
+              "_where": {
+               "user_id": {
+                "_eq": "X-Hasura-User-Id"
+               },
+               "source_account_id": {
+                "_eq": "X-Hasura-Source-Account-Id"
+               }
+              }
+             }
+            }
+           ]
+          }
+         }
+        }
+       ]
+      },
+      {
+       "table": {
+        "schema": "public",
+        "name": "projects"
+       },
+       "select_permissions": [
+        {
+         "role": "user",
+         "permission": {
+          "columns": [
+           "id",
+           "source_account_id",
+           "title",
+           "name",
+           "created_at"
+          ],
+          "filter": {
+           "_and": [
+            {
+             "source_account_id": {
+              "_eq": "X-Hasura-Source-Account-Id"
+             }
+            },
+            {
+             "_exists": {
+              "_table": {
+               "schema": "public",
+               "name": "app_members"
+              },
+              "_where": {
+               "user_id": {
+                "_eq": "X-Hasura-User-Id"
+               },
+               "source_account_id": {
+                "_eq": "X-Hasura-Source-Account-Id"
+               }
+              }
+             }
+            }
+           ]
+          }
+         }
+        }
+       ],
+       "insert_permissions": [
+        {
+         "role": "user",
+         "permission": {
+          "check": {
+           "_and": [
+            {
+             "source_account_id": {
+              "_eq": "X-Hasura-Source-Account-Id"
+             }
+            },
+            {
+             "_exists": {
+              "_table": {
+               "schema": "public",
+               "name": "app_members"
+              },
+              "_where": {
+               "user_id": {
+                "_eq": "X-Hasura-User-Id"
+               },
+               "source_account_id": {
+                "_eq": "X-Hasura-Source-Account-Id"
+               }
+              }
+             }
+            }
+           ]
+          },
+          "columns": [
+           "title",
+           "name"
+          ],
+          "set": {
+           "source_account_id": "X-Hasura-Source-Account-Id"
+          }
+         }
+        }
+       ],
+       "update_permissions": [
+        {
+         "role": "user",
+         "permission": {
+          "columns": [
+           "title",
+           "name"
+          ],
+          "filter": {
+           "_and": [
+            {
+             "source_account_id": {
+              "_eq": "X-Hasura-Source-Account-Id"
+             }
+            },
+            {
+             "_exists": {
+              "_table": {
+               "schema": "public",
+               "name": "app_members"
+              },
+              "_where": {
+               "user_id": {
+                "_eq": "X-Hasura-User-Id"
+               },
+               "source_account_id": {
+                "_eq": "X-Hasura-Source-Account-Id"
+               }
+              }
+             }
+            }
+           ]
+          },
+          "check": {
+           "_and": [
+            {
+             "source_account_id": {
+              "_eq": "X-Hasura-Source-Account-Id"
+             }
+            },
+            {
+             "_exists": {
+              "_table": {
+               "schema": "public",
+               "name": "app_members"
+              },
+              "_where": {
+               "user_id": {
+                "_eq": "X-Hasura-User-Id"
+               },
+               "source_account_id": {
+                "_eq": "X-Hasura-Source-Account-Id"
+               }
+              }
+             }
+            }
+           ]
+          }
+         }
+        }
+       ],
+       "delete_permissions": [
+        {
+         "role": "user",
+         "permission": {
+          "filter": {
+           "_and": [
+            {
+             "source_account_id": {
+              "_eq": "X-Hasura-Source-Account-Id"
+             }
+            },
+            {
+             "_exists": {
+              "_table": {
+               "schema": "public",
+               "name": "app_members"
+              },
+              "_where": {
+               "user_id": {
+                "_eq": "X-Hasura-User-Id"
+               },
+               "source_account_id": {
+                "_eq": "X-Hasura-Source-Account-Id"
+               }
+              }
+             }
+            }
+           ]
+          }
+         }
+        }
+       ]
+      },
+      {
+       "table": {
+        "schema": "public",
+        "name": "app_members"
+       }
+      }
+     ]
+    },
+    {
+     "name": "reporting",
+     "kind": "postgres",
+     "tables": [
+      {
+       "table": {
+        "schema": "public",
+        "name": "notes"
+       },
+       "select_permissions": [
+        {
+         "role": "user",
+         "permission": {
+          "columns": [
+           "id"
+          ],
+          "filter": {}
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "want": [],
+ "unchecked": [
+  "reporting"
+ ]
+}
