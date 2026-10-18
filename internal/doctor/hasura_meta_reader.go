@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compat"
 	"gopkg.in/yaml.v3"
 )
 
@@ -49,6 +50,7 @@ type hasuraTableYAML struct {
 type hasuraTablePermsYAML struct {
 	hasUserRole bool
 	filterRefs  string // lowercase concatenation of filter map keys
+	interchange string // role whose select filter swaps the two isolation variables (ADR 0004)
 }
 
 // CheckHasuraMetadataYAML implements PERM-HASURA-01.
@@ -158,6 +160,24 @@ func CheckHasuraMetadataYAML(_ context.Context, projectDir string, strict bool) 
 		hasTID := strings.Contains(p.filterRefs, "tenant_id")
 		hasSAID := strings.Contains(p.filterRefs, "source_account_id")
 
+		// P7-ADOPT-05: source_account_id compared to X-Hasura-Tenant-Id (or the reverse)
+		// is the interchange ADR 0004 forbids; any role's select filter counts.
+		if p.interchange != "" {
+			st := "warn"
+			// compat.V15(P7-ADOPT-05): interchange passes -> fail
+			if compat.V15() {
+				st = "fail"
+			}
+			violations = append(violations, CheckResult{
+				Section: "security",
+				Name:    fmt.Sprintf("%s: %s", HasuraMetaCheckID, tableName),
+				Status:  st,
+				Message: fmt.Sprintf("HASURA-FILTER-INTERCHANGE table=%s role=%s: select filter compares source_account_id to X-Hasura-Tenant-Id or tenant_id to X-Hasura-Source-Account-Id — the two walls must not be interchanged", tableName, p.interchange),
+				FixCmd:  fmt.Sprintf("compare source_account_id to X-Hasura-Source-Account-Id and tenant_id to X-Hasura-Tenant-Id in the %s select filter for %s", p.interchange, tableName),
+			})
+			continue
+		}
+
 		// No isolation column detected in the filter — check if the table even
 		// has a user-role permission entry.
 		if !p.hasUserRole {
@@ -210,6 +230,9 @@ func mergeTablePerms(tableMap map[string]hasuraTablePermsYAML, t hasuraTableYAML
 	}
 	p := tableMap[name]
 	for _, sp := range t.SelectPermissions {
+		if p.interchange == "" && interchange(sp.Permission.Filter) {
+			p.interchange = sp.Role
+		}
 		if sp.Role != "user" {
 			continue
 		}

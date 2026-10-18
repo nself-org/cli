@@ -72,6 +72,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | D-0752 | plugin disable never confirmed | prod-class and hand-edit confirmation before the marker is written. | `cmd/commands/plugin_disable_gate.go` |
 | P7-ADOPT-01 | writable absolute bind allowed | E502 | `internal/compose/custom_service_v2.go` |
 | P7-ADOPT-03 | warn | E505 | `internal/build/shared_proxy.go` |
+| P7-ADOPT-05 | interchange passes | fail | `internal/doctor/hasura_meta_reader.go` |
 | P7-ADOPT-13 | --project-ref and --supabase-key required | optional | `cmd/commands/db_import_src_supabase.go` |
 | P7-ADOPT-13 | artifact generator | import pipeline | `cmd/commands/migrate_supabase.go` |
 | P7-ADOPT-14 | artifact generator | import pipeline | `cmd/commands/migrate_firebase.go` |

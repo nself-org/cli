@@ -70,6 +70,30 @@ curl -fsS "$AUTH_URL/signup/email-password" -H 'Content-Type: application/json' 
 INSERT INTO public.app_members (user_id, source_account_id) VALUES ('<user uuid>', 'app_a');
 ```
 
+## Checking isolation
+
+```bash
+nself doctor --deep --only isolation          # human report
+nself doctor --deep --only isolation --json   # machine report
+```
+
+The guard is read-only. It reads the live Hasura permissions (`export_metadata`) and, with `psql` inside the project's postgres container, which tables have `source_account_id` or `tenant_id`. Every role except `admin` and `nself_admin` is checked on every tracked table. Each finding names the table, the role and the operation.
+
+| Rule | Severity | What it flags |
+|---|---|---|
+| ISO-01 | warn (fail in strict mode) | A tracked app table without `source_account_id` while another app table has it. Skips `auth`, `storage`, `hdb_catalog` and `np_*`. |
+| ISO-02 | fail | A table with `source_account_id` where a role's select, update or delete filter does not pin `source_account_id = X-Hasura-Source-Account-Id`, or its insert `check`/`set` does not. An update without a pinning `check` also fails while the column is updatable. Skips `np_*`. |
+| ISO-03 | fail | A table with `tenant_id` where a role's permission does not pin `tenant_id = X-Hasura-Tenant-Id`. Covers every tracked table, including `np_*` and `np_cloud_*`. |
+| ISO-04 | fail | The interchange: `source_account_id` compared to `X-Hasura-Tenant-Id`, or `tenant_id` to `X-Hasura-Source-Account-Id`, in a filter, check or preset. Covers every tracked table. |
+
+A filter pins a column only when it holds for every row it admits: an `_and` branch, an implicit AND, or every branch of an `_or`. `_not`, `_exists`, an empty filter `{}` and a missing permission do not pin. Session variable names compare case-insensitively.
+
+Strict mode (`NSELF_DOCTOR_STRICT=1`) turns the ISO-01 warning into a fail. A project where no table has either column gets one pass and nothing else. If the metadata or the columns cannot be read (stack stopped, container unreachable), the section reports one failure and never a pass.
+
+`PERM-HASURA-01` (the `hasura/metadata` files for `np_*` tables) also rejects the interchange: a warning in v1.4 mode, a failure in v1.5 mode.
+
+`scripts/e2e/isolation-guard.sh` proves it on Linux with the multi-app template: zero failures on the template, then a failure naming `public.notes`, `user`, `select` and ISO-02 after the admin API replaces the notes select filter with `{}`.
+
 ## Proof
 
 `scripts/e2e/multi-app-isolation.sh` runs on Linux against a real stack (init, overlay, build, start, migrate, reconcile) with fake credentials. It checks:
