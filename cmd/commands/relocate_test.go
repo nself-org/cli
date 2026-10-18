@@ -232,12 +232,20 @@ func TestRelocateAutoAddPinned(t *testing.T) {
 	}
 
 	t.Run("lock pin the catalogue does not serve", func(t *testing.T) {
-		_, calls, _ := relocateSetup(t, "9.9.9", nil)
+		proof, calls, warn := relocateSetup(t, "9.9.9", nil)
 		autoAddPlugin = recordOver(calls, fixtureSeam(t))
-		_, err := relocateBreakout("ci", nil)
-		assertBreakoutRefused(t, err, "ci")
-		if _, statErr := os.Stat(aiPublished()); statErr == nil {
-			t.Fatal("a binary was published for a version nothing served")
+		handled, err := relocateBreakout("ci", []string{"--check"})
+		if !handled || err != nil {
+			t.Fatalf("a pin the catalogue no longer serves must fall back to the catalogue: handled=%v err=%v", handled, err)
+		}
+		if want := []seamCall{{"ci", "9.9.9"}, {"ci", ""}}; !reflect.DeepEqual(*calls, want) {
+			t.Fatalf("seam calls %v, want the pin tried, then the catalogue version: %v", *calls, want)
+		}
+		if w := warn.String(); !strings.Contains(w, "9.9.9") || !strings.Contains(w, "using ci@"+aiVersion) || !strings.Contains(w, "nself.lock.yaml") {
+			t.Fatalf("the warning must name the pin, the version used and the lock: %q", w)
+		}
+		if got := readProof(t, proof); got["argv"] != "--check" {
+			t.Fatalf("the published binary ran with %v", got)
 		}
 	})
 }

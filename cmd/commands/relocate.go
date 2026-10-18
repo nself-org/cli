@@ -94,6 +94,16 @@ func relocateBreakout(cmdName string, args []string) (handled bool, err error) {
 		return true, err
 	}
 	bin, err := autoAddPlugin(row.Plugin, version)
+	if version != "" && errors.Is(err, errPinNotServed) {
+		// The catalogue serves only the latest entry, so a pin that a release
+		// outdated can never install on a fresh machine. An already-mounted
+		// plugin ignores the pin, so fall back to the signed latest and say so
+		// (D-0906). This is never silenced: the lock no longer matches what runs.
+		bin, err = autoAddPlugin(row.Plugin, "")
+		if err == nil {
+			_, _ = fmt.Fprintf(relocateWarnOut, "warning: nself.lock.yaml pins %s@%s, which the catalogue no longer serves; using %s@%s. Run nself build to refresh the lock.\n", row.Plugin, version, row.Plugin, readInstalledVersion(resolvePluginDir(), row.Plugin))
+		}
+	}
 	if err != nil {
 		return true, breakoutRefused(old, row.Plugin, err)
 	}

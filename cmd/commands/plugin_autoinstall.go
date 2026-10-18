@@ -20,6 +20,7 @@ package commands
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -31,6 +32,11 @@ import (
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/plugin/verify/signature"
 )
+
+// errPinNotServed marks the refusal of a requested version the catalogue does
+// not serve (it serves one entry per slug, the latest). A caller that holds a
+// pin, not a demand, can match it with errors.Is and fall back.
+var errPinNotServed = errors.New("the catalogue does not serve the requested version")
 
 // autoInstallTierEnv is the tier override plugin.Install reads; the seam pins it
 // to free so its pre-check and the installer resolve the same registry entry.
@@ -142,7 +148,7 @@ func autoInstallResolve(ctx context.Context, slug, version string) (*plugin.Plug
 		return nil, nil, fmt.Errorf("auto-install of %q: the entry has dependencies, which the installer would add before verifying it (install it by hand: %s)", slug, manual)
 	}
 	if want := strings.TrimPrefix(version, "v"); want != "" && want != strings.TrimPrefix(m.Version, "v") {
-		return nil, nil, fmt.Errorf("auto-install of %q: the catalogue serves %s, not the requested %s (install it by hand: %s)", slug, m.Version, version, manual)
+		return nil, nil, fmt.Errorf("auto-install of %q: the catalogue serves %s, not the requested %s (install it by hand: %s): %w", slug, m.Version, version, manual, errPinNotServed)
 	}
 	if m.ReleaseSignature == nil {
 		return nil, nil, errs.Newf("E107", "plugin %q %s has no release signature, so it was not auto-installed", slug, m.Version).
