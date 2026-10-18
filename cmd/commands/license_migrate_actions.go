@@ -70,14 +70,16 @@ func runMigrateCheck(ctx context.Context, pingURL string, doc *licenseMigrateDat
 		// Check migration status from the server.
 		status, err := fetchMigrationStatus(ctx, key, pingURL)
 		if err != nil {
-			doc.Keys = append(doc.Keys, licenseMigrateKey{Key: masked, Product: pp.DisplayName, Remaining: "?", Status: licenseScrub(fmt.Sprintf("Error: %v", err), migrateKeyFlag)})
-			tbl.AddRow(masked, pp.DisplayName, "?", fmt.Sprintf("Error: %v", err))
+			msg := licenseScrub(fmt.Sprintf("Error: %v", err), key)
+			doc.Keys = append(doc.Keys, licenseMigrateKey{Key: masked, Product: pp.DisplayName, Remaining: "?", Status: msg})
+			tbl.AddRow(masked, pp.DisplayName, "?", msg)
 			continue
 		}
 
 		if status.Error != "" {
-			doc.Keys = append(doc.Keys, licenseMigrateKey{Key: masked, Product: pp.DisplayName, Remaining: "?", Status: licenseScrub(fmt.Sprintf("Error: %s", status.Error), migrateKeyFlag)})
-			tbl.AddRow(masked, pp.DisplayName, "?", fmt.Sprintf("Error: %s", status.Error))
+			msg := licenseScrub(fmt.Sprintf("Error: %s", status.Error), key)
+			doc.Keys = append(doc.Keys, licenseMigrateKey{Key: masked, Product: pp.DisplayName, Remaining: "?", Status: msg})
+			tbl.AddRow(masked, pp.DisplayName, "?", msg)
 			continue
 		}
 
@@ -91,8 +93,8 @@ func runMigrateCheck(ctx context.Context, pingURL string, doc *licenseMigrateDat
 			daysStr = fmt.Sprintf("%d days", status.DaysRemaining)
 		}
 
-		doc.Keys = append(doc.Keys, licenseMigrateKey{Key: masked, Product: pp.DisplayName, Remaining: daysStr, Status: licenseScrub(migStatus, migrateKeyFlag)})
-		tbl.AddRow(masked, pp.DisplayName, daysStr, migStatus)
+		doc.Keys = append(doc.Keys, licenseMigrateKey{Key: masked, Product: pp.DisplayName, Remaining: daysStr, Status: licenseScrub(migStatus, key)})
+		tbl.AddRow(masked, pp.DisplayName, daysStr, licenseScrub(migStatus, key))
 	}
 
 	tbl.Render()
@@ -138,11 +140,11 @@ func runMigrateLink(ctx context.Context, pingURL string, doc *licenseMigrateData
 
 	resp, err := sendMigrateRequest(ctx, keyToMigrate, migrateAccountID, pingURL)
 	if err != nil {
-		return fmt.Errorf("migration request failed: %w", err)
+		return fmt.Errorf("migration request failed: %s", licenseScrub(err.Error(), keyToMigrate))
 	}
 
 	if resp.Error != "" {
-		return fmt.Errorf("server error: %s", resp.Error)
+		return fmt.Errorf("server error: %s", licenseScrub(resp.Error, keyToMigrate))
 	}
 
 	doc.Link = &licenseMigrateLink{Key: masked, AccountID: licenseScrub(resp.AccountID, keyToMigrate), Tier: licenseScrub(resp.Tier, keyToMigrate), AlreadyLinked: resp.AlreadyMigrated}

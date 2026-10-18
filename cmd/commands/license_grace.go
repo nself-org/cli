@@ -147,12 +147,12 @@ every 6 hours. --remove-timer removes that timer by hand (--all: every project o
 			masked := license.MaskKey(key)
 			if err != nil {
 				doc.Keys = append(doc.Keys, licenseRefreshKey{Key: masked, Error: "refresh failed: " + licenseScrub(err.Error())})
-				fmt.Fprintf(os.Stderr, "%s: refresh failed: %v\n", masked, err)
+				fmt.Fprintf(cmd.ErrOrStderr(), "%s: refresh failed: %s\n", masked, licenseScrub(err.Error(), key))
 				continue
 			}
 			if !result.Valid {
 				doc.Keys = append(doc.Keys, licenseRefreshKey{Key: masked, Error: "invalid: " + licenseScrub(result.Message)})
-				fmt.Fprintf(os.Stderr, "%s: invalid — %s\n", masked, result.Message)
+				fmt.Fprintf(cmd.ErrOrStderr(), "%s: invalid — %s\n", masked, licenseScrub(result.Message, key))
 				continue
 			}
 			row := licenseRefreshKey{Key: masked, Refreshed: true, Tier: licenseScrub(result.Tier)}

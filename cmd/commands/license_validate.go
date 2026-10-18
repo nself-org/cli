@@ -49,7 +49,7 @@ var licenseValidateCmd = &cobra.Command{
 
 			masked := license.MaskKey(key)
 			if err != nil {
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s: validation failed: %v\n", masked, err)
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s: validation failed: %s\n", masked, licenseScrub(err.Error(), key))
 				allValid = false
 			} else if valid {
 				validKeys = append(validKeys, masked)
@@ -244,10 +244,10 @@ Requires network connectivity.`,
 
 		result, err := license.RefreshCache(ctx, keys[0])
 		if err != nil {
-			return fmt.Errorf("revalidation failed: %w", err)
+			return fmt.Errorf("revalidation failed: %s", licenseScrub(err.Error(), keys[0]))
 		}
 		if !result.Valid {
-			return fmt.Errorf("license is invalid: %s", result.Message)
+			return fmt.Errorf("license is invalid: %s", licenseScrub(result.Message, keys[0]))
 		}
 
 		rev := licenseRevalidateData{Tier: licenseScrub(result.Tier)}
@@ -255,7 +255,7 @@ Requires network connectivity.`,
 			rev.ExpiresAt = result.ExpiresAt.Format("2006-01-02")
 		}
 		setData(cmd, rev)
-		fmt.Printf("License revalidated. Tier: %s\n", result.Tier)
+		fmt.Printf("License revalidated. Tier: %s\n", rev.Tier)
 		if !result.ExpiresAt.IsZero() {
 			fmt.Printf("Expires: %s\n", result.ExpiresAt.Format("2006-01-02"))
 		}

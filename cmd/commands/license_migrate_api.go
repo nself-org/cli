@@ -66,16 +66,16 @@ func sendMigrateRequest(ctx context.Context, licenseKey, accountID, pingURL stri
 	return &result, nil
 }
 
-// fetchMigrationStatus — GET /license/migration-status?key=<key>.
+// fetchMigrationStatus — GET /license/migration-status with the key in X-License-Key.
 func fetchMigrationStatus(ctx context.Context, key string, pingURL string) (*migrationStatusResponse, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
-	url := fmt.Sprintf("%s/license/migration-status?key=%s", pingURL, key)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", pingURL+"/license/migration-status", nil)
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("X-License-Key", key) // a header, not the query: URLs end up in transport errors and logs
 
 	resp, err := httptimeout.License.Do(req)
 	if err != nil {
