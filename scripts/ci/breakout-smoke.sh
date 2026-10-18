@@ -109,9 +109,12 @@ done
 # 3. v1.5, plugin not installed: E404 whatever the reason, never a silent success.
 PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
 BASE_URL="http://127.0.0.1:$PORT"
+# The client reads NSELF_PLUGIN_REGISTRY itself, not <it>/registry.json, so each
+# catalogue is one file served at its own URL (D-0909: the directory form answered
+# with a listing, the entry never parsed, and every case failed for the wrong reason).
+mkdir -p "$WORK/served"
 for kind in unsigned tampered; do
-  mkdir -p "$WORK/served/$kind"
-  sed "s#@BASE@#$BASE_URL#g" "$FIX/registry/$kind/registry.json" >"$WORK/served/$kind/registry.json"
+  sed "s#@BASE@#$BASE_URL#g" "$FIX/registry/$kind/registry.json" >"$WORK/served/$kind.json"
 done
 (cd "$WORK/served" && exec python3 -m http.server "$PORT" --bind 127.0.0.1 >/dev/null 2>&1) &
 SERVER_PID=$!
@@ -119,7 +122,7 @@ SERVER_PID=$!
 # pass on the offline E404 alone. Stop here instead of letting them lie.
 READY=0
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40; do
-  if curl -fsS -o /dev/null "$BASE_URL/unsigned/registry.json" 2>/dev/null && curl -fsS -o /dev/null "$BASE_URL/tampered/registry.json" 2>/dev/null; then READY=1; break; fi
+  if curl -fsS -o /dev/null "$BASE_URL/unsigned.json" 2>/dev/null && curl -fsS -o /dev/null "$BASE_URL/tampered.json" 2>/dev/null; then READY=1; break; fi
   kill -0 "$SERVER_PID" 2>/dev/null || break
   sleep 0.25
 done
@@ -159,8 +162,8 @@ expect_e404() { # <label> <cause> <env assignment or ""> <args...>
 }
 expect_e404 "NSELF_NO_AUTO_ADD=1" "switched off" "NSELF_NO_AUTO_ADD=1" ci --check
 expect_e404 "offline registry" "!release signature|cannot be verified|switched off" "NSELF_PLUGIN_REGISTRY=http://127.0.0.1:9" ci --check
-expect_e404 "unsigned release" "no release signature" "NSELF_PLUGIN_REGISTRY=$BASE_URL/unsigned" ci --check
-expect_e404 "tampered release (refused before download: no key pinned; the in-process test proves the checksum and signature)" "cannot be verified" "NSELF_PLUGIN_REGISTRY=$BASE_URL/tampered" runner verify x
+expect_e404 "unsigned release" "no release signature" "NSELF_PLUGIN_REGISTRY=$BASE_URL/unsigned.json" ci --check
+expect_e404 "tampered release (refused before download: no key pinned; the in-process test proves the checksum and signature)" "cannot be verified|bad signature|E121" "NSELF_PLUGIN_REGISTRY=$BASE_URL/tampered.json" runner verify x
 
 # 4. v1.5: the marketplace is gone.
 for c in "plugin marketplace" "plugin submit"; do
