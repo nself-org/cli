@@ -72,7 +72,7 @@ If the owner's Nginx is not running, the fronted project starts and stops anyway
 
 ### Restarting the owner's Nginx
 
-A restarted or recreated Nginx container loses its extra networks. Run `nself start` in the owner afterwards: it reattaches every registered, running project.
+A restarted or recreated Nginx container loses its extra networks. `nself restart nginx` in the owner reattaches every registered, running project; after any other recreate of the container, run `nself start` in the owner.
 
 ### A failed `nginx -t` (E506)
 

@@ -30,6 +30,7 @@ type attachRun struct {
 	out       Outcome
 	connected []Registration // connected by this call, for the rollback
 	restored  []Registration // Files = what this call took out of quarantine
+	stopped   bool           // this call stopped a restarting owner and has not started it again
 }
 
 // undo disconnects every network this call connected.
@@ -79,6 +80,13 @@ func attach(ctx context.Context, ownerDir, self string, regs []Registration) (Ou
 	}
 	a := &attachRun{ctx: ctx, ownerDir: ownerDir, self: self}
 	settled, err := a.run(regs)
+	if a.stopped {
+		// A restarting owner this call stopped must not stay stopped on an exit
+		// that never reached the start (D-0931).
+		if serr := docker.StartContainer(ctx, a.nginx); serr != nil {
+			err = errors.Join(err, e506("cannot start the owner nginx "+a.nginx+" again", serr, ""))
+		}
+	}
 	if err != nil && !settled {
 		if qerr := a.requarantine(); qerr != nil {
 			err = errors.Join(err, qerr)
@@ -112,6 +120,7 @@ func (a *attachRun) run(regs []Registration) (settled bool, err error) {
 		if err := docker.StopContainer(a.ctx, nginx); err != nil {
 			return false, e506("cannot stop the restarting owner nginx "+nginx, err, "")
 		}
+		a.stopped = true
 	}
 	before, err := docker.ContainerNetworks(a.ctx, nginx)
 	if err != nil {
@@ -151,6 +160,7 @@ func (a *attachRun) run(regs []Registration) (settled bool, err error) {
 		a.out.Attached = append(a.out.Attached, r.Project)
 	}
 	if cold && len(a.out.Attached) > 0 {
+		a.stopped = false // startAndWait starts it; a failed start is its own error
 		if err := startAndWait(a.ctx, nginx); err != nil {
 			a.undo()
 			a.out.Attached = nil

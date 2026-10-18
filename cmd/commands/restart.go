@@ -132,7 +132,7 @@ func runRestartFlow(cmd *cobra.Command, args []string) error {
 		}
 	} else if len(services) > 0 {
 		// Specific services: restart only those
-		if err := restartServices(ctx, comp, workdir, services, verbose); err != nil {
+		if err := restartServices(ctx, comp, workdir, cfg, services, verbose); err != nil {
 			return err
 		}
 	} else if smart {

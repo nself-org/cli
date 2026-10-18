@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/nself-org/cli/internal/build"
@@ -76,7 +77,7 @@ func restartFull(ctx context.Context, comp *docker.Compose, workdir string, cfg 
 }
 
 // restartServices restarts only the specified services.
-func restartServices(ctx context.Context, comp *docker.Compose, workdir string, services []string, verbose bool) error {
+func restartServices(ctx context.Context, comp *docker.Compose, workdir string, cfg *config.Config, services []string, verbose bool) error {
 	if verbose {
 		ui.Info(fmt.Sprintf("Restarting services: %v", services))
 	}
@@ -101,6 +102,11 @@ func restartServices(ctx context.Context, comp *docker.Compose, workdir string, 
 	}
 	ui.Success(fmt.Sprintf("Restarted: %v", services))
 
+	// `up -d --no-deps` can recreate the owner's nginx, which drops its
+	// attachments to the fronted project networks: attach them again (D-0931).
+	if slices.Contains(services, "nginx") {
+		return afterStartSharedProxy(ctx, cfg, workdir)
+	}
 	return nil
 }
 
