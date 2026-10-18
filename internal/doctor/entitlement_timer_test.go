@@ -84,3 +84,16 @@ func TestDoctorE132Wanted(t *testing.T) {
 		}
 	})
 }
+
+// TestDeepChecksRegistersE132 guards the registration next to the E126 check: DeepChecks needs
+// Docker and a live stack, so the call site itself is asserted.
+func TestDeepChecksRegistersE132(t *testing.T) {
+	src, err := os.ReadFile("deep.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e126, e132 := strings.Index(string(src), "EntitlementFileChecks(ctx, projectDir)"), strings.Index(string(src), "EntitlementTimerChecks(ctx, projectDir)")
+	if e126 < 0 || e132 < e126 || e132-e126 > 200 {
+		t.Fatalf("EntitlementTimerChecks must be registered right after EntitlementFileChecks in deep.go (%d, %d)", e126, e132)
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -86,6 +87,7 @@ const (
 	ClassNotCovered      = "not-covered"
 	ClassWriteFailed     = "write-failed"
 	ClassInspect         = "plugin-inspect"
+	ClassTimerRemove     = "timer-remove-failed"
 )
 
 // RefreshError is a scheduled refresh failure; Error never carries more than the class.
@@ -106,6 +108,9 @@ type Outcome struct {
 	Reason       string    // why the timer was removed
 }
 
+// defaultSelfBinary is the path the timer will run: the PATH entry for nself when it leads to this
+// very binary (a stable path such as Homebrew's, which survives an upgrade that deletes the
+// versioned directory), else the resolved executable.
 func defaultSelfBinary() (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
@@ -114,7 +119,21 @@ func defaultSelfBinary() (string, error) {
 	if strings.HasSuffix(strings.TrimSuffix(filepath.Base(exe), ".exe"), ".test") {
 		return "", errors.New("go test binary")
 	}
-	return filepath.EvalSymlinks(exe)
+	resolved, err := filepath.EvalSymlinks(exe)
+	if err != nil {
+		return "", err
+	}
+	return stableBinary(resolved), nil
+}
+
+// stableBinary returns the PATH entry that leads to resolved, or resolved itself.
+func stableBinary(resolved string) string {
+	if onPath, err := exec.LookPath(filepath.Base(resolved)); err == nil && filepath.IsAbs(onPath) {
+		if target, err := filepath.EvalSymlinks(onPath); err == nil && target == resolved {
+			return filepath.Clean(onPath)
+		}
+	}
+	return resolved
 }
 
 // defaultPluginDir reports whether the plugin directory is the one the timer (which carries no
@@ -197,7 +216,10 @@ func RunScheduled(ctx context.Context, projectDir string) (Outcome, error) {
 		if AutorefreshDisabled() {
 			reason = "autorefresh disabled"
 		}
-		res, _ := removeTimer(projectDir)
+		res, err := removeTimer(projectDir)
+		if err != nil {
+			return Outcome{}, &RefreshError{Class: ClassTimerRemove, Err: err}
+		}
 		return Outcome{Removed: res.Removed, RootRequired: res.RootRequired, Reason: reason}, nil
 	}
 	renewed, rejected, class := revalidateClassified(ctx)
@@ -208,12 +230,12 @@ func RunScheduled(ctx context.Context, projectDir string) (Outcome, error) {
 	if err != nil {
 		return Outcome{}, &RefreshError{Class: ClassNotCovered, Err: err}
 	}
-	if err := writeAtomic(Path(projectDir), []byte(token)); err != nil {
-		return Outcome{}, &RefreshError{Class: ClassWriteFailed, Err: err}
-	}
 	claims, err := license.ParseLicenseJWT(token)
 	if err != nil {
 		return Outcome{}, &RefreshError{Class: ClassTokenVerify, Err: err}
+	}
+	if err := writeAtomic(Path(projectDir), []byte(token)); err != nil {
+		return Outcome{}, &RefreshError{Class: ClassWriteFailed, Err: err}
 	}
 	return Outcome{Exp: time.Unix(claims.Exp, 0).UTC()}, nil
 }
@@ -225,7 +247,7 @@ func revalidateClassified(ctx context.Context) (renewed []string, rejected map[s
 	rejected, class = map[string]bool{}, ClassNoLicence
 	for _, key := range license.CollectLicenseKeys() {
 		remote := &validationStatus{client: httptimeout.Default}
-		result, err := license.Validate(ctx, key, &license.ValidatorOptions{HTTPClient: remote, Clock: refreshClock})
+		result, err := license.Validate(ctx, key, &license.ValidatorOptions{HTTPClient: remote, Clock: refreshClock, WarnOnce: func(string) {}})
 		switch {
 		case err == nil && explicitRejection(remote, result):
 			rejected[license.HashKey(key)], class = true, ClassRejected

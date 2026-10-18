@@ -253,14 +253,25 @@ func TestScheduledRefreshFailureClasses(t *testing.T) {
 			compattest.Set(t, true)
 			p := newArPing(t, time.Now(), "chat")
 			p.seedCache(t)
-			fakeTimer(t)
+			timer := fakeTimer(t)
+			oldClock := refreshClock
+			refreshClock = arClock{p}
+			t.Cleanup(func() { refreshClock = oldClock })
 			project := t.TempDir()
+			start := time.Now()
+			p.set("ok", start.Add(time.Hour))
 			if _, err := RunScheduled(context.Background(), project); err != nil {
 				t.Fatal(err)
 			}
 			before, _ := os.ReadFile(Path(project))
-			p.set(tc.mode, time.Now().Add(time.Hour))
+			// The cache now holds an OLDER token than the file: a failed run must not write it.
+			p.set("ok", start)
+			p.seedCache(t)
+			p.set(tc.mode, start.Add(2*time.Hour))
 			_, err := RunScheduled(context.Background(), project)
+			if len(timer.removed) != 0 || len(timer.ensured) != 0 {
+				t.Fatalf("a failed refresh touched the timer: ensured %v removed %v", timer.ensured, timer.removed)
+			}
 			var failed *RefreshError
 			if !errors.As(err, &failed) || failed.Class != tc.class {
 				t.Fatalf("err = %v, want class %s", err, tc.class)
@@ -273,5 +284,46 @@ func TestScheduledRefreshFailureClasses(t *testing.T) {
 				t.Fatalf("error text leaks: %v", err)
 			}
 		})
+	}
+}
+
+func TestStableBinaryPrefersThePathEntry(t *testing.T) {
+	root, _ := filepath.EvalSymlinks(t.TempDir())
+	real := filepath.Join(root, "Cellar", "1.5.0", "bin", "nself-stable-fixture")
+	link := filepath.Join(root, "bin", "nself-stable-fixture")
+	for _, d := range []string{filepath.Dir(real), filepath.Dir(link)} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(real, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", filepath.Dir(link))
+	if got := stableBinary(real); got != link {
+		t.Fatalf("stableBinary = %q, want the PATH entry %q", got, link)
+	}
+	t.Setenv("PATH", t.TempDir())
+	if got := stableBinary(real); got != real {
+		t.Fatalf("not on PATH: stableBinary = %q, want %q", got, real)
+	}
+}
+
+func TestScheduledRemoveFailureIsReported(t *testing.T) {
+	compattest.Set(t, true)
+	p := newArPing(t, time.Now(), "chat")
+	p.seedCache(t)
+	fakeTimer(t)
+	if err := os.RemoveAll(filepath.Join(os.Getenv("HOME"), ".nself", "plugins", "chat")); err != nil {
+		t.Fatal(err)
+	}
+	HostTimers.Remove = func(string) (TimerRemoval, error) { return TimerRemoval{}, errors.New("crontab rejected") }
+	_, err := RunScheduled(context.Background(), t.TempDir())
+	var failed *RefreshError
+	if !errors.As(err, &failed) || failed.Class != ClassTimerRemove {
+		t.Fatalf("err = %v, want class %s", err, ClassTimerRemove)
 	}
 }

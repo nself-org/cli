@@ -51,8 +51,11 @@ func (f *fakeHost) exec(stdin, name string, args ...string) (string, error) {
 	f.calls = append(f.calls, name+" "+strings.Join(args, " "))
 	switch {
 	case name == "crontab" && args[0] == "-l":
-		if f.cron == "" || f.cronBroken {
-			return "no crontab", fmt.Errorf("exit 1")
+		if f.cronBroken {
+			return "crontab: cannot read the spool: permission denied", fmt.Errorf("exit 1")
+		}
+		if f.cron == "" {
+			return "no crontab for app", fmt.Errorf("exit 1")
 		}
 		return f.cron, nil
 	case name == "crontab":
@@ -176,8 +179,11 @@ func TestEnsureUpdatesOnChangeAndRemoveByBackend(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.cron = "MAILTO=x\n" + f.cron
-	if res, _ := f.ensure(dir, bin); !res.Changed && !strings.Contains(f.cron, "MAILTO=x") {
-		t.Fatal("ensure dropped a foreign crontab line")
+	if _, err := f.ensure(dir, bin); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.cron, "MAILTO=x") || strings.Count(f.cron, entCronTag+Hash(dir)) != 2 {
+		t.Fatalf("ensure dropped a foreign crontab line or duplicated ours: %q", f.cron)
 	}
 	if res, err := Remove(dir); err != nil || !res.Removed || strings.Contains(f.cron, entCronTag) || !strings.Contains(f.cron, "MAILTO=x") {
 		t.Fatalf("remove = %+v, %v, crontab %q", res, err, f.cron)
@@ -195,6 +201,9 @@ func TestEnsureUpdatesOnChangeAndRemoveByBackend(t *testing.T) {
 	if svc, _ := os.ReadFile(filepath.Join(f.unitDir, entUnitName(Hash(dir))+".service")); !strings.Contains(string(svc), fmt.Sprintf("User=%d\n", os.Getuid())) {
 		t.Fatalf("unit does not run as the project owner:\n%s", svc)
 	}
+	if st := Status(dir); !st.Active || st.Backend != BackendSystemd {
+		t.Fatalf("a non-root doctor must see the root-installed unit: %+v", st)
+	}
 	res, _ := Remove(dir)
 	if !res.RootRequired || res.Removed || !fileExists(filepath.Join(f.unitDir, entUnitName(Hash(dir))+".timer")) {
 		t.Fatalf("non-root remove of systemd units = %+v", res)
@@ -206,6 +215,23 @@ func TestEnsureUpdatesOnChangeAndRemoveByBackend(t *testing.T) {
 	noBackend.crontab, noBackend.euid = false, os.Geteuid()
 	if _, err := noBackend.ensure(dir, bin); err != ErrNoBackend {
 		t.Fatalf("no backend err = %v", err)
+	}
+}
+
+// TestCronReadFailureKeepsForeignLines: a crontab we cannot read is never overwritten.
+func TestCronReadFailureKeepsForeignLines(t *testing.T) {
+	f, root := newFake(t, "linux", 1000)
+	dir, bin := project(t, root)
+	f.exe = bin
+	f.cron, f.cronBroken = "MAILTO=ops\n0 3 * * * backup\n", true
+	if _, err := f.ensure(dir, bin); err == nil {
+		t.Fatal("ensure succeeded although crontab -l failed")
+	}
+	if f.cron != "MAILTO=ops\n0 3 * * * backup\n" {
+		t.Fatalf("foreign crontab was rewritten: %q", f.cron)
+	}
+	if res, err := Remove(dir); err != nil || res.Removed || f.cron != "MAILTO=ops\n0 3 * * * backup\n" {
+		t.Fatalf("remove with an unreadable crontab: %+v %v %q", res, err, f.cron)
 	}
 }
 
@@ -448,4 +474,43 @@ func FuzzRenderTimer(f *testing.F) {
 			t.Fatalf("plist script does not round-trip: %q", script)
 		}
 	})
+}
+
+// TestCronSelfDeleteKeepsForeignLines runs the real cron line through sh (cron's \% unescape
+// applied) with the project gone, against a stub crontab, and checks foreign lines before and
+// after the timer line survive byte for byte while the timer line disappears.
+func TestCronSelfDeleteKeepsForeignLines(t *testing.T) {
+	tmp, _ := filepath.EvalSymlinks(t.TempDir())
+	store, stubs := filepath.Join(tmp, "store"), filepath.Join(tmp, "stubs")
+	if err := os.MkdirAll(stubs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stub := "#!/bin/sh\nif [ \"$1\" = -l ]; then cat " + store + "; else cat > " + store + "; fi\n"
+	if err := os.WriteFile(filepath.Join(stubs, "crontab"), []byte(stub), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(tmp, "nself")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gone := filepath.Join(tmp, "gone-project")
+	line, err := renderCron(bin, gone, Hash(gone))
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := "MAILTO=ops\n0 3 * * * printf 'a\\n%s' b\n"
+	after := "5 4 * * * echo 'x\\ny'\n"
+	if err := os.WriteFile(store, []byte(before+line+"\n"+after), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fields := strings.SplitN(strings.ReplaceAll(line, `\%`, "%"), " ", 6)
+	run := exec.Command("sh", "-c", fields[5])
+	run.Env = []string{"PATH=" + stubs + ":/usr/bin:/bin"}
+	if out, err := run.CombinedOutput(); err != nil {
+		t.Fatalf("cron line failed: %v\n%s", err, out)
+	}
+	got, _ := os.ReadFile(store)
+	if strings.TrimRight(string(got), "\n") != strings.TrimRight(before+after, "\n") {
+		t.Fatalf("foreign lines changed:\n got %q\nwant %q", got, before+after)
+	}
 }

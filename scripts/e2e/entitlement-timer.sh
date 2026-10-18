@@ -171,10 +171,12 @@ negative_case() { # container backend
   pass negative "$b"
 }
 
-verify_units() { # container
+verify_units() { # container: systemd-analyze verify must exit 0 for our two units
   local out
-  out=$(docker exec "$1" sh -c 'systemd-analyze verify /etc/systemd/system/nself-entitlement-*.service /etc/systemd/system/nself-entitlement-*.timer 2>&1' || true)
-  if echo "$out" | grep -qi 'nself-entitlement.*\(error\|invalid\|bad\|unknown\)'; then echo "$out"; return 1; fi
+  if ! out=$(docker exec "$1" sh -c 'systemd-analyze verify /etc/systemd/system/nself-entitlement-*.service /etc/systemd/system/nself-entitlement-*.timer 2>&1'); then
+    echo "$out"
+    return 1
+  fi
 }
 
 run_backend() { # backend

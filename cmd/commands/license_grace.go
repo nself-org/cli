@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/nself-org/cli/internal/compat"
@@ -43,6 +44,10 @@ func licenseProject(cmd *cobra.Command) string {
 
 // scheduledRefresh is the timer's run: one line at most, exit 78 when only root can finish removal.
 func scheduledRefresh(cmd *cobra.Command, projectDir string) error {
+	if projectDir == "" { // never write state into the working directory
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "entitlement refresh failed: no-project")
+		return errs.Exit(errs.ExitUserError)
+	}
 	out, err := runScheduledRefresh(cmd.Context(), projectDir)
 	var failed *entitlement.RefreshError
 	switch {
@@ -85,7 +90,7 @@ func removeTimerByHand(cmd *cobra.Command, projectDir string, all bool) error {
 	if err != nil {
 		return err
 	}
-	scope := "--project " + projectDir
+	scope := "--project '" + strings.ReplaceAll(projectDir, "'", `'\''`) + "'"
 	if all {
 		scope = "--all"
 	}

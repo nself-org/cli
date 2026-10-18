@@ -10,15 +10,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
-// Purpose: keep a paid online stack entitled with no operator command (P7-PLUG-64).
-// Inputs: absolute project directory and nself binary path (validated by the host backend).
-// Outputs: one host timer per project that runs `nself license refresh --project DIR --quiet`.
-// Constraints: names derive only from Hash(dir); paths are single-quoted in shell text;
-// no licence key, JWT or `sub` ever appears in a unit, crontab line or plist.
-// SPORT: cap:cli.entitlement-autorefresh.
+// Purpose: keep a paid online stack entitled with no operator command (P7-PLUG-64): one host timer
+// per project runs `nself license refresh --project DIR --quiet`. Constraints: names derive only from
+// Hash(dir); paths are single-quoted in shell text; no key, JWT or `sub` in any unit, line or plist.
 
 // ExitGone is the exit status of a refresh run that found the timer's reason gone; the
 // root systemd ExecStopPost removes the units when it sees it (SuccessExitStatus=ExitGone).
@@ -162,11 +160,10 @@ func renderCron(bin, dir, hash string) (string, error) {
 	if err := checkRenderable(bin, dir); err != nil {
 		return "", err
 	}
-	var minute int
-	_, _ = fmt.Sscanf(hash[:2], "%x", &minute)
+	minute, _ := strconv.ParseUint(hash[:2], 16, 8)
 	tag := entCronTag + hash
 	drop := fmt.Sprintf(`t=$(crontab -l 2>/dev/null) && printf '%%s\n' "$t" | grep -vF %s | crontab -`, shQuote(tag))
-	line := fmt.Sprintf("%d */6 * * * if test -x %s && test -d %s; then %s; else %s; fi %s",
+	line := fmt.Sprintf("%d */6 * * * if test -x %s && test -d %s; then %s >/dev/null; else %s; fi %s",
 		minute%60, shQuote(bin), shQuote(dir), refreshCmd(bin, dir), drop, tag)
 	return cronEscape(line), nil
 }
@@ -289,4 +286,13 @@ func renderAll(bin, dir string, uid uint32) (string, error) {
 	}
 	plist, err := renderPlist(bin, dir, hash)
 	return fmt.Sprintf("# %s.service\n%s\n# %s.timer\n%s\n# crontab\n%s\n\n# LaunchAgent plist\n%s", entUnitName(hash), svc, entUnitName(hash), tmr, cron, plist), err
+}
+
+// Preview renders every backend's text for the hidden dry run; it validates and writes nothing.
+func Preview(projectDir, binPath string) (string, error) {
+	return renderAll(binPath, canonical(projectDir), uint32(os.Getuid()))
+}
+
+func launchTarget(uid int, hash string) string {
+	return fmt.Sprintf("gui/%d/%s", uid, launchAgentLabel(hash))
 }

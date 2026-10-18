@@ -17,6 +17,3 @@ func RemoveAll() (RemoveResult, error) { return RemoveResult{}, nil }
 
 // Status reports that no backend exists on Windows.
 func Status(string) TimerStatus { return TimerStatus{Reason: ReasonNoBackend} }
-
-// Preview renders nothing on Windows.
-func Preview(string, string) (string, error) { return "", ErrNoBackend }

@@ -13,9 +13,8 @@ import (
 	"syscall"
 )
 
-// Purpose: install, check and remove the entitlement refresh timer on POSIX hosts (systemd units
-// as root, a crontab line as non-root Linux, a LaunchAgent plist on macOS), idempotent by content.
-// Constraints: path-safety rule R7 before any write. SPORT: cap:cli.entitlement-autorefresh.
+// Purpose: install, check and remove the entitlement refresh timer on POSIX hosts (systemd as root,
+// crontab as non-root Linux, LaunchAgent on macOS). Constraints: path-safety rule R7 before any write.
 
 var safePathRe = regexp.MustCompile(`^/[A-Za-z0-9._/-]+$`)
 
@@ -42,11 +41,6 @@ var currentHost = systemHost
 // Ensure installs or updates the timer for projectDir; it changes the host only on a difference.
 func Ensure(projectDir, binPath string) (Result, error) {
 	return currentHost().ensure(projectDir, binPath)
-}
-
-// Preview renders every backend's text for the hidden dry run; it validates and writes nothing.
-func Preview(projectDir, binPath string) (string, error) {
-	return renderAll(binPath, canonical(projectDir), uint32(os.Getuid()))
 }
 
 // Remove removes the timer for projectDir from every backend this process may touch.
@@ -88,11 +82,11 @@ func (h host) safePath(p string, owner func(uid uint32) bool) (string, uint32, e
 		if err != nil || info.Mode().Perm()&0o022 != 0 {
 			return bad("group- or world-writable (or unreadable) path component " + cur)
 		}
+		st, ok := info.Sys().(*syscall.Stat_t)
+		if !ok || (cur == res && !owner(st.Uid)) || (cur != res && st.Uid != 0 && !owner(st.Uid)) {
+			return bad("unexpected owner of " + cur) // an owner could swap what is below it
+		}
 		if cur == res {
-			st, ok := info.Sys().(*syscall.Stat_t)
-			if !ok || !owner(st.Uid) {
-				return bad("unexpected owner")
-			}
 			uid = st.Uid
 		}
 		if cur == "/" || cur == h.trustAbove {
@@ -106,13 +100,12 @@ func (h host) paths(projectDir, binPath string) (dir, bin string, uid uint32, er
 	if err != nil {
 		return
 	}
-	bin, _, err = h.safePath(binPath, func(u uint32) bool { return u == 0 || u == uid })
-	if err == nil {
-		if info, serr := os.Stat(bin); serr != nil || !info.Mode().IsRegular() {
-			err = fmt.Errorf("%w: binary %q is not a regular file", ErrUnsafePath, binPath)
-		}
+	bin = binPath // the unit keeps the stable (possibly symlinked) path; its target is what is validated
+	res, _, err := h.safePath(binPath, func(u uint32) bool { return u == 0 || u == uid })
+	if info, serr := os.Stat(res); err == nil && (serr != nil || !info.Mode().IsRegular()) {
+		err = fmt.Errorf("%w: binary %q is not a regular file", ErrUnsafePath, binPath)
 	}
-	return
+	return dir, bin, uid, err
 }
 
 func (h host) ensure(projectDir, binPath string) (Result, error) {
@@ -139,8 +132,10 @@ func (h host) ensure(projectDir, binPath string) (Result, error) {
 }
 
 func (h host) status(dir string) TimerStatus {
-	hash := Hash(dir)
-	backend := h.backend()
+	hash, backend := Hash(dir), h.backend()
+	if h.goos == "linux" && fileExists(filepath.Join(h.unitDir, entUnitName(hash)+".timer")) {
+		backend = BackendSystemd // a root-installed unit is visible to (and checked for) non-root users
+	}
 	if backend == "" {
 		return TimerStatus{Reason: ReasonNoBackend}
 	}
@@ -150,10 +145,10 @@ func (h host) status(dir string) TimerStatus {
 		_, err := h.run("", "systemctl", "is-active", "--quiet", entUnitName(hash)+".timer")
 		active = err == nil && fileExists(filepath.Join(h.unitDir, entUnitName(hash)+".timer"))
 	case BackendCron:
-		out, _ := h.run("", "crontab", "-l")
+		out, _ := h.cronList()
 		active = strings.Contains(out, entCronTag+hash)
 	case BackendLaunchAgent:
-		_, err := h.run("", "launchctl", "print", h.launchTarget(hash))
+		_, err := h.run("", "launchctl", "print", launchTarget(h.euid, hash))
 		active = err == nil && fileExists(filepath.Join(h.launchDir, launchAgentLabel(hash)+".plist"))
 	}
 	if active {
@@ -165,13 +160,6 @@ func (h host) status(dir string) TimerStatus {
 	return TimerStatus{Backend: backend, Reason: ReasonNotInstalled}
 }
 
-func (h host) launchTarget(hash string) string {
-	return fmt.Sprintf("gui/%d/%s", h.euid, launchAgentLabel(hash))
-}
-
-func (h host) cmdErr(out string, err error, name string, args ...string) error {
-	return fmt.Errorf("%s %s: %w (%s)", name, strings.Join(args, " "), err, strings.TrimSpace(out))
-}
 func (h host) installSystemd(bin, dir, hash string, uid uint32) (bool, error) {
 	svc, tmr, err := renderSystemd(bin, dir, hash, uid)
 	if err != nil {
@@ -188,14 +176,14 @@ func (h host) installSystemd(bin, dir, hash string, uid uint32) (bool, error) {
 	}
 	if c1 || c2 {
 		if out, err := h.run("", "systemctl", "daemon-reload"); err != nil {
-			return true, h.cmdErr(out, err, "systemctl", "daemon-reload")
+			return true, cmdErr(out, err, "systemctl", "daemon-reload")
 		}
 	}
 	if _, err := h.run("", "systemctl", "is-active", "--quiet", u+".timer"); err == nil && !c1 && !c2 {
 		return false, nil
 	}
 	if out, err := h.run("", "systemctl", "enable", "--now", u+".timer"); err != nil {
-		return true, h.cmdErr(out, err, "systemctl", "enable", "--now", u+".timer")
+		return true, cmdErr(out, err, "systemctl", "enable", "--now", u+".timer")
 	}
 	return true, nil
 }
@@ -205,9 +193,9 @@ func (h host) installCron(bin, dir, hash string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	cur, lerr := h.run("", "crontab", "-l")
-	if lerr != nil { // the text of "no crontab for user" is not a crontab
-		cur = ""
+	cur, err := h.cronList()
+	if err != nil {
+		return false, err // never overwrite a crontab we could not read
 	}
 	rest, tagged := taggedLines(cur, entCronTag+hash)
 	if len(tagged) == 1 && tagged[0] == line {
@@ -215,17 +203,25 @@ func (h host) installCron(bin, dir, hash string) (bool, error) {
 	}
 	out, err := h.run(strings.Join(append(rest, line), "\n")+"\n", "crontab", "-")
 	if err != nil {
-		return false, h.cmdErr(out, err, "crontab", "-")
+		return false, cmdErr(out, err, "crontab", "-")
 	}
 	return true, nil
 }
 
-// cronList reads the user's crontab; macOS never uses cron here, so it is not touched.
+// cronList reads the user's crontab. "No crontab" is an empty crontab; any other failure is an
+// error, so a crontab we could not read is never overwritten. macOS never uses cron here.
 func (h host) cronList() (string, error) {
 	if h.goos != "linux" {
 		return "", ErrNoBackend
 	}
-	return h.run("", "crontab", "-l")
+	out, err := h.run("", "crontab", "-l")
+	if err != nil && !strings.Contains(out, "no crontab for") {
+		return "", cmdErr(out, err, "crontab", "-l")
+	}
+	if err != nil {
+		return "", nil
+	}
+	return out, nil
 }
 
 func (h host) installLaunchAgent(bin, dir, hash string) (bool, error) {
@@ -238,25 +234,25 @@ func (h host) installLaunchAgent(bin, dir, hash string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if _, perr := h.run("", "launchctl", "print", h.launchTarget(hash)); perr == nil && !changed {
+	if _, perr := h.run("", "launchctl", "print", launchTarget(h.euid, hash)); perr == nil && !changed {
 		return false, nil
 	}
-	_, _ = h.run("", "launchctl", "bootout", h.launchTarget(hash))
+	_, _ = h.run("", "launchctl", "bootout", launchTarget(h.euid, hash))
 	if out, err := h.run("", "launchctl", "bootstrap", fmt.Sprintf("gui/%d", h.euid), path); err != nil {
-		return true, h.cmdErr(out, err, "launchctl", "bootstrap")
+		return true, cmdErr(out, err, "launchctl", "bootstrap")
 	}
 	return true, nil
 }
 
 // remove drops the timer for hash ("" = all) from every backend this process can reach.
-func (h host) remove(hash string) (RemoveResult, error) {
-	var r RemoveResult
-	var firstErr error
-	note := func(removed bool, err error) {
-		r.Removed = r.Removed || removed
+func (h host) remove(hash string) (r RemoveResult, firstErr error) {
+	fail := func(err error) {
 		if err != nil && firstErr == nil {
 			firstErr = err
 		}
+	}
+	id := func(path, prefix, suffix string) string {
+		return strings.TrimSuffix(strings.TrimPrefix(filepath.Base(path), prefix), suffix)
 	}
 	var units, plists []string
 	if h.goos == "linux" {
@@ -265,36 +261,38 @@ func (h host) remove(hash string) (RemoveResult, error) {
 		plists, _ = filepath.Glob(filepath.Join(h.launchDir, entLabelPrefix+"*.plist"))
 	}
 	for _, t := range units {
-		id := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(t), entUnitPrefix), ".timer")
-		if hash != "" && id != hash {
+		if i := id(t, entUnitPrefix, ".timer"); hash != "" && i != hash {
 			continue
-		}
-		if h.euid != 0 {
+		} else if h.euid != 0 {
 			r.RootRequired = true
-			continue
+		} else {
+			_, _ = h.run("", "systemctl", "disable", "--now", entUnitName(i)+".timer")
+			_ = os.Remove(t)
+			fail(os.Remove(filepath.Join(h.unitDir, entUnitName(i)+".service")))
+			_, _ = h.run("", "systemctl", "daemon-reload")
+			r.Removed = true
 		}
-		u := entUnitName(id)
-		_, _ = h.run("", "systemctl", "disable", "--now", u+".timer")
-		_ = os.Remove(filepath.Join(h.unitDir, u+".timer"))
-		note(true, os.Remove(filepath.Join(h.unitDir, u+".service")))
-		_, _ = h.run("", "systemctl", "daemon-reload")
 	}
 	for _, p := range plists {
-		id := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(p), entLabelPrefix), ".plist")
-		if hash == "" || id == hash {
-			_, _ = h.run("", "launchctl", "bootout", h.launchTarget(id))
-			note(true, os.Remove(p))
+		if i := id(p, entLabelPrefix, ".plist"); hash == "" || i == hash {
+			_, _ = h.run("", "launchctl", "bootout", launchTarget(h.euid, i))
+			fail(os.Remove(p))
+			r.Removed = true
 		}
 	}
 	if cur, err := h.cronList(); err == nil {
-		rest, tagged := taggedLines(cur, entCronTag+hash)
-		if len(tagged) > 0 {
+		if rest, tagged := taggedLines(cur, entCronTag+hash); len(tagged) > 0 {
 			out, err := h.run(strings.Join(rest, "\n")+"\n", "crontab", "-")
 			if err != nil {
-				err = h.cmdErr(out, err, "crontab", "-")
+				fail(cmdErr(out, err, "crontab", "-"))
+			} else {
+				r.Removed = true
 			}
-			note(err == nil, err)
 		}
 	}
 	return r, firstErr
+}
+
+func cmdErr(out string, err error, name string, args ...string) error {
+	return fmt.Errorf("%s %s: %w (%s)", name, strings.Join(args, " "), err, strings.TrimSpace(out))
 }

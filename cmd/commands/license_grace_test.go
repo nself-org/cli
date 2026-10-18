@@ -243,7 +243,7 @@ func TestRemoveTimerFlag(t *testing.T) {
 	}
 	res = maintenance.RemoveResult{RootRequired: true}
 	_, _, err = runRefresh(t, f.project, map[string]string{"remove-timer": "true"})
-	if err == nil || !strings.Contains(err.Error(), "sudo nself license refresh --remove-timer --project "+f.project) {
+	if err == nil || !strings.Contains(err.Error(), "sudo nself license refresh --remove-timer --project '"+f.project+"'") {
 		t.Fatalf("root units must print the sudo command, got %v", err)
 	}
 	res = maintenance.RemoveResult{}
@@ -288,5 +288,17 @@ func TestAutorefreshDisabledParity(t *testing.T) {
 	}
 	if entitlement.HostTimers.Ensure == nil || entitlement.HostTimers.Remove == nil {
 		t.Fatal("cmd/commands did not wire entitlement.HostTimers")
+	}
+}
+
+func TestScheduledRefreshOutsideProjectWritesNothing(t *testing.T) {
+	newGraceFixture(t)
+	outside := t.TempDir()
+	_, stderr, err := runRefresh(t, outside, map[string]string{"quiet": "true"})
+	if errs.ExitCodeFor(err) != 1 || stderr != "entitlement refresh failed: no-project\n" {
+		t.Fatalf("exit %d stderr %q", errs.ExitCodeFor(err), stderr)
+	}
+	if _, statErr := os.Stat(filepath.Join(outside, ".nself")); !os.IsNotExist(statErr) {
+		t.Fatal("state was written into the working directory")
 	}
 }
