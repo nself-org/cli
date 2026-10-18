@@ -74,7 +74,7 @@ func (st *buildState) finishFronted(sp *sharedProxy) error {
 		dir        string
 		action     certAction
 		haveSource bool
-		generated  bool // plan mode: this build's certificates effect creates the pair
+		generated  bool // plan mode: this build's certificates effect creates or regenerates the pair
 	}
 	var steps []step
 	for dir := range sp.certDirs {
@@ -90,18 +90,21 @@ func (st *buildState) finishFronted(sp *sharedProxy) error {
 				return err
 			}
 		}
-		steps = append(steps, step{dir, action, have, !have && st.certPlanned(dir, sp)})
+		steps = append(steps, step{dir, action, have, st.certPlanned(dir, sp)})
 	}
 	files := keys(sp.files)
 	for _, s := range steps {
 		switch s.action {
 		case certCopy, certReplace:
+			if s.generated {
+				// The pair is absent or expired at plan time and the apply will (re)generate it, so
+				// stage nothing for it (the apply installs it on disk) and list it in the
+				// registration (the plan-bound apply compares bytes; old bytes would not match).
+				files = append(files, "ssl/certificates/"+s.dir+"/fullchain.pem", "ssl/certificates/"+s.dir+"/privkey.pem")
+				continue
+			}
 			if !s.haveSource {
-				if s.generated {
-					// The pair does not exist yet at plan time but the apply will generate it, so
-					// the registration lists it in both (the plan-bound apply compares bytes).
-					files = append(files, "ssl/certificates/"+s.dir+"/fullchain.pem", "ssl/certificates/"+s.dir+"/privkey.pem")
-				} else if !st.planning() {
+				if !st.planning() {
 					warnOnce("shared proxy: " + sp.project + " has no certificate pair in ssl/certificates/" + s.dir + " to copy to the owner yet; its confs will not load until it does")
 				}
 				continue

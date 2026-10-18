@@ -340,3 +340,36 @@ func TestInstallCertPlannedPairGoesThroughSink(t *testing.T) {
 		t.Fatalf("the planned pair was not staged through the sink: %v", err)
 	}
 }
+
+// TestPlanExpiredLocalPairIsNotStaged (D-0930): a fronted project whose local pair is
+// expired gets it regenerated at apply (the plan records a certificates effect). The
+// plan must not stage the old bytes for the owner's ssl (the plan-bound apply would
+// reject the regenerated pair), but must still list the pair in the registration.
+func TestPlanExpiredLocalPairIsNotStaged(t *testing.T) {
+	x := newSharedFx(t)
+	x.mustBuild(t, x.owner, x.ownerEnv())
+	for _, kv := range os.Environ() {
+		if key, _, ok := strings.Cut(kv, "="); ok && isBuildEnvKey(key) {
+			_ = os.Unsetenv(key)
+		}
+	}
+	writeCert(t, filepath.Join(x.backend(), "ssl", "certificates", "b-test"), time.Now().Add(-24*time.Hour))
+	plan, err := Build(x.backend(), BuildOptions{Mode: ModePlan, EnvOverlay: map[string][]byte{
+		".env": []byte(x.frontedEnv("bproj", "b.test", "SSL_MODE=local")),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reg string
+	for k, f := range plan.Planned.Files {
+		if strings.Contains(k, "certificates/b-test/") {
+			t.Errorf("plan stages %s, but the apply regenerates the pair", k)
+		}
+		if strings.HasSuffix(k, "/nginx/shared/bproj.json") {
+			reg = string(f.Data)
+		}
+	}
+	if !strings.Contains(reg, "ssl/certificates/b-test/fullchain.pem") || !strings.Contains(reg, "ssl/certificates/b-test/privkey.pem") {
+		t.Fatalf("planned registration does not list the pair the apply will regenerate:\n%s", reg)
+	}
+}
