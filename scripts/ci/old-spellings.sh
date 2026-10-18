@@ -37,6 +37,8 @@ rows=$(awk -F'|' '
 hits=$(mktemp "${TMPDIR:-/tmp}/old-spellings.XXXXXX")
 trap 'rm -f "$hits"' EXIT
 tab=$(printf '\t')
+# git grep exits 1 for "no match", which is fine; any other failure is real
+grep_ok() { git grep "$@" || [ $? -eq 1 ]; }
 # a path is complete when the next character cannot continue a command word
 end='($|[^A-Za-z0-9_-])'
 
@@ -44,9 +46,9 @@ while IFS="$tab" read -r old new; do
   [ -n "$old" ] || continue
   esc=$(printf '%s' "$old" | sed 's/[][\.*^$()+?{}|]/\\&/g')
   {
-    git grep -nE "[\"\`][^\"\`]*${esc}${end}" -- 'cmd/*.go' 'internal/*.go' || true
-    git grep -nE "${esc}${end}" -- '.github/wiki' README.md \
-      ':!.github/wiki/Command-Canon.md' ':!.github/wiki/Changelog.md' || true
+    grep_ok -nE "[\"\`][^\"\`]*${esc}${end}" -- 'cmd/*.go' 'internal/*.go'
+    grep_ok -nE "${esc}${end}" -- '.github/wiki' README.md \
+      ':!.github/wiki/Command-Canon.md' ':!.github/wiki/Changelog.md'
   } | awk -F: -v old="$old" -v new="$new" '{ print $1 ":" $2 "\t" old " -> " new }' >>"$hits"
 done <<<"$rows"
 
