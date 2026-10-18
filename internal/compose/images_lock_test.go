@@ -52,7 +52,7 @@ func TestLockIsSound(t *testing.T) {
 	if !sort.StringsAreSorted(names) {
 		t.Errorf("LockedImages not sorted by name: %v", names)
 	}
-	for _, want := range strings.Fields("postgres pgvector hasura auth nginx redis minio storage functions mailpit admin mlflow meilisearch meilisearch-init typesense elasticsearch deno python lego tempo otel-collector seaweedfs prometheus grafana loki promtail alertmanager cadvisor node-exporter postgres-exporter redis-exporter otel-collector-contrib") {
+	for _, want := range strings.Fields("postgres pgvector hasura auth nginx redis minio storage functions mailpit admin mlflow meilisearch meilisearch-init typesense elasticsearch deno python lego tempo otel-collector seaweedfs prometheus grafana loki alloy alertmanager cadvisor node-exporter postgres-exporter redis-exporter otel-collector-contrib") {
 		if _, ok := LockedRef(want); !ok {
 			t.Errorf("lock has no %q entry", want)
 		}

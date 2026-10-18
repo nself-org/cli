@@ -18,6 +18,8 @@ schema_version: 1
 images:
   - {name: admin, role: optional, repository: docker.io/nself/nself-admin, version: latest, legacy_ref: "nself/nself-admin:latest", license: MIT, source: "https://github.com/nself-org/admin", platforms: [linux/amd64, linux/arm64]}
   - {name: alertmanager, role: monitoring, repository: docker.io/prom/alertmanager, version: v0.27.0, legacy_ref: "prom/alertmanager:v0.27.0", license: Apache-2.0, source: "https://github.com/prometheus/alertmanager", platforms: [linux/amd64, linux/arm64]}
+  # alloy: replaces promtail in free/monitoring (P7-PLUG-58); pinned to match the plugins lock fragment images.d/monitoring.json (D-0935).
+  - {name: alloy, role: monitoring, repository: docker.io/grafana/alloy, version: v1.20.1, legacy_ref: "grafana/alloy:v1.20.1", license: Apache-2.0, source: "https://github.com/grafana/alloy", platforms: [linux/amd64, linux/arm64]}
   # auth: nhost/hasura-auth was renamed nhost/auth (0.36.0 has the same index digest under both names, checked 2026-10-11).
   # v1.4 renders auth-v14, v1.5 renders auth (EPIC D17, P7-LIVE-20); 0.43.0 and later need AUTH_ENCRYPTION_KEY.
   - {name: auth, role: core, repository: docker.io/nhost/auth, version: 0.52.0, legacy_ref: "nhost/auth:0.52.0", license: MIT, source: "https://github.com/nhost/nhost/tree/main/services/auth", platforms: [linux/amd64, linux/arm64]}
@@ -46,12 +48,12 @@ images:
   - {name: postgres, role: core, repository: docker.io/library/postgres, version: 16-alpine, legacy_ref: "postgres:16-alpine", license: PostgreSQL, source: "https://github.com/docker-library/postgres", platforms: [linux/amd64, linux/arm64]}
   - {name: postgres-exporter, role: monitoring, repository: docker.io/prometheuscommunity/postgres-exporter, version: v0.15.0, legacy_ref: "prometheuscommunity/postgres-exporter:v0.15.0", license: Apache-2.0, source: "https://github.com/prometheus-community/postgres_exporter", platforms: [linux/amd64, linux/arm64]}
   - {name: prometheus, role: monitoring, repository: docker.io/prom/prometheus, version: v2.53.0, legacy_ref: "prom/prometheus:v2.53.0", license: Apache-2.0, source: "https://github.com/prometheus/prometheus", platforms: [linux/amd64, linux/arm64]}
-  - {name: promtail, role: monitoring, repository: docker.io/grafana/promtail, version: 3.1.0, legacy_ref: "grafana/promtail:3.1.0", license: AGPL-3.0, source: "https://github.com/grafana/loki", platforms: [linux/amd64, linux/arm64]}
   - {name: python, role: optional, repository: docker.io/library/python, version: 3.12-slim, legacy_ref: "python:3.12-slim", license: PSF-2.0, source: "https://github.com/docker-library/python", platforms: [linux/amd64, linux/arm64]}
   - {name: redis, role: optional, repository: docker.io/library/redis, version: 7-alpine, legacy_ref: "redis:7-alpine", license: "RSALv2 OR SSPLv1 (7.4 and later)", source: "https://github.com/redis/redis", platforms: [linux/amd64, linux/arm64]}
   - {name: redis-exporter, role: monitoring, repository: docker.io/oliver006/redis_exporter, version: v1.61.0, legacy_ref: "oliver006/redis_exporter:v1.61.0", license: MIT, source: "https://github.com/oliver006/redis_exporter", platforms: [linux/amd64, linux/arm64]}
   - {name: seaweedfs, role: optional, repository: docker.io/chrislusf/seaweedfs, version: "4.48", legacy_ref: "chrislusf/seaweedfs:4.48", license: Apache-2.0, source: "https://github.com/seaweedfs/seaweedfs", platforms: [linux/amd64, linux/arm64]}
   - {name: storage, role: optional, repository: docker.io/nhost/hasura-storage, version: 0.6.1, legacy_ref: "nhost/hasura-storage:0.6.1", license: MIT, source: "https://github.com/nhost/hasura-storage", platforms: [linux/amd64, linux/arm64]}
-  - {name: tempo, role: monitoring, repository: docker.io/grafana/tempo, version: latest, legacy_ref: "grafana/tempo:latest", license: AGPL-3.0, source: "https://github.com/grafana/tempo", platforms: [linux/amd64, linux/arm64]}
+  # tempo: pinned to 2.10.8 to match the plugins lock fragment images.d/monitoring.json; legacy_ref stays frozen at the pre-lock latest (D-0935).
+  - {name: tempo, role: monitoring, repository: docker.io/grafana/tempo, version: 2.10.8, legacy_ref: "grafana/tempo:latest", license: AGPL-3.0, source: "https://github.com/grafana/tempo", platforms: [linux/amd64, linux/arm64]}
   - {name: typesense, role: optional, repository: docker.io/typesense/typesense, version: "27.1", legacy_ref: "typesense/typesense:27.1", license: GPL-3.0, source: "https://github.com/typesense/typesense", platforms: [linux/amd64, linux/arm64]}
   - {name: valkey, role: optional, repository: docker.io/valkey/valkey, version: 8.1-alpine, legacy_ref: "valkey/valkey:8.1-alpine", license: BSD-3-Clause, source: "https://github.com/valkey-io/valkey", platforms: [linux/amd64, linux/arm64]}

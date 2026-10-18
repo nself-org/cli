@@ -25,10 +25,6 @@ minio:
   license: AGPL-3.0
   upstream: docker.io/pgsty/minio
   source: https://github.com/pgsty/minio
-promtail:
-  license: AGPL-3.0
-  upstream: docker.io/grafana/promtail
-  source: https://github.com/grafana/loki
 tempo:
   license: AGPL-3.0
   upstream: docker.io/grafana/tempo

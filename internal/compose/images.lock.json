@@ -34,6 +34,21 @@
       "mirror": "docker.io/nself/alertmanager"
     },
     {
+      "name": "alloy",
+      "role": "monitoring",
+      "repository": "docker.io/grafana/alloy",
+      "version": "v1.20.1",
+      "index_digest": "sha256:2aa2099af76c0098d4af7a4d6e48f86cb66dc1a000222ad927a1c67c6542d13f",
+      "platforms": {
+        "linux/amd64": "sha256:5133c159d34c7acf37a1b6d91682abcb6b28b2a29bae152ff5cf4753296f956c",
+        "linux/arm64": "sha256:830fe0d4e1cde1fb1d15b23a792939c88c81bf41aac8ed34180143acaaa9889b"
+      },
+      "legacy_ref": "grafana/alloy:v1.20.1",
+      "license": "Apache-2.0",
+      "source": "https://github.com/grafana/alloy",
+      "mirror": "docker.io/nself/alloy"
+    },
+    {
       "name": "auth",
       "role": "core",
       "repository": "docker.io/nhost/auth",
@@ -406,22 +421,6 @@
       "mirror": "docker.io/nself/prometheus"
     },
     {
-      "name": "promtail",
-      "role": "monitoring",
-      "repository": "docker.io/grafana/promtail",
-      "version": "3.1.0",
-      "index_digest": "sha256:b3db8e7b1cba0e8c45ce2ae72ebddfd88ebdcae86383f1680edf0074e9010ff6",
-      "platforms": {
-        "linux/amd64": "sha256:f9ab8cba53b34f36b03ecdb11cbd04dc3a2ede1839f72540d4c9d274aaaf0109",
-        "linux/arm/v7": "sha256:7266704553b3180f9fcc8c86369434f855c509bc66905d0781f654920f81641a",
-        "linux/arm64": "sha256:dc17f1ee1a4500a31851b20c0fd8e9ae780c3fa3ce76dcfe543d4005ff4bd00e"
-      },
-      "legacy_ref": "grafana/promtail:3.1.0",
-      "license": "AGPL-3.0",
-      "source": "https://github.com/grafana/loki",
-      "mirror": "docker.io/nself/promtail"
-    },
-    {
       "name": "python",
       "role": "optional",
       "repository": "docker.io/library/python",
@@ -504,11 +503,11 @@
       "name": "tempo",
       "role": "monitoring",
       "repository": "docker.io/grafana/tempo",
-      "version": "latest",
-      "index_digest": "sha256:1ce31d6d7ffab62189685e8c47881d4a561c5d38bd0dbd66e40ca83cef07923d",
+      "version": "2.10.8",
+      "index_digest": "sha256:f0561deb1c68ec44d6e6e7e4487f30106c4e5e768642077695b37958b105812a",
       "platforms": {
-        "linux/amd64": "sha256:a095c183ca7d433062dd2780d715df8bc15fca9656a9167eb1ab59c78de09681",
-        "linux/arm64": "sha256:8101336e74574117f47b95e05bce3b24c7d4cb513221e8abf766bb43dda3a96a"
+        "linux/amd64": "sha256:b18e2bf60dd852ae891d721f906c15eb6af558c0e785fe82c019da4f2006f071",
+        "linux/arm64": "sha256:0a86a9663d64ba036b8a9dfee6a8a4747ad9faf4b176a1402826927bb841933f"
       },
       "legacy_ref": "grafana/tempo:latest",
       "license": "AGPL-3.0",
