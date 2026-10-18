@@ -11,7 +11,7 @@
 # Outputs: one "ok" line per assertion on stdout; failures on stderr.
 #          Exit 0 only when every assertion held; 1 on a failed assertion; 2 on a
 #          usage error or a missing tool.
-# Constraints: bash 3.2 compatible; needs jq and python3; touches no network beyond
+# Constraints: bash 3.2 compatible; needs curl, jq and python3; touches no network beyond
 #          127.0.0.1 (the fixture catalogue server) and never a production key;
 #          every process gets a clean HOME and project directory under $TMPDIR,
 #          removed on exit. The CLI pins no release key in this build, so the
@@ -27,6 +27,7 @@ HEAD_BIN="${NSELF_BIN:-}"
 BASE_BIN="${NSELF_BASE_BIN:-}"
 [ -x "$HEAD_BIN" ] || die "NSELF_BIN must name an executable"
 [ -x "$BASE_BIN" ] || die "NSELF_BASE_BIN must name an executable"
+command -v curl >/dev/null 2>&1 || die "needs curl"
 command -v jq >/dev/null 2>&1 || die "needs jq"
 command -v python3 >/dev/null 2>&1 || die "needs python3"
 
@@ -114,13 +115,21 @@ for kind in unsigned tampered; do
 done
 (cd "$WORK/served" && exec python3 -m http.server "$PORT" --bind 127.0.0.1 >/dev/null 2>&1) &
 SERVER_PID=$!
-for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-  curl -fsS -o /dev/null "$BASE_URL/unsigned/registry.json" 2>/dev/null && break
+# D-0909: if the fixture server never answers, the unsigned and tampered cases would
+# pass on the offline E404 alone. Stop here instead of letting them lie.
+READY=0
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40; do
+  if curl -fsS -o /dev/null "$BASE_URL/unsigned/registry.json" 2>/dev/null && curl -fsS -o /dev/null "$BASE_URL/tampered/registry.json" 2>/dev/null; then READY=1; break; fi
+  kill -0 "$SERVER_PID" 2>/dev/null || break
   sleep 0.25
 done
+[ "$READY" = 1 ] || die "the fixture catalogue server on $BASE_URL did not become ready"
 
-expect_e404() { # <label> <env assignment or ""> <args...>
-  local label="$1" assign="$2"; shift 2
+# D-0909: every refusal also names its cause. Offline gives the same E404 as a
+# refused signature, so a bare exit 1 + [E404] would pass with the server dead.
+# <cause> is an extended regex the stderr must match; a leading "!" means it must not.
+expect_e404() { # <label> <cause> <env assignment or ""> <args...>
+  local label="$1" cause="$2" assign="$3"; shift 3
   local home; home="$(fresh_home)"
   # shellcheck disable=SC2086 # $assign is one NAME=value pair or empty
   RC=0
@@ -132,6 +141,10 @@ expect_e404() { # <label> <env assignment or ""> <args...>
   else
     fail "v1.5 $label: exit $RC, stderr '$ERR'"
   fi
+  case "$cause" in
+    '!'*) if printf '%s' "$ERR" | grep -Eqi "${cause#!}"; then fail "v1.5 $label: stderr names a cause it must not (${cause#!}): '$ERR'"; else ok "v1.5 $label: stderr names no signature cause"; fi ;;
+    *) if printf '%s' "$ERR" | grep -Eqi "$cause"; then ok "v1.5 $label: stderr names the cause ($cause)"; else fail "v1.5 $label: stderr lacks the cause ($cause): '$ERR'"; fi ;;
+  esac
   if [ -e "$home/.nself/plugins/bin/nself-ci" ]; then fail "v1.5 $label: a binary was published"; fi
   # The same refusal as a machine document.
   RC=0
@@ -144,10 +157,10 @@ expect_e404() { # <label> <env assignment or ""> <args...>
     fail "v1.5 $label --json: exit $RC, stdout '$OUT'"
   fi
 }
-expect_e404 "NSELF_NO_AUTO_ADD=1" "NSELF_NO_AUTO_ADD=1" ci --check
-expect_e404 "offline registry" "NSELF_PLUGIN_REGISTRY=http://127.0.0.1:9" ci --check
-expect_e404 "unsigned release" "NSELF_PLUGIN_REGISTRY=$BASE_URL/unsigned" ci --check
-expect_e404 "tampered release (refused before download: no key pinned; the in-process test proves the checksum and signature)" "NSELF_PLUGIN_REGISTRY=$BASE_URL/tampered" runner verify x
+expect_e404 "NSELF_NO_AUTO_ADD=1" "switched off" "NSELF_NO_AUTO_ADD=1" ci --check
+expect_e404 "offline registry" "!release signature|cannot be verified|switched off" "NSELF_PLUGIN_REGISTRY=http://127.0.0.1:9" ci --check
+expect_e404 "unsigned release" "no release signature" "NSELF_PLUGIN_REGISTRY=$BASE_URL/unsigned" ci --check
+expect_e404 "tampered release (refused before download: no key pinned; the in-process test proves the checksum and signature)" "cannot be verified" "NSELF_PLUGIN_REGISTRY=$BASE_URL/tampered" runner verify x
 
 # 4. v1.5: the marketplace is gone.
 for c in "plugin marketplace" "plugin submit"; do

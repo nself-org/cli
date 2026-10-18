@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -88,13 +89,19 @@ func fixtureSeam(t *testing.T) func(string, string) (string, error) {
 // publishStub is a seam that publishes stubScript as nself-<slug> without a registry.
 func publishStub(t *testing.T) func(string, string) (string, error) {
 	t.Helper()
+	return publishScript(t, stubScript)
+}
+
+// publishScript is publishStub for any plugin script.
+func publishScript(t *testing.T, script string) func(string, string) (string, error) {
+	t.Helper()
 	t.Setenv("HOME", t.TempDir())
 	return func(slug, _ string) (string, error) {
 		p := plugin.PublishedBinaryPath("nself-" + slug)
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			return "", err
 		}
-		return p, os.WriteFile(p, []byte(stubScript), 0o755)
+		return p, os.WriteFile(p, []byte(script), 0o755)
 	}
 }
 
@@ -210,6 +217,30 @@ func recordOver(calls *[]seamCall, fn func(string, string) (string, error)) func
 	return func(slug, version string) (string, error) {
 		*calls = append(*calls, seamCall{slug, version})
 		return fn(slug, version)
+	}
+}
+
+// TestRelocateBreakoutPropagatesPluginExit proves a plugin's own exit status
+// reaches the caller (D-0909): a stub that exits 3 must make relocateBreakout
+// return a silent exit error carrying 3, not 0 and not the generic 1.
+func TestRelocateBreakoutPropagatesPluginExit(t *testing.T) {
+	for _, code := range []int{1, 3, 42} {
+		t.Run(strconv.Itoa(code), func(t *testing.T) {
+			_, calls, _ := relocateSetup(t, "", nil)
+			autoAddPlugin = recordOver(calls, publishScript(t, "#!/bin/sh\nexit "+strconv.Itoa(code)+"\n"))
+			handled, err := relocateBreakout("ci", []string{"--help"})
+			if !handled || err == nil {
+				t.Fatalf("handled=%v err=%v, want the plugin's failure returned", handled, err)
+			}
+			var coder errs.ExitCoder
+			if !errors.As(err, &coder) || coder.ExitCode() != code {
+				t.Fatalf("err %v (%T), want exit code %d", err, err, code)
+			}
+			var silent errs.Silencer
+			if !errors.As(err, &silent) || !silent.Silent() {
+				t.Fatalf("err %v must be silent: the plugin already reported", err)
+			}
+		})
 	}
 }
 

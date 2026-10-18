@@ -1,0 +1,78 @@
+name: Breakout smoke
+
+# D-0909 (P7-CANON-13): the v1.5 break-out relocation had two regression guards
+# that no workflow ran, so v1.4 byte-identity and the E404/E410 refusals were
+# unguarded after merge. This workflow runs both on every pull request and push:
+#   1. scripts/ci/breakout-smoke.sh, head binary against the merge-base binary;
+#   2. TestBreakoutAutoAddFixturePorts, the auto-add against the real merged ports
+#      built and signed by scripts/ci/ports-fixture-registry.sh.
+# Both paths are hit by internal/canon, cmd/commands/relocate*.go and the fixtures.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  breakout-smoke:
+    name: Breakout smoke (v1.4 identity, E404/E410 causes)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CGO_ENABLED: 0
+      GOFLAGS: -mod=vendor
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Build the binary under test
+        run: go build -o "$RUNNER_TEMP/nself-head" ./cmd/nself
+
+      # The base is the merge base with the target branch (the parent on a push), built
+      # in a detached worktree so the checkout stays the head.
+      - name: Build the merge-base binary
+        run: |
+          base="$(git merge-base HEAD "origin/${{ github.base_ref || 'main' }}" || true)"
+          if [ -z "$base" ] || [ "$base" = "$(git rev-parse HEAD)" ]; then base="$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)"; fi
+          git worktree add --detach "$RUNNER_TEMP/base" "$base"
+          (cd "$RUNNER_TEMP/base" && go build -o "$RUNNER_TEMP/nself-base" ./cmd/nself)
+
+      - name: Breakout smoke
+        run: NSELF_BIN="$RUNNER_TEMP/nself-head" NSELF_BASE_BIN="$RUNNER_TEMP/nself-base" bash scripts/ci/breakout-smoke.sh
+
+      - name: Checkout the plugins repo (the real ports)
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: nself-org/plugins
+          path: plugins-checkout
+          fetch-depth: 0
+
+      - name: Build the signed ports fixture registry
+        run: bash scripts/ci/ports-fixture-registry.sh "$GITHUB_WORKSPACE/plugins-checkout" "$RUNNER_TEMP/ports-registry"
+
+      - name: Auto-add against the real ports
+        env:
+          NSELF_CANON_PORTS_REGISTRY: ${{ runner.temp }}/ports-registry
+        shell: bash
+        run: |
+          go test -timeout 10m -count=1 -run '^TestBreakoutAutoAddFixturePorts$' -v ./cmd/commands | tee "$RUNNER_TEMP/ports-test.log"
+          # A skip is a pass to go test; here it means the guard did not run.
+          if grep -q -- '--- SKIP' "$RUNNER_TEMP/ports-test.log" || ! grep -q -- '--- PASS: TestBreakoutAutoAddFixturePorts' "$RUNNER_TEMP/ports-test.log"; then
+            echo "TestBreakoutAutoAddFixturePorts did not run to a pass" >&2
+            exit 1
+          fi
