@@ -145,7 +145,7 @@ func runMigrateLink(ctx context.Context, pingURL string, doc *licenseMigrateData
 		return fmt.Errorf("server error: %s", resp.Error)
 	}
 
-	doc.Link = &licenseMigrateLink{Key: masked, AccountID: licenseScrubShape(resp.AccountID, keyToMigrate), Tier: licenseScrub(resp.Tier, keyToMigrate), AlreadyLinked: resp.AlreadyMigrated}
+	doc.Link = &licenseMigrateLink{Key: masked, AccountID: licenseScrub(resp.AccountID, keyToMigrate), Tier: licenseScrub(resp.Tier, keyToMigrate), AlreadyLinked: resp.AlreadyMigrated}
 	if resp.AlreadyMigrated {
 		fmt.Printf("Key %s is already linked to account %s (tier: %s).\n",
 			masked, resp.AccountID, resp.Tier)

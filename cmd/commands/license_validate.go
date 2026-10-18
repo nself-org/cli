@@ -124,7 +124,7 @@ Use --json for machine-readable output.`,
 			if jsonMode {
 				out := licenseHealthJSON{Status: "no_key", Message: "no license key configured"}
 				if jsonEnvelopeOn(cmd) {
-					return emitEnv(cmd, out, true)
+					return emitDoc(cmd, out, true)
 				}
 				return json.NewEncoder(os.Stdout).Encode(out)
 			}
@@ -198,7 +198,7 @@ Use --json for machine-readable output.`,
 				Message:         message,
 			}
 			if jsonEnvelopeOn(cmd) {
-				return emitEnv(cmd, out, true)
+				return emitDoc(cmd, out, true)
 			}
 			return json.NewEncoder(os.Stdout).Encode(out)
 		}

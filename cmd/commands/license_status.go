@@ -121,7 +121,7 @@ func runLicenseStatus(cmd *cobra.Command, args []string) error {
 		}
 
 		allProducts = append(allProducts, productName)
-		doc.Keys = append(doc.Keys, licenseStatusKey{Key: masked, Product: licenseScrub(productName), Status: status, Expires: licenseScrubShape(expires), Plugins: licenseScrubAll(rowPlugins)})
+		doc.Keys = append(doc.Keys, licenseStatusKey{Key: masked, Product: licenseScrub(productName), Status: status, Expires: expires, Plugins: licenseScrubAll(rowPlugins)})
 		tbl.AddRow(masked, productName, status, expires, plugins)
 	}
 

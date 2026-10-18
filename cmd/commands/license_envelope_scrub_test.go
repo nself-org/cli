@@ -8,9 +8,14 @@ package commands
 
 import (
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/auth"
+	"github.com/nself-org/cli/internal/compat/compattest"
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/license"
 )
 
@@ -67,5 +72,110 @@ func TestLicenseMigrateLinkKeepsAccountID(t *testing.T) {
 	oneEnvelope(t, out, "license migrate")
 	if !strings.Contains(out, uuid) {
 		t.Errorf("account id was redacted:\n%s", out)
+	}
+}
+
+const hostileToken = "opaque0123456789abcdef0123456789"
+
+// TestScrubDocWalksEveryLeaf: strings inside pointers, slices, maps and
+// structs are scrubbed; a UUID, a date, a masked key and a unit name pass;
+// nil and empty slices keep their shape.
+func TestScrubDocWalksEveryLeaf(t *testing.T) {
+	type leaf struct {
+		Name string
+		Tags []string
+	}
+	type doc struct {
+		ID      string
+		When    string
+		Masked  string
+		Unit    string
+		Hostile *string
+		Rows    []leaf
+		ByName  map[string]string
+		Nil     []string
+		Empty   []string
+	}
+	bad := "x " + hostileOtherKey + " " + hostileToken
+	in := doc{ID: "0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d", When: "2026-10-18T13:00:00.123456789+00:00",
+		Masked: license.MaskKey(hostileOtherKey), Unit: "nself-license-refresh.timer", Hostile: &bad,
+		Rows: []leaf{{Name: bad, Tags: []string{bad}}}, ByName: map[string]string{"k": bad}, Empty: []string{}}
+	out := scrubDoc(in).(doc)
+	if out.ID != in.ID || out.When != in.When || out.Masked != in.Masked || out.Unit != in.Unit {
+		t.Errorf("plain data changed: %+v", out)
+	}
+	for _, got := range []string{*out.Hostile, out.Rows[0].Name, out.Rows[0].Tags[0], out.ByName["k"]} {
+		noSecrets(t, "scrubDoc", got, hostileOtherKey, hostileToken)
+	}
+	if out.Nil != nil || out.Empty == nil || *in.Hostile != bad {
+		t.Errorf("shape changed: nil=%v empty=%v input=%q", out.Nil, out.Empty, *in.Hostile)
+	}
+}
+
+// TestScrubErrKeepsClassification: the final error detail carries scrubbed
+// What/Why/Fix and the same code and exit status as the original.
+func TestScrubErrKeepsClassification(t *testing.T) {
+	bad := hostileOtherKey + " " + hostileToken
+	orig := &errs.CLIError{Code: "E402", What: "what " + bad, Why: "why " + bad, Fix: "fix " + bad}
+	got := errs.Describe(scrubErr(orig))
+	want := errs.Describe(orig)
+	if got.Code != want.Code || got.ExitCode != want.ExitCode {
+		t.Errorf("classification changed: %+v vs %+v", got, want)
+	}
+	noSecrets(t, "error detail", got.Message+got.Cause+got.Remediation, hostileOtherKey, hostileToken)
+}
+
+// TestAccountHostileReplyIsScrubbed: a failing account call and an accepted
+// reply with secrets in tier and bundles reach the output masked.
+func TestAccountHostileReplyIsScrubbed(t *testing.T) {
+	compattest.Set(t, true)
+	undo := prepareTreeWith(&canonTable, RootCmd, true, false)
+	defer undo()
+	home := isolateHome(t)
+	writeTestAuthFile(t, home, &auth.AuthFile{AccessToken: fixtureAccessToken, SessionToken: fixtureAccessToken, Email: "alice@example.test", Tier: "plus"})
+	bad := hostileOtherKey + " " + hostileToken
+	setAuthServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/account/licenses":
+			_, _ = w.Write([]byte(`{"licenses":[{"id":"lic-1","product":"chat","tier":"` + bad + `","bundles":["` + bad + `"]}]}`))
+		default:
+			http.Error(w, "boom "+bad, http.StatusInternalServerError)
+		}
+	})
+	out, err := runLicenseJSON(t, accountLicensesCmd, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	noSecrets(t, "account licenses", out, hostileOtherKey, hostileToken)
+	_, err = runLicenseJSON(t, accountDevicesCmd, nil)
+	if err == nil {
+		t.Fatal("devices against a failing server should fail")
+	}
+	noSecrets(t, "account devices error", err.Error(), hostileOtherKey, hostileToken)
+}
+
+// TestLicenseStatusHeaderAndPluginFlag: a hostile Retry-After header and a
+// --plugin value that is a configured key reach the document masked.
+func TestLicenseStatusHeaderAndPluginFlag(t *testing.T) {
+	fx := newLicenseFixture(t)
+	t.Setenv("NSELF_LICENSE_KEY_1", fixtureLicenseKey)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", hostileOtherKey+hostileToken)
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("NSELF_PING_API_URL", srv.URL)
+	out, err := runLicenseJSON(t, licenseStatusCmd, map[string]string{"plugin": fixtureLicenseKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	noSecrets(t, "license status", out, fx.jwt, hostileOtherKey, hostileToken)
+	oneEnvelope(t, out, "license status")
+}
+
+// TestLicenseImportTargetIsHidden: the import path can carry a key.
+func TestLicenseImportTargetIsHidden(t *testing.T) {
+	if !dataTargetSecret["license import"] {
+		t.Error("license import echoes its path argument into the document")
 	}
 }

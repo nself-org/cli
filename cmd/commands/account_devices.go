@@ -76,7 +76,7 @@ func runAccountDevices(cmd *cobra.Command, _ []string) error {
 	}
 
 	if jsonEnvelopeOn(cmd) {
-		return emitEnv(cmd, orEmpty(devices), true)
+		return emitDoc(cmd, orEmpty(devices), true)
 	}
 	if jsonOut {
 		enc := json.NewEncoder(os.Stdout)

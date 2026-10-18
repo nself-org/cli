@@ -103,7 +103,7 @@ func runAccountTeam(cmd *cobra.Command, _ []string) error {
 	}
 
 	if jsonEnvelopeOn(cmd) {
-		return emitEnv(cmd, orEmpty(members), true)
+		return emitDoc(cmd, orEmpty(members), true)
 	}
 	if jsonOut {
 		enc := json.NewEncoder(os.Stdout)

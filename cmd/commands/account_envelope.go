@@ -19,6 +19,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func init() {
+	for _, c := range []*cobra.Command{accountStatusCmd, accountDevicesCmd, accountLicensesCmd, accountTeamCmd} {
+		c.RunE = accountEnv(c.RunE)
+	}
+}
+
 // orEmpty returns s, or an empty non-nil slice so a document prints [] not null.
 func orEmpty[T any](s []T) []T {
 	if s == nil {
@@ -71,5 +77,5 @@ func accountLiveStatus(af *auth.AuthFile, email, name, tier string, verified, mf
 
 // emitAccountStatus writes a status document.
 func emitAccountStatus(cmd *cobra.Command, doc accountStatusData) error {
-	return emitEnv(cmd, doc, true)
+	return emitDoc(cmd, doc, true)
 }
