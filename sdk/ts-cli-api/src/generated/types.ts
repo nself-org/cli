@@ -6090,6 +6090,7 @@ export type LicenseRestoreFlags = {
 export interface LicenseRestoreRequest {
   args?: LicenseRestoreArgs;
   flags?: LicenseRestoreFlags;
+  confirm?: string;
 }
 
 export type LicenseRevalidateArgs = [];

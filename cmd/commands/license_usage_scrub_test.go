@@ -131,6 +131,8 @@ func TestJSONInArgs(t *testing.T) {
 		{[]string{"--json"}, true},
 		{[]string{"--json=1"}, true},
 		{[]string{"--json=T"}, true},
+		{[]string{"--json=True"}, true},
+		{[]string{"--json=t"}, true},
 		{[]string{"--json=true"}, true},
 		{[]string{"--json", "--json=false"}, false},
 		{[]string{"--json=0", "--json"}, true},
@@ -144,5 +146,16 @@ func TestJSONInArgs(t *testing.T) {
 		if got := jsonInArgs(); got != c.want {
 			t.Errorf("%v: got %v want %v", c.args, got, c.want)
 		}
+	}
+}
+
+// TestScrubErrSilentExitGetsAMessage: a scheduled-mode refresh fails with a
+// silent exit status; in an envelope invocation the error carries a message so
+// the one error envelope is printed, and the status is kept.
+func TestScrubErrSilentExitGetsAMessage(t *testing.T) {
+	out := scrubErr(errs.Exit(78))
+	var xe *errs.ExitError
+	if !errors.As(out, &xe) || xe.Code != 78 || xe.Err == nil || out.Error() == "" {
+		t.Fatalf("silent exit not given a message: %#v", out)
 	}
 }

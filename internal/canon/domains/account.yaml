@@ -35,8 +35,8 @@ commands:
   license migrate: {side_effect: remote, flags: {key: {secret: true}}, confirm: {flags: []}}
   license refresh: {side_effect: write}
   license remove: {side_effect: destructive, secret_args: [key-or-product], confirm: {flags: []}}
-  # cmd/commands/license_revoke.go:65 re-enables dormant plugins with a new key; deletes nothing
-  license restore: {side_effect: write, flags: {key: {secret: true}}}
+  # cmd/commands/license_revoke.go:65 re-enables dormant plugins with a new key; the new key replaces the stored one
+  license restore: {side_effect: write, flags: {key: {secret: true}}, confirm: {flags: []}}
   license revalidate: {side_effect: write}
   license revoke: {side_effect: destructive, confirm: {flags: [yes]}}
   # cmd/commands/license_keys.go:34 replaces every stored licence key; old keys are not restorable

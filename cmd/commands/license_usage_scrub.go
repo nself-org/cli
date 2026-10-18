@@ -7,8 +7,9 @@ package commands
 
 import (
 	"os"
-	"strconv"
 	"strings"
+
+	"github.com/nself-org/cli/internal/output"
 )
 
 // invokedArgs is the argument list of this process; tests replace it.
@@ -19,26 +20,20 @@ var invokedArgs = func() []string { return os.Args[1:] }
 // reliable yet and the argument list is read instead.
 func jsonInArgs() bool {
 	args := invokedArgs()
-	on, format := false, ""
-	for i := 0; i < len(args); i++ {
-		a := args[i]
+	if output.JSONRequestedFromArgs(args) { // the same reading the error reporter uses
+		return true
+	}
+	format := ""
+	for i := 0; i < len(args) && args[i] != "--"; i++ {
 		switch {
-		case a == "--":
-			i = len(args)
-		case a == "--json":
-			on = true
-		case strings.HasPrefix(a, "--json="):
-			if v, err := strconv.ParseBool(a[len("--json="):]); err == nil {
-				on = v
-			}
-		case strings.HasPrefix(a, "--format="):
-			format = a[len("--format="):]
-		case a == "--format" && i+1 < len(args):
+		case strings.HasPrefix(args[i], "--format="):
+			format = args[i][len("--format="):]
+		case args[i] == "--format" && i+1 < len(args):
 			i++
 			format = args[i]
 		}
 	}
-	return on || format == "json"
+	return format == "json"
 }
 
 // usageScrub masks licence keys and JWTs in a usage error, in a JSON

@@ -45980,6 +45980,11 @@
                     "minItems": 0,
                     "type": "array"
                   },
+                  "confirm": {
+                    "description": "a plan id or a nonce the server issued",
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
                   "flags": {
                     "additionalProperties": false,
                     "properties": {

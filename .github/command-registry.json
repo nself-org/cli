@@ -17450,7 +17450,10 @@
       "json": "envelope",
       "data_schema": "schemas/commands/license-restore.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [],
+        "plan": null
+      },
       "surface": "all"
     },
     {

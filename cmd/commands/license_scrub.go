@@ -14,6 +14,7 @@ package commands
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"regexp"
 	"strings"
@@ -240,7 +241,10 @@ func scrubErr(err error) error {
 	}
 	// An explicit exit status wraps the scrubbed error, so it survives.
 	var xe *errs.ExitError
-	if errors.As(err, &xe) && xe.Err != nil {
+	if errors.As(err, &xe) {
+		if xe.Err == nil { // a silent exit still owes the caller its one envelope
+			out.msg = fmt.Sprintf("failed with exit status %d", xe.Code)
+		}
 		return &errs.ExitError{Code: xe.Code, Err: out}
 	}
 	return out
