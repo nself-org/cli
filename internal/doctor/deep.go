@@ -90,7 +90,7 @@ func DeepChecks(ctx context.Context, projectDir string, verbose bool) []CheckRes
 	results = append(results, CheckCIToken(projectDir))
 
 	if !compat.V15() { // compat.V15(P7-CI-45): CI-VAULT-SYNC-01 runs -> not run
-		results = append(results, CheckCIVaultSync(projectDir)) // CI-VAULT-SYNC-01 reads ~/.claude/vault.env
+		results = append(results, CheckCIVaultSync(projectDir)) // CI-VAULT-SYNC-01
 	}
 
 	// S03-T06: SDK version coherence check (SDK-VERSION-01).
