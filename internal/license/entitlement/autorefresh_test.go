@@ -396,3 +396,21 @@ func TestScheduledRefreshNeedsAPersistedReply(t *testing.T) {
 		t.Fatal("entitlement file changed")
 	}
 }
+
+// TestScheduledRemovalWithRootUnitsStillExits78: a failing crontab step must not hide RootRequired.
+func TestScheduledRemovalWithRootUnitsStillExits78(t *testing.T) {
+	compattest.Set(t, true)
+	p := newArPing(t, time.Now(), "chat")
+	p.seedCache(t)
+	fakeTimer(t)
+	if err := os.RemoveAll(filepath.Join(os.Getenv("HOME"), ".nself", "plugins", "chat")); err != nil {
+		t.Fatal(err)
+	}
+	HostTimers.Remove = func(string) (TimerRemoval, error) {
+		return TimerRemoval{RootRequired: true}, errors.New("crontab -l: you are not allowed to use this program")
+	}
+	out, err := RunScheduled(context.Background(), t.TempDir())
+	if err != nil || !out.RootRequired {
+		t.Fatalf("outcome %+v err %v", out, err)
+	}
+}

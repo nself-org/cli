@@ -59,7 +59,7 @@ func (h host) backend() string {
 		return BackendLaunchAgent
 	case h.euid == 0 && h.systemd:
 		return BackendSystemd
-	case h.crontab:
+	case h.crontab && h.euid != 0: // root without systemd gets no backend: cron would run owner-writable code as root
 		return BackendCron
 	}
 	return ""
@@ -207,7 +207,7 @@ func (h host) installCron(bin, dir, hash string) (bool, error) {
 
 // cronList reads the crontab: "no crontab" is empty, any other failure an error (never overwrite what was not read).
 func (h host) cronList() (string, error) {
-	if h.goos != "linux" {
+	if h.goos != "linux" || !h.crontab {
 		return "", ErrNoBackend
 	}
 	out, err := h.run("", "crontab", "-l")
@@ -273,13 +273,13 @@ func (h host) remove(hash string) (r RemoveResult, firstErr error) {
 	}
 	for _, p := range plists {
 		if i := id(p, entLabelPrefix, ".plist"); hash == "" || i == hash {
+			fail(os.Remove(p)) // before bootout: launchd stops this very process
 			_, _ = h.run("", "launchctl", "bootout", launchTarget(h.euid, i))
-			fail(os.Remove(p))
 			r.Removed = true
 		}
 	}
 	cur, cerr := h.cronList()
-	if cerr != nil && h.goos == "linux" {
+	if cerr != nil && cerr != ErrNoBackend { // no crontab command or not Linux: nothing to read
 		fail(cerr) // an unreadable crontab may still hold our line
 	}
 	if rest, tagged := taggedLines(cur, entCronTag+hash); cerr == nil && len(tagged) > 0 {

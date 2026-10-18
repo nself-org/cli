@@ -218,7 +218,7 @@ func RunScheduled(ctx context.Context, projectDir string) (Outcome, error) {
 			reason = "autorefresh disabled"
 		}
 		res, err := removeTimer(projectDir)
-		if err != nil {
+		if err != nil && !res.RootRequired { // root units remain: exit 78 lets their ExecStopPost finish the job
 			return Outcome{}, &RefreshError{Class: ClassTimerRemove, Err: err}
 		}
 		return Outcome{Removed: res.Removed, RootRequired: res.RootRequired, Reason: reason}, nil

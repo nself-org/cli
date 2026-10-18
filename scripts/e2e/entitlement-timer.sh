@@ -111,18 +111,21 @@ count_timers() { # container backend
   fi
 }
 
-# run_timer: one timer invocation; prints the exit status. extra env goes in $3 as NAME=value.
+# run_timer: one timer invocation; prints the exit status and leaves the run's output in $work/last.out.
+# extra environment goes in $3 as "NAME=value NAME2=value" (systemd: manager environment; cron: docker -e).
 run_timer() { # container backend [env]
-  local c=$1 b=$2 envp=${3:-}
+  local c=$1 b=$2 envp=${3:-} kv ea=""
+  : > "$work/last.out"
   if [ "$b" = systemd ]; then
-    [ -n "$envp" ] && docker exec "$c" systemctl set-environment "$envp"
+    [ -n "$envp" ] && docker exec "$c" systemctl set-environment $envp
     local unit
     unit=$(docker exec "$c" sh -c 'basename $(ls /etc/systemd/system/nself-entitlement-*.service | head -1)')
-    docker exec "$c" systemctl start "$unit" >/dev/null 2>&1 && echo 0 || echo 1
+    if docker exec "$c" systemctl start "$unit" >/dev/null 2>&1; then echo 0; else echo 1; fi
+    docker exec "$c" journalctl -u "$unit" --no-pager -o cat > "$work/last.out" 2>&1 || true
   else
+    for kv in $envp; do ea="$ea -e $kv"; done
     # the crontab line through sh, cron's own unescaping of \% included
-    docker exec -u app ${envp:+-e "$envp"} "$c" sh -c "line=\$(crontab -l | grep '# nself-entitlement:' | cut -d' ' -f6- | sed 's/\\\\%/%/g'); sh -c \"\$line\"" \
-      >/dev/null 2>&1 && echo 0 || echo 1
+    if docker exec -u app $ea "$c" sh -c "line=\$(crontab -l | grep '# nself-entitlement:' | cut -d' ' -f6- | sed 's/\\\\%/%/g'); sh -c \"\$line\" 2>&1" > "$work/last.out" 2>&1; then echo 0; else echo 1; fi
   fi
 }
 
@@ -161,12 +164,12 @@ removal_case() { # container backend case
 }
 
 negative_case() { # container backend
-  local c=$1 b=$2 rc
+  local c=$1 b=$2 rc env="NSELF_PING_API_URL=http://127.0.0.1:1 NSELF_PLUGIN_LICENSE_KEY=synthetic-license-key"
   reset "$c" "$b"
   two_builds "$c" "$b" || { fail negative "$b" "install"; return; }
-  if [ "$b" = systemd ]; then docker exec "$c" systemctl set-environment NSELF_PING_API_URL=http://127.0.0.1:1; rc=$(run_timer "$c" "$b")
-  else rc=$(run_timer "$c" "$b" "NSELF_PING_API_URL=http://127.0.0.1:1"); fi
+  rc=$(run_timer "$c" "$b" "$env")
   [ "$rc" != 0 ] || { fail negative "$b" "ping unreachable but the run exited 0"; return; }
+  grep -q "entitlement refresh failed: ping-unavailable" "$work/last.out" || { fail negative "$b" "run did not reach ping: $(tr '\n' ' ' < "$work/last.out" | cut -c1-200)"; return; }
   [ "$(count_timers "$c" "$b")" = 1 ] || { fail negative "$b" "a failed refresh removed the timer"; return; }
   pass negative "$b"
 }

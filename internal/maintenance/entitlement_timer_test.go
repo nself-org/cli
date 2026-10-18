@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 var update = flag.Bool("update", false, "rewrite the entitlement timer goldens")
@@ -23,6 +24,7 @@ type fakeHost struct {
 	calls        []string
 	cronBroken   bool
 	launchLoaded bool
+	bootouts     []string // the plist paths still present when launchctl bootout ran
 }
 
 func newFake(t *testing.T, goos string, euid int) (*fakeHost, string) {
@@ -76,6 +78,8 @@ func (f *fakeHost) exec(stdin, name string, args ...string) (string, error) {
 		f.launchLoaded = true
 	case name == "launchctl" && args[0] == "bootout":
 		f.launchLoaded = false
+		left, _ := filepath.Glob(filepath.Join(f.launchDir, "*.plist"))
+		f.bootouts = append(f.bootouts, left...)
 	}
 	return "", nil
 }
@@ -430,10 +434,10 @@ func FuzzRenderTimer(f *testing.F) {
 	f.Add("/a/b' c", "/bin/n$x")
 	f.Add("/p%q", "/q\\r")
 	f.Fuzz(func(t *testing.T, dir, bin string) {
-		for _, p := range []string{dir, bin} {
-			if !safePathRe.MatchString(p) || filepath.Clean(p) != p {
-				return
-			}
+		// The path validator refuses most of these in production; the renderers must still round-trip
+		// every printable XML-valid input, so the special-character seeds exercise the escaping itself.
+		if !utf8.ValidString(dir) || !utf8.ValidString(bin) || strings.IndexFunc(dir+bin, func(r rune) bool { return r < 0x20 || r == 0x7f || r == 0xFFFE || r == 0xFFFF }) >= 0 {
+			return
 		}
 		hash := Hash(dir)
 		svc, tmr, err := renderSystemd(bin, dir, hash, 1000)
@@ -520,5 +524,55 @@ func TestCronSelfDeleteKeepsForeignLines(t *testing.T) {
 	got, _ := os.ReadFile(store)
 	if string(got) != before+after {
 		t.Fatalf("foreign lines changed:\n got %q\nwant %q", got, before+after)
+	}
+}
+
+// TestRootWithoutSystemdGetsNoBackend: cron would run an owner-writable binary as root.
+func TestRootWithoutSystemdGetsNoBackend(t *testing.T) {
+	f, root := newFake(t, "linux", 0)
+	f.systemd = false
+	dir, bin := project(t, root)
+	if res, err := f.ensure(dir, bin); err != ErrNoBackend || res.Changed || f.cron != "" || len(f.calls) != 0 {
+		t.Fatalf("root without systemd: %+v %v cron %q calls %v", res, err, f.cron, f.calls)
+	}
+}
+
+// TestRemoveWithoutCrontabCommand: units exist, the owner cannot use cron: removal reports
+// RootRequired without an error, so the scheduled run can still exit 78.
+func TestRemoveWithoutCrontabCommand(t *testing.T) {
+	f, root := newFake(t, "linux", 1000)
+	dir, bin := project(t, root)
+	f.exe = bin
+	rootHost := f.host
+	rootHost.euid = 0
+	if _, err := rootHost.ensure(dir, bin); err != nil {
+		t.Fatal(err)
+	}
+	f.crontab = false
+	res, err := Remove(dir)
+	if err != nil || !res.RootRequired || res.Removed {
+		t.Fatalf("remove: %+v %v", res, err)
+	}
+}
+
+// TestLaunchAgentRemovalDeletesThePlistBeforeBootout: bootout stops the running refresh itself.
+func TestLaunchAgentRemovalDeletesThePlistBeforeBootout(t *testing.T) {
+	f, root := newFake(t, "darwin", 501)
+	dir, bin := project(t, root)
+	f.exe = bin
+	if _, err := f.ensure(dir, bin); err != nil {
+		t.Fatal(err)
+	}
+	f.bootouts = nil // install boots the old job out first, with the plist present
+	res, err := Remove(dir)
+	if err != nil || !res.Removed || len(f.bootouts) != 0 {
+		t.Fatalf("remove: %+v %v; plists still present at bootout: %v", res, err, f.bootouts)
+	}
+}
+
+func TestOverlongPathsAreRefused(t *testing.T) {
+	long := "/" + strings.Repeat("a", 301)
+	if _, err := renderCron("/usr/local/bin/nself", long, Hash(long)); err == nil {
+		t.Fatal("a cron line near cron's length limit was rendered")
 	}
 }
