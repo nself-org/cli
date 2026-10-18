@@ -20,7 +20,7 @@ import (
 )
 
 func init() {
-	for _, c := range []*cobra.Command{accountStatusCmd, accountDevicesCmd, accountLicensesCmd, accountTeamCmd} {
+	for _, c := range []*cobra.Command{accountCmd, accountStatusCmd, accountDevicesCmd, accountLicensesCmd, accountTeamCmd} {
 		c.RunE = accountEnv(c.RunE)
 	}
 }

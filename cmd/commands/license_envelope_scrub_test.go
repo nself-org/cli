@@ -17,6 +17,7 @@ import (
 	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/license"
+	"github.com/spf13/cobra"
 )
 
 const hostileOtherKey = "nself_plus_zyxwvutsrqponmlkjihgfedcba9876"
@@ -96,7 +97,7 @@ func TestScrubDocWalksEveryLeaf(t *testing.T) {
 		Nil     []string
 		Empty   []string
 	}
-	bad := "x " + hostileOtherKey + " " + hostileToken
+	bad := "x " + hostileOtherKey + " " + hostileToken + " opaqueSessionTokenWithoutDigitsXYZ 2026-10-18opaque0123456789abcdef"
 	in := doc{ID: "0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d", When: "2026-10-18T13:00:00.123456789+00:00",
 		Masked: license.MaskKey(hostileOtherKey), Unit: "nself-license-refresh.timer", Hostile: &bad,
 		Rows: []leaf{{Name: bad, Tags: []string{bad}}}, ByName: map[string]string{"k": bad}, Empty: []string{}}
@@ -105,7 +106,7 @@ func TestScrubDocWalksEveryLeaf(t *testing.T) {
 		t.Errorf("plain data changed: %+v", out)
 	}
 	for _, got := range []string{*out.Hostile, out.Rows[0].Name, out.Rows[0].Tags[0], out.ByName["k"]} {
-		noSecrets(t, "scrubDoc", got, hostileOtherKey, hostileToken)
+		noSecrets(t, "scrubDoc", got, hostileOtherKey, hostileToken, "opaqueSessionTokenWithoutDigitsXYZ", "2026-10-18opaque0123456789abcdef")
 	}
 	if out.Nil != nil || out.Empty == nil || *in.Hostile != bad {
 		t.Errorf("shape changed: nil=%v empty=%v input=%q", out.Nil, out.Empty, *in.Hostile)
@@ -178,4 +179,25 @@ func TestLicenseImportTargetIsHidden(t *testing.T) {
 	if !dataTargetSecret["license import"] {
 		t.Error("license import echoes its path argument into the document")
 	}
+}
+
+// TestAccountParentFailureIsScrubbed: `license account` (the status default)
+// scrubs a failure whose text carries the home path, and so a key in it.
+func TestAccountParentFailureIsScrubbed(t *testing.T) {
+	compattest.Set(t, true)
+	undo := prepareTreeWith(&canonTable, RootCmd, true, false)
+	defer undo()
+	home := isolateHome(t)
+	writeTestAuthFile(t, home, &auth.AuthFile{AccessToken: fixtureAccessToken, SessionToken: fixtureAccessToken, Email: "alice@example.test"})
+	cmd := accountCmd
+	prev := cmd.RunE
+	cmd.RunE = accountEnv(func(*cobra.Command, []string) error {
+		return errors.New("read " + home + "/" + hostileOtherKey + ": denied")
+	})
+	t.Cleanup(func() { cmd.RunE = prev })
+	_, err := runLicenseJSON(t, cmd, nil)
+	if err == nil {
+		t.Fatal("want a failure")
+	}
+	noSecrets(t, "license account error", err.Error(), hostileOtherKey)
 }

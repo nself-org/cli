@@ -30,9 +30,11 @@ var (
 	jwtShape        = regexp.MustCompile(`eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}(\.[A-Za-z0-9_-]*)?`)
 	tokenRun        = regexp.MustCompile(`[A-Za-z0-9_.-]{24,}`)
 	uuidShape       = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
-	dateShape       = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}`)
+	dateShape       = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}[T0-9Z.+-]*$`)
 	digitShape      = regexp.MustCompile(`[0-9]`)
 	letterShape     = regexp.MustCompile(`[A-Za-z]`)
+	upperShape      = regexp.MustCompile(`[A-Z]`)
+	lowerShape      = regexp.MustCompile(`[a-z]`)
 )
 
 // licenseScrubMax caps the length of server text copied into a document row.
@@ -48,12 +50,16 @@ func newScrubber(extra ...string) scrubber {
 }
 
 // opaque reports whether a 24+ character run looks like an access or session
-// token: letters and digits mixed, and neither a UUID nor a date.
+// token, and is neither a UUID nor a date: letters and digits mixed, or upper
+// and lower case mixed (an identifier like a unit name is single-case).
 func opaque(run string) bool {
 	if uuidShape.MatchString(run) || dateShape.MatchString(run) {
 		return false
 	}
-	return digitShape.MatchString(run) && letterShape.MatchString(run)
+	if digitShape.MatchString(run) && letterShape.MatchString(run) {
+		return true
+	}
+	return upperShape.MatchString(run) && lowerShape.MatchString(run)
 }
 
 // str masks every licence key in s, drops every JWT and every opaque token.
@@ -99,7 +105,7 @@ func (sc scrubber) value(src reflect.Value) reflect.Value {
 		out := reflect.New(src.Type()).Elem()
 		out.SetString(sc.str(src.String()))
 		return out
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if src.IsNil() {
 			return src
 		}

@@ -410,6 +410,29 @@ One row per operation of the committed OpenAPI document. Side effect is the high
 | POST | `/v1/commands/init/template/list` | List available app templates | `read` | no |
 | POST | `/v1/commands/init/template/publish` | Submit a template to the nSelf registry | `remote` | no |
 | POST | `/v1/commands/init/template/update` | Apply incremental migrations for the installed template | `destructive` | no |
+| POST | `/v1/commands/license` | Manage license keys for nSelf product bundles | `read` | no |
+| POST | `/v1/commands/license/account` | Manage your nSelf account, sessions, licenses, team, and devices | `read` | no |
+| POST | `/v1/commands/license/account/devices` | List and revoke registered devices | `read` | no |
+| POST | `/v1/commands/license/account/licenses` | List and manage account licenses | `read` | no |
+| POST | `/v1/commands/license/account/status` | Show current account summary | `read` | no |
+| POST | `/v1/commands/license/account/team` | Manage team members | `read` | no |
+| POST | `/v1/commands/license/add` | Add one or more license keys | `write` | no |
+| POST | `/v1/commands/license/clear` | Remove all saved license keys | `destructive` | no |
+| POST | `/v1/commands/license/health` | Validate format, ping server, and report cache integrity | `read` | no |
+| POST | `/v1/commands/license/import` | Import a previously exported license cache file | `write` | no |
+| POST | `/v1/commands/license/list` | Show all configured licenses (alias for status) | `read` | no |
+| POST | `/v1/commands/license/migrate` | Migrate legacy license key to a nSelf account | `remote` | no |
+| POST | `/v1/commands/license/refresh` | Force-refresh license validation against ping.nself.org | `write` | no |
+| POST | `/v1/commands/license/remove` | Remove a license key by value or product name | `destructive` | no |
+| POST | `/v1/commands/license/restore` | Reactivate dormant plugins with a new license key | `write` | no |
+| POST | `/v1/commands/license/revalidate` | Force a fresh validation against ping.nself.org and update the cache | `write` | no |
+| POST | `/v1/commands/license/revoke` | Mark local license as revoked and wipe the stored key | `destructive` | no |
+| POST | `/v1/commands/license/set` | Replace all keys with a single key | `destructive` | no |
+| POST | `/v1/commands/license/show` | Display license tier, bundles, plugins, and cache expiry | `read` | no |
+| POST | `/v1/commands/license/simulate-offline` | Simulate being offline for N days (testing only) | `write` | no |
+| POST | `/v1/commands/license/status` | Show all configured licenses and plugin coverage | `read` | no |
+| POST | `/v1/commands/license/upgrade` | Open pricing page in browser | `read` | no |
+| POST | `/v1/commands/license/validate` | Validate key against ping.nself.org | `read` | no |
 | POST | `/v1/commands/logs` | View and filter service logs | `read` | with `follow` |
 | POST | `/v1/commands/mcp/setup` | Print or write the MCP client config and AGENTS.md for this project | `write` | no |
 | POST | `/v1/commands/remove` | Remove an installed plugin or bundle | `destructive` | no |
