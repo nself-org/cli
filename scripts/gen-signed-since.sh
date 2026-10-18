@@ -4,6 +4,8 @@
 # Purpose: write internal/plugin/verify/signature/signed_since.json, the per-tier downgrade floor of hq PLUG D7 (review R3):
 #   for each tier and plugin slug, the FIRST version that carried a release_signature in that tier's release data.
 #   The CLI refuses an entry at or above that version (or for a slug the floor does not name) that lacks release_signature.
+#   Also writes "presigning" (D-0841): per tier and slug, the (version, sha256) pairs of the unsigned releases listed in the data's
+#   optional "history" array. The CLI accepts an unsigned release of a named slug only if it is on this list for its tier.
 # Inputs: release data in the shape {"releases": {"<slug>": {"version": "...", "release_signature": {...} | null}}}.
 #   default       reads releases.json (read-only, `gh api`) from nself-org/plugins (free) and nself-org/bundles (licensed)
 #                 at every sha the hq evidence file records on a `release-data-sha...: <40 hex>` line
@@ -42,21 +44,29 @@ done
 case "$TIER" in free|licensed|all) ;; *) usage ;; esac
 FROM_FILES="${FROM_FILES:-}"
 
-# floor_of FILE...: stdin none; prints {slug: lowest signed version} for the release-data files given.
+# floor_of FILE...: stdin none; prints {floor: {slug: lowest signed version}, presigning: {slug: [{version, sha256}]}} for the release-data files given.
+# presigning lists the UNSIGNED rows of each file's optional "history" array ([{slug, version, sha256, release_signature}]): the real pre-signing releases (D-0841).
 # Version order: numeric MAJOR.MINOR.PATCH, a pre-release below its release, build metadata ignored.
 floor_of() {
-  if [ $# -eq 0 ]; then echo '{}'; return; fi
+  if [ $# -eq 0 ]; then echo '{"floor":{},"presigning":{}}'; return; fi
   jq -s '
     def key: (. // "" | sub("^v"; "") | sub("\\+.*$"; "")) as $v
       | ($v | split("-")) as $p
       | ($p[0] | split(".") | map(tonumber? // 0)) as $n
       | [($n[0] // 0), ($n[1] // 0), ($n[2] // 0), (if ($p | length) > 1 then 0 else 1 end), ($p[1:] | join("-"))];
-    [ .[] | (.releases // {}) | to_entries[]
+    ([ .[] | (.releases // {}) | to_entries[]
       | select(.value.release_signature != null and (.value.version // "") != "")
       | {slug: .key, version: .value.version} ]
     | group_by(.slug)
     | map({key: .[0].slug, value: (sort_by(.version | key) | .[0].version)})
-    | from_entries' "$@"
+    | from_entries) as $floor
+    | {floor: $floor, presigning: (
+        [ .[] | (.history // [])[]
+          | select((.release_signature // null) == null and (.slug // "") != "" and (.version // "") != "" and (.sha256 // "") != "")
+          | {slug, version, sha256: (.sha256 | ascii_downcase)} ]
+        | group_by(.slug)
+        | map({key: .[0].slug, value: (map({version, sha256}) | unique)})
+        | from_entries)}' "$@"
 }
 
 # tier_json TIER FILES REFS_JSON: {floor, refs} for one tier built from local files.
@@ -93,23 +103,25 @@ tier_from_gh() {
 
 # build: prints the whole document. Tiers not selected keep the committed value.
 build() {
-  local free_floor licensed_floor free_refs='[]' licensed_refs='[]'
+  local free_floor licensed_floor free_refs='[]' licensed_refs='[]' free_pre licensed_pre both
   free_floor="$(jq -c '.tiers.free // {}' "$OUT" 2>/dev/null || echo '{}')"
   licensed_floor="$(jq -c '.tiers.licensed // {}' "$OUT" 2>/dev/null || echo '{}')"
+  free_pre="$(jq -c '.presigning.free // {}' "$OUT" 2>/dev/null || echo '{}')"
+  licensed_pre="$(jq -c '.presigning.licensed // {}' "$OUT" 2>/dev/null || echo '{}')"
   free_refs="$(jq -c '.refs.free // []' "$OUT" 2>/dev/null || echo '[]')"
   licensed_refs="$(jq -c '.refs.licensed // []' "$OUT" 2>/dev/null || echo '[]')"
   REFS_TMP="$(mktemp "${TMPDIR:-/tmp}/signed-since-refs.XXXXXX")"
   if [ "$TIER" = all ] || [ "$TIER" = free ]; then
-    if [ -n "$FROM_FILES" ]; then free_floor="$(tier_from_files "$FREE_FILES")"; free_refs="$(printf '%s' "$FREE_FILES" | jq -R -c 'if . == "" or . == "-" then [] else split(",") | map(split("/") | last) end')"
-    else free_floor="$(tier_from_gh "$FREE_REPO" "$HQ/plan/p7/evidence/PLUG-69-release.md")"; free_refs="$(jq -R -s -c 'split("\n") | map(select(. != ""))' <"$REFS_TMP")"; fi
+    if [ -n "$FROM_FILES" ]; then both="$(tier_from_files "$FREE_FILES")"; free_floor="$(jq -c .floor <<<"$both")"; free_pre="$(jq -c .presigning <<<"$both")"; free_refs="$(printf '%s' "$FREE_FILES" | jq -R -c 'if . == "" or . == "-" then [] else split(",") | map(split("/") | last) end')"
+    else both="$(tier_from_gh "$FREE_REPO" "$HQ/plan/p7/evidence/PLUG-69-release.md")"; free_floor="$(jq -c .floor <<<"$both")"; free_pre="$(jq -c .presigning <<<"$both")"; free_refs="$(jq -R -s -c 'split("\n") | map(select(. != ""))' <"$REFS_TMP")"; fi
   fi
   if [ "$TIER" = all ] || [ "$TIER" = licensed ]; then
-    if [ -n "$FROM_FILES" ]; then licensed_floor="$(tier_from_files "$LICENSED_FILES")"; licensed_refs="$(printf '%s' "$LICENSED_FILES" | jq -R -c 'if . == "" or . == "-" then [] else split(",") | map(split("/") | last) end')"
-    else licensed_floor="$(tier_from_gh "$LICENSED_REPO" "$HQ/plan/p7/evidence/PLUG-70-release.md")"; licensed_refs="$(jq -R -s -c 'split("\n") | map(select(. != ""))' <"$REFS_TMP")"; fi
+    if [ -n "$FROM_FILES" ]; then both="$(tier_from_files "$LICENSED_FILES")"; licensed_floor="$(jq -c .floor <<<"$both")"; licensed_pre="$(jq -c .presigning <<<"$both")"; licensed_refs="$(printf '%s' "$LICENSED_FILES" | jq -R -c 'if . == "" or . == "-" then [] else split(",") | map(split("/") | last) end')"
+    else both="$(tier_from_gh "$LICENSED_REPO" "$HQ/plan/p7/evidence/PLUG-70-release.md")"; licensed_floor="$(jq -c .floor <<<"$both")"; licensed_pre="$(jq -c .presigning <<<"$both")"; licensed_refs="$(jq -R -s -c 'split("\n") | map(select(. != ""))' <"$REFS_TMP")"; fi
   fi
   rm -f "$REFS_TMP"
-  jq -S -n --arg gen "$GENERATED" --argjson ff "$free_floor" --argjson lf "$licensed_floor" --argjson fr "$free_refs" --argjson lr "$licensed_refs" \
-    '{_generated: $gen, refs: {free: $fr, licensed: $lr}, tiers: {free: $ff, licensed: $lf}}'
+  jq -S -n --arg gen "$GENERATED" --argjson ff "$free_floor" --argjson lf "$licensed_floor" --argjson fp "$free_pre" --argjson lp "$licensed_pre" --argjson fr "$free_refs" --argjson lr "$licensed_refs" \
+    '{_generated: $gen, refs: {free: $fr, licensed: $lr}, tiers: {free: $ff, licensed: $lf}, presigning: {free: $fp, licensed: $lp}}'
 }
 
 case "$MODE" in
@@ -119,6 +131,9 @@ case "$MODE" in
     got="$(build | jq -S '.tiers')"
     want="$(jq -S '.' "$FIXTURES/expected.json")"
     if [ "$got" != "$want" ]; then err "self-test: floor differs from expected.json"; diff <(printf '%s\n' "$want") <(printf '%s\n' "$got") >&2 || true; exit 1; fi
+    got_pre="$(build | jq -S '.presigning')"
+    want_pre="$(jq -S '.' "$FIXTURES/expected-presigning.json")"
+    if [ "$got_pre" != "$want_pre" ]; then err "self-test: presigning differs from expected-presigning.json"; diff <(printf '%s\n' "$want_pre") <(printf '%s\n' "$got_pre") >&2 || true; exit 1; fi
     # The fixtures must exercise the rules: a null-signature row sets no floor, the lowest of several versions wins.
     [ "$(jq -r '.free | has("unsigned-only")' <<<"$got")" = false ] || { err "self-test: unsigned row set a floor"; exit 1; }
     echo "gen-signed-since self-test: ok"

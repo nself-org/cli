@@ -1,6 +1,54 @@
-{"releases": {
-  "ci": {"version": "1.2.7", "release_signature": {"key_id": "plugins-0123456789abcdef", "alg": "ed25519", "sig": "AAAA"}},
-  "minio": {"version": "1.2.9", "release_signature": {"key_id": "plugins-0123456789abcdef", "alg": "ed25519", "sig": "AAAA"}},
-  "unsigned-only": {"version": "1.2.6", "release_signature": null},
-  "tokens": {"version": "1.2.6"}
-}}
+{
+ "releases": {
+  "ci": {
+   "version": "1.2.7",
+   "release_signature": {
+    "key_id": "plugins-0123456789abcdef",
+    "alg": "ed25519",
+    "sig": "AAAA"
+   }
+  },
+  "minio": {
+   "version": "1.2.9",
+   "release_signature": {
+    "key_id": "plugins-0123456789abcdef",
+    "alg": "ed25519",
+    "sig": "AAAA"
+   }
+  },
+  "unsigned-only": {
+   "version": "1.2.6",
+   "release_signature": null
+  },
+  "tokens": {
+   "version": "1.2.6"
+  }
+ },
+ "history": [
+  {
+   "slug": "ci",
+   "version": "1.2.6",
+   "sha256": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+   "release_signature": null
+  },
+  {
+   "slug": "ci",
+   "version": "1.2.7",
+   "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "release_signature": {
+    "key_id": "k",
+    "alg": "ed25519",
+    "sig": "AAAA"
+   }
+  },
+  {
+   "slug": "tokens",
+   "version": "1.2.6",
+   "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  {
+   "slug": "tokens",
+   "version": "1.2.5"
+  }
+ ]
+}

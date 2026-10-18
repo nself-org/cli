@@ -20,6 +20,8 @@ func TestFloorRule(t *testing.T) {
 		signature.TierLicensed: {},
 	})
 	at := func(tier, s, v string, v15 bool) error {
+		// Below-floor releases are real pre-signing releases: put them on the allowlist so the ordinary unsigned rule decides.
+		signaturetest.AllowPresigning(t, tier, s, v, digest("x"))
 		_, err := signature.Decide(signature.Input{Tier: tier, Slug: s, Version: v, SHA256: digest("x"), V15: v15})
 		return err
 	}
@@ -53,8 +55,8 @@ func TestFloorRule(t *testing.T) {
 				t.Errorf("free %s %s v15=%v: err=%v, want refused=%v", c.slug, c.ver, v15, err, c.refused)
 			}
 		}
-		// Empty tier floor: no floor rule, even for a slug the (other tier's) floor names.
-		if err := at(signature.TierLicensed, "ci", "9.9.9", v15); (err != nil) != v15 {
+		// Empty tier floor: no floor rule for a slug no tier names.
+		if err := at(signature.TierLicensed, "other", "9.9.9", v15); (err != nil) != v15 {
 			t.Errorf("licensed (empty floor) v15=%v: err=%v", v15, err)
 		}
 	}

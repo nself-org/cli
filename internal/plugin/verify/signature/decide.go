@@ -5,7 +5,7 @@ package signature
 // Purpose: turn "this entry has / lacks a release_signature" into verify, warn or refuse, in one pure place the installer and the tests share.
 // Inputs: Input (tier, slug, version, sha256, the entry's signature, the compat mode and the strict switch).
 // Outputs: Outcome (Verified, or a Warning to print once) or a coded error.
-// Constraints: no fail-open on a present, verifiable signature that is invalid, in any mode. Only a missing signature ever warns, and only in v1.4 mode. A tier with no pinned key cannot verify anything, so a signature on it counts as missing (final gate G1); a tier with a pinned key never falls back.
+// Constraints: an unsigned release of a slug the floor or the pre-signing list names must be on that list for its tier (E107 in both modes, D-0841). No fail-open on a present, verifiable signature that is invalid, in any mode. Only a missing signature ever warns, and only in v1.4 mode. A tier with no pinned key cannot verify anything, so a signature on it counts as missing (final gate G1); a tier with a pinned key never falls back.
 
 import (
 	"fmt"
@@ -48,6 +48,9 @@ func Decide(in Input) (Outcome, error) {
 	}
 	if FloorRequires(in.Tier, in.Slug, in.Version) {
 		return Outcome{}, errs.Newf("E107", "plugin %q %s %s, and every release since signing began must be signed", in.Slug, in.Version, reason)
+	}
+	if !UnsignedAllowed(in.Tier, in.Slug, in.Version, in.SHA256) {
+		return Outcome{}, errs.Newf("E107", "plugin %q %s %s, and it is not a release published before signing began (tier %s)", in.Slug, in.Version, reason, in.Tier)
 	}
 	if in.V15 || in.Strict {
 		return Outcome{}, errs.Newf("E107", "plugin %q %s %s", in.Slug, in.Version, reason)
