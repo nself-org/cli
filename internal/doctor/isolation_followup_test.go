@@ -38,7 +38,8 @@ func TestIsolationFollowups(t *testing.T) {
 		surfaces := `"name": "default", "native_queries": [{"root_field_name": "all_notes"}], ` +
 			`"functions": [{"function": {"schema": "public", "name": "purge_note"}, "permissions": [{"role": "user"}]},` +
 			`{"function": {"schema": "public", "name": "find_note"}, "configuration": {"exposed_as": "query"}, "permissions": [{"role": "user"}]},` +
-			`{"function": {"schema": "public", "name": "admin_only"}, "permissions": [{"role": "admin"}]}]`
+			`{"function": {"schema": "public", "name": "admin_only"}, "permissions": [{"role": "admin"}]},` +
+			`{"function": {"schema": "public", "name": "infer_note"}, "configuration": {"exposed_as": "query"}}]`
 		meta := strings.Replace(string(fx.Metadata), `"name": "default"`, surfaces, 1)
 		dir := isoProject(t, []byte(meta), nil, psqlRows(fx), nil)
 		got := ""
@@ -47,8 +48,21 @@ func TestIsolationFollowups(t *testing.T) {
 				got += r.Message + "\n"
 			}
 		}
-		if !strings.Contains(got, "native queries") || !strings.Contains(got, "volatile function public.purge_note callable by user") || strings.Contains(got, "find_note") || strings.Contains(got, "admin_only") {
+		if !strings.Contains(got, "native queries") || !strings.Contains(got, "volatile function public.purge_note callable by user") || !strings.Contains(got, "volatile function public.infer_note callable by every role") || strings.Contains(got, "find_note") || strings.Contains(got, "admin_only") {
 			t.Fatalf("want native queries and the volatile purge_note (not the stable find_note) reported, got %q", got)
+		}
+		// A wall that lives only in untracked relations still makes the surfaces count.
+		bare := strings.Replace(string(fx.Metadata), `"name": "default"`, surfaces, 1)
+		bare = bare[:strings.Index(bare, `"tables": [`)] + `"tables": []}]}}`
+		dir = isoProject(t, []byte(bare), nil, psqlRows(fx), nil)
+		got = ""
+		for _, r := range IsolationChecks(context.Background(), dir) {
+			if r.Status == "fail" {
+				got += r.Message + "\n"
+			}
+		}
+		if !strings.Contains(got, "native queries") {
+			t.Errorf("surfaces must be reported when only untracked relations carry the columns, got %q", got)
 		}
 		single := fixtures["single-app"]
 		meta = strings.Replace(string(single.Metadata), `"name": "default"`, surfaces, 1)

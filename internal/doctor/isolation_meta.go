@@ -105,8 +105,8 @@ func bindDefaultSource(conn any, db, container string) string {
 		if err != nil || u.Host == "" {
 			return "Hasura's default source URL is not understood" + tail
 		}
-		if u.RawQuery != "" {
-			return "Hasura's default source URL carries connection parameters (host, dbname and port can be overridden there)" + tail
+		if u.RawQuery != "" || u.Fragment != "" || strings.ContainsAny(v, "?#") {
+			return "Hasura's default source URL carries connection parameters or a fragment (host, dbname and port can be overridden there)" + tail
 		}
 		got := strings.TrimPrefix(u.Path, "/")
 		if got != db {
@@ -223,7 +223,7 @@ func isoSurfaces(src isoMetaSource) []string {
 	return out
 }
 
-// isoFuncs lists the tracked functions a non-admin role may call. Whether one is
+// isoFuncs lists the tracked functions a non-admin role may call, by explicit permission or by Hasura's inference. Whether one is
 // volatile (runs as Hasura's DB user, so table filters do not limit what it
 // writes) is read from pg_proc, because an export need not state exposed_as.
 func isoFuncs(src isoMetaSource) []isoFunc {
@@ -238,6 +238,10 @@ func isoFuncs(src isoMetaSource) []isoFunc {
 			if p.Role != "admin" {
 				fn.Roles = append(fn.Roles, p.Role)
 			}
+		}
+		if len(fn.Roles) == 0 && f.Configuration.ExposedAs != "mutation" {
+			// Hasura infers a query function's permissions from its return table's select permissions.
+			fn.Roles = []string{"every role that can select its return table (inferred permissions)"}
 		}
 		if len(fn.Roles) > 0 {
 			out = append(out, fn)

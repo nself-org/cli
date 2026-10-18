@@ -103,7 +103,7 @@ func IsolationChecks(ctx context.Context, projectDir string) []CheckResult {
 		}
 	}
 	results := isolationResults(meta.Tables, cols, strict)
-	if isoTracked(meta.Tables, cols) > 0 {
+	if len(cols) > 0 { // a wall exists in the database, tracked or not
 		surfaces := meta.Surfaces
 		if len(meta.Funcs) > 0 {
 			volOut, stderr, err := isoExecCapture(ctx, container, []string{"psql", "-X", "-A", "-t", "-F", isoFieldSep,
@@ -147,7 +147,7 @@ func isolationResults(tables []isoTable, cols isoColumns, strict bool) []CheckRe
 	tracked := isoTracked(tables, cols)
 	if tracked == 0 {
 		return []CheckResult{{Section: isolationSection, Name: "ISO", Status: "pass",
-			Message: "no table has source_account_id or tenant_id: nothing to isolate"}}
+			Message: "no tracked table has source_account_id or tenant_id: nothing to isolate"}}
 	}
 	findings := isolationRules(tables, cols, strict)
 	byRule := map[string]int{}

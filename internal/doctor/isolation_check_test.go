@@ -31,7 +31,7 @@ func isoProject(t *testing.T, meta []byte, metaErr error, psql string, psqlErr e
 			t.Errorf("unexpected exec: %s %v", container, cmd)
 		}
 		if sql == isoVolatileSQL && psqlErr == nil { // purge_note is volatile in the fixtures that track it
-			return "public" + isoFieldSep + "purge_note\n", "", nil
+			return "public" + isoFieldSep + "purge_note\npublic" + isoFieldSep + "infer_note\n", "", nil
 		}
 		if sql == isoRelationsSQL && psqlErr == nil { // every tracked table exists unless a test removes it
 			parsed, err := parseIsolationMetadata(meta)
@@ -142,6 +142,7 @@ func TestIsolationChecks(t *testing.T) {
 			{`"not a url"`, "fail", "not understood"},
 			{`"postgresql://u:p@postgres:5432/nself?host=other-server"`, "fail", "connection parameters"},
 			{`"postgresql://u:p@postgres:5432/nself?dbname=other"`, "fail", "connection parameters"},
+			{`"postgresql://u:p@postgres/nself#ignored?host=other&dbname=other"`, "fail", "connection parameters"},
 			{`{"from_env":"SOME_OTHER_URL"}`, "fail", "HASURA_GRAPHQL_DATABASE_URL"},
 			{`{"connection_parameters":{"host":"other-server","database":"nself"}}`, "fail", "HASURA_GRAPHQL_DATABASE_URL"},
 			{`7`, "fail", "unknown shape"},
