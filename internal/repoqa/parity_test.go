@@ -175,6 +175,12 @@ func TestParityFromRegistry(t *testing.T) {
 	if len(parityDiffs(forged, &reg, tools, routes)) == 0 {
 		t.Error("a tampered MCP count was not detected")
 	}
+	forged = append([]parityRow{}, matrix.Rows...)
+	forged[0].HTTPRoutes++
+	forged[0].HTTPRoute = true
+	if len(parityDiffs(forged, &reg, tools, routes)) == 0 {
+		t.Error("a tampered HTTP route count was not detected")
+	}
 
 	// No generator reads the hand MCP files as text, and the old pieces are gone.
 	if !readsHandSources(`os.ReadFile("cmd/commands/mcp_sentry.go")`) || readsHandSources("package main") {

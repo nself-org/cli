@@ -304,6 +304,9 @@ func (e *surfaceEnv) checkCase(t *testing.T, c surfaceCase) {
 	if hasData && status != http.StatusOK {
 		t.Errorf("%s: HTTP status %d for a data envelope", c.name, status)
 	}
+	if !hasData && status < 400 {
+		t.Errorf("%s: HTTP status %d for an error envelope", c.name, status)
+	}
 
 	e.resetProject(t)
 	res := e.callMCP(t, c.tool, mcpReq)
@@ -378,7 +381,10 @@ func (e *surfaceEnv) checkPlan(t *testing.T, c surfaceCase) {
 }
 
 // checkStream compares the follow form of `logs`: NDJSON over HTTP equals the
-// CLI's lines, and MCP refuses it because it never carries a stream.
+// CLI's lines, and MCP refuses it because it never carries a stream. With the
+// stub docker the stream is one error line, so this proves the HTTP stream
+// path hands the CLI's bytes through; multi-line NDJSON framing is proven in
+// internal/httpapi TestNDJSONStream.
 func (e *surfaceEnv) checkStream(t *testing.T) {
 	t.Helper()
 	cli := strings.TrimSpace(string(e.runCLI(t, "logs", "--follow")))
@@ -512,7 +518,7 @@ func TestSurfaceIdentity(t *testing.T) {
 
 // handSurfacePatterns find a tool or route registered outside the generators.
 var (
-	handToolPattern  = regexp.MustCompile(`\.(AddTools?|SetTools|AddSessionTools?)\(|mcp\.NewTool\(|server\.ServerTool\{`)
+	handToolPattern  = regexp.MustCompile(`\.(AddTools?|SetTools|AddSessionTools?)\(|mcp\.NewTool\(|mcp\.NewToolWith\w+\(|mcp\.Tool\{|server\.ServerTool\{`)
 	handRoutePattern = regexp.MustCompile(`\.(Mount|Handle|HandleFunc)\(|http\.NewServeMux\(`)
 )
 
