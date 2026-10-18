@@ -28,6 +28,31 @@ func UseFloor(t testing.TB, floor map[string]map[string]string) {
 	t.Cleanup(func() { signature.Floor = old })
 }
 
+// UsePresigning replaces the pre-signing allowlist (tier -> slug -> releases) for the test.
+func UsePresigning(t testing.TB, list map[string]map[string][]signature.PresigningRelease) {
+	t.Helper()
+	old := signature.Presigning
+	signature.Presigning = list
+	t.Cleanup(func() { signature.Presigning = old })
+}
+
+// AllowPresigning adds one release to the current pre-signing allowlist for the test.
+func AllowPresigning(t testing.TB, tier, slug, version, sha256hex string) {
+	t.Helper()
+	next := map[string]map[string][]signature.PresigningRelease{}
+	for tr, m := range signature.Presigning {
+		next[tr] = map[string][]signature.PresigningRelease{}
+		for s, l := range m {
+			next[tr][s] = append([]signature.PresigningRelease(nil), l...)
+		}
+	}
+	if next[tier] == nil {
+		next[tier] = map[string][]signature.PresigningRelease{}
+	}
+	next[tier][slug] = append(next[tier][slug], signature.PresigningRelease{Version: version, SHA256: sha256hex})
+	UsePresigning(t, next)
+}
+
 // NewKey generates a key for tier with its derived id, and a signer for it.
 func NewKey(t testing.TB, tier string) (signature.Key, signing.Signer) {
 	t.Helper()

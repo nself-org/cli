@@ -1,0 +1,17 @@
+{
+ "free": {
+  "ci": [
+   {
+    "version": "1.2.6",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   }
+  ],
+  "tokens": [
+   {
+    "version": "1.2.6",
+    "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+   }
+  ]
+ },
+ "licensed": {}
+}
