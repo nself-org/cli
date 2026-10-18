@@ -14,6 +14,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 
 	"github.com/nself-org/cli/cmd/commands"
@@ -28,11 +29,38 @@ type inventoryEntry struct {
 	GroupID string
 }
 
-// prepareV15 sets NSELF_V15=1 and prepares RootCmd as the v1.5 surface; the
-// returned func undoes the relocation.
+// prepareV15 sets NSELF_V15=1, points HOME and the plugin dir at an empty temp
+// dir (an installed plugin never reaches the matrix) and prepares RootCmd as
+// the v1.5 surface; the returned func undoes all of it.
 func prepareV15() func() {
-	_ = os.Setenv("NSELF_V15", "1")
-	return commands.PrepareTreeForGeneration()
+	home, err := os.MkdirTemp("", "nself-parity-")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "parity: %v\n", err)
+		os.Exit(1)
+	}
+	previous := map[string]*string{}
+	for key, value := range map[string]string{
+		"HOME": home, "USERPROFILE": home, "NSELF_PLUGIN_DIR": filepath.Join(home, "plugins"), "NSELF_V15": "1",
+	} {
+		if old, ok := os.LookupEnv(key); ok {
+			previous[key] = &old
+		} else {
+			previous[key] = nil
+		}
+		_ = os.Setenv(key, value)
+	}
+	undoTree := commands.PrepareTreeForGeneration()
+	return func() {
+		undoTree()
+		for key, value := range previous {
+			if value == nil {
+				_ = os.Unsetenv(key)
+			} else {
+				_ = os.Setenv(key, *value)
+			}
+		}
+		_ = os.RemoveAll(home)
+	}
 }
 
 // liveInventory builds the registry of the prepared tree and projects it.

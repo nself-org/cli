@@ -2,7 +2,7 @@
 # nself mcp
 
 <!-- BEGIN PROSE:summary -->
-> Start the nSelf MCP server: 26 tools, 4 resources, and 3 prompts covering the real core CLI surface, for Claude Code and other MCP clients.
+> Start the nSelf MCP server: a tool for every exposed command, plus resources and prompts, for Claude Code and other MCP clients.
 <!-- END PROSE:summary -->
 
 ## Synopsis
@@ -29,50 +29,18 @@ token on those two transports (stdio has no network exposure, so it never needs 
 `nself mcp` must be run from inside a directory that contains an nSelf project (i.e. one
 initialised by `nself init`). The server exits immediately if no project is found.
 
-### Tools (26)
+### Tools
 
-Every tool below calls the same internal Go package the matching `nself <cmd>` uses —
-mutating tools (`nself_build`/`nself_start`/`nself_stop`/`nself_restart`/
-`nself_plugin_install`) re-exec the `nself` binary itself (resolved via `os.Executable()`,
-never a bare `"nself"` on PATH) rather than running in-process, since their CLI
-implementations print operator banners to stdout and, for start/stop, install a
-process-lifetime signal trap — neither of which belongs in a long-lived MCP server. Every
-tool declares an output schema and read-only/destructive/idempotent annotations so an agent
-can plan without probing.
+The tool list is generated, not hand-written: one tool per exposed command of the command
+registry, with its summary, side effect, whether it asks for confirmation, and a link to its
+input schema. See [[MCP-Tools]] for the current list. The 26 tools earlier releases
+registered by hand keep working under their old names; each is either the generated tool of
+the same name or a deprecated alias of one (see [[MCP-Server]]).
 
-| Name | Description |
-|------|-------------|
-| `nself_backup_list` | List local backups with id, date, size, and type |
-| `nself_build` | Regenerate docker-compose.yml and nginx config from the project's env files. Overwrites prior generated output. |
-| `nself_config_get` | Read one config key from the project's env file. Secret values are always redacted. |
-| `nself_config_set` | Set one config key in the project's env file |
-| `nself_config_show` | List every config key/value in the project's env file. Secret values are always redacted. |
-| `nself_db_migrate_status` | List database migrations and whether each has been applied |
-| `nself_deploy_status` | Fast local deploy-state read (postgres container presence + control-plane inventory). Not a full SSH-probed remote status — use the CLI for that. |
-| `nself_doctor` | Run the full nSelf diagnostic suite (Docker, disk, ports, certs, and more) |
-| `nself_env_list` | List available environments (dev/staging/prod) and which is active |
-| `nself_get_permissions` | Return a snapshot of Hasura role permissions for all tables |
-| `nself_get_schema` | Introspect the Hasura GraphQL schema and return table/type information |
-| `nself_logs` | Tail recent docker compose logs for one service, or the whole stack |
-| `nself_plugin_install` | Install one plugin by name (core path only — no --force/--preview/--dry-run) |
-| `nself_plugin_list` | List the plugin catalog: registry entries and/or installed plugins |
-| `nself_restart` | Restart the nSelf stack. Causes brief downtime. |
-| `nself_run_migration` | Apply a SQL migration against the nSelf Postgres database. Requires explicit confirmation via the 'confirm' flag. A DDL allowlist blocks destructive statements even with confirm=true. |
-| `nself_service_list` | List running/stopped services with container name, status, and health |
-| `nself_start` | Start the nSelf stack (docker compose up). Safe to call when already running. |
-| `nself_status` | Health status of every service in the current nSelf project |
-| `nself_stop` | Stop the nSelf stack. Causes downtime for any consumer of this project's services. |
-| `nself_urls` | Computed service URLs for the current project, grouped by required/optional/custom/frontend |
-| `sentry_incidents_ack` | Acknowledge an open ɳSentry incident by id |
-| `sentry_incidents_list` | List ɳSentry incidents, optionally filtered by status (open, acknowledged, resolved) |
-| `sentry_monitors_add` | Create an ɳSentry uptime monitor. Tier quotas apply (free: 10 @ 5-min). |
-| `sentry_monitors_list` | List ɳSentry uptime monitors for the authenticated tenant (id, name, url, kind, interval, status) |
-| `sentry_status` | Fetch the ɳSentry public status page summary (overall status + per-component health) |
-
-Regenerate this table from source with `go run ./tools/mcpdoc` — it text-scans
-`cmd/commands/mcp.go`, `cmd/commands/mcp_sentry.go`, `cmd/commands/mcp_resources.go`, and
-`cmd/commands/mcp_prompts.go`, so it can never drift from what the server actually
-registers.
+Every tool call runs the command as a child of the `nself` binary itself (resolved via
+`os.Executable()`, never a bare `"nself"` on PATH) with `--json`, so the result is the
+command's own v1 envelope. A tool that changes state outside the project returns
+`confirmation_required` first; repeat the identical call with the `confirm` value to run it.
 
 ### Resources (4)
 

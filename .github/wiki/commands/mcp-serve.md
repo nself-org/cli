@@ -54,7 +54,7 @@ Claude Code will start the server automatically and expose its full tool, resour
 
 ## Available MCP tools
 
-The tool, resource, and prompt list is generated from source (`make mcp-docs`) rather than hand-maintained here, so it can't drift the way an earlier hand-listed table did. See [[cmd-mcp]] for the current, authoritative list.
+The tool list is generated from the command registry (`tools/wikigen` writes [[MCP-Tools]]) rather than hand-maintained, so it can't drift the way an earlier hand-listed table did. See [[cmd-mcp]] for the resources and prompts.
 
 ## Security
 

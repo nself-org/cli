@@ -90,7 +90,7 @@ func OpenAPI(reg *cmdregistry.Registry, dataSchema func(string) ([]byte, bool)) 
 	}
 	doc := map[string]any{
 		"openapi": "3.1.0", "info": map[string]any{"title": "nSelf CLI HTTP API", "version": "1"},
-		"x-nself-experimental": true, "paths": paths,
+		"paths":    paths,
 		"security": []any{map[string]any{"bearer": []string{}}},
 		"components": map[string]any{"schemas": components, "securitySchemes": map[string]any{
 			"bearer": map[string]any{"type": "http", "scheme": "bearer"},

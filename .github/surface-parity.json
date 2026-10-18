@@ -6,8 +6,10 @@
       "path": "nself add",
       "wiki_page": true,
       "mcp_tool": true,
+      "mcp_tools": 1,
       "env_vars": "n/a",
-      "openapi": "n/a (see below)"
+      "http_route": true,
+      "http_routes": 1
     },
     {
       "name": "backup",
@@ -15,8 +17,10 @@
       "group_id": "data",
       "wiki_page": true,
       "mcp_tool": true,
+      "mcp_tools": 19,
       "env_vars": "documented",
-      "openapi": "n/a (see below)"
+      "http_route": true,
+      "http_routes": 19
     },
     {
       "name": "build",
@@ -24,17 +28,21 @@
       "group_id": "core",
       "wiki_page": true,
       "mcp_tool": true,
+      "mcp_tools": 1,
       "env_vars": "undocumented: NSELF_L03_REF_BIN, NSELF_PROFILE, UPDATE_GOLDEN",
-      "openapi": "n/a (see below)"
+      "http_route": true,
+      "http_routes": 1
     },
     {
       "name": "clean",
       "path": "nself clean",
       "group_id": "core",
       "wiki_page": true,
-      "mcp_tool": false,
+      "mcp_tool": true,
+      "mcp_tools": 1,
       "env_vars": "n/a",
-      "openapi": "n/a (see below)"
+      "http_route": true,
+      "http_routes": 1
     },
     {
       "name": "config",
@@ -42,8 +50,10 @@
       "group_id": "config",
       "wiki_page": true,
       "mcp_tool": true,
+      "mcp_tools": 85,
       "env_vars": "undocumented: NSELF_REQUIRE_AGE",
-      "openapi": "n/a (see below)"
+      "http_route": true,
+      "http_routes": 85
     },
     {
       "name": "db",
@@ -51,8 +61,10 @@
       "group_id": "data",
       "wiki_page": true,
       "mcp_tool": true,
+      "mcp_tools": 87,
       "env_vars": "n/a",
-      "openapi": "n/a (see below)"
+      "http_route": true,
+      "http_routes": 87
     },
     {
       "name": "deploy",
@@ -60,8 +72,10 @@
       "group_id": "deploy",
       "wiki_page": true,
       "mcp_tool": true,
+      "mcp_tools": 17,
       "env_vars": "undocumented: API_URL, LAPTOP_ONLY, M_DEV, M_PROD, M_QA, M_SEC, NSELF_DEPLOY_ENV, NSELF_DEPLOY_HOST_, NSELF_DEPLOY_HOST_OPS, NSELF_FEATURE_BLUE_GREEN_DEPLOY, NSELF_HASURA_METADATA_STRICT, NSELF_REMOTE_PATH_, OPS_DEPLOY_HOST, VERCEL_TOKEN",
-      "openapi": "n/a (see below)"
+      "http_route": true,
+      "http_routes": 17
     },
     {
       "name": "doctor",
@@ -69,8 +83,10 @@
       "group_id": "core",
       "wiki_page": true,
       "mcp_tool": true,
+      "mcp_tools": 6,
       "env_vars": "undocumented: NSELF_PING_API_URL, OLLAMA_BASE_URL, OLLAMA_HOST, PLUGIN_AI_INTERNAL_URL, PLUGIN_INTERNAL_SECRET",
-      "openapi": "n/a (see below)"
+      "http_route": true,
+      "http_routes": 6
     },
     {
       "name": "exec",
@@ -78,26 +94,32 @@
       "group_id": "core",
       "wiki_page": true,
       "mcp_tool": false,
+      "mcp_tools": 0,
       "env_vars": "n/a",
-      "openapi": "n/a (see below)"
+      "http_route": false,
+      "http_routes": 0
     },
     {
       "name": "init",
       "path": "nself init",
       "group_id": "core",
       "wiki_page": true,
-      "mcp_tool": false,
+      "mcp_tool": true,
+      "mcp_tools": 6,
       "env_vars": "documented",
-      "openapi": "n/a (see below)"
+      "http_route": true,
+      "http_routes": 6
     },
     {
       "name": "license",
       "path": "nself license",
       "group_id": "extend",
       "wiki_page": true,
-      "mcp_tool": false,
+      "mcp_tool": true,
+      "mcp_tools": 23,
       "env_vars": "undocumented: NSELF_LICENSE_SKIP_VERIFY, NSELF_PING_API_URL",
-      "openapi": "n/a (see below)"
+      "http_route": true,
+      "http_routes": 23
     },
     {
       "name": "logs",
@@ -105,35 +127,43 @@
       "group_id": "core",
       "wiki_page": true,
       "mcp_tool": true,
+      "mcp_tools": 1,
       "env_vars": "n/a",
-      "openapi": "n/a (see below)"
+      "http_route": true,
+      "http_routes": 1
     },
     {
       "name": "mcp",
       "path": "nself mcp",
       "group_id": "extend",
       "wiki_page": true,
-      "mcp_tool": false,
+      "mcp_tool": true,
+      "mcp_tools": 1,
       "env_vars": "undocumented: INTEGRATION, NSELF_HASURA_ADMIN_SECRET, NSENTRY_STATUS_URL, POSTGRES_URL",
-      "openapi": "n/a (see below)"
+      "http_route": true,
+      "http_routes": 1
     },
     {
       "name": "remove",
       "path": "nself remove",
       "group_id": "extend",
       "wiki_page": true,
-      "mcp_tool": false,
+      "mcp_tool": true,
+      "mcp_tools": 1,
       "env_vars": "n/a",
-      "openapi": "n/a (see below)"
+      "http_route": true,
+      "http_routes": 1
     },
     {
       "name": "reset",
       "path": "nself reset",
       "group_id": "core",
       "wiki_page": true,
-      "mcp_tool": false,
+      "mcp_tool": true,
+      "mcp_tools": 1,
       "env_vars": "n/a",
-      "openapi": "n/a (see below)"
+      "http_route": true,
+      "http_routes": 1
     },
     {
       "name": "restart",
@@ -141,8 +171,10 @@
       "group_id": "core",
       "wiki_page": true,
       "mcp_tool": true,
+      "mcp_tools": 1,
       "env_vars": "n/a",
-      "openapi": "n/a (see below)"
+      "http_route": true,
+      "http_routes": 1
     },
     {
       "name": "start",
@@ -150,8 +182,10 @@
       "group_id": "core",
       "wiki_page": true,
       "mcp_tool": true,
+      "mcp_tools": 1,
       "env_vars": "undocumented: NSELF_PROFILE, NSELF_SKIP_DB_INIT",
-      "openapi": "n/a (see below)"
+      "http_route": true,
+      "http_routes": 1
     },
     {
       "name": "status",
@@ -159,8 +193,10 @@
       "group_id": "core",
       "wiki_page": true,
       "mcp_tool": true,
+      "mcp_tools": 8,
       "env_vars": "n/a",
-      "openapi": "n/a (see below)"
+      "http_route": true,
+      "http_routes": 8
     },
     {
       "name": "stop",
@@ -168,17 +204,21 @@
       "group_id": "core",
       "wiki_page": true,
       "mcp_tool": true,
+      "mcp_tools": 1,
       "env_vars": "n/a",
-      "openapi": "n/a (see below)"
+      "http_route": true,
+      "http_routes": 1
     },
     {
       "name": "update",
       "path": "nself update",
       "group_id": "account",
       "wiki_page": true,
-      "mcp_tool": false,
+      "mcp_tool": true,
+      "mcp_tools": 10,
       "env_vars": "undocumented: NSELF_PLUGIN_REGISTRY",
-      "openapi": "n/a (see below)"
+      "http_route": true,
+      "http_routes": 10
     }
   ]
 }

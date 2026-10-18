@@ -585,12 +585,10 @@ func TestMCPV14KeepsHandTools(t *testing.T) {
 	if !strings.HasPrefix(tool.Description, "Health status of every service") {
 		t.Errorf("nself_status is not the hand tool: %q", tool.Description)
 	}
-	// The initialize result carries experimental: true.
-	init := sess.call("ping", `{}`)
-	_ = init
+	// The initialize result no longer carries an experimental flag (P7-SURF-23).
 	b, _ := json.Marshal(s.HandleMessage(context.Background(), json.RawMessage(`{"jsonrpc":"2.0","id":99,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}`)))
-	if !strings.Contains(string(b), `"experimental":{"experimental":true}`) {
-		t.Errorf("initialize does not carry experimental: true: %s", b)
+	if strings.Contains(string(b), "experimental") {
+		t.Errorf("initialize carries an experimental flag: %s", b)
 	}
 	t.Log("CHECKED-TestMCPV14KeepsHandTools")
 }

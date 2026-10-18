@@ -160,8 +160,8 @@ func TestResourceCommandError(t *testing.T) {
 }
 
 func TestServerInfo(t *testing.T) {
-	initialize := func(v15 bool) string {
-		s := server.NewMCPServer(mcpgen.ServerName, mcpgen.ServerVersion, mcpgen.ServerOptions(v15)...)
+	initialize := func() string {
+		s := server.NewMCPServer(mcpgen.ServerName, mcpgen.ServerVersion, mcpgen.ServerOptions()...)
 		out := s.HandleMessage(context.Background(), json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}`))
 		b, err := json.Marshal(out)
 		if err != nil {
@@ -169,11 +169,9 @@ func TestServerInfo(t *testing.T) {
 		}
 		return string(b)
 	}
-	v14 := initialize(false)
-	if !strings.Contains(v14, `"experimental":{"experimental":true}`) || !strings.Contains(v14, `"name":"nSelf MCP Server"`) {
-		t.Errorf("v1.4 initialize: %s", v14)
-	}
-	if v15 := initialize(true); strings.Contains(v15, "experimental") || !strings.Contains(v15, `"version":"`+mcpgen.ServerVersion+`"`) {
-		t.Errorf("v1.5 initialize: %s", v15)
+	// One identity in both modes and no experimental flag (P7-SURF-23).
+	got := initialize()
+	if strings.Contains(got, "experimental") || !strings.Contains(got, `"name":"nSelf MCP Server"`) || !strings.Contains(got, `"version":"`+mcpgen.ServerVersion+`"`) {
+		t.Errorf("initialize: %s", got)
 	}
 }

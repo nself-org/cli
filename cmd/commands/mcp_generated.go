@@ -30,7 +30,7 @@ import (
 // 26 hand tools and the four hand resources first and the generated ones on
 // top; v1.5 registers the generated surface only. Prompts are authored.
 func newMCPServer(transport string, v15 bool) (*server.MCPServer, error) {
-	s := server.NewMCPServer(mcpgen.ServerName, mcpgen.ServerVersion, mcpgen.ServerOptions(v15)...)
+	s := server.NewMCPServer(mcpgen.ServerName, mcpgen.ServerVersion, mcpgen.ServerOptions()...)
 	if !v15 {
 		registerMCPTools(s)
 		registerMCPResources(s)
@@ -39,7 +39,7 @@ func newMCPServer(transport string, v15 bool) (*server.MCPServer, error) {
 		if v15 {
 			return nil, err
 		}
-		// v1.4 mode: the generated tools are additive and experimental, so a
+		// v1.4 mode: the generated tools are additive, so a
 		// registry that cannot be built (a broken plugin manifest) never takes
 		// the 26 hand tools down with it.
 		fmt.Fprintf(os.Stderr, "nself mcp: generated tools are unavailable, serving the built-in tools only: %v\n", err)

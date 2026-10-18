@@ -92,8 +92,7 @@ header, query string or token is logged.
 Non-context invocation errors add one stderr line, `invoke error: <Go error type
 name>`. The error message is never logged, and the per-request line stays unchanged.
 
-OpenAPI is 3.1.0 with `info.version: "1"`, global bearer security and
-`x-nself-experimental: true`. Each exposed document command has one POST whose
+OpenAPI is 3.1.0 with `info.version: "1"`, global bearer security. Each exposed document command has one POST whose
 operationId is `cmdregistry.ToolName`, request schema is the machine params
 schema, 200 data references a copied `<ToolName>_data` component, 428 references
 the confirmation schema, and default references the error envelope. GET
