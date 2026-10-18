@@ -21,7 +21,6 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/errs"
-	"github.com/nself-org/cli/internal/output"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/version"
 	"github.com/spf13/cobra"
