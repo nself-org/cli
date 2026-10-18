@@ -219,6 +219,16 @@ The same verbs enable and disable a builtin family: `nself remove <builtin>` cre
 
 Nothing else cli-internal is passed. The variables are additive, so no V15 gate applies. When v1.5.0 flips the cli default (P7-SHIP-09), plugins follow through `NSELF_V15=1` with no flip of their own. A test (`TestExecSitesUseExecEnv`) fails when a function in `router.go` or `runtime_start.go` builds an `exec.Cmd` without calling `ExecEnv`; the v1.5 auto-add exec in `cmd/commands/relocate.go` calls it from P7-CANON-13.
 
+### The `doctor` subcommand convention
+
+A plugin that declares a top-level `doctor` subcommand in `commands.subcommands` appears in `nself doctor --deep` (P7-CI-53). The base `nself doctor` never runs plugin doctors, so it stays fast.
+
+- **What runs**: `<plugin binary> doctor --json`, with the environment from `plugin.ExecEnv` (see above), through `plugin.CaptureOutput`. Each plugin gets a 10 second limit; plugins run side by side, so the deep doctor waits for the slowest one, never for the sum.
+- **What it must print**: one v1 JSON envelope on stdout whose `data.checks` is a list of `{id, name, status, message, remediation, subject?}`. `status` is `pass`, `warn` or `fail` (anything else is shown as `warn`).
+- **Exit code**: `0` clean, `10` a check failed, `12` warnings only. Any other code, a timeout, a binary that cannot start, or output that is not an envelope is shown as one warning row naming the plugin; it never fails the deep doctor by itself.
+- **Where it shows**: each check is a row in the section `plugin:<slug>` (filter with `--only plugin:<slug>`); the row name is the check `id`, the fix command is `remediation`. A plugin without the subcommand adds no section.
+- **Layering**: `internal/doctor` has a registration hook (`RegisterExternal`); the provider lives in `cmd/commands/external_doctors.go`, so `internal/doctor` does not import the plugin packages.
+
 ---
 
 **See also:** [[Architecture]] | [[Compose-Generation]] | [[Nginx-Generation]] | [[Home]]
