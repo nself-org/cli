@@ -70,6 +70,25 @@ cd plugins/free/ci && go build -o ~/.nself/bin/nself-ci ./cmd/
 Until this existed, an installed CLI failed with `nself-ci binary not found
 on PATH` and expected you to clone a second repo by hand. That manual step
 is why `nself ci` could not be used as a required status check.
+
+### In v1.5 (`NSELF_V15=1`)
+
+`nself ci` is the free `ci` plugin. The first run installs it, prints one
+warning, and runs it. The CI fabric guides (getting started, architecture,
+configuration and policy, evidence and machine output, migration,
+troubleshooting, reference) live with the plugin (published with the CI
+fabric release):
+[plugins `.github/wiki/guides/ci/`](https://github.com/nself-org/plugins/tree/main/.github/wiki/guides/ci).
+
+`nself ci eval` is now `nself eval`, from the `nself-eval-gate` plugin. The old
+spelling still runs it, auto-adds the plugin the first time, and prints a
+deprecation line. With `NSELF_NO_AUTO_ADD=1` and the
+plugin missing, it fails with E404 and tells you to run
+`nself add nself-eval-gate`.
+
+`nself doctor --deep` no longer runs `CI-VAULT-SYNC-01` in v1.5. That check read
+`~/.claude/vault.env`, an operator-private file, so product code must not
+depend on it. `CI-TOKEN-01` still runs. v1.4 is unchanged.
 <!-- END PROSE:description -->
 
 ## Flags

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/docker"
 	"gopkg.in/yaml.v3"
 )
@@ -88,8 +89,9 @@ func DeepChecks(ctx context.Context, projectDir string, verbose bool) []CheckRes
 	// CI token rotation check (CI-TOKEN-01).
 	results = append(results, CheckCIToken(projectDir))
 
-	// CI vault sync check (CI-VAULT-SYNC-01).
-	results = append(results, CheckCIVaultSync(projectDir))
+	if !compat.V15() { // compat.V15(P7-CI-45): CI-VAULT-SYNC-01 runs -> not run
+		results = append(results, CheckCIVaultSync(projectDir)) // CI-VAULT-SYNC-01
+	}
 
 	// S03-T06: SDK version coherence check (SDK-VERSION-01).
 	results = append(results, CheckSDKVersions(ctx)...)

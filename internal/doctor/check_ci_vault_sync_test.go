@@ -1,9 +1,13 @@
 package doctor
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/compat/compattest"
 )
 
 // CI-VAULT-SYNC-01 reads ~/.claude/vault.env, which cannot exist on a CI runner,
@@ -40,4 +44,38 @@ func TestCIVaultSync_StillChecksWhenVaultPresent(t *testing.T) {
 	if got := CheckCIVaultSync(dir); got.Status != "fail" {
 		t.Fatalf("status = %q, want \"fail\" — a present-but-empty vault must still fail", got.Status)
 	}
+}
+
+// TestVaultSyncV15Both (P7-CI-45): the deep doctor runs CI-VAULT-SYNC-01 in v1.4
+// and no longer runs it in v1.5, because it reads ~/.claude/vault.env, a private
+// operator file that product code must not depend on. CI-TOKEN-01 stays in both.
+func TestVaultSyncV15Both(t *testing.T) {
+	compattest.Both(t, func(t *testing.T) {
+		dir := t.TempDir()
+		t.Setenv("HOME", dir)
+		t.Setenv("USERPROFILE", dir)
+		t.Setenv("NSELF_DOGFOOD", "")
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // every probe fails fast; the check list is what is under test
+
+		var vault, token int
+		for _, r := range DeepChecks(ctx, dir, false) {
+			switch r.Name {
+			case "CI-VAULT-SYNC-01":
+				vault++
+			case "CI-TOKEN-01":
+				token++
+			}
+		}
+		wantVault := 1
+		if compat.V15() {
+			wantVault = 0
+		}
+		if vault != wantVault {
+			t.Errorf("CI-VAULT-SYNC-01 entries = %d, want %d", vault, wantVault)
+		}
+		if token != 1 {
+			t.Errorf("CI-TOKEN-01 entries = %d, want 1 in both modes", token)
+		}
+	})
 }
