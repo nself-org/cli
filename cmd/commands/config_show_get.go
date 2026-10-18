@@ -83,6 +83,49 @@ func maskedPairs(pairs map[string]string, keys []string, reveal bool) map[string
 
 // --- S4-T02: config get ---
 
+// configGetValue resolves key for `config get`.
+// Inputs: the project directory, the --env flag and the key.
+// Outputs: the value in clear and the base name of the file it came from.
+// Constraints: with no --env the key goes through the same env cascade as
+// `nself build` (config.ExplainActive), so a .env.local override wins and the
+// value matches what the stack runs with (D-0919). An explicit --env reads
+// only .env.<env>, as before. The process environment is not consulted: the
+// command reports project files.
+func configGetValue(projectDir, envFlag, key string) (value, file string, err error) {
+	if envFlag != "" {
+		envFile := envFileName(projectDir, envFlag)
+		pairs, err := config.ReadEnvFile(envFile)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return "", "", fmt.Errorf("env file not found: %s", envFile)
+			}
+			return "", "", config.EnvReadError(envFile, err)
+		}
+		val, ok := pairs[key]
+		if !ok {
+			return "", "", fmt.Errorf("key not found: %s", key)
+		}
+		return val, filepath.Base(envFile), nil
+	}
+
+	base := filepath.Join(projectDir, ".env")
+	if _, err := os.Stat(base); err != nil {
+		if os.IsNotExist(err) {
+			return "", "", fmt.Errorf("env file not found: %s", base)
+		}
+		return "", "", config.EnvReadError(base, err)
+	}
+	exp, err := config.ExplainActive(projectDir, key)
+	if err != nil {
+		return "", "", err
+	}
+	file, val, ok := exp.Winner()
+	if !ok {
+		return "", "", fmt.Errorf("key not found: %s", key)
+	}
+	return val, file, nil
+}
+
 func runConfigGet(cmd *cobra.Command, args []string) error {
 	key := args[0]
 	reveal, _ := cmd.Flags().GetBool("reveal")
@@ -93,25 +136,16 @@ func runConfigGet(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	envFile := envFileName(projectDir, envFlag)
-	pairs, err := config.ReadEnvFile(envFile)
+	val, file, err := configGetValue(projectDir, envFlag, key)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("env file not found: %s", envFile)
-		}
-		return config.EnvReadError(envFile, err)
-	}
-
-	val, ok := pairs[key]
-	if !ok {
-		return fmt.Errorf("key not found: %s", key)
+		return err
 	}
 
 	shown := maskValue(key, val, reveal)
 	// compat.V15(P7-REG-09): --json ignored -> envelope
 	if jsonOut, _ := cmd.Flags().GetBool("json"); jsonOut && compat.V15() {
 		return output.EmitData(pilotWriter(), "config get", configGetData{
-			Key: key, Value: shown, Masked: shown != val, File: filepath.Base(envFile),
+			Key: key, Value: shown, Masked: shown != val, File: file,
 		})
 	}
 
