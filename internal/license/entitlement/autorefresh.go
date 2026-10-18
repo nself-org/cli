@@ -257,7 +257,7 @@ func revalidateClassified(ctx context.Context) (renewed []string, rejected map[s
 			entry, _ := license.ReadCache()
 			token, terr := cachedToken()
 			switch {
-			case entry == nil || entry.FetchedAt < started-1: // Validate could not persist the reply: the cache is the old one
+			case entry == nil || entry.FetchedAt < started: // Validate could not persist the reply: the cache is the old one
 				class = ClassCacheWrite
 			case terr == nil:
 				renewed = append(renewed, token)

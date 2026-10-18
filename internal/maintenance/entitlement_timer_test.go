@@ -254,6 +254,10 @@ func TestHostilePathRefused(t *testing.T) {
 	if err := os.Symlink(bin, binLink); err != nil {
 		t.Fatal(err)
 	}
+	aliasDir := filepath.Join(ww, "alias") // a symlinked parent directory that leads to a trusted one
+	if err := os.Symlink(filepath.Dir(bin), aliasDir); err != nil {
+		t.Fatal(err)
+	}
 	gw := filepath.Join(root, "gw")
 	if err := os.Mkdir(gw, 0o755); err != nil || os.Chmod(gw, 0o775) != nil {
 		t.Fatal(err)
@@ -261,7 +265,7 @@ func TestHostilePathRefused(t *testing.T) {
 	bad := map[string]string{
 		"space": dir + " x", "squote": dir + "'", "dquote": dir + `"`, "subshell": dir + "$(id)", "backtick": dir + "`id`",
 		"percent": dir + "%", "semicolon": dir + ";", "newline": dir + "\nx", "dotdot": dir + "/../proj", "lt": dir + "<", "gt": dir + ">",
-		"amp": dir + "&", "relative": "proj", "empty": "", "worldwritable-parent": wwProj, "symlink-into-writable": link, "symlink-in-writable-dir": binLink, "dot-segment": dir + "/./",
+		"amp": dir + "&", "relative": "proj", "empty": "", "worldwritable-parent": wwProj, "symlink-into-writable": link, "symlink-in-writable-dir": binLink, "symlinked-parent-dir": filepath.Join(aliasDir, "nself"), "dot-segment": dir + "/./",
 	}
 	for name, p := range bad {
 		for _, as := range []string{"dir", "bin"} {

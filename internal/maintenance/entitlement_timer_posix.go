@@ -100,8 +100,8 @@ func (h host) paths(projectDir, binPath string) (dir, bin string, uid uint32, er
 	}
 	own := func(u uint32) bool { return u == 0 || u == uid }
 	_, _, err = h.safePath(binPath, false, own) // the unit keeps the stable path; its target is validated
-	if _, _, derr := h.safePath(filepath.Dir(binPath), true, own); err == nil {
-		err = derr // the directory holding a (symlinked) binary path is trusted too
+	for d := filepath.Dir(binPath); err == nil && d != "/" && d != h.trustAbove; d = filepath.Dir(d) {
+		_, _, err = h.safePath(d, true, own) // and so is every directory the stable path walks through
 	}
 	return dir, binPath, uid, err
 }
@@ -262,10 +262,12 @@ func (h host) remove(hash string) (r RemoveResult, firstErr error) {
 		} else if h.euid != 0 {
 			r.RootRequired = true
 		} else {
-			_, _ = h.run("", "systemctl", "disable", "--now", entUnitName(i)+".timer")
-			_ = os.Remove(t)
+			_, _ = h.run("", "systemctl", "disable", "--now", entUnitName(i)+".timer") // fails when already inactive
+			fail(os.Remove(t))
 			fail(os.Remove(filepath.Join(h.unitDir, entUnitName(i)+".service")))
-			_, _ = h.run("", "systemctl", "daemon-reload")
+			if out, err := h.run("", "systemctl", "daemon-reload"); err != nil {
+				fail(cmdErr(out, err, "systemctl", "daemon-reload"))
+			}
 			r.Removed = true
 		}
 	}
