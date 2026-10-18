@@ -41,6 +41,7 @@ func TestIsolationFollowups(t *testing.T) {
 			`{"function": {"schema": "public", "name": "admin_only"}, "permissions": [{"role": "admin"}]},` +
 			`{"function": {"schema": "public", "name": "infer_note"}, "configuration": {"exposed_as": "query"}}]`
 		meta := strings.Replace(string(fx.Metadata), `"name": "default"`, surfaces, 1)
+		meta0 := meta
 		dir := isoProject(t, []byte(meta), nil, psqlRows(fx), nil)
 		got := ""
 		for _, r := range IsolationChecks(context.Background(), dir) {
@@ -63,6 +64,15 @@ func TestIsolationFollowups(t *testing.T) {
 		}
 		if !strings.Contains(got, "native queries") {
 			t.Errorf("surfaces must be reported when only untracked relations carry the columns, got %q", got)
+		}
+		warned := ""
+		for _, r := range IsolationChecks(context.Background(), isoProject(t, []byte(meta0), nil, psqlRows(fx), nil)) {
+			if r.Status == "warn" {
+				warned += r.Name + "\n"
+			}
+		}
+		if !strings.Contains(warned, "ISO: function public.find_note") || strings.Contains(warned, "purge_note") {
+			t.Errorf("a stable callable function is a warning (body not inspected), got %q", warned)
 		}
 		single := fixtures["single-app"]
 		meta = strings.Replace(string(single.Metadata), `"name": "default"`, surfaces, 1)

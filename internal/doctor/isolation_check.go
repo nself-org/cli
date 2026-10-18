@@ -105,6 +105,7 @@ func IsolationChecks(ctx context.Context, projectDir string) []CheckResult {
 	results := isolationResults(meta.Tables, cols, strict)
 	if len(cols) > 0 { // a wall exists in the database, tracked or not
 		surfaces := meta.Surfaces
+		var unread []CheckResult
 		if len(meta.Funcs) > 0 {
 			volOut, stderr, err := isoExecCapture(ctx, container, []string{"psql", "-X", "-A", "-t", "-F", isoFieldSep,
 				"-U", cfg.Postgres.User, "-d", cfg.Postgres.DB, "-c", isoVolatileSQL})
@@ -118,9 +119,15 @@ func IsolationChecks(ctx context.Context, projectDir string) []CheckResult {
 			for _, f := range meta.Funcs {
 				if vol[f.ID] {
 					surfaces = append(surfaces, fmt.Sprintf("volatile function %s callable by %s", f.ID, strings.Join(f.Roles, ", ")))
+				} else {
+					// A stable function is read-only, but its body may read any table; metadata cannot show that.
+					unread = append(unread, CheckResult{Section: isolationSection, Name: "ISO: function " + f.ID, Status: "warn",
+						Message: fmt.Sprintf("function %s is callable by %s; its body is not inspected, so a read of a walled table inside it is not checked", f.ID, strings.Join(f.Roles, ", ")),
+						FixCmd:  "review the function body for reads of tables with source_account_id or tenant_id, or stop tracking it"})
 				}
 			}
 		}
+		results = append(results, unread...)
 		for _, what := range surfaces {
 			results = append(results, isoFail("surface", fmt.Sprintf("Hasura's default source exposes %s: it reads or writes outside the table permissions the guard checks", what)))
 		}
