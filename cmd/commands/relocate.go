@@ -34,13 +34,40 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/lock"
 	"github.com/nself-org/cli/internal/plugin"
 )
 
 // envNoAutoAdd turns the break-out auto-add off: the command fails with E404.
+// Documented in Config-Env-Vars.md and listed in internal/config known vars.
 const envNoAutoAdd = "NSELF_NO_AUTO_ADD"
+
+// noAutoAdd reports whether the break-out auto-add is switched off. The value
+// takes the spellings NSELF_V15 takes ("1" or "true", any case). A non-empty
+// process environment value wins outright; otherwise the last project .env
+// cascade file that sets it decides, so a team can commit it in .env (D-0910).
+func noAutoAdd() bool {
+	if v := os.Getenv(envNoAutoAdd); v != "" {
+		return compat.Truthy(v)
+	}
+	dir, err := os.Getwd()
+	if err != nil {
+		return false
+	}
+	env, _ := config.ResolveEnv(dir)
+	value := ""
+	for _, name := range config.EnvCascadeOrder(env, config.LegacyOrderActive()) {
+		if m, err := config.ReadEnvFile(filepath.Join(dir, name)); err == nil {
+			if v, ok := m[envNoAutoAdd]; ok {
+				value = v
+			}
+		}
+	}
+	return compat.Truthy(value)
+}
 
 // autoAddPlugin is the install seam and relocateWarnOut the warning's writer;
 // tests swap both.
@@ -82,8 +109,8 @@ func relocateBreakout(cmdName string, args []string) (handled bool, err error) {
 	if hasPrefix(append([]string{cmdName}, args...), row.From) {
 		old = strings.Join(row.From, " ")
 	}
-	if os.Getenv(envNoAutoAdd) == "1" {
-		return true, breakoutRefused(old, row.Plugin, errors.New("automatic install is switched off ("+envNoAutoAdd+"=1)"))
+	if noAutoAdd() {
+		return true, breakoutRefused(old, row.Plugin, errors.New("automatic install is switched off ("+envNoAutoAdd+")"))
 	}
 	if _, err := os.Stat(filepath.Join(resolvePluginDir(), row.Plugin, ".disabled")); err == nil {
 		return true, errs.Newf("E407", "plugin %q is disabled, so 'nself %s' cannot run", row.Plugin, old).

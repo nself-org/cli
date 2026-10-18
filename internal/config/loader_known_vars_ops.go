@@ -149,6 +149,8 @@ var knownEnvVarsOps = []string{
 	"NSELF_AUTO_HOSTS_ENTRIES",
 	"NSELF_MKCERT_CAROOT",
 	"NSELF_NO_MONOREPO",
+	// Break-out auto-add switch, read by cmd/commands/relocate.go (D-0910).
+	"NSELF_NO_AUTO_ADD",
 	// CLI tool behavior vars (read by main binary, not by loader).
 	"DEBUG",
 	"NO_COLOR",

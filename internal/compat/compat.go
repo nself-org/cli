@@ -36,7 +36,12 @@ const EnvVar = "NSELF_V15"
 // V15 reports whether v1.5 behaviour is selected: true iff NSELF_V15 is "1" or
 // "true" in any case. It reads the environment on every call.
 func V15() bool {
-	v := os.Getenv(EnvVar)
+	return Truthy(os.Getenv(EnvVar))
+}
+
+// Truthy reports whether v is "1" or "true" in any case: the spelling every
+// opt-in switch shares with NSELF_V15 (no trimming; "yes" and " 1" are false).
+func Truthy(v string) bool {
 	return v == "1" || strings.EqualFold(v, "true")
 }
 

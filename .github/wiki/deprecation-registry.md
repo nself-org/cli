@@ -46,7 +46,7 @@ The line printed once per process: `warning: 'nself <old>' now comes from the <s
 - **Version.** The version in `nself.lock.yaml` (`plugins.<slug>.version`) when the project pins one, else the catalogue's current release.
 - **When it cannot install.** Offline, refused, unsigned or tampered releases, and `NSELF_NO_AUTO_ADD=1`, exit 1 with
   `[E404]` and the fix `nself add <slug>`. With `--json`, stdout carries `.error.code == "E404"` and the same remediation.
-  Set `NSELF_NO_AUTO_ADD=1` in an environment that must never download code (a gate on a locked-down runner), and
+  Set `NSELF_NO_AUTO_ADD=1` (or `true`) in the shell or in the project `.env` in an environment that must never download code (a gate on a locked-down runner), and
   run `nself add ci` there once.
 - **A plugin you disabled** (`.disabled` in its plugin directory) is never reinstalled: the command fails with `[E407]`.
 - **v1.4 mode is unchanged**: the commands stay in core, and nothing is installed.
