@@ -399,8 +399,9 @@ func TestPlanCoversGeneratedSecrets(t *testing.T) {
 	}
 }
 
-// TestPlanCoversPluginFragmentAndModes: a fragment rewritten in place is a plan
-// artifact bound by the id (a port edited after the plan is E450), and a
+// TestPlanCoversPluginFragmentAndModes: the normalized plugin fragment is a
+// plan artifact (a project overlay, D-0318) bound by the id (a port edited in
+// the shared fragment after the plan is E450), and a
 // permission-only change (a 0644 .env) is shown as a change with diff_lines 0
 // and applied.
 func TestPlanCoversPluginFragmentAndModes(t *testing.T) {
@@ -408,10 +409,10 @@ func TestPlanCoversPluginFragmentAndModes(t *testing.T) {
 	p := planOf(t, f, nil)
 	var frag bool
 	for _, a := range p.Artifacts {
-		frag = frag || (a.Path == PluginsPrefix+"nself-alpha/docker-compose.plugin.yml" && a.Action == ActionChange)
+		frag = frag || (a.Path == ".nself/plugins/nself-alpha/docker-compose.plugin.yml" && a.Action == ActionAdd)
 	}
 	if !frag {
-		t.Fatalf("the rewritten plugin fragment is not a plan artifact: %+v", p.Artifacts)
+		t.Fatalf("the plugin fragment overlay is not a plan artifact: %+v", p.Artifacts)
 	}
 	path := filepath.Join(f.plugins, "nself-alpha", "docker-compose.plugin.yml")
 	raw := readFile(t, path)
