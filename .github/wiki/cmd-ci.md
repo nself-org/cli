@@ -76,12 +76,13 @@ is why `nself ci` could not be used as a required status check.
 `nself ci` is the free `ci` plugin. The first run installs it, prints one
 warning, and runs it. The CI fabric guides (getting started, architecture,
 configuration and policy, evidence and machine output, migration,
-troubleshooting, reference) live with the plugin:
+troubleshooting, reference) live with the plugin (published with the CI
+fabric release):
 [plugins `.github/wiki/guides/ci/`](https://github.com/nself-org/plugins/tree/main/.github/wiki/guides/ci).
 
 `nself ci eval` is now `nself eval`, from the `nself-eval-gate` plugin. The old
 spelling still runs it, auto-adds the plugin the first time, and prints a
-deprecation line; it is removed in v1.6.0. With `NSELF_NO_AUTO_ADD=1` and the
+deprecation line. With `NSELF_NO_AUTO_ADD=1` and the
 plugin missing, it fails with E404 and tells you to run
 `nself add nself-eval-gate`.
 

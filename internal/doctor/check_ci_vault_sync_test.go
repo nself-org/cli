@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/compat/compattest"
 )
 
@@ -67,7 +68,7 @@ func TestVaultSyncV15Both(t *testing.T) {
 			}
 		}
 		wantVault := 1
-		if t.Name() == "TestVaultSyncV15Both/v1.5" {
+		if compat.V15() {
 			wantVault = 0
 		}
 		if vault != wantVault {
