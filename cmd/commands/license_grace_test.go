@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -57,7 +58,8 @@ func newGraceFixture(t *testing.T) *graceFixture {
 	old := license.PingKeys
 	license.PingKeys = []license.PingKey{{ID: "synthetic", Public: pub}}
 	t.Cleanup(func() { license.PingKeys = old })
-	f := &graceFixture{mode: "ok", priv: priv, other: other, project: t.TempDir()}
+	project, _ := filepath.EvalSymlinks(t.TempDir()) // macOS: /var is a symlink, os.Getwd reports /private/var
+	f := &graceFixture{mode: "ok", priv: priv, other: other, project: project}
 	server := httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(server.Close)
 	t.Setenv("NSELF_PING_API_URL", server.URL)
@@ -172,7 +174,7 @@ func TestLicenseRefreshRewritesFile(t *testing.T) {
 			}
 			data, _ := os.ReadFile(entitlement.Path(f.project))
 			info, _ := os.Stat(entitlement.Path(f.project))
-			if string(data) != f.jwt || info.Mode().Perm() != 0o600 {
+			if string(data) != f.jwt || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o600) {
 				t.Fatalf("file not rewritten: mode %v", info.Mode())
 			}
 			old := string(data)
@@ -205,9 +207,11 @@ func TestLicenseImportRewritesJWT(t *testing.T) {
 	f.mode = "5xx" // air-gapped: no ping
 	_ = os.Remove(entitlement.Path(f.project))
 	_ = os.Remove(os.Getenv("LICENSE_CACHE_PATH"))
+	old, _ := os.Getwd()
 	if err := os.Chdir(f.project); err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = os.Chdir(old) })
 	cmd := &cobra.Command{}
 	cmd.Flags().String("project", "", "")
 	cmd.Flags().Bool("force", false, "")

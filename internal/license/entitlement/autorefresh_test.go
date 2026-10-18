@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -288,6 +289,9 @@ func TestScheduledRefreshFailureClasses(t *testing.T) {
 }
 
 func TestStableBinaryPrefersThePathEntry(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges and PATH lookup adds .exe on Windows")
+	}
 	root, _ := filepath.EvalSymlinks(t.TempDir())
 	real := filepath.Join(root, "Cellar", "1.5.0", "bin", "nself-stable-fixture")
 	link := filepath.Join(root, "bin", "nself-stable-fixture")
@@ -364,8 +368,8 @@ func TestScheduledRefreshStaysQuietOnStaleCache(t *testing.T) {
 // TestScheduledRefreshNeedsAPersistedReply: when the licence cache cannot be written the reply is
 // lost and the cache still holds the old token, so the run must fail instead of reporting it.
 func TestScheduledRefreshNeedsAPersistedReply(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("root ignores directory permissions")
+	if os.Geteuid() == 0 || runtime.GOOS == "windows" {
+		t.Skip("directory permissions do not stop root or Windows")
 	}
 	compattest.Set(t, true)
 	p := newArPing(t, time.Now(), "chat")
