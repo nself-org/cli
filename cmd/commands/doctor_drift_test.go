@@ -250,23 +250,24 @@ func TestReviewDoctorFixRespectsHandEditAndProdGate(t *testing.T) {
 	}
 }
 
-// TestDoctorDriftVirtualPluginKeys covers D-0382: a plugin compose fragment is
-// recorded under the virtual key "@plugins/<name>/docker-compose.plugin.yml".
-// Doctor resolves it under the plugin directory, so a fresh install is clean,
-// --fix stays clean on every rerun, a hand edit is drift and a removed plugin
-// is not.
-func TestDoctorDriftVirtualPluginKeys(t *testing.T) {
+// TestDoctorDriftPluginOverlay covers D-0382 after D-0318: the build normalizes
+// a plugin compose fragment into the project overlay
+// ".nself/plugins/<name>/docker-compose.plugin.yml" and never writes the shared
+// installation, so a fresh install is clean, --fix stays clean on every rerun,
+// a hand edit of the overlay is drift, and removing the installed plugin is not.
+func TestDoctorDriftPluginOverlay(t *testing.T) {
 	isolateDoctorHome(t)
 	dir := t.TempDir()
 	plugins := t.TempDir()
 	t.Setenv("NSELF_PLUGIN_DIR", plugins)
-	const key = reconcile.PluginsPrefix + "fxplug/docker-compose.plugin.yml"
-	fragment := filepath.Join(plugins, "fxplug", "docker-compose.plugin.yml")
-	if err := os.MkdirAll(filepath.Dir(fragment), 0o755); err != nil {
+	const key = ".nself/plugins/fxplug/docker-compose.plugin.yml"
+	installed := filepath.Join(plugins, "fxplug", "docker-compose.plugin.yml")
+	fragment := filepath.Join(dir, filepath.FromSlash(key))
+	if err := os.MkdirAll(filepath.Dir(installed), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	// The fixture shape of the P7-LIVE-08 cascade suite: the build rewrites an
-	// nself/* image with a Dockerfile in place, so it records the fragment.
+	// nself/* image with a Dockerfile into the project overlay and records it.
 	for name, body := range map[string]string{
 		"plugin.json":               `{"name":"fxplug","version":"1.0.0","description":"synthetic fixture","category":"utility","license":"MIT","port":3961,"language":"go"}`,
 		"docker-compose.plugin.yml": "services:\n  fxplug:\n    image: nself/fxplug:latest\n    ports:\n      - \"3961:3961\"\n",
@@ -295,6 +296,10 @@ func TestDoctorDriftVirtualPluginKeys(t *testing.T) {
 		t.Fatalf("the build did not record %s; recorded keys: %v", key, mapKeys(state.Files))
 	}
 
+	if got, err := os.ReadFile(installed); err != nil || !strings.Contains(string(got), "image: nself/fxplug:latest") {
+		t.Fatalf("the build changed the installed fragment: %q, %v", got, err)
+	}
+
 	clean := func(stage string) {
 		t.Helper()
 		r, _, err := checkGeneratedDrift(context.Background(), dir)
@@ -311,6 +316,10 @@ func TestDoctorDriftVirtualPluginKeys(t *testing.T) {
 		clean(fmt.Sprintf("after fix run %d", i))
 	}
 
+	pristine, err := os.ReadFile(fragment)
+	if err != nil {
+		t.Fatal(err)
+	}
 	f, err := os.OpenFile(fragment, os.O_APPEND|os.O_WRONLY, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -326,6 +335,9 @@ func TestDoctorDriftVirtualPluginKeys(t *testing.T) {
 		t.Fatalf("hand-edited fragment: %+v, %v", r, err)
 	}
 
+	if err := os.WriteFile(fragment, pristine, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.RemoveAll(filepath.Join(plugins, "fxplug")); err != nil {
 		t.Fatal(err)
 	}
