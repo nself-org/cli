@@ -9,6 +9,10 @@
 #          .github/command-registry.json   (contract:cli.command-registry v1, the
 #                                           v1.5 document `nself help --json`
 #                                           serves; committed)
+#          .github/facts.json              (contract:cli.public-facts v1, projected
+#                                           from VERSION and the registry above by
+#                                           tools/facts; the README facts blocks
+#                                           are refreshed too; committed)
 #          .github/wiki/Commands.md        (public command index, committed)
 #          .github/wiki/Command-Canon.md   (every old spelling and where it went
 #                                           in v1.5; the removal-plan PROSE block
@@ -34,6 +38,11 @@ echo "Generating $JSON_OUT ..."
 
 echo "Generating $REG_OUT ..."
 "$CMDINV" -format registry > "$REG_OUT"
+
+echo "Generating .github/facts.json ..."
+FACTS="bin/facts"
+CGO_ENABLED=0 go build -mod=vendor -o "$FACTS" ./tools/facts
+"$FACTS" -readme README.md
 
 echo "Generating $CANON_OUT ..."
 CANON_TMP=$(mktemp)

@@ -83,6 +83,8 @@ paths = [
   '''\.wiki/''',
   '''\.github/wiki/''',
   '''\.github/docs/''',
+  # Generated public facts (P7-TRUTH-02): openapi_sha256 is a content hash, matched as generic-api-key by name
+  '''\.github/facts\.json$''',
   '''\.github/workflows/''',
   '''\.claude/''',
   '''bin/certs/''',
