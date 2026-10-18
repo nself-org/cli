@@ -1,0 +1,89 @@
+{
+ "description": "viewer on docs and user on np_cloud_jobs (np_* is covered by ISO-03) lack the tenant filter",
+ "strict": false,
+ "columns": {
+  "public.docs": [
+   "tenant_id"
+  ],
+  "public.np_cloud_jobs": [
+   "tenant_id"
+  ]
+ },
+ "metadata": {
+  "resource_version": 7,
+  "metadata": {
+   "version": 3,
+   "sources": [
+    {
+     "name": "default",
+     "kind": "postgres",
+     "tables": [
+      {
+       "table": {
+        "schema": "public",
+        "name": "docs"
+       },
+       "select_permissions": [
+        {
+         "role": "user",
+         "permission": {
+          "columns": [
+           "id"
+          ],
+          "filter": {
+           "tenant_id": {
+            "_eq": "X-Hasura-Tenant-Id"
+           }
+          }
+         }
+        },
+        {
+         "role": "viewer",
+         "permission": {
+          "columns": [
+           "id"
+          ],
+          "filter": {}
+         }
+        }
+       ]
+      },
+      {
+       "table": {
+        "schema": "public",
+        "name": "np_cloud_jobs"
+       },
+       "select_permissions": [
+        {
+         "role": "user",
+         "permission": {
+          "columns": [
+           "id"
+          ],
+          "filter": {}
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "want": [
+  {
+   "rule": "ISO-03",
+   "table": "public.docs",
+   "role": "viewer",
+   "op": "select",
+   "fail": true
+  },
+  {
+   "rule": "ISO-03",
+   "table": "public.np_cloud_jobs",
+   "role": "user",
+   "op": "select",
+   "fail": true
+  }
+ ]
+}

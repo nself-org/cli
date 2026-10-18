@@ -79,10 +79,10 @@ func DeepChecks(ctx context.Context, projectDir string, verbose bool) []CheckRes
 
 	// S1.T10: Hasura metadata YAML row-filter check for np_* tables (PERM-HASURA-01).
 	results = append(results, CheckHasuraMetadataYAML(ctx, projectDir, false)...)
+	results = append(results, IsolationChecks(ctx, projectDir)...) // P7-ADOPT-05: ISO-01..04
 
 	// S98-02-T11: JWT key rotation check (JWT-ROT-01).
 	results = append(results, CheckJWTRotation(projectDir))
-
 	// S98-02-T12: SSRF guard verification (SSRF-01).
 	results = append(results, CheckSSRF(projectDir))
 

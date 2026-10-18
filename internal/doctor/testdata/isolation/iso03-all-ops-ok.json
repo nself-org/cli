@@ -1,0 +1,123 @@
+{
+ "description": "tenant_id pinned on select/insert/update/delete; nself_admin open on np_cloud_jobs is skipped: no finding",
+ "strict": false,
+ "columns": {
+  "public.docs": [
+   "tenant_id"
+  ],
+  "public.np_cloud_jobs": [
+   "tenant_id"
+  ]
+ },
+ "metadata": {
+  "resource_version": 7,
+  "metadata": {
+   "version": 3,
+   "sources": [
+    {
+     "name": "default",
+     "kind": "postgres",
+     "tables": [
+      {
+       "table": {
+        "schema": "public",
+        "name": "docs"
+       },
+       "select_permissions": [
+        {
+         "role": "user",
+         "permission": {
+          "columns": [
+           "id"
+          ],
+          "filter": {
+           "tenant_id": {
+            "_eq": "X-Hasura-Tenant-Id"
+           }
+          }
+         }
+        }
+       ],
+       "insert_permissions": [
+        {
+         "role": "user",
+         "permission": {
+          "columns": [
+           "id"
+          ],
+          "check": {
+           "tenant_id": {
+            "_eq": "X-Hasura-Tenant-Id"
+           }
+          }
+         }
+        }
+       ],
+       "update_permissions": [
+        {
+         "role": "user",
+         "permission": {
+          "columns": [
+           "id"
+          ],
+          "filter": {
+           "tenant_id": {
+            "_eq": "X-Hasura-Tenant-Id"
+           }
+          },
+          "check": {
+           "tenant_id": {
+            "_eq": "X-Hasura-Tenant-Id"
+           }
+          }
+         }
+        }
+       ],
+       "delete_permissions": [
+        {
+         "role": "user",
+         "permission": {
+          "filter": {
+           "tenant_id": {
+            "_eq": "X-Hasura-Tenant-Id"
+           }
+          }
+         }
+        }
+       ]
+      },
+      {
+       "table": {
+        "schema": "public",
+        "name": "np_cloud_jobs"
+       },
+       "select_permissions": [
+        {
+         "role": "user",
+         "permission": {
+          "columns": [
+           "id"
+          ],
+          "filter": {
+           "tenant_id": {
+            "_eq": "X-Hasura-Tenant-Id"
+           }
+          }
+         }
+        },
+        {
+         "role": "nself_admin",
+         "permission": {
+          "columns": "*",
+          "filter": {}
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "want": []
+}

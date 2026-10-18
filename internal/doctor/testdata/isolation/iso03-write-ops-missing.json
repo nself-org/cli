@@ -1,0 +1,146 @@
+{
+ "description": "docs: insert without check, update and delete filters that do not pin tenant_id",
+ "strict": false,
+ "columns": {
+  "public.docs": [
+   "tenant_id"
+  ],
+  "public.np_cloud_jobs": [
+   "tenant_id"
+  ]
+ },
+ "metadata": {
+  "resource_version": 7,
+  "metadata": {
+   "version": 3,
+   "sources": [
+    {
+     "name": "default",
+     "kind": "postgres",
+     "tables": [
+      {
+       "table": {
+        "schema": "public",
+        "name": "docs"
+       },
+       "select_permissions": [
+        {
+         "role": "user",
+         "permission": {
+          "columns": [
+           "id"
+          ],
+          "filter": {
+           "tenant_id": {
+            "_eq": "X-Hasura-Tenant-Id"
+           }
+          }
+         }
+        }
+       ],
+       "insert_permissions": [
+        {
+         "role": "user",
+         "permission": {
+          "columns": [
+           "id"
+          ],
+          "check": {}
+         }
+        }
+       ],
+       "update_permissions": [
+        {
+         "role": "user",
+         "permission": {
+          "columns": [
+           "id"
+          ],
+          "filter": {},
+          "check": {
+           "tenant_id": {
+            "_eq": "X-Hasura-Tenant-Id"
+           }
+          }
+         }
+        }
+       ],
+       "delete_permissions": [
+        {
+         "role": "user",
+         "permission": {
+          "filter": {
+           "_or": [
+            {
+             "tenant_id": {
+              "_eq": "X-Hasura-Tenant-Id"
+             }
+            },
+            {
+             "id": {
+              "_eq": "x"
+             }
+            }
+           ]
+          }
+         }
+        }
+       ]
+      },
+      {
+       "table": {
+        "schema": "public",
+        "name": "np_cloud_jobs"
+       },
+       "select_permissions": [
+        {
+         "role": "user",
+         "permission": {
+          "columns": [
+           "id"
+          ],
+          "filter": {
+           "tenant_id": {
+            "_eq": "X-Hasura-Tenant-Id"
+           }
+          }
+         }
+        },
+        {
+         "role": "nself_admin",
+         "permission": {
+          "columns": "*",
+          "filter": {}
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "want": [
+  {
+   "rule": "ISO-03",
+   "table": "public.docs",
+   "role": "user",
+   "op": "insert",
+   "fail": true
+  },
+  {
+   "rule": "ISO-03",
+   "table": "public.docs",
+   "role": "user",
+   "op": "update",
+   "fail": true
+  },
+  {
+   "rule": "ISO-03",
+   "table": "public.docs",
+   "role": "user",
+   "op": "delete",
+   "fail": true
+  }
+ ]
+}

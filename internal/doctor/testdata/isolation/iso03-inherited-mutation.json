@@ -1,0 +1,54 @@
+{
+ "description": "an inherited role gets the delete permission of its member nself_admin (filter {}) on a tenant_id table: Hasura inherits mutation permissions, so the wall is open",
+ "strict": false,
+ "columns": {
+  "public.np_events": [
+   "tenant_id"
+  ]
+ },
+ "metadata": {
+  "resource_version": 7,
+  "metadata": {
+   "version": 3,
+   "inherited_roles": [
+    {
+     "role_name": "customer",
+     "role_set": [
+      "nself_admin"
+     ]
+    }
+   ],
+   "sources": [
+    {
+     "name": "default",
+     "kind": "postgres",
+     "tables": [
+      {
+       "table": {
+        "schema": "public",
+        "name": "np_events"
+       },
+       "delete_permissions": [
+        {
+         "role": "nself_admin",
+         "permission": {
+          "filter": {}
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "want": [
+  {
+   "rule": "ISO-03",
+   "table": "public.np_events",
+   "role": "customer (via nself_admin)",
+   "op": "delete",
+   "fail": true
+  }
+ ]
+}

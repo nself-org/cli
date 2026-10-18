@@ -1,0 +1,60 @@
+# Purpose: Hasura metadata for the audit-log plugin.
+# Table: np_auditlog_events (partitioned, append-only).
+# NOTE: np_auditlog_events is a partitioned table — Hasura tracks the parent table.
+#       No delete/update permissions: table is append-only by design.
+# Inputs: Hasura metadata apply
+# Outputs: GraphQL query/mutation API with row-level isolation
+# Constraints: insert admin-only; select admin (all) + user (own rows); no delete/update
+# SPORT: REGISTRY-PLUGINS.md audit-log row — Hasura ✅
+- table:
+    schema: public
+    name: np_auditlog_events
+  configuration:
+    custom_root_fields: {}
+    custom_column_names: {}
+  select_permissions:
+    - role: admin
+      permission:
+        columns: "*"
+        filter: {}
+        allow_aggregations: true
+    - role: user
+      permission:
+        columns:
+          - id
+          - source_account_id
+          - actor_user_id
+          - actor_type
+          - event_type
+          - resource_type
+          - resource_id
+          - ip_address
+          - user_agent
+          - metadata
+          - severity
+          - source_plugin
+          - target_plugin
+          - created_at
+        filter:
+          source_account_id:
+            _eq: X-Hasura-Source-Account-Id
+        allow_aggregations: false
+  insert_permissions:
+    - role: admin
+      permission:
+        columns:
+          - id
+          - source_account_id
+          - actor_user_id
+          - actor_type
+          - event_type
+          - resource_type
+          - resource_id
+          - ip_address
+          - user_agent
+          - metadata
+          - severity
+          - source_plugin
+          - target_plugin
+        check: {}
+        set: {}
