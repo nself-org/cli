@@ -77,20 +77,20 @@ nself doctor --deep --only isolation          # human report
 nself doctor --deep --only isolation --json   # machine report
 ```
 
-The guard is read-only. It reads the live Hasura permissions (`export_metadata`) and, with `psql` inside the project's postgres container, which tables have `source_account_id` or `tenant_id`. Every role except `admin` and `nself_admin` is checked on every tracked table. Each finding names the table, the role and the operation.
+The guard is read-only. It reads the live Hasura permissions (`export_metadata`) and, with `psql` inside the project's postgres container, which tables have `source_account_id` or `tenant_id`. Every role except `admin` is checked on every tracked table of the default Hasura source (`nself_admin` is also skipped on `np_*` tables, where plugin metadata gives it an open filter by design). An inherited role is checked as the `_or` of its members' select filters, so a member with an open filter shows up on every role that inherits it. Each finding names the table, the role and the operation.
 
 | Rule | Severity | What it flags |
 |---|---|---|
 | ISO-01 | warn (fail in strict mode) | A tracked app table without `source_account_id` while another app table has it. Skips `auth`, `storage`, `hdb_catalog` and `np_*`. |
-| ISO-02 | fail | A table with `source_account_id` where a role's select, update or delete filter does not pin `source_account_id = X-Hasura-Source-Account-Id`, or its insert `check`/`set` does not. An update without a pinning `check` also fails while the column is updatable. Skips `np_*`. |
+| ISO-02 | fail | A table with `source_account_id` where a role's select, update or delete filter does not pin `source_account_id = X-Hasura-Source-Account-Id`, or its insert `check`/`set` does not. An update whose `check` or preset does not pin the column also fails while the column is writable (listed in `columns`, missing from the permission, or assigned by a preset). Skips `np_*`, `auth`, `storage`, `hdb_catalog`. |
 | ISO-03 | fail | A table with `tenant_id` where a role's permission does not pin `tenant_id = X-Hasura-Tenant-Id`. Covers every tracked table, including `np_*` and `np_cloud_*`. |
 | ISO-04 | fail | The interchange: `source_account_id` compared to `X-Hasura-Tenant-Id`, or `tenant_id` to `X-Hasura-Source-Account-Id`, in a filter, check or preset. Covers every tracked table. |
 
 A filter pins a column only when it holds for every row it admits: an `_and` branch, an implicit AND, or every branch of an `_or`. `_not`, `_exists`, an empty filter `{}` and a missing permission do not pin. Session variable names compare case-insensitively.
 
-Strict mode (`NSELF_DOCTOR_STRICT=1`) turns the ISO-01 warning into a fail. A project where no table has either column gets one pass and nothing else. If the metadata or the columns cannot be read (stack stopped, container unreachable), the section reports one failure and never a pass.
+Strict mode (`NSELF_DOCTOR_STRICT=1`) turns the ISO-01 warning into a fail. A project where no table has either column gets one pass and nothing else. A second Hasura source with tracked tables is reported as a failure: its columns live in another database, so the guard cannot check it. A stopped stack, an unreadable config or an unreachable postgres container also gives a failure in this section, so a plain `nself doctor --deep` on a stopped project shows it too. If the metadata or the columns cannot be read (stack stopped, container unreachable), the section reports one failure and never a pass.
 
-`PERM-HASURA-01` (the `hasura/metadata` files for `np_*` tables) also rejects the interchange: a warning in v1.4 mode, a failure in v1.5 mode.
+`PERM-HASURA-01` (the `hasura/metadata` files, `np_*` tables, select filters of any role) also rejects the interchange: a warning in v1.4 mode, a failure in v1.5 mode.
 
 `scripts/e2e/isolation-guard.sh` proves it on Linux with the multi-app template: zero failures on the template, then a failure naming `public.notes`, `user`, `select` and ISO-02 after the admin API replaces the notes select filter with `{}`.
 

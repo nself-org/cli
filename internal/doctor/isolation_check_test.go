@@ -100,6 +100,19 @@ func TestIsolationChecks(t *testing.T) {
 			t.Fatalf("got %+v", res)
 		}
 	})
+	t.Run("a second source is reported, not passed", func(t *testing.T) {
+		fx := fixtures["second-source"]
+		dir := isoProject(t, fx.Metadata, nil, psqlRows(fx), nil)
+		got := ""
+		for _, r := range IsolationChecks(context.Background(), dir) {
+			if r.Status == "fail" {
+				got += r.Name + "|" + r.Message
+			}
+		}
+		if !strings.Contains(got, "ISO: source reporting") || !strings.Contains(got, `"reporting"`) {
+			t.Fatalf("want a fail naming source reporting, got %q", got)
+		}
+	})
 	t.Run("column rows are parsed strictly", func(t *testing.T) {
 		if _, err := parseIsolationColumns("public" + isoFieldSep + "notes\n"); err == nil {
 			t.Error("short row accepted")

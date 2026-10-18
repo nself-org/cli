@@ -1,5 +1,5 @@
 {
- "description": "role viewer added without a filter; admin and nself_admin skipped",
+ "description": "role viewer added without a filter; the Hasura admin role is skipped",
  "strict": false,
  "columns": {
   "public.notes": [
@@ -73,13 +73,6 @@
         },
         {
          "role": "admin",
-         "permission": {
-          "columns": "*",
-          "filter": {}
-         }
-        },
-        {
-         "role": "nself_admin",
          "permission": {
           "columns": "*",
           "filter": {}

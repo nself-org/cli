@@ -15,6 +15,7 @@ import (
 type isoFixture struct {
 	Description string              `json:"description"`
 	Strict      bool                `json:"strict"`
+	Unchecked   []string            `json:"unchecked"`
 	Columns     map[string][]string `json:"columns"`
 	Metadata    json.RawMessage     `json:"metadata"`
 	Want        []struct {
@@ -76,9 +77,12 @@ func TestIsolationRules(t *testing.T) {
 	}
 	for name, fx := range fixtures {
 		t.Run(name, func(t *testing.T) {
-			tables, err := parseIsolationMetadata(fx.Metadata)
+			tables, unchecked, err := parseIsolationMetadata(fx.Metadata)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if strings.Join(unchecked, ",") != strings.Join(fx.Unchecked, ",") {
+				t.Errorf("unchecked sources = %v, want %v", unchecked, fx.Unchecked)
 			}
 			var want []string
 			for _, w := range fx.Want {
@@ -100,7 +104,7 @@ func TestIsolationTemplateFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tables, err := parseIsolationMetadata(b)
+	tables, _, err := parseIsolationMetadata(b)
 	if err != nil {
 		t.Fatal(err)
 	}

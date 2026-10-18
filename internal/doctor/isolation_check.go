@@ -31,7 +31,8 @@ const (
 	isolationStrict  = "NSELF_DOCTOR_STRICT"
 	isoFieldSep      = "\x1f"
 
-	// isoColumnsSQL lists where the two isolation columns exist. Fixed text.
+	// isoColumnsSQL lists where the two isolation columns exist. Fixed text; run as the
+	// project's postgres user, which owns the tables, so information_schema shows every column.
 	isoColumnsSQL = "SELECT table_schema, table_name, column_name FROM information_schema.columns " +
 		"WHERE column_name IN ('source_account_id', 'tenant_id') " +
 		"AND table_schema NOT IN ('pg_catalog', 'information_schema')"
@@ -57,7 +58,7 @@ func IsolationChecks(ctx context.Context, projectDir string) []CheckResult {
 	if err != nil {
 		return []CheckResult{isoFail("metadata", fmt.Sprintf("live Hasura metadata unreadable (is the stack running?): %v", err))}
 	}
-	tables, err := parseIsolationMetadata(live)
+	tables, unchecked, err := parseIsolationMetadata(live)
 	if err != nil {
 		return []CheckResult{isoFail("metadata", fmt.Sprintf("Hasura metadata not understood: %v", err))}
 	}
@@ -71,7 +72,11 @@ func IsolationChecks(ctx context.Context, projectDir string) []CheckResult {
 	if err != nil {
 		return []CheckResult{isoFail("columns", err.Error())}
 	}
-	return isolationResults(tables, cols, strict)
+	results := isolationResults(tables, cols, strict)
+	for _, src := range unchecked {
+		results = append(results, isoFail("source "+src, fmt.Sprintf("Hasura source %q tracks tables the guard cannot check: it reads columns from the default source's database only", src)))
+	}
+	return results
 }
 
 // isolationResults runs the rules and renders them as check results.
@@ -107,7 +112,7 @@ func isolationResults(tables []isoTable, cols isoColumns, strict bool) []CheckRe
 	for _, rule := range []string{"ISO-01", "ISO-02", "ISO-03", "ISO-04"} {
 		if byRule[rule] == 0 {
 			results = append(results, CheckResult{Section: isolationSection, Name: rule, Status: "pass",
-				Message: fmt.Sprintf("%d tracked table(s) checked, no violation", len(tables))})
+				Message: fmt.Sprintf("%d tracked table(s) with an isolation column checked, no violation", tracked)})
 		}
 	}
 	return results
@@ -145,25 +150,41 @@ type isoMetaSource struct {
 	Tables []isoMetaTable `json:"tables"`
 }
 
-// parseIsolationMetadata reads an export_metadata document (with or without
-// the {"resource_version", "metadata"} wrapper) into tracked tables. Every
-// source is read: a table in a second source is still tracked.
-func parseIsolationMetadata(doc []byte) ([]isoTable, error) {
+type isoMetaBody struct {
+	Sources        []isoMetaSource `json:"sources"`
+	InheritedRoles []struct {
+		RoleName string   `json:"role_name"`
+		RoleSet  []string `json:"role_set"`
+	} `json:"inherited_roles"`
+}
+
+// parseIsolationMetadata reads an export_metadata document (with or without the
+// {"resource_version", "metadata"} wrapper) into the default source's tracked
+// tables. Other sources with tables are returned by name: their columns live in
+// another database, so they are reported, never passed. Inherited roles get the
+// union of their members' select filters (an `_or`), so an unrestricted member
+// such as nself_admin shows up on every role that inherits it.
+func parseIsolationMetadata(doc []byte) ([]isoTable, []string, error) {
 	var m struct {
-		Sources  []isoMetaSource `json:"sources"`
-		Metadata struct {
-			Sources []isoMetaSource `json:"sources"`
-		} `json:"metadata"`
+		isoMetaBody
+		Metadata isoMetaBody `json:"metadata"`
 	}
 	if err := json.Unmarshal(doc, &m); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	sources := append(m.Sources, m.Metadata.Sources...)
 	if len(sources) == 0 {
-		return nil, fmt.Errorf("no sources in the metadata document")
+		return nil, nil, fmt.Errorf("no sources in the metadata document")
 	}
 	var tables []isoTable
+	var unchecked []string
 	for _, src := range sources {
+		if src.Name != "default" {
+			if len(src.Tables) > 0 {
+				unchecked = append(unchecked, src.Name)
+			}
+			continue
+		}
 		for _, mt := range src.Tables {
 			t := isoTable{Schema: mt.Table.Schema, Name: mt.Table.Name, Perms: map[string]map[string]isoPerm{}}
 			for op, list := range map[string][]isoMetaPerm{"select": mt.Select, "insert": mt.Insert, "update": mt.Update, "delete": mt.Delete} {
@@ -175,10 +196,24 @@ func parseIsolationMetadata(doc []byte) ([]isoTable, error) {
 						Set: p.Permission["set"], Columns: p.Permission["columns"]}
 				}
 			}
+			for _, inh := range append(m.InheritedRoles, m.Metadata.InheritedRoles...) {
+				var branches []any
+				for _, member := range inh.RoleSet {
+					if p, ok := t.Perms[member]["select"]; ok {
+						branches = append(branches, p.Filter)
+					}
+				}
+				if _, own := t.Perms[inh.RoleName]["select"]; !own && len(branches) > 0 {
+					if t.Perms[inh.RoleName] == nil {
+						t.Perms[inh.RoleName] = map[string]isoPerm{}
+					}
+					t.Perms[inh.RoleName]["select"] = isoPerm{Filter: map[string]any{"_or": branches}}
+				}
+			}
 			tables = append(tables, t)
 		}
 	}
-	return tables, nil
+	return tables, unchecked, nil
 }
 
 // parseIsolationColumns reads the psql rows "schema<US>table<US>column".

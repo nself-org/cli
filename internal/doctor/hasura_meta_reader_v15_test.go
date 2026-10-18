@@ -64,7 +64,7 @@ func TestHasuraMetadataInterchange(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		tables, err := parseIsolationMetadata(doc)
+		tables, _, err := parseIsolationMetadata(doc)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -86,8 +86,8 @@ func TestHasuraMetadataInterchange(t *testing.T) {
 		if err := yaml.Unmarshal([]byte(clean), &cleanList); err != nil {
 			t.Fatal(err)
 		}
-		doc, _ = json.Marshal(map[string]any{"sources": []any{map[string]any{"tables": cleanList}}})
-		tables, err = parseIsolationMetadata(doc)
+		doc, _ = json.Marshal(map[string]any{"sources": []any{map[string]any{"name": "default", "tables": cleanList}}})
+		tables, _, err = parseIsolationMetadata(doc)
 		if err != nil {
 			t.Fatal(err)
 		}

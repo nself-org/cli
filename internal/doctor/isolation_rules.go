@@ -9,8 +9,8 @@ package doctor
 // are open-ended boolean expression trees. A filter counts as pinning a column only when it GUARANTEES
 // `column = session variable` for every row it admits (an _and branch, every
 // _or branch, an implicit AND). _not, _exists, an empty filter and a missing
-// permission never pin. The hasura-side admin roles are skipped; every other
-// role is checked (fail-closed). Session variable names compare
+// permission never pin. Hasura's admin role is skipped (and nself_admin on np_*
+// tables); every other role is checked (fail-closed). Session variable names compare
 // case-insensitively, column names exactly.
 
 import (
@@ -28,9 +28,12 @@ const (
 // isoOps is the check order of the four Hasura permission kinds.
 var isoOps = []string{"select", "insert", "update", "delete"}
 
-// isoAdminRoles are skipped: Hasura's own admin and nSelf's privileged service
-// role (plugin metadata grants nself_admin filter {} by design).
-var isoAdminRoles = map[string]bool{"admin": true, "nself_admin": true}
+// skipRole reports a role the rules leave alone on t: Hasura's own admin, and
+// nself_admin on np_* tables only (plugin metadata grants it filter {} by design;
+// on an app table it is checked like any other role).
+func skipRole(t isoTable, role string) bool {
+	return role == "admin" || (role == "nself_admin" && t.np())
+}
 
 // isoSkipSchemas hold tables nSelf and its auth/storage services own (ISO-01/02).
 var isoSkipSchemas = map[string]bool{"auth": true, "storage": true, "hdb_catalog": true}
@@ -89,16 +92,7 @@ func isolationRules(tables []isoTable, cols isoColumns, strict bool) []isoFindin
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		a, b := out[i], out[j]
-		if a.Rule != b.Rule {
-			return a.Rule < b.Rule
-		}
-		if a.Table != b.Table {
-			return a.Table < b.Table
-		}
-		if a.Role != b.Role {
-			return a.Role < b.Role
-		}
-		return a.Op < b.Op
+		return a.Rule+"\x00"+a.Table+"\x00"+a.Role+"\x00"+a.Op < b.Rule+"\x00"+b.Table+"\x00"+b.Role+"\x00"+b.Op
 	})
 	return out
 }
@@ -107,7 +101,7 @@ func isolationRules(tables []isoTable, cols isoColumns, strict bool) []isoFindin
 func sortedRoles(t isoTable) []string {
 	var roles []string
 	for r := range t.Perms {
-		if !isoAdminRoles[r] {
+		if !skipRole(t, r) {
 			roles = append(roles, r)
 		}
 	}
@@ -134,8 +128,8 @@ func pinFindings(rule string, t isoTable, col, claim string) []isoFinding {
 			case "update":
 				if !pins(p.Filter, col, claim) {
 					detail = "update filter does not pin " + want
-				} else if !pins(p.Check, col, claim) && writable(p.Columns, col) {
-					detail = "update check does not pin " + want + " and the column is updatable"
+				} else if !pins(p.Check, col, claim) && !setPins(p.Set, col, claim) && (writable(p.Columns, col) || hasKey(p.Set, col)) {
+					detail = "update check/set does not pin " + want + " and the column can be written (columns or preset)"
 				}
 			default:
 				if !pins(p.Filter, col, claim) {
@@ -217,8 +211,19 @@ func setPins(set any, col, claim string) bool {
 	return ok && strings.EqualFold(s, claim)
 }
 
+// hasKey reports whether a preset assigns col at all (to anything).
+func hasKey(set any, col string) bool {
+	m, _ := set.(map[string]any)
+	_, ok := m[col]
+	return ok
+}
+
 // writable reports whether an update permission's column list includes col.
+// A missing or unreadable list counts as writable (fail-closed).
 func writable(columns any, col string) bool {
+	if columns == nil {
+		return true
+	}
 	if s, ok := columns.(string); ok {
 		return s == "*"
 	}

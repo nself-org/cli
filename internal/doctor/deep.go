@@ -69,8 +69,9 @@ func DeepChecks(ctx context.Context, projectDir string, verbose bool) []CheckRes
 	// S74-T02 + S74-T-PERM-01: RLS enforcement for np_* tables (PERM-RLS-01).
 	results = append(results, CheckRLSEnforcement(ctx, false)...)
 
-	// ɳSentry-specific RLS checks (NSENTRY-RLS-01..07): only when one of the 7 ɳSentry
-	// baseline plugins is installed; CRITICAL (fail), the tables hold cross-tenant data.
+	// ɳSentry-specific RLS checks (NSENTRY-RLS-01..07).
+	// Runs only when one or more of the 7 ɳSentry baseline plugins is installed.
+	// Severity is CRITICAL (fail) — ɳSentry tables hold cross-tenant observability data.
 	if home, herr := os.UserHomeDir(); herr == nil {
 		nsentryPluginDir := filepath.Join(home, ".nself", "plugins")
 		results = append(results, CheckNSentryRLS(ctx, nsentryPluginDir)...)
@@ -82,7 +83,6 @@ func DeepChecks(ctx context.Context, projectDir string, verbose bool) []CheckRes
 
 	// S98-02-T11: JWT key rotation check (JWT-ROT-01).
 	results = append(results, CheckJWTRotation(projectDir))
-
 	// S98-02-T12: SSRF guard verification (SSRF-01).
 	results = append(results, CheckSSRF(projectDir))
 
