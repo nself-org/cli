@@ -8,7 +8,7 @@
     <array>
       <string>/bin/sh</string>
       <string>-c</string>
-      <string>if test -x &#39;/usr/local/bin/nself&#39; &amp;&amp; test -d &#39;/srv/app&#39;; then exec &#39;/usr/local/bin/nself&#39; license refresh --project &#39;/srv/app&#39; --quiet; else rm -f &#34;$HOME/Library/LaunchAgents/org.nself.entitlement.dae668e4084f07b6.plist&#34;; launchctl bootout &#34;gui/$(id -u)/org.nself.entitlement.dae668e4084f07b6&#34;; fi</string>
+      <string>if test -x &#39;/usr/local/bin/nself&#39; &amp;&amp; test -d &#39;/srv/app&#39;; then exec env NSELF_V15=1 &#39;/usr/local/bin/nself&#39; license refresh --project &#39;/srv/app&#39; --quiet; else rm -f &#34;$HOME/Library/LaunchAgents/org.nself.entitlement.dae668e4084f07b6.plist&#34;; launchctl bootout &#34;gui/$(id -u)/org.nself.entitlement.dae668e4084f07b6&#34;; fi</string>
     </array>
     <key>StartInterval</key>
     <integer>21600</integer>

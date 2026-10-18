@@ -13,11 +13,9 @@ import (
 	"syscall"
 )
 
-// Purpose: install, check and remove the entitlement refresh timer on POSIX hosts.
-// Inputs: project dir and binary path. Outputs: systemd units (root), a crontab line
-// (non-root Linux) or a LaunchAgent plist (macOS), idempotent by content comparison.
-// Constraints: path-safety rule R7 before any write; only the root ExecStopPost step runs as root.
-// SPORT: cap:cli.entitlement-autorefresh.
+// Purpose: install, check and remove the entitlement refresh timer on POSIX hosts (systemd units
+// as root, a crontab line as non-root Linux, a LaunchAgent plist on macOS), idempotent by content.
+// Constraints: path-safety rule R7 before any write. SPORT: cap:cli.entitlement-autorefresh.
 
 var safePathRe = regexp.MustCompile(`^/[A-Za-z0-9._/-]+$`)
 
@@ -46,18 +44,14 @@ func Ensure(projectDir, binPath string) (Result, error) {
 	return currentHost().ensure(projectDir, binPath)
 }
 
-// Preview renders every backend's text for projectDir and binPath without touching the host.
+// Preview renders every backend's text for the hidden dry run; it validates and writes nothing.
 func Preview(projectDir, binPath string) (string, error) {
-	dir, bin, uid, err := currentHost().paths(projectDir, binPath)
-	if err != nil {
-		return "", err
-	}
-	return renderAll(bin, dir, uid)
+	return renderAll(binPath, canonical(projectDir), uint32(os.Getuid()))
 }
 
 // Remove removes the timer for projectDir from every backend this process may touch.
 func Remove(projectDir string) (RemoveResult, error) {
-	return currentHost().remove(canonical(projectDir))
+	return currentHost().remove(Hash(canonical(projectDir)))
 }
 
 // RemoveAll removes every entitlement timer of this user (root: the systemd ones too).
@@ -88,18 +82,21 @@ func (h host) safePath(p string, owner func(uid uint32) bool) (string, uint32, e
 	if err != nil || !safePathRe.MatchString(res) || filepath.Clean(res) != res {
 		return bad("does not resolve to a plain path")
 	}
+	var uid uint32
 	for cur := res; ; cur = filepath.Dir(cur) {
 		info, err := os.Stat(cur)
 		if err != nil || info.Mode().Perm()&0o022 != 0 {
 			return bad("group- or world-writable (or unreadable) path component " + cur)
 		}
 		if cur == res {
-			if st, ok := info.Sys().(*syscall.Stat_t); !ok || !owner(st.Uid) {
+			st, ok := info.Sys().(*syscall.Stat_t)
+			if !ok || !owner(st.Uid) {
 				return bad("unexpected owner")
 			}
+			uid = st.Uid
 		}
 		if cur == "/" || cur == h.trustAbove {
-			return res, info.Sys().(*syscall.Stat_t).Uid, nil
+			return res, uid, nil
 		}
 	}
 }
@@ -175,7 +172,6 @@ func (h host) launchTarget(hash string) string {
 func (h host) cmdErr(out string, err error, name string, args ...string) error {
 	return fmt.Errorf("%s %s: %w (%s)", name, strings.Join(args, " "), err, strings.TrimSpace(out))
 }
-
 func (h host) installSystemd(bin, dir, hash string, uid uint32) (bool, error) {
 	svc, tmr, err := renderSystemd(bin, dir, hash, uid)
 	if err != nil {
@@ -209,12 +205,16 @@ func (h host) installCron(bin, dir, hash string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	cur, _ := h.run("", "crontab", "-l")
+	cur, lerr := h.run("", "crontab", "-l")
+	if lerr != nil { // the text of "no crontab for user" is not a crontab
+		cur = ""
+	}
 	rest, tagged := taggedLines(cur, entCronTag+hash)
 	if len(tagged) == 1 && tagged[0] == line {
 		return false, nil
 	}
-	if out, err := h.run(strings.Join(append(rest, line), "\n")+"\n", "crontab", "-"); err != nil {
+	out, err := h.run(strings.Join(append(rest, line), "\n")+"\n", "crontab", "-")
+	if err != nil {
 		return false, h.cmdErr(out, err, "crontab", "-")
 	}
 	return true, nil

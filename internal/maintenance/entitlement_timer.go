@@ -103,8 +103,9 @@ func refreshScript(bin, dir string, gone string) string {
 	return fmt.Sprintf("test -x %s && test -d %s || %s", shQuote(bin), shQuote(dir), gone)
 }
 
+// refreshCmd pins v1.5 mode: the timer is only installed in it, and its environment is empty.
 func refreshCmd(bin, dir string) string {
-	return fmt.Sprintf("%s license refresh --project %s --quiet", shQuote(bin), shQuote(dir))
+	return fmt.Sprintf("env NSELF_V15=1 %s license refresh --project %s --quiet", shQuote(bin), shQuote(dir))
 }
 
 func checkRenderable(bin, dir string) error {

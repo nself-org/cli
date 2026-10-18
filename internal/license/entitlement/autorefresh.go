@@ -26,10 +26,11 @@ import (
 
 // Seams for tests: the host timer API, the running binary and the one-line notice sink.
 var (
-	timerEnsure           = maintenance.Ensure
-	timerRemove           = maintenance.Remove
-	selfBinary            = defaultSelfBinary
-	timerNotes  io.Writer = os.Stderr
+	refreshClock license.Clock // nil = wall clock; the simulation injects a fake one
+	timerEnsure                = maintenance.Ensure
+	timerRemove                = maintenance.Remove
+	selfBinary                 = defaultSelfBinary
+	timerNotes   io.Writer     = os.Stderr
 )
 
 // Failure classes printed by the scheduled refresh (`entitlement refresh failed: <class>`).
@@ -126,7 +127,11 @@ func installFailure(err error) string {
 	if errors.Is(err, maintenance.ErrNoBackend) {
 		return "no-backend"
 	}
-	return "install-failed"
+	msg := strings.Join(strings.Fields(err.Error()), " ")
+	if len(msg) > 200 {
+		msg = msg[:200]
+	}
+	return "install-failed: " + msg
 }
 
 func note(line string) { _, _ = fmt.Fprintln(timerNotes, line) }
@@ -176,7 +181,7 @@ func revalidateClassified(ctx context.Context) (renewed []string, rejected map[s
 	rejected, class = map[string]bool{}, ClassNoLicence
 	for _, key := range license.CollectLicenseKeys() {
 		remote := &validationStatus{client: httptimeout.Default}
-		result, err := license.Validate(ctx, key, &license.ValidatorOptions{HTTPClient: remote})
+		result, err := license.Validate(ctx, key, &license.ValidatorOptions{HTTPClient: remote, Clock: refreshClock})
 		switch {
 		case err == nil && explicitRejection(remote, result):
 			rejected[license.HashKey(key)], class = true, ClassRejected

@@ -177,6 +177,13 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-PLUG-63 | signature over a locally built payload | server signature over the raw body | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | signed reply trusted for any licence | only a reply whose signed jwt names this key and is in window | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | unsigned bundle response accepted | unsigned bundle response refused | `internal/license/checker.go` |
+| P7-PLUG-64 | import ignores the JWT | an import carrying a JWT rewrites entitlement.jwt | `cmd/commands/license_grace.go` |
+| P7-PLUG-64 | import ignores the JWT | import rewrites the entitlement file | `internal/license/entitlement/autorefresh.go` |
+| P7-PLUG-64 | no scheduled refresh | scheduled revalidation and self-removal | `internal/license/entitlement/autorefresh.go` |
+| P7-PLUG-64 | no unattended refresh | doctor expects a timer for licensed stacks | `internal/license/entitlement/autorefresh.go` |
+| P7-PLUG-64 | refresh leaves entitlement.jwt alone | a verified refresh rewrites it | `cmd/commands/license_grace.go` |
+| P7-PLUG-64 | refresh only on build, start and license set | idempotent unattended timer | `internal/license/entitlement/autorefresh.go` |
+| P7-PLUG-64 | refresh only the licence cache | scheduled mode also rewrites entitlement.jwt and manages the timer | `cmd/commands/license_grace.go` |
 | P7-PLUG-78 | bundle install only verifies Hasura tracking | tracks the manifest tables first | `cmd/commands/bundle_appready.go` |
 | P7-PLUG-78 | plugin install does not track manifest tables | tracks them in Hasura after readiness (E140) | `cmd/commands/plugin_install_readiness.go` |
 | P7-PROD-08 | age-key.txt only | shared identity search, E223 when none | `internal/backup/restore.go` |

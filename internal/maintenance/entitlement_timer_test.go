@@ -40,6 +40,9 @@ func newFake(t *testing.T, goos string, euid int) (*fakeHost, string) {
 	f.host = host{goos: goos, euid: euid, systemd: true, crontab: true, home: root, trustAbove: root,
 		unitDir: filepath.Join(root, "units"), launchDir: filepath.Join(root, "agents")}
 	f.run = f.exec
+	oldHost := currentHost
+	currentHost = func() host { return f.host }
+	t.Cleanup(func() { currentHost = oldHost })
 	t.Setenv("NSELF_ENTITLEMENT_AUTOREFRESH", "")
 	return f, root
 }
@@ -141,8 +144,11 @@ func TestEntitlementTimerGolden(t *testing.T) {
 			if err != nil || second.Changed {
 				t.Fatalf("second ensure = %+v, %v (want no change)", second, err)
 			}
-			if st := f.status(dir); !st.Active || st.Backend != tc.backend {
+			if st := Status(dir); !st.Active || st.Backend != tc.backend {
 				t.Fatalf("status = %+v", st)
+			}
+			if strings.Contains(f.cron, "no crontab") {
+				t.Fatalf("the crontab-list error text was written back as a crontab line: %q", f.cron)
 			}
 			if _, tagged := taggedLines(f.cron, entCronTag); len(tagged) > 1 {
 				t.Fatalf("%d cron lines", len(tagged))
@@ -173,10 +179,10 @@ func TestEnsureUpdatesOnChangeAndRemoveByBackend(t *testing.T) {
 	if res, _ := f.ensure(dir, bin); !res.Changed && !strings.Contains(f.cron, "MAILTO=x") {
 		t.Fatal("ensure dropped a foreign crontab line")
 	}
-	if res, err := f.remove(Hash(dir)); err != nil || !res.Removed || strings.Contains(f.cron, entCronTag) || !strings.Contains(f.cron, "MAILTO=x") {
+	if res, err := Remove(dir); err != nil || !res.Removed || strings.Contains(f.cron, entCronTag) || !strings.Contains(f.cron, "MAILTO=x") {
 		t.Fatalf("remove = %+v, %v, crontab %q", res, err, f.cron)
 	}
-	if st := f.status(dir); st.Active || st.Reason != ReasonNotInstalled {
+	if st := Status(dir); st.Active || st.Reason != ReasonNotInstalled {
 		t.Fatalf("status after remove = %+v", st)
 	}
 	// systemd units exist but this process is not root: report RootRequired, remove nothing.
@@ -186,7 +192,10 @@ func TestEnsureUpdatesOnChangeAndRemoveByBackend(t *testing.T) {
 	if _, err := root0.ensure(dir, bin); err != nil {
 		t.Fatal(err)
 	}
-	res, _ := f.remove(Hash(dir))
+	if svc, _ := os.ReadFile(filepath.Join(f.unitDir, entUnitName(Hash(dir))+".service")); !strings.Contains(string(svc), fmt.Sprintf("User=%d\n", os.Getuid())) {
+		t.Fatalf("unit does not run as the project owner:\n%s", svc)
+	}
+	res, _ := Remove(dir)
 	if !res.RootRequired || res.Removed || !fileExists(filepath.Join(f.unitDir, entUnitName(Hash(dir))+".timer")) {
 		t.Fatalf("non-root remove of systemd units = %+v", res)
 	}
