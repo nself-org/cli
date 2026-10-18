@@ -38,8 +38,9 @@ func systemHost() host {
 var currentHost = systemHost
 
 // Ensure installs or updates the timer for projectDir; it changes the host only on a difference.
-func Ensure(projectDir, binPath string) (Result, error) {
-	return currentHost().ensure(projectDir, binPath)
+// pluginDir, when set, is carried into the unit as NSELF_PLUGIN_DIR after the path-safety check.
+func Ensure(projectDir, binPath, pluginDir string) (Result, error) {
+	return currentHost().ensure(projectDir, binPath, pluginDir)
 }
 
 // Remove removes the timer for projectDir from every backend this process may touch.
@@ -93,7 +94,7 @@ func (h host) safePath(p string, wantDir bool, owner func(uid uint32) bool) (str
 	}
 }
 
-func (h host) paths(projectDir, binPath string) (dir, bin string, uid uint32, err error) {
+func (h host) paths(projectDir, binPath, pluginDir string) (dir, bin, plugins string, uid uint32, err error) {
 	dir, uid, err = h.safePath(projectDir, true, func(u uint32) bool { return h.euid == 0 || int(u) == h.euid })
 	if err != nil {
 		return
@@ -103,14 +104,17 @@ func (h host) paths(projectDir, binPath string) (dir, bin string, uid uint32, er
 	for d := filepath.Dir(binPath); err == nil && d != "/" && d != h.trustAbove; d = filepath.Dir(d) {
 		_, _, err = h.safePath(d, true, own) // and so is every directory the stable path walks through
 	}
-	return dir, binPath, uid, err
+	if err == nil && pluginDir != "" {
+		plugins, _, err = h.safePath(pluginDir, true, own) // the unit pins the resolved directory
+	}
+	return dir, binPath, plugins, uid, err
 }
 
-func (h host) ensure(projectDir, binPath string) (Result, error) {
+func (h host) ensure(projectDir, binPath, pluginDir string) (Result, error) {
 	if AutorefreshDisabled() {
 		return Result{Disabled: true}, nil
 	}
-	dir, bin, uid, err := h.paths(projectDir, binPath)
+	dir, bin, plugins, uid, err := h.paths(projectDir, binPath, pluginDir)
 	if err != nil {
 		return Result{}, err
 	}
@@ -118,11 +122,11 @@ func (h host) ensure(projectDir, binPath string) (Result, error) {
 	res := Result{Backend: backend}
 	switch backend {
 	case BackendSystemd:
-		res.Changed, err = h.installSystemd(bin, dir, hash, uid)
+		res.Changed, err = h.installSystemd(bin, dir, plugins, hash, uid)
 	case BackendCron:
-		res.Changed, err = h.installCron(bin, dir, hash)
+		res.Changed, err = h.installCron(bin, dir, plugins, hash)
 	case BackendLaunchAgent:
-		res.Changed, err = h.installLaunchAgent(bin, dir, hash)
+		res.Changed, err = h.installLaunchAgent(bin, dir, plugins, hash)
 	default:
 		err = ErrNoBackend
 	}
@@ -152,14 +156,14 @@ func (h host) status(dir string) TimerStatus {
 	if active {
 		return TimerStatus{Active: true, Backend: backend}
 	}
-	if _, _, _, err := h.paths(dir, h.exe); err != nil {
+	if _, _, _, _, err := h.paths(dir, h.exe, ""); err != nil {
 		return TimerStatus{Backend: backend, Reason: ReasonUnsafePath}
 	}
 	return TimerStatus{Backend: backend, Reason: ReasonNotInstalled}
 }
 
-func (h host) installSystemd(bin, dir, hash string, uid uint32) (bool, error) {
-	svc, tmr, err := renderSystemd(bin, dir, hash, uid)
+func (h host) installSystemd(bin, dir, plugins, hash string, uid uint32) (bool, error) {
+	svc, tmr, err := renderSystemd(bin, dir, plugins, hash, uid)
 	if err != nil {
 		return false, err
 	}
@@ -185,8 +189,8 @@ func (h host) installSystemd(bin, dir, hash string, uid uint32) (bool, error) {
 	return true, nil
 }
 
-func (h host) installCron(bin, dir, hash string) (bool, error) {
-	line, err := renderCron(bin, dir, hash)
+func (h host) installCron(bin, dir, plugins, hash string) (bool, error) {
+	line, err := renderCron(bin, dir, plugins, hash)
 	if err != nil {
 		return false, err
 	}
@@ -220,8 +224,8 @@ func (h host) cronList() (string, error) {
 	return out, nil
 }
 
-func (h host) installLaunchAgent(bin, dir, hash string) (bool, error) {
-	data, err := renderPlist(bin, dir, hash)
+func (h host) installLaunchAgent(bin, dir, plugins, hash string) (bool, error) {
+	data, err := renderPlist(bin, dir, plugins, hash)
 	if err != nil {
 		return false, err
 	}

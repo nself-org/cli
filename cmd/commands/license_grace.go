@@ -227,8 +227,8 @@ func timerAdapter() entitlement.Timers {
 		return err
 	}
 	return entitlement.Timers{
-		Ensure: func(dir, bin string) (entitlement.TimerInstall, error) {
-			res, err := maintenance.Ensure(dir, bin)
+		Ensure: func(dir, bin, pluginDir string) (entitlement.TimerInstall, error) {
+			res, err := maintenance.Ensure(dir, bin, pluginDir)
 			return entitlement.TimerInstall{Backend: res.Backend, Changed: res.Changed}, wrap(err)
 		},
 		Remove: func(dir string) (entitlement.TimerRemoval, error) {

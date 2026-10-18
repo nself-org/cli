@@ -7,7 +7,7 @@ package maintenance
 // SPORT: cap:cli.entitlement-autorefresh.
 
 // Ensure installs nothing on Windows.
-func Ensure(string, string) (Result, error) { return Result{}, ErrNoBackend }
+func Ensure(string, string, string) (Result, error) { return Result{}, ErrNoBackend }
 
 // Remove has nothing to remove on Windows.
 func Remove(string) (RemoveResult, error) { return RemoveResult{}, nil }

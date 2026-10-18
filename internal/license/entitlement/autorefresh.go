@@ -27,7 +27,7 @@ import (
 // Timers is the host timer API (internal/maintenance), supplied by the command layer so this
 // package adds no same-layer import edge (repoqa D3). With no functions set no timer is managed.
 type Timers struct {
-	Ensure func(projectDir, bin string) (TimerInstall, error)
+	Ensure func(projectDir, bin, pluginDir string) (TimerInstall, error) // pluginDir "" = the unit user's default
 	Remove func(projectDir string) (TimerRemoval, error)
 }
 
@@ -64,11 +64,11 @@ func AutorefreshDisabled() bool {
 	return false
 }
 
-func ensureTimer(dir, bin string) (TimerInstall, error) {
+func ensureTimer(dir, bin, pluginDir string) (TimerInstall, error) {
 	if HostTimers.Ensure == nil {
 		return TimerInstall{}, ErrTimerNoBackend
 	}
-	return HostTimers.Ensure(dir, bin)
+	return HostTimers.Ensure(dir, bin, pluginDir)
 }
 
 func removeTimer(dir string) (TimerRemoval, error) {
@@ -137,8 +137,8 @@ func stableBinary(resolved string) string {
 	return resolved
 }
 
-// defaultPluginDir reports whether the plugin directory is the one the timer (which carries no
-// environment) will see: ~/.nself/plugins.
+// defaultPluginDir reports whether the plugin directory is ~/.nself/plugins, the one a timer
+// that carries no NSELF_PLUGIN_DIR resolves from its own user's HOME.
 func defaultPluginDir(pluginDir string) bool {
 	dir := strings.TrimSpace(pluginDir)
 	if dir == "" {
@@ -148,11 +148,28 @@ func defaultPluginDir(pluginDir string) bool {
 	return dir == "" || (err == nil && filepath.Clean(dir) == filepath.Join(home, ".nself", "plugins"))
 }
 
+// timerPluginDir is the plugin directory the unit must carry as NSELF_PLUGIN_DIR (D-0946): a
+// custom directory always, and under root (which may install the unit for another user, whose
+// HOME is not root's) the directory in use. "" means the unit's own default is right.
+func timerPluginDir(pluginDir string) string {
+	if defaultPluginDir(pluginDir) && os.Geteuid() != 0 {
+		return ""
+	}
+	dir, err := installationDirectory(pluginDir)
+	if err != nil {
+		return ""
+	}
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs
+	}
+	return filepath.Clean(dir)
+}
+
 // TimerWanted reports whether this host should run the refresh timer: v1.5, a licensed plugin
-// in the default plugin directory and autorefresh not disabled. Used by doctor (E132).
+// in the plugin directory in use and autorefresh not disabled. Used by doctor (E132).
 func TimerWanted() bool {
 	// compat.V15(P7-PLUG-64): no unattended refresh -> doctor expects a timer for licensed stacks
-	if !compat.V15() || DevKeyMode() || AutorefreshDisabled() || !defaultPluginDir("") {
+	if !compat.V15() || DevKeyMode() || AutorefreshDisabled() {
 		return false
 	}
 	installed, err := HasLicensedInstalled()
@@ -163,7 +180,7 @@ func TimerWanted() bool {
 // remain. It is called after every build/start/license-set refresh and never fails them.
 func reconcileTimer(projectDir string, names []string, pluginDir string) {
 	// compat.V15(P7-PLUG-64): refresh only on build, start and license set -> idempotent unattended timer
-	if !compat.V15() || DevKeyMode() || !defaultPluginDir(pluginDir) {
+	if !compat.V15() || DevKeyMode() {
 		return
 	}
 	if len(names) == 0 || AutorefreshDisabled() {
@@ -176,7 +193,7 @@ func reconcileTimer(projectDir string, names []string, pluginDir string) {
 	if err != nil {
 		return
 	}
-	res, err := ensureTimer(projectDir, bin)
+	res, err := ensureTimer(projectDir, bin, timerPluginDir(pluginDir))
 	switch {
 	case errors.Is(err, ErrTimerUnsafePath):
 		note("warning: entitlement refresh timer not installed (unsafe-path); nself doctor reports E132")

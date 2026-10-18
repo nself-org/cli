@@ -140,8 +140,8 @@ func fakeTimer(t *testing.T) *arTimer {
 	oldH, oldB, oldN := HostTimers, selfBinary, timerNotes
 	t.Cleanup(func() { HostTimers, selfBinary, timerNotes = oldH, oldB, oldN })
 	HostTimers = Timers{
-		Ensure: func(dir, bin string) (TimerInstall, error) {
-			f.ensured = append(f.ensured, dir+"|"+bin)
+		Ensure: func(dir, bin, pluginDir string) (TimerInstall, error) {
+			f.ensured = append(f.ensured, dir+"|"+bin+"|"+pluginDir)
 			res := TimerInstall{Backend: "cron", Changed: f.changed}
 			f.changed = false
 			return res, nil
@@ -173,7 +173,7 @@ func TestAutorefreshEnsuresTimer(t *testing.T) {
 			}
 			return
 		}
-		want := project + "|/usr/local/bin/nself"
+		want := project + "|/usr/local/bin/nself|"
 		if len(timer.ensured) != 2 || timer.ensured[0] != want || len(timer.removed) != 0 {
 			t.Fatalf("ensured %v, removed %v", timer.ensured, timer.removed)
 		}
@@ -234,13 +234,13 @@ func TestAutorefreshDisabledInstallsNothing(t *testing.T) {
 		if out, err := RunScheduled(context.Background(), project); compat.V15() && (err != nil || !out.Removed || out.Reason != "autorefresh disabled") {
 			t.Fatalf("scheduled run with autorefresh disabled: %+v %v", out, err)
 		}
-		// A custom plugin directory is invisible to the timer: no timer, no warning.
+		// A custom plugin directory (D-0946) is managed like the default: nothing licensed in it, no timer installed.
 		t.Setenv("NSELF_ENTITLEMENT_AUTOREFRESH", "")
 		t.Setenv("NSELF_PLUGIN_DIR", filepath.Join(os.Getenv("HOME"), ".nself", "plugins")+"-custom")
 		timer.ensured = nil
 		timer.notes.Reset()
 		_ = Refresh(context.Background(), project)
-		if len(timer.ensured) != 0 || timer.notes.Len() != 0 {
+		if len(timer.ensured) != 0 || strings.Contains(timer.notes.String(), "warning") {
 			t.Fatalf("custom plugin dir: ensured %v notes %q", timer.ensured, timer.notes.String())
 		}
 	})
@@ -474,5 +474,32 @@ func TestReconcileRemovalNotice(t *testing.T) {
 				t.Fatalf("notice printed = %v, want %v (%q)", got, tc.want, timer.notes.String())
 			}
 		})
+	}
+}
+
+// D-0946: a custom NSELF_PLUGIN_DIR still gets a timer, and the unit is told the directory.
+func TestAutorefreshCarriesCustomPluginDir(t *testing.T) {
+	compattest.Set(t, true)
+	newArPing(t, time.Now(), "chat")
+	home := os.Getenv("HOME")
+	custom := filepath.Join(home, "custom-plugins")
+	if err := os.Rename(filepath.Join(home, ".nself", "plugins"), custom); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NSELF_PLUGIN_DIR", custom)
+	timer := fakeTimer(t)
+	project := t.TempDir()
+	reconcileTimer(project, []string{"chat"}, "")
+	want := project + "|/usr/local/bin/nself|" + custom
+	if len(timer.ensured) != 1 || timer.ensured[0] != want || len(timer.removed) != 0 {
+		t.Fatalf("ensured %v, removed %v, want %q", timer.ensured, timer.removed, want)
+	}
+	if !TimerWanted() {
+		t.Fatal("doctor must expect a timer for licensed plugins in a custom plugin directory")
+	}
+	// Removal also works for a custom directory once no licensed plugin remains.
+	reconcileTimer(project, nil, "")
+	if len(timer.removed) != 1 {
+		t.Fatalf("timer not removed for a custom plugin dir: %v", timer.removed)
 	}
 }

@@ -101,13 +101,18 @@ func refreshScript(bin, dir string, gone string) string {
 	return fmt.Sprintf("test -x %s && test -d %s || %s", shQuote(bin), shQuote(dir), gone)
 }
 
-// refreshCmd pins v1.5 mode: the timer is only installed in it, and its environment is empty.
-func refreshCmd(bin, dir string) string {
-	return fmt.Sprintf("env NSELF_V15=1 %s license refresh --project %s --quiet", shQuote(bin), shQuote(dir))
+// refreshCmd pins v1.5 mode: the timer is only installed in it, and its environment is empty
+// except for the plugin directory in use when it is not the unit user's default (D-0946).
+func refreshCmd(bin, dir, pluginDir string) string {
+	env := "NSELF_V15=1"
+	if pluginDir != "" {
+		env += " NSELF_PLUGIN_DIR=" + shQuote(pluginDir)
+	}
+	return fmt.Sprintf("env %s %s license refresh --project %s --quiet", env, shQuote(bin), shQuote(dir))
 }
 
-func checkRenderable(bin, dir string) error {
-	if strings.ContainsAny(bin+dir, "\x00\n\r") || len(bin)+len(dir) > 300 { // cron truncates a line near 1000 bytes
+func checkRenderable(bin, dir, pluginDir string) error {
+	if strings.ContainsAny(bin+dir+pluginDir, "\x00\n\r") || len(bin)+len(dir)+len(pluginDir) > 300 { // cron truncates a line near 1000 bytes
 		return fmt.Errorf("%w: control character or over-long path", ErrUnsafePath)
 	}
 	return nil
@@ -116,11 +121,11 @@ func checkRenderable(bin, dir string) error {
 func entUnitName(hash string) string { return entUnitPrefix + hash }
 
 // renderSystemd returns the service and timer units for the system backend.
-func renderSystemd(bin, dir, hash string, uid uint32) (service, timer string, err error) {
-	if err = checkRenderable(bin, dir); err != nil {
+func renderSystemd(bin, dir, pluginDir, hash string, uid uint32) (service, timer string, err error) {
+	if err = checkRenderable(bin, dir, pluginDir); err != nil {
 		return "", "", err
 	}
-	script := refreshScript(bin, dir, fmt.Sprintf("exit %d", ExitGone)) + "; exec " + refreshCmd(bin, dir)
+	script := refreshScript(bin, dir, fmt.Sprintf("exit %d", ExitGone)) + "; exec " + refreshCmd(bin, dir, pluginDir)
 	u := entUnitName(hash)
 	service = fmt.Sprintf(`[Unit]
 Description=nSelf entitlement refresh %s
@@ -156,15 +161,15 @@ func rootStep(hash string) string {
 }
 
 // renderCron returns one crontab line (minute jitter from HASH, every 6 h).
-func renderCron(bin, dir, hash string) (string, error) {
-	if err := checkRenderable(bin, dir); err != nil {
+func renderCron(bin, dir, pluginDir, hash string) (string, error) {
+	if err := checkRenderable(bin, dir, pluginDir); err != nil {
 		return "", err
 	}
 	minute, _ := strconv.ParseUint(hash[:2], 16, 8)
 	tag := entCronTag + hash
 	drop := fmt.Sprintf(`t=$(crontab -l 2>/dev/null) && printf '%%s\n' "$t" | grep -vF %s | crontab -`, shQuote(tag))
 	line := fmt.Sprintf("%d */6 * * * if test -x %s && test -d %s; then %s >/dev/null; else %s; fi %s",
-		minute%60, shQuote(bin), shQuote(dir), refreshCmd(bin, dir), drop, tag)
+		minute%60, shQuote(bin), shQuote(dir), refreshCmd(bin, dir, pluginDir), drop, tag)
 	return cronEscape(line), nil
 }
 
@@ -172,13 +177,13 @@ func renderCron(bin, dir, hash string) (string, error) {
 func launchAgentLabel(hash string) string { return entLabelPrefix + hash }
 
 // renderPlist builds the LaunchAgent plist with encoding/xml (ProgramArguments array).
-func renderPlist(bin, dir, hash string) ([]byte, error) {
-	if err := checkRenderable(bin, dir); err != nil {
+func renderPlist(bin, dir, pluginDir, hash string) ([]byte, error) {
+	if err := checkRenderable(bin, dir, pluginDir); err != nil {
 		return nil, err
 	}
 	label := launchAgentLabel(hash)
 	script := fmt.Sprintf(`if test -x %s && test -d %s; then exec %s; else rm -f "$HOME/Library/LaunchAgents/%s.plist"; launchctl bootout "gui/$(id -u)/%s"; fi`,
-		shQuote(bin), shQuote(dir), refreshCmd(bin, dir), label, label)
+		shQuote(bin), shQuote(dir), refreshCmd(bin, dir, pluginDir), label, label)
 	var sb strings.Builder
 	sb.WriteString(xml.Header)
 	sb.WriteString(`<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">` + "\n")
@@ -276,15 +281,15 @@ func taggedLines(crontab, tag string) (rest, tagged []string) {
 // renderAll returns the rendered systemd units, crontab line and plist, for the dry run.
 func renderAll(bin, dir string, uid uint32) (string, error) {
 	hash := Hash(dir)
-	svc, tmr, err := renderSystemd(bin, dir, hash, uid)
+	svc, tmr, err := renderSystemd(bin, dir, "", hash, uid)
 	if err != nil {
 		return "", err
 	}
-	cron, err := renderCron(bin, dir, hash)
+	cron, err := renderCron(bin, dir, "", hash)
 	if err != nil {
 		return "", err
 	}
-	plist, err := renderPlist(bin, dir, hash)
+	plist, err := renderPlist(bin, dir, "", hash)
 	return fmt.Sprintf("# %s.service\n%s\n# %s.timer\n%s\n# crontab\n%s\n\n# LaunchAgent plist\n%s", entUnitName(hash), svc, entUnitName(hash), tmr, cron, plist), err
 }
 

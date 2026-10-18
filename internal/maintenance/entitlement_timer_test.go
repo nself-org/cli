@@ -118,9 +118,9 @@ const gBin, gDir = "/usr/local/bin/nself", "/srv/app"
 
 func TestEntitlementTimerGolden(t *testing.T) {
 	h := Hash(gDir)
-	svc, tmr, err := renderSystemd(gBin, gDir, h, 1000)
-	cron, err2 := renderCron(gBin, gDir, h)
-	plist, err3 := renderPlist(gBin, gDir, h)
+	svc, tmr, err := renderSystemd(gBin, gDir, "", h, 1000)
+	cron, err2 := renderCron(gBin, gDir, "", h)
+	plist, err3 := renderPlist(gBin, gDir, "", h)
 	if err != nil || err2 != nil || err3 != nil {
 		t.Fatal(err, err2, err3)
 	}
@@ -144,11 +144,11 @@ func TestEntitlementTimerGolden(t *testing.T) {
 			f, root := newFake(t, tc.goos, tc.euid)
 			dir, bin := project(t, root)
 			f.exe = bin
-			first, err := f.ensure(dir, bin)
+			first, err := f.ensure(dir, bin, "")
 			if err != nil || !first.Changed || first.Backend != tc.backend {
 				t.Fatalf("first ensure = %+v, %v", first, err)
 			}
-			second, err := f.ensure(dir, bin)
+			second, err := f.ensure(dir, bin, "")
 			if err != nil || second.Changed {
 				t.Fatalf("second ensure = %+v, %v (want no change)", second, err)
 			}
@@ -165,7 +165,7 @@ func TestEntitlementTimerGolden(t *testing.T) {
 			f2, root2 := newFake(t, tc.goos, tc.euid)
 			t.Setenv("NSELF_ENTITLEMENT_AUTOREFRESH", "false")
 			dir2, bin2 := project(t, root2)
-			res, err := f2.ensure(dir2, bin2)
+			res, err := f2.ensure(dir2, bin2, "")
 			if err != nil || !res.Disabled || res.Changed || len(f2.calls) != 0 || f2.cron != "" {
 				t.Fatalf("disabled ensure = %+v, %v, calls %v", res, err, f2.calls)
 			}
@@ -180,11 +180,11 @@ func TestEnsureUpdatesOnChangeAndRemoveByBackend(t *testing.T) {
 	f, root := newFake(t, "linux", 1000)
 	dir, bin := project(t, root)
 	f.exe = bin
-	if _, err := f.ensure(dir, bin); err != nil {
+	if _, err := f.ensure(dir, bin, ""); err != nil {
 		t.Fatal(err)
 	}
 	f.cron = "MAILTO=x\n" + f.cron
-	if _, err := f.ensure(dir, bin); err != nil {
+	if _, err := f.ensure(dir, bin, ""); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(f.cron, "MAILTO=x") || strings.Count(f.cron, entCronTag+Hash(dir)) != 2 {
@@ -200,7 +200,7 @@ func TestEnsureUpdatesOnChangeAndRemoveByBackend(t *testing.T) {
 	f.systemd = true
 	root0 := f.host
 	root0.euid = 0
-	if _, err := root0.ensure(dir, bin); err != nil {
+	if _, err := root0.ensure(dir, bin, ""); err != nil {
 		t.Fatal(err)
 	}
 	if svc, _ := os.ReadFile(filepath.Join(f.unitDir, entUnitName(Hash(dir))+".service")); !strings.Contains(string(svc), fmt.Sprintf("User=%d\n", os.Getuid())) {
@@ -218,7 +218,7 @@ func TestEnsureUpdatesOnChangeAndRemoveByBackend(t *testing.T) {
 	}
 	noBackend := f.host
 	noBackend.crontab, noBackend.euid = false, os.Geteuid()
-	if _, err := noBackend.ensure(dir, bin); err != ErrNoBackend {
+	if _, err := noBackend.ensure(dir, bin, ""); err != ErrNoBackend {
 		t.Fatalf("no backend err = %v", err)
 	}
 }
@@ -229,7 +229,7 @@ func TestCronReadFailureKeepsForeignLines(t *testing.T) {
 	dir, bin := project(t, root)
 	f.exe = bin
 	f.cron, f.cronBroken = "MAILTO=ops\n0 3 * * * backup\n", true
-	if _, err := f.ensure(dir, bin); err == nil {
+	if _, err := f.ensure(dir, bin, ""); err == nil {
 		t.Fatal("ensure succeeded although crontab -l failed")
 	}
 	if f.cron != "MAILTO=ops\n0 3 * * * backup\n" {
@@ -281,7 +281,7 @@ func TestHostilePathRefused(t *testing.T) {
 				} else {
 					b = p
 				}
-				if _, err := f.ensure(d, b); err == nil {
+				if _, err := f.ensure(d, b, ""); err == nil {
 					t.Fatalf("ensure(%q, %q) succeeded", d, b)
 				}
 				if _, err := os.Stat(f.unitDir); err == nil || f.cron != "" || len(f.calls) != 0 {
@@ -291,13 +291,13 @@ func TestHostilePathRefused(t *testing.T) {
 		}
 	}
 	// A group-writable project directory itself is refused as well.
-	if _, err := f.ensure(gw, bin); err == nil {
+	if _, err := f.ensure(gw, bin, ""); err == nil {
 		t.Fatal("group-writable project dir accepted")
 	}
 	if st := f.status(wwProj); st.Active || st.Reason == "" {
 		t.Fatalf("status of a refused dir = %+v", st)
 	}
-	if _, err := f.ensure(dir, bin); err != nil {
+	if _, err := f.ensure(dir, bin, ""); err != nil {
 		t.Fatalf("clean paths refused: %v", err)
 	}
 }
@@ -307,7 +307,7 @@ func TestRootStepGolden(t *testing.T) {
 	var all strings.Builder
 	for _, d := range dirs {
 		h := Hash(d)
-		svc, _, err := renderSystemd(gBin, d, h, 0)
+		svc, _, err := renderSystemd(gBin, d, "", h, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -353,7 +353,7 @@ func TestLaunchAgentGuard(t *testing.T) {
 				}
 			}
 			hash := Hash(proj)
-			data, err := renderPlist(bin, proj, hash)
+			data, err := renderPlist(bin, proj, "", hash)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -441,9 +441,9 @@ func FuzzRenderTimer(f *testing.F) {
 			return
 		}
 		hash := Hash(dir)
-		svc, tmr, err := renderSystemd(bin, dir, hash, 1000)
-		cron, err2 := renderCron(bin, dir, hash)
-		plist, err3 := renderPlist(bin, dir, hash)
+		svc, tmr, err := renderSystemd(bin, dir, "", hash, 1000)
+		cron, err2 := renderCron(bin, dir, "", hash)
+		plist, err3 := renderPlist(bin, dir, "", hash)
 		if len(dir)+len(bin) > 300 { // cron's line limit: refusing is the contract
 			if !errors.Is(err, ErrUnsafePath) || !errors.Is(err2, ErrUnsafePath) || !errors.Is(err3, ErrUnsafePath) {
 				t.Fatal("an over-long path was rendered", err, err2, err3)
@@ -513,7 +513,7 @@ func TestCronSelfDeleteKeepsForeignLines(t *testing.T) {
 		t.Fatal(err)
 	}
 	gone := filepath.Join(tmp, "gone-project")
-	line, err := renderCron(bin, gone, Hash(gone))
+	line, err := renderCron(bin, gone, "", Hash(gone))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -539,7 +539,7 @@ func TestRootWithoutSystemdGetsNoBackend(t *testing.T) {
 	f, root := newFake(t, "linux", 0)
 	f.systemd = false
 	dir, bin := project(t, root)
-	if res, err := f.ensure(dir, bin); err != ErrNoBackend || res.Changed || f.cron != "" || len(f.calls) != 0 {
+	if res, err := f.ensure(dir, bin, ""); err != ErrNoBackend || res.Changed || f.cron != "" || len(f.calls) != 0 {
 		t.Fatalf("root without systemd: %+v %v cron %q calls %v", res, err, f.cron, f.calls)
 	}
 }
@@ -552,7 +552,7 @@ func TestRemoveWithoutCrontabCommand(t *testing.T) {
 	f.exe = bin
 	rootHost := f.host
 	rootHost.euid = 0
-	if _, err := rootHost.ensure(dir, bin); err != nil {
+	if _, err := rootHost.ensure(dir, bin, ""); err != nil {
 		t.Fatal(err)
 	}
 	f.crontab = false
@@ -567,7 +567,7 @@ func TestLaunchAgentRemovalDeletesThePlistBeforeBootout(t *testing.T) {
 	f, root := newFake(t, "darwin", 501)
 	dir, bin := project(t, root)
 	f.exe = bin
-	if _, err := f.ensure(dir, bin); err != nil {
+	if _, err := f.ensure(dir, bin, ""); err != nil {
 		t.Fatal(err)
 	}
 	f.bootouts = nil // install boots the old job out first, with the plist present
@@ -579,7 +579,7 @@ func TestLaunchAgentRemovalDeletesThePlistBeforeBootout(t *testing.T) {
 
 func TestOverlongPathsAreRefused(t *testing.T) {
 	long := "/" + strings.Repeat("a", 301)
-	if _, err := renderCron("/usr/local/bin/nself", long, Hash(long)); err == nil {
+	if _, err := renderCron("/usr/local/bin/nself", long, "", Hash(long)); err == nil {
 		t.Fatal("a cron line near cron's length limit was rendered")
 	}
 }
