@@ -418,3 +418,61 @@ func TestScheduledRemovalWithRootUnitsStillExits78(t *testing.T) {
 		t.Fatalf("outcome %+v err %v", out, err)
 	}
 }
+
+func TestDefaultPluginDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("NSELF_PLUGIN_DIR", "")
+	def := filepath.Join(home, ".nself", "plugins")
+	if !defaultPluginDir("") || !defaultPluginDir(def) || !defaultPluginDir(def+"/") {
+		t.Fatal("the default plugin directory (also spelled with a trailing slash) must count as default")
+	}
+	if defaultPluginDir(def+"-custom") || defaultPluginDir(filepath.Join(home, "other")) {
+		t.Fatal("a custom plugin directory must not count as default")
+	}
+	t.Setenv("NSELF_PLUGIN_DIR", def)
+	if !defaultPluginDir("") {
+		t.Fatal("NSELF_PLUGIN_DIR equal to the default is the default")
+	}
+	t.Setenv("NSELF_PLUGIN_DIR", def+"-custom")
+	if defaultPluginDir("") {
+		t.Fatal("NSELF_PLUGIN_DIR set to another path is custom")
+	}
+	if runtime.GOOS != "windows" && runtime.GOOS != "darwin" { // no home directory: a set path cannot be proved default
+		t.Setenv("HOME", "")
+		t.Setenv("NSELF_PLUGIN_DIR", "")
+		if defaultPluginDir(def) {
+			t.Fatal("without a home directory an explicit path must not count as default")
+		}
+	}
+}
+
+// The removal notice appears only when a timer was really removed.
+func TestReconcileRemovalNotice(t *testing.T) {
+	compattest.Set(t, true)
+	newArPing(t, time.Now(), "chat")
+	timer := fakeTimer(t)
+	if err := os.RemoveAll(filepath.Join(os.Getenv("HOME"), ".nself", "plugins", "chat")); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		res  TimerRemoval
+		err  error
+		want bool
+	}{
+		{"removed", TimerRemoval{Removed: true}, nil, true},
+		{"nothing to remove", TimerRemoval{}, nil, false},
+		{"failed", TimerRemoval{Removed: true}, errors.New("boom"), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			timer.notes.Reset()
+			HostTimers.Remove = func(string) (TimerRemoval, error) { return tc.res, tc.err }
+			reconcileTimer(t.TempDir(), nil, "")
+			if got := strings.Contains(timer.notes.String(), "timer removed"); got != tc.want {
+				t.Fatalf("notice printed = %v, want %v (%q)", got, tc.want, timer.notes.String())
+			}
+		})
+	}
+}
