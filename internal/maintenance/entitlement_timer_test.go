@@ -4,6 +4,7 @@ package maintenance
 
 import (
 	"encoding/xml"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -443,6 +444,12 @@ func FuzzRenderTimer(f *testing.F) {
 		svc, tmr, err := renderSystemd(bin, dir, hash, 1000)
 		cron, err2 := renderCron(bin, dir, hash)
 		plist, err3 := renderPlist(bin, dir, hash)
+		if len(dir)+len(bin) > 300 { // cron's line limit: refusing is the contract
+			if !errors.Is(err, ErrUnsafePath) || !errors.Is(err2, ErrUnsafePath) || !errors.Is(err3, ErrUnsafePath) {
+				t.Fatal("an over-long path was rendered", err, err2, err3)
+			}
+			return
+		}
 		if err != nil || err2 != nil || err3 != nil {
 			t.Fatal(err, err2, err3)
 		}

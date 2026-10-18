@@ -108,7 +108,7 @@ func refreshCmd(bin, dir string) string {
 
 func checkRenderable(bin, dir string) error {
 	if strings.ContainsAny(bin+dir, "\x00\n\r") || len(bin)+len(dir) > 300 { // cron truncates a line near 1000 bytes
-		return fmt.Errorf("%w: control character", ErrUnsafePath)
+		return fmt.Errorf("%w: control character or over-long path", ErrUnsafePath)
 	}
 	return nil
 }
