@@ -2,35 +2,33 @@
 
 # Four-Surface Parity Matrix
 
-One row per top-level command (CLI-R17), scored against the four surfaces a command can ship on. The wiki column is a hard CI gate; the other three are informational — see the matching-rule comments in tools/parity/ for exactly how each column is decided and why it may under-count.
+One row per top-level command (CLI-R17), scored against the four surfaces a command can ship on. The wiki column is a hard CI gate; the other three are informational — see the notes in tools/parity/ for exactly how each column is decided and why it may under-count.
 
-**OpenAPI Route** is always `n/a`: internal/apidocs exists (openapi.go, plugin_routes.go) and is wired into `nself build` via internal/build/orchestrator.go, but it documents the generated backend's HTTP surface (hardcoded `/auth/v1/*` endpoints, `/v1/graphql`, and REST routes read from each installed plugin's `plugin.json` at build time) — not the CLI's own commands. No command-to-route mapping exists on either side, so every row is `n/a`. See tools/parity/openapi.go for the full investigation and citations.
+**MCP Tools** and **HTTP Routes** count what the generators serve for the command and every command below it, read from the same registry the generators read (`mcpgen.Tools` over the machine registry; `invoke.Exposure` for the HTTP transport, the rule `internal/httpapi` applies to OpenAPI). A `0` means the command is not exposed on that surface (cli-only, interactive, stream or not yet an envelope command). See tools/parity/surfaces.go.
 
 **Env Vars** reflects only direct `os.Getenv`/`viper.Get*` calls in the command's own `cmd/commands/<name>*.go` files — env vars read through internal/* packages are invisible to this check and will show `n/a` even when the command does read documented vars. See tools/parity/envvars.go for the full rule.
 
-**MCP Tool** credits exact token matches only (e.g. `nself_doctor` -> `doctor`); near-misses like `nself_run_migration` vs. `migrate` are not credited. See tools/parity/mcptools.go for the full rule.
-
-| Command | Group | Wiki Page | MCP Tool | Env Vars | OpenAPI Route |
+| Command | Group | Wiki Page | MCP Tools | Env Vars | HTTP Routes |
 |---|---|---|---|---|---|
-| `nself add` | — | yes | yes | n/a | n/a (see below) |
-| `nself backup` | data | yes | yes | documented | n/a (see below) |
-| `nself build` | core | yes | yes | undocumented: NSELF_L03_REF_BIN, NSELF_PROFILE, UPDATE_GOLDEN | n/a (see below) |
-| `nself clean` | core | yes | no | n/a | n/a (see below) |
-| `nself config` | config | yes | yes | undocumented: NSELF_REQUIRE_AGE | n/a (see below) |
-| `nself db` | data | yes | yes | n/a | n/a (see below) |
-| `nself deploy` | deploy | yes | yes | undocumented: API_URL, LAPTOP_ONLY, M_DEV, M_PROD, M_QA, M_SEC, NSELF_DEPLOY_ENV, NSELF_DEPLOY_HOST_, NSELF_DEPLOY_HOST_OPS, NSELF_FEATURE_BLUE_GREEN_DEPLOY, NSELF_HASURA_METADATA_STRICT, NSELF_REMOTE_PATH_, OPS_DEPLOY_HOST, VERCEL_TOKEN | n/a (see below) |
-| `nself doctor` | core | yes | yes | undocumented: NSELF_PING_API_URL, OLLAMA_BASE_URL, OLLAMA_HOST, PLUGIN_AI_INTERNAL_URL, PLUGIN_INTERNAL_SECRET | n/a (see below) |
-| `nself exec` | core | yes | no | n/a | n/a (see below) |
-| `nself init` | core | yes | no | documented | n/a (see below) |
-| `nself license` | extend | yes | no | undocumented: NSELF_LICENSE_SKIP_VERIFY, NSELF_PING_API_URL | n/a (see below) |
-| `nself logs` | core | yes | yes | n/a | n/a (see below) |
-| `nself mcp` | extend | yes | no | undocumented: INTEGRATION, NSELF_HASURA_ADMIN_SECRET, NSENTRY_STATUS_URL, POSTGRES_URL | n/a (see below) |
-| `nself remove` | extend | yes | no | n/a | n/a (see below) |
-| `nself reset` | core | yes | no | n/a | n/a (see below) |
-| `nself restart` | core | yes | yes | n/a | n/a (see below) |
-| `nself start` | core | yes | yes | undocumented: NSELF_PROFILE, NSELF_SKIP_DB_INIT | n/a (see below) |
-| `nself status` | core | yes | yes | n/a | n/a (see below) |
-| `nself stop` | core | yes | yes | n/a | n/a (see below) |
-| `nself update` | account | yes | no | undocumented: NSELF_PLUGIN_REGISTRY | n/a (see below) |
+| `nself add` | — | yes | 1 | n/a | 1 |
+| `nself backup` | data | yes | 19 | documented | 19 |
+| `nself build` | core | yes | 1 | undocumented: NSELF_L03_REF_BIN, NSELF_PROFILE, UPDATE_GOLDEN | 1 |
+| `nself clean` | core | yes | 1 | n/a | 1 |
+| `nself config` | config | yes | 85 | undocumented: NSELF_REQUIRE_AGE | 85 |
+| `nself db` | data | yes | 87 | n/a | 87 |
+| `nself deploy` | deploy | yes | 17 | undocumented: API_URL, LAPTOP_ONLY, M_DEV, M_PROD, M_QA, M_SEC, NSELF_DEPLOY_ENV, NSELF_DEPLOY_HOST_, NSELF_DEPLOY_HOST_OPS, NSELF_FEATURE_BLUE_GREEN_DEPLOY, NSELF_HASURA_METADATA_STRICT, NSELF_REMOTE_PATH_, OPS_DEPLOY_HOST, VERCEL_TOKEN | 17 |
+| `nself doctor` | core | yes | 6 | undocumented: NSELF_PING_API_URL, OLLAMA_BASE_URL, OLLAMA_HOST, PLUGIN_AI_INTERNAL_URL, PLUGIN_INTERNAL_SECRET | 6 |
+| `nself exec` | core | yes | 0 | n/a | 0 |
+| `nself init` | core | yes | 6 | documented | 6 |
+| `nself license` | extend | yes | 23 | undocumented: NSELF_LICENSE_SKIP_VERIFY, NSELF_PING_API_URL | 23 |
+| `nself logs` | core | yes | 1 | n/a | 1 |
+| `nself mcp` | extend | yes | 1 | undocumented: INTEGRATION, NSELF_HASURA_ADMIN_SECRET, NSENTRY_STATUS_URL, POSTGRES_URL | 1 |
+| `nself remove` | extend | yes | 1 | n/a | 1 |
+| `nself reset` | core | yes | 1 | n/a | 1 |
+| `nself restart` | core | yes | 1 | n/a | 1 |
+| `nself start` | core | yes | 1 | undocumented: NSELF_PROFILE, NSELF_SKIP_DB_INIT | 1 |
+| `nself status` | core | yes | 8 | n/a | 8 |
+| `nself stop` | core | yes | 1 | n/a | 1 |
+| `nself update` | account | yes | 10 | undocumented: NSELF_PLUGIN_REGISTRY | 10 |
 
-Total: 20 commands. Missing wiki page: 0. No MCP tool: 8. Env vars found but undocumented: 8.
+Total: 20 commands. Missing wiki page: 0. No MCP tool: 1. No HTTP route: 1. Env vars found but undocumented: 8.

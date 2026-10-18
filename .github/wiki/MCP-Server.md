@@ -235,7 +235,7 @@ The committed tool list for the hermetic tree (no plugin installed) is `internal
 | Same-name tools | the hand tool answers | one generated tool with a dual-shape input |
 | Other legacy names | the hand tool answers | deprecated aliases |
 | Resources | the four hand resources, plus the new ones | all served from the registry |
-| Server info | `experimental: true` in the initialize capabilities | no flag |
+| Server info | the same identity, no experimental flag | no flag |
 
 No name is ever registered twice.
 

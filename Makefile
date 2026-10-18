@@ -76,14 +76,8 @@ wiki-check: $(TOOLS_BIN)/wikigen
 flag-drift-audit:
 	@bash scripts/ci/flag-drift-audit.sh
 
-## mcp-docs — CLI-R15. Print the current MCP tool/resource/prompt list,
-## generated from cmd/commands/mcp*.go — paste into cmd-mcp.md's PROSE blocks
-## by hand after adding/removing a tool, resource, or prompt.
-mcp-docs: $(TOOLS_BIN)/mcpdoc
-	@$(TOOLS_BIN)/mcpdoc
-
 ## parity — CLI-R17. Regenerate the four-surface parity matrix (wiki page, MCP
-## tool, env var docs, OpenAPI route) for every top-level command. Writes
+## tools, env var docs, HTTP routes) for every top-level command. Writes
 ## .github/surface-parity.md and .github/surface-parity.json. internal/repoqa
 ## asserts the committed copies match; run this after adding, renaming, or
 ## removing a command, an MCP tool, or an env var.
@@ -162,7 +156,7 @@ contract-check: $(TOOLS_BIN)/schemagen $(TOOLS_BIN)/wikigen
 	    || fail "repoqa drift tests failed (NSELF_V15=$$mode)" "regenerate the file the test names"; \
 	  $(CONTRACT_GOTEST) ./cmd/nself/... \
 	    || fail "cmd/nself exit-code tests failed (NSELF_V15=$$mode)" "fix errs.ExitCodeFor wiring"; \
-	  $(CONTRACT_GOTEST) ./cmd/commands/ -run 'Registry|Canon|JSONContract|Invocation|Help|Pilot' \
+	  $(CONTRACT_GOTEST) ./cmd/commands/ -run 'Registry|Canon|JSONContract|Invocation|Help|Pilot|Surface' \
 	    || fail "command contract tests failed (NSELF_V15=$$mode)" "fix the command or regenerate the contract it names"; \
 	done; \
 	unset NSELF_V15; \

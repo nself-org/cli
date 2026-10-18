@@ -27,25 +27,25 @@ func renderMarkdown(rows []Row) string {
 	b.WriteString("\n\n# Four-Surface Parity Matrix\n\n")
 	b.WriteString("One row per top-level command (CLI-R17), scored against the four surfaces " +
 		"a command can ship on. The wiki column is a hard CI gate; the other three are " +
-		"informational — see the matching-rule comments in tools/parity/ for exactly how " +
-		"each column is decided and why it may under-count.\n\n")
+		"informational — see the notes in tools/parity/ for exactly how each column is " +
+		"decided and why it may under-count.\n\n")
 
-	b.WriteString("**OpenAPI Route** is always `n/a`: " + openAPIFinding +
-		" See tools/parity/openapi.go for the full investigation and citations.\n\n")
+	b.WriteString("**MCP Tools** and **HTTP Routes** count what the generators serve for the " +
+		"command and every command below it, read from the same registry the generators " +
+		"read (`mcpgen.Tools` over the machine registry; `invoke.Exposure` for the HTTP " +
+		"transport, the rule `internal/httpapi` applies to OpenAPI). A `0` means the command " +
+		"is not exposed on that surface (cli-only, interactive, stream or not yet an " +
+		"envelope command). See tools/parity/surfaces.go.\n\n")
 
 	b.WriteString("**Env Vars** reflects only direct `os.Getenv`/`viper.Get*` calls in the " +
 		"command's own `cmd/commands/<name>*.go` files — env vars read through internal/* " +
 		"packages are invisible to this check and will show `n/a` even when the command " +
 		"does read documented vars. See tools/parity/envvars.go for the full rule.\n\n")
 
-	b.WriteString("**MCP Tool** credits exact token matches only (e.g. `nself_doctor` -> `doctor`); " +
-		"near-misses like `nself_run_migration` vs. `migrate` are not credited. " +
-		"See tools/parity/mcptools.go for the full rule.\n\n")
-
-	b.WriteString("| Command | Group | Wiki Page | MCP Tool | Env Vars | OpenAPI Route |\n")
+	b.WriteString("| Command | Group | Wiki Page | MCP Tools | Env Vars | HTTP Routes |\n")
 	b.WriteString("|---|---|---|---|---|---|\n")
 
-	var missingWiki, missingMCP, undocEnv int
+	var missingWiki, missingMCP, missingHTTP, undocEnv int
 	for _, r := range rows {
 		group := r.GroupID
 		if group == "" {
@@ -55,19 +55,21 @@ func renderMarkdown(rows []Row) string {
 		if !r.WikiPage {
 			missingWiki++
 		}
-		mcp := checkmark(r.MCPTool)
 		if !r.MCPTool {
 			missingMCP++
+		}
+		if !r.HTTPRoute {
+			missingHTTP++
 		}
 		if strings.HasPrefix(r.EnvVars, "undocumented") {
 			undocEnv++
 		}
-		fmt.Fprintf(&b, "| `%s` | %s | %s | %s | %s | %s |\n",
-			r.Path, group, wiki, mcp, r.EnvVars, r.OpenAPI)
+		fmt.Fprintf(&b, "| `%s` | %s | %s | %d | %s | %d |\n",
+			r.Path, group, wiki, r.MCPTools, r.EnvVars, r.HTTPRoutes)
 	}
 
 	fmt.Fprintf(&b, "\nTotal: %d commands. Missing wiki page: %d. No MCP tool: %d. "+
-		"Env vars found but undocumented: %d.\n", len(rows), missingWiki, missingMCP, undocEnv)
+		"No HTTP route: %d. Env vars found but undocumented: %d.\n", len(rows), missingWiki, missingMCP, missingHTTP, undocEnv)
 
 	return b.String()
 }

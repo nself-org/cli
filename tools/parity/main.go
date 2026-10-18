@@ -1,18 +1,19 @@
 // Command parity builds the four-surface parity matrix: one row per top-level
-// CLI command, scored against wiki docs, MCP tool coverage, env var docs, and
-// OpenAPI routes.
+// CLI command, scored against wiki docs, MCP tools, env var docs, and HTTP
+// API routes.
 //
-// Purpose:     CLI-R17. The four surfaces a command can ship on (wiki page,
+// Purpose:     CLI-R17, P7-SURF-23. The four surfaces a command can ship on
 //
-//	MCP tool, documented env vars, OpenAPI route) drift independently
-//	today — nothing catches a new command that ships without a wiki
-//	page, or an MCP tool whose backing command got renamed. This
-//	generator makes the gap visible and, for the wiki column, blocks
-//	CI on it.
+//	(wiki page, MCP tool, documented env vars, HTTP route) drift
+//	independently unless something compares them. This generator makes
+//	the gap visible and, for the wiki column, blocks CI on it. The MCP
+//	and HTTP columns are read from the registry the generators read, so
+//	they hold by construction; a new surface-less command shows as "no".
 //
 // Mode:        documents the v1.5 surface. main sets NSELF_V15=1 in its own
 //
-//	process (compat.V15 reads the environment on every call) and calls
+//	process (compat.V15 reads the environment on every call), points
+//	HOME and the plugin dir at an empty temp dir and calls
 //	commands.PrepareTreeForGeneration; the top-level command list is
 //	the prepared tree's registry (builtin families only, never an
 //	installed plugin, canon "plugin" entries dropped), the same list
@@ -20,11 +21,11 @@
 //
 // Inputs:      the prepared command registry (see Mode),
 //
-//	.github/wiki/cmd-<name>.md (wiki column), cmd/commands/
-//	mcp.go + mcp_sentry.go (MCP column, read as text — see mcptools.go
-//	for the matching rule), cmd/commands/<name>*.go + .github/wiki/
-//	Config-Env-Vars.md (env column, see envvars.go for the extraction
-//	rule).
+//	commands.MachineRegistry plus mcpgen.Tools (MCP column, see
+//	surfaces.go), invoke.Exposure for the HTTP transport (route column),
+//	.github/wiki/cmd-<name>.md (wiki column), cmd/commands/<name>*.go +
+//	.github/wiki/Config-Env-Vars.md (env column, see envvars.go for the
+//	extraction rule).
 //
 // Outputs:     .github/surface-parity.md (human table) and
 //
@@ -33,24 +34,19 @@
 //
 // Constraints: read-only against everything except its own two output files.
 //
-//	The OpenAPI Route column is always "n/a": internal/apidocs exists
-//	and is wired into `nself build` (internal/build/orchestrator.go),
-//	but it documents the generated backend's HTTP surface, not the
-//	CLI's own commands — see openapi.go in this package for the full
-//	investigation and citations. Idempotent: running twice with no
-//	source changes produces byte-identical output (see internal/repoqa's
-//	drift test).
+//	Idempotent: running twice with no source changes produces
+//	byte-identical output (see internal/repoqa's drift test).
 package main
 
 import (
 	"flag"
 	"fmt"
 	"os"
+
+	"github.com/nself-org/cli/cmd/commands"
 )
 
 const (
-	mcpMainPath    = "cmd/commands/mcp.go"
-	mcpSentryPath  = "cmd/commands/mcp_sentry.go"
 	envVarsWiki    = ".github/wiki/Config-Env-Vars.md"
 	wikiDir        = ".github/wiki"
 	outMarkdown    = ".github/surface-parity.md"
@@ -61,35 +57,41 @@ const (
 func main() {
 	check := flag.Bool("check", false, "verify committed output matches regenerated output; write nothing")
 	flag.Parse()
+	os.Exit(run(*check))
+}
 
+// run does the work behind main so the deferred cleanup of prepareV15 (a temp
+// HOME) runs before the process exits.
+func run(check bool) int {
 	defer prepareV15()()
 
 	rows, err := buildMatrix()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "parity: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	md := renderMarkdown(rows)
 	js, err := renderJSON(rows)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "parity: encode json: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
-	if *check {
-		os.Exit(checkCurrent(md, js))
+	if check {
+		return checkCurrent(md, js)
 	}
 
 	if err := os.WriteFile(outMarkdown, []byte(md), 0o644); err != nil {
 		fmt.Fprintf(os.Stderr, "parity: write %s: %v\n", outMarkdown, err)
-		os.Exit(1)
+		return 1
 	}
 	if err := os.WriteFile(outJSON, js, 0o644); err != nil {
 		fmt.Fprintf(os.Stderr, "parity: write %s: %v\n", outJSON, err)
-		os.Exit(1)
+		return 1
 	}
 	fmt.Printf("wrote %s (%d rows) and %s\n", outMarkdown, len(rows), outJSON)
+	return 0
 }
 
 // buildMatrix loads the command inventory and scores every top-level command
@@ -100,10 +102,15 @@ func buildMatrix() ([]Row, error) {
 		return nil, fmt.Errorf("load inventory: %w", err)
 	}
 
-	mcpTokens, err := mcpToolTokens(mcpMainPath, mcpSentryPath)
+	machine, err := commands.MachineRegistry()
 	if err != nil {
-		return nil, fmt.Errorf("parse mcp tools: %w", err)
+		return nil, fmt.Errorf("build machine registry: %w", err)
 	}
+	tools, err := generatedToolNames(machine)
+	if err != nil {
+		return nil, err
+	}
+	surfaces := countSurfaces(machine, tools)
 
 	envDoc, err := os.ReadFile(envVarsWiki)
 	if err != nil {
@@ -119,15 +126,16 @@ func buildMatrix() ([]Row, error) {
 		}
 		row.WikiPage = hasWikiPage(wikiDir, e.Name)
 
-		row.MCPTool = mcpTokens[e.Name]
+		row.MCPTools = surfaces[e.Name].MCPTools
+		row.MCPTool = row.MCPTools > 0
+		row.HTTPRoutes = surfaces[e.Name].HTTPRoutes
+		row.HTTPRoute = row.HTTPRoutes > 0
 
 		vars, err := envVarsForCommand(commandsGlobIn, e.Name)
 		if err != nil {
 			return nil, fmt.Errorf("scan env vars for %s: %w", e.Name, err)
 		}
 		row.EnvVars = scoreEnvVars(vars, envDoc)
-
-		row.OpenAPI = openAPIColumnValue
 
 		rows = append(rows, row)
 	}
@@ -157,7 +165,11 @@ type Row struct {
 	Path     string `json:"path"`
 	GroupID  string `json:"group_id,omitempty"`
 	WikiPage bool   `json:"wiki_page"`
+	// MCPTool is true when MCPTools > 0: tools generated for the command or any command below it.
 	MCPTool  bool   `json:"mcp_tool"`
+	MCPTools int    `json:"mcp_tools"`
 	EnvVars  string `json:"env_vars"` // "documented" | "undocumented: VAR, VAR" | "n/a"
-	OpenAPI  string `json:"openapi"`  // always "n/a" — see package doc.
+	// HTTPRoute is true when HTTPRoutes > 0: OpenAPI routes for the command or any command below it.
+	HTTPRoute  bool `json:"http_route"`
+	HTTPRoutes int  `json:"http_routes"`
 }

@@ -55,8 +55,8 @@ when no token is set.)
 prints a warning that the token crosses the network over cleartext HTTP.
 
 Run 'nself mcp' from inside an nSelf project directory. See the generated
-tool/resource/prompt list at .github/wiki/cmd-mcp.md (run 'make mcp-docs'
-to regenerate it from this source).
+tool list at .github/wiki/MCP-Tools.md and the resources and prompts at
+.github/wiki/cmd-mcp.md.
 
 Claude Code config (.claude/settings.json):
   "mcpServers": {

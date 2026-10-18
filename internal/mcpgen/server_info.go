@@ -1,9 +1,9 @@
 package mcpgen
 
-// Purpose: the server name and version, and the experimental marker.
-// Inputs: the compat mode. Outputs: the initialize identity and server options.
-// Constraints: v1.4 mode advertises `experimental: true` (generated tools are
-// additive until the v1.5 flip); P7-SURF-23 removes the flag.
+// Purpose: the server name and version, and the server options.
+// Inputs: none. Outputs: the initialize identity and server options.
+// Constraints: no mode branch and no experimental flag; the generated surface
+// is the contract (P7-SURF-23 removed the flag v1.4 mode advertised).
 
 import "github.com/mark3labs/mcp-go/server"
 
@@ -14,15 +14,10 @@ const (
 )
 
 // ServerOptions are the extra options for server.NewMCPServer.
-func ServerOptions(v15 bool) []server.ServerOption {
-	opts := []server.ServerOption{
+func ServerOptions() []server.ServerOption {
+	return []server.ServerOption{
 		server.WithToolCapabilities(true),
 		server.WithResourceCapabilities(true, true),
 		server.WithPromptCapabilities(true),
 	}
-	// compat.V15(P7-SURF-03): the initialize result carries experimental:true -> the flag is gone (P7-SURF-23)
-	if !v15 {
-		opts = append(opts, server.WithExperimental(map[string]any{"experimental": true}))
-	}
-	return opts
 }
