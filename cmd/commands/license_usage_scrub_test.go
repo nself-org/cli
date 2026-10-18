@@ -118,3 +118,31 @@ func TestScrubRedactsHeldTokensAndSegmentedTokens(t *testing.T) {
 		t.Error("device name rewritten")
 	}
 }
+
+// TestJSONInArgs: every accepted spelling of the flag, with the last one
+// winning, decides whether usage text is masked.
+func TestJSONInArgs(t *testing.T) {
+	prev := invokedArgs
+	t.Cleanup(func() { invokedArgs = prev })
+	for _, c := range []struct {
+		args []string
+		want bool
+	}{
+		{[]string{"--json"}, true},
+		{[]string{"--json=1"}, true},
+		{[]string{"--json=T"}, true},
+		{[]string{"--json=true"}, true},
+		{[]string{"--json", "--json=false"}, false},
+		{[]string{"--json=0", "--json"}, true},
+		{[]string{"--format", "json"}, true},
+		{[]string{"--format=json"}, true},
+		{[]string{"--format=table"}, false},
+		{[]string{"--", "--json"}, false},
+		{nil, false},
+	} {
+		invokedArgs = func() []string { return c.args }
+		if got := jsonInArgs(); got != c.want {
+			t.Errorf("%v: got %v want %v", c.args, got, c.want)
+		}
+	}
+}

@@ -5,7 +5,11 @@ package commands
 // Inputs: the process argument list (invokedArgs) and the cobra error text.
 // Outputs: the masked text.
 
-import "os"
+import (
+	"os"
+	"strconv"
+	"strings"
+)
 
 // invokedArgs is the argument list of this process; tests replace it.
 var invokedArgs = func() []string { return os.Args[1:] }
@@ -15,17 +19,26 @@ var invokedArgs = func() []string { return os.Args[1:] }
 // reliable yet and the argument list is read instead.
 func jsonInArgs() bool {
 	args := invokedArgs()
-	for i, a := range args {
+	on, format := false, ""
+	for i := 0; i < len(args); i++ {
+		a := args[i]
 		switch {
 		case a == "--":
-			return false
-		case a == "--json", a == "--json=true", a == "--format=json":
-			return true
-		case a == "--format" && i+1 < len(args) && args[i+1] == "json":
-			return true
+			i = len(args)
+		case a == "--json":
+			on = true
+		case strings.HasPrefix(a, "--json="):
+			if v, err := strconv.ParseBool(a[len("--json="):]); err == nil {
+				on = v
+			}
+		case strings.HasPrefix(a, "--format="):
+			format = a[len("--format="):]
+		case a == "--format" && i+1 < len(args):
+			i++
+			format = args[i]
 		}
 	}
-	return false
+	return on || format == "json"
 }
 
 // usageScrub masks licence keys and JWTs in a usage error, in a JSON
