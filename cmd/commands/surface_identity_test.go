@@ -213,6 +213,24 @@ func (e *surfaceEnv) containers(t *testing.T, on bool) {
 	}
 }
 
+// snapshot is the observable state of the fixture project: its top-level
+// entries and the .env content (so a command that wrote the same reply but a
+// different file shows up).
+func (e *surfaceEnv) snapshot(t *testing.T) string {
+	t.Helper()
+	entries, err := os.ReadDir(e.proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, f := range entries {
+		names = append(names, f.Name())
+	}
+	sort.Strings(names)
+	env, _ := os.ReadFile(filepath.Join(e.proj, ".env"))
+	return strings.Join(names, ",") + " | " + strings.ReplaceAll(string(env), "\n", ";")
+}
+
 // runCLI runs the real binary the way a script does and returns its stdout.
 func (e *surfaceEnv) runCLI(t *testing.T, argv ...string) []byte {
 	t.Helper()
@@ -285,6 +303,7 @@ func (e *surfaceEnv) checkCase(t *testing.T, c surfaceCase) {
 	}
 	e.containers(t, c.containers)
 	cli := e.runCLI(t, c.cli...)
+	cliState := e.snapshot(t)
 	want := normalise(t, cli, c, false)
 	cliEnv := envelopeOf(t, cli)
 	_, hasData := cliEnv["data"]
@@ -323,6 +342,9 @@ func (e *surfaceEnv) checkCase(t *testing.T, c surfaceCase) {
 	if got := normalise(t, raw, c, false); !reflect.DeepEqual(got, want) {
 		t.Errorf("%s: HTTP body differs from CLI --json at %s", c.name, surfaceDiff(want, got, ""))
 	}
+	if got := e.snapshot(t); got != cliState {
+		t.Errorf("%s: the project after the HTTP call differs from the project after the CLI run\ncli  %s\nhttp %s", c.name, cliState, got)
+	}
 	if hasData && status != http.StatusOK {
 		t.Errorf("%s: HTTP status %d for a data envelope", c.name, status)
 	}
@@ -334,6 +356,9 @@ func (e *surfaceEnv) checkCase(t *testing.T, c surfaceCase) {
 	res := e.callMCP(t, c.tool, mcpReq)
 	if len(res.Content) != 1 {
 		t.Fatalf("%s: MCP result has %d content items", c.name, len(res.Content))
+	}
+	if got := e.snapshot(t); got != cliState {
+		t.Errorf("%s: the project after the MCP call differs from the project after the CLI run\ncli %s\nmcp %s", c.name, cliState, got)
 	}
 	if got := normalise(t, []byte(res.Content[0].Text), c, false); !reflect.DeepEqual(got, want) {
 		t.Errorf("%s: MCP text differs from CLI --json at %s", c.name, surfaceDiff(want, got, ""))
@@ -440,7 +465,7 @@ func installSurfacePlugin(t *testing.T, plugins string) {
   "service": {"kind": "cli"}, "status": "stable", "tier": "free", "version": "1.0.0"}`
 	for path, body := range map[string]string{
 		filepath.Join(plugins, "fx", "plugin.json"): manifest,
-		filepath.Join(plugins, "bin", "nself-fx"):   "#!/bin/sh\nprintf '{\"schema_version\":\"1\",\"command\":\"fx status\",\"data\":{\"plugin\":\"fx\",\"ok\":true}}\\n'\n",
+		filepath.Join(plugins, "bin", "nself-fx"):   "#!/bin/sh\nprintf '{\"schema_version\":\"1\",\"command\":\"fx status\",\"data\":{\"plugin\":\"fx\",\"argv\":\"%s\"}}\\n' \"$*\"\n",
 	} {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
@@ -489,6 +514,25 @@ fi
 exit 1
 `
 
+// scrubInheritedEnv drops every variable but the toolchain and OS basics. The
+// fresh process inherits the environment of the whole package run, and other
+// tests in the package set config variables (a short MEILISEARCH_MASTER_KEY
+// fails any plan); the CLI, the HTTP child and the MCP child must all see the
+// fixture project alone. The process is a throwaway child, so nothing restores it.
+func scrubInheritedEnv() {
+	keep := map[string]bool{
+		"PATH": true, "HOME": true, "USERPROFILE": true, "TMPDIR": true, "TMP": true, "TEMP": true, "USER": true,
+		"LOGNAME": true, "SHELL": true, "LANG": true, "LC_ALL": true, "TERM": true, "SYSTEMROOT": true,
+		machineChild: true,
+	}
+	for _, kv := range os.Environ() {
+		name, _, _ := strings.Cut(kv, "=")
+		if !keep[name] && !strings.HasPrefix(name, "GO") && !strings.HasPrefix(name, "CGO_") {
+			_ = os.Unsetenv(name)
+		}
+	}
+}
+
 func TestSurfaceIdentity(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fixture stubs are shell scripts")
@@ -499,6 +543,7 @@ func TestSurfaceIdentity(t *testing.T) {
 	if !inFreshProcess(t, "TestSurfaceIdentity") {
 		return
 	}
+	scrubInheritedEnv()
 	root, _ := filepath.Abs("../..")
 	bin := filepath.Join(t.TempDir(), "nself")
 	build := exec.Command("go", "build", "-mod=vendor", "-o", bin, "./cmd/nself")
@@ -513,8 +558,11 @@ func TestSurfaceIdentity(t *testing.T) {
 	if err := os.MkdirAll(stubs, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(stubs, "docker"), []byte(dockerStub), 0o755); err != nil {
-		t.Fatal(err)
+	// docker and brew are stubs: no daemon, and no Homebrew index download from doctor.
+	for name, body := range map[string]string{"docker": dockerStub, "brew": "#!/bin/sh\nexit 1\n"} {
+		if err := os.WriteFile(filepath.Join(stubs, name), []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
