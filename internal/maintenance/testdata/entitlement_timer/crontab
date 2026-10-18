@@ -1,0 +1,1 @@
+38 */6 * * * if test -x '/usr/local/bin/nself' && test -d '/srv/app'; then '/usr/local/bin/nself' license refresh --project '/srv/app' --quiet; else t=$(crontab -l 2>/dev/null) && printf '\%s\n' "$t" | grep -vF '# nself-entitlement:dae668e4084f07b6' | crontab -; fi # nself-entitlement:dae668e4084f07b6

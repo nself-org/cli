@@ -15,7 +15,6 @@ import (
 // DeepChecks runs all 12 subsystem categories for --deep mode.
 func DeepChecks(ctx context.Context, projectDir string, verbose bool) []CheckResult {
 	var results []CheckResult
-
 	results = append(results, HostChecks(ctx, verbose)...)
 	results = append(results, DockerDeepChecks(ctx, verbose)...)
 	// P7-DEPL-21: no proxy or plugin container holds the Docker socket (ADR 0027).
@@ -43,6 +42,7 @@ func DeepChecks(ctx context.Context, projectDir string, verbose bool) []CheckRes
 
 	results = append(results, LicenseChecks(ctx, projectDir, verbose)...)
 	results = append(results, EntitlementFileChecks(ctx, projectDir)...)
+	results = append(results, EntitlementTimerChecks(ctx, projectDir)...) // P7-PLUG-64: E132
 	results = append(results, MonitoringChecks(ctx)...)
 	results = append(results, BackupChecks(ctx, projectDir)...)
 	results = append(results, SecurityChecks(ctx, projectDir)...)

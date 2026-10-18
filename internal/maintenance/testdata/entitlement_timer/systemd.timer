@@ -1,0 +1,12 @@
+[Unit]
+Description=nSelf entitlement refresh timer dae668e4084f07b6
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=6h
+RandomizedDelaySec=30m
+Persistent=true
+Unit=nself-entitlement-dae668e4084f07b6.service
+
+[Install]
+WantedBy=timers.target
