@@ -149,16 +149,24 @@ func TestSharedProxyDetachOnDown(t *testing.T) {
 
 	var detached []string
 	var detachErr error
-	orig := spDetach
-	t.Cleanup(func() { spDetach = orig })
-	spDetach = func(_ context.Context, ownerDir string, regs ...sharedproxy.Registration) error {
+	var held, released int
+	orig := spDetachHeld
+	t.Cleanup(func() { spDetachHeld = orig })
+	spDetachHeld = func(_ context.Context, ownerDir string, regs ...sharedproxy.Registration) (func(), error) {
 		if data, _ := os.ReadFile(order); len(data) != 0 {
 			t.Errorf("detach ran after docker: %q", data)
 		}
 		for _, r := range regs {
 			detached = append(detached, ownerDir+"|"+r.Project)
 		}
-		return detachErr
+		held++
+		return func() {
+			released++
+			// D-0929: the owner lock outlives the compose down.
+			if data, _ := os.ReadFile(order); !strings.HasPrefix(string(data), "docker compose down") {
+				t.Errorf("the owner lock was released before docker down ran: %q", data)
+			}
+		}, detachErr
 	}
 
 	// Every compose-down path of a fronted project detaches first.
@@ -186,6 +194,11 @@ func TestSharedProxyDetachOnDown(t *testing.T) {
 	}
 	if len(detached) != 0 {
 		t.Errorf("only a fronted project detaches, got %v", detached)
+	}
+
+	// Every detach lock is released, after the down.
+	if held == 0 || released != held {
+		t.Errorf("detach locks held %d, released %d: want all released", held, released)
 	}
 
 	// A stopped owner or a failing detach never blocks the down.

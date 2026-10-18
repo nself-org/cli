@@ -9,17 +9,21 @@ package docker
 // code registers a hook from cmd at init and ComposeDown runs it.
 // Inputs: a hook function; the compose workdir ComposeDown acts on.
 // Outputs: RegisterPreDownHook returns the function that unregisters the hook.
+// A hook returns a release func (nil for none) that ComposeDown calls after
+// docker returns, so a hook can hold a lock across its work and the down (D-0929).
 // Constraints: a hook cannot fail the down (it reports through its own
 // channel); hooks run in registration order, once per ComposeDown call, before
-// docker is invoked; safe for concurrent use.
+// docker is invoked, and their release funcs run in reverse order after it;
+// safe for concurrent use.
 
 import (
 	"context"
 	"sync"
 )
 
-// PreDownHook runs before `docker compose down` in workdir.
-type PreDownHook func(ctx context.Context, workdir string)
+// PreDownHook runs before `docker compose down` in workdir. The func it
+// returns, if not nil, runs once the down has finished (or failed).
+type PreDownHook func(ctx context.Context, workdir string) (release func())
 
 type preDownEntry struct {
 	id   int
@@ -52,15 +56,24 @@ func RegisterPreDownHook(h PreDownHook) (unregister func()) {
 	}
 }
 
-// RunPreDownHooks runs every registered hook for workdir.
-func RunPreDownHooks(ctx context.Context, workdir string) {
+// RunPreDownHooks runs every registered hook for workdir and returns the func
+// that releases what they hold; call it after the down, in a defer.
+func RunPreDownHooks(ctx context.Context, workdir string) (release func()) {
 	preDownMu.Lock()
 	hooks := make([]PreDownHook, 0, len(preDownHooks))
 	for _, e := range preDownHooks {
 		hooks = append(hooks, e.hook)
 	}
 	preDownMu.Unlock()
+	var releases []func()
 	for _, h := range hooks {
-		h(ctx, workdir)
+		if r := h(ctx, workdir); r != nil {
+			releases = append(releases, r)
+		}
+	}
+	return func() {
+		for i := len(releases) - 1; i >= 0; i-- {
+			releases[i]()
+		}
 	}
 }

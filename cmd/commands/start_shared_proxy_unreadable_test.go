@@ -62,9 +62,12 @@ func TestUnreadableRegistrations(t *testing.T) {
 
 	t.Run("the pre-down hook warns with the cause and continues", func(t *testing.T) {
 		detached := false
-		orig := spDetach
-		t.Cleanup(func() { spDetach = orig })
-		spDetach = func(context.Context, string, ...sharedproxy.Registration) error { detached = true; return nil }
+		orig := spDetachHeld
+		t.Cleanup(func() { spDetachHeld = orig })
+		spDetachHeld = func(context.Context, string, ...sharedproxy.Registration) (func(), error) {
+			detached = true
+			return func() {}, nil
+		}
 		out := captureStderr(t, func() { beforeStopSharedProxy(ctx, b.ProjectDir) })
 		if detached || !strings.Contains(out, "not readable") || !strings.Contains(out, "zzz.json") {
 			t.Fatalf("detached=%v, stderr %q: want a warning naming the unreadable file", detached, out)

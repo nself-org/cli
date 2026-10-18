@@ -34,10 +34,10 @@ import (
 )
 
 var (
-	spLocate = sharedproxy.Locate
-	spAttach = sharedproxy.Attach
-	spDetach = sharedproxy.Detach
-	spLeave  = sharedproxy.Leave
+	spLocate     = sharedproxy.Locate
+	spAttach     = sharedproxy.Attach
+	spDetachHeld = sharedproxy.DetachHeld
+	spLeave      = sharedproxy.Leave
 )
 
 func init() {
@@ -111,22 +111,26 @@ func warnOutcome(out sharedproxy.Outcome, err error) {
 
 // beforeStopSharedProxy is the compose pre-down hook: a fronted project
 // disconnects the owner's nginx from its network before its network is removed.
-func beforeStopSharedProxy(ctx context.Context, workdir string) {
+// It returns the release of the owner lock, held until the down has finished so
+// a concurrent owner start cannot reattach the network first (D-0929).
+func beforeStopSharedProxy(ctx context.Context, workdir string) (release func()) {
 	site, err := spLocate(workdir)
 	if err != nil {
 		ui.Warn(fmt.Sprintf("Shared proxy: registrations are not readable, so the owner's nginx was not disconnected and the network may stay in use: %v", err))
-		return
+		return nil
 	}
 	if site.Role != sharedproxy.RoleFronted {
-		return
+		return nil
 	}
-	switch err := spDetach(ctx, site.OwnerDir, *site.Reg); {
+	release, err = spDetachHeld(ctx, site.OwnerDir, *site.Reg)
+	switch {
 	case err == nil:
 	case errors.Is(err, sharedproxy.ErrOwnerNotRunning):
 		ui.Warn("Shared proxy: the owner's nginx is not running; nothing to disconnect")
 	default:
 		ui.Warn(fmt.Sprintf("Shared proxy: %v", err))
 	}
+	return release
 }
 
 // leaveSharedProxy is `nself uninstall` in a fronted project (review R2b): it
