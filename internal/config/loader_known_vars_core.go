@@ -117,6 +117,26 @@ var knownEnvVarsCore = []string{
 	"AUTH_EMAIL_TEMPLATE_FETCH_URL",
 	"AUTH_GRAVATAR_ENABLED",
 	"AUTH_LOCALE_DEFAULT",
+	// hasura-auth settings the auth passthrough (internal/compose/
+	// core_services_auth_nginx.go) forwards to the container unmodified.
+	// AUTH_JWT_CUSTOM_CLAIMS maps user metadata to JWT claims (the multi-app
+	// template's x-hasura-source-account-id mapping).
+	"AUTH_JWT_CUSTOM_CLAIMS",
+	"AUTH_USER_DEFAULT_ROLE",
+	"AUTH_USER_DEFAULT_ALLOWED_ROLES",
+	"AUTH_LOCALE_ALLOWED_LOCALES",
+	"AUTH_PASSWORD_MIN_LENGTH",
+	"AUTH_PASSWORD_HIBP_ENABLED",
+	"AUTH_DISABLE_SIGNUP",
+	"AUTH_ACCESS_CONTROL_ALLOWED_EMAILS",
+	"AUTH_ACCESS_CONTROL_ALLOWED_EMAIL_DOMAINS",
+	"AUTH_ACCESS_CONTROL_BLOCKED_EMAILS",
+	"AUTH_ACCESS_CONTROL_BLOCKED_EMAIL_DOMAINS",
+	"AUTH_MFA_ENABLED",
+	"AUTH_MFA_TOTP_ISSUER",
+	"AUTH_WEBAUTHN_RP_NAME",
+	"AUTH_WEBAUTHN_RP_ORIGINS",
+	"AUTH_WEBAUTHN_RP_ID",
 	// hasura-auth internal URL (used by app functions to call the auth admin API).
 	"HASURA_AUTH_URL",
 	// hasura-auth SMTP vars (distinct prefix from AUTH_SMTP_* — hasura-auth

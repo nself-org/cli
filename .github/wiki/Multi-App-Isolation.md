@@ -46,7 +46,7 @@ Also enforced:
 
 ## Setup
 
-1. Add the `AUTH_JWT_CUSTOM_CLAIMS` and `ENV_ALLOWLIST` lines from `.env.example` to `.env.local`. The first makes hasura-auth copy the user's `metadata.source_account_id` into the `x-hasura-source-account-id` claim.
+1. Add the `AUTH_JWT_CUSTOM_CLAIMS` line from `.env.example` to `.env.local`. It makes hasura-auth copy the user's `metadata.source_account_id` into the `x-hasura-source-account-id` claim.
 2. Run the template's next steps. The migration references `auth.users`, so hasura-auth must be running: `nself start` must have started it before `nself db migrate up` runs:
 
 ```bash

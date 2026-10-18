@@ -79,7 +79,7 @@ MAILPIT_UI_PORT=$((B + 426))
 NSELF_ADMIN_ENABLED=false
 ENV
   # The shipped template line that maps user metadata to the x-hasura-source-account-id claim.
-  grep -E '^(AUTH_JWT_CUSTOM_CLAIMS|ENV_ALLOWLIST)=' .env.example
+  grep -E '^AUTH_JWT_CUSTOM_CLAIMS=' .env.example
 } >>.env.local
 chmod 600 .env.local
 

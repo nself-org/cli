@@ -371,6 +371,11 @@ func TestMultiAppTemplateHygiene(t *testing.T) {
 			t.Errorf(".env.example lacks %q", want)
 		}
 	}
+	// AUTH_JWT_CUSTOM_CLAIMS is a known variable (D-0918): the template must not
+	// carry an ENV_ALLOWLIST workaround for it.
+	if strings.Contains(string(env), "ENV_ALLOWLIST") {
+		t.Errorf(".env.example still carries the ENV_ALLOWLIST workaround")
+	}
 }
 
 // TestNoTemplateShipsSecrets: no bundled template carries a secret-looking value.

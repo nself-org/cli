@@ -133,3 +133,38 @@ func TestKnownEnvVars_CoversCLIWriterSurface(t *testing.T) {
 		t.Errorf("knownEnvVars is missing %d CLI-writer env vars (would trigger false 'unknown env var' warnings on every `nself build`): %v", len(missing), missing)
 	}
 }
+
+// hasuraAuthPassthroughEnvVars lists hasura-auth settings that the auth
+// service's AUTH_*/HASURA_AUTH_* passthrough (internal/compose/
+// core_services_auth_nginx.go) forwards to the container. They work, so they
+// must not draw an "unknown env var" warning on every command (D-0918:
+// AUTH_JWT_CUSTOM_CLAIMS, the multi-app template's isolation claim mapping).
+var hasuraAuthPassthroughEnvVars = []string{
+	"AUTH_JWT_CUSTOM_CLAIMS",
+	"AUTH_USER_DEFAULT_ROLE", "AUTH_USER_DEFAULT_ALLOWED_ROLES",
+	"AUTH_LOCALE_ALLOWED_LOCALES",
+	"AUTH_PASSWORD_MIN_LENGTH", "AUTH_PASSWORD_HIBP_ENABLED",
+	"AUTH_DISABLE_SIGNUP",
+	"AUTH_ACCESS_CONTROL_ALLOWED_EMAILS", "AUTH_ACCESS_CONTROL_ALLOWED_EMAIL_DOMAINS",
+	"AUTH_ACCESS_CONTROL_BLOCKED_EMAILS", "AUTH_ACCESS_CONTROL_BLOCKED_EMAIL_DOMAINS",
+	"AUTH_MFA_ENABLED", "AUTH_MFA_TOTP_ISSUER",
+	"AUTH_WEBAUTHN_RP_NAME", "AUTH_WEBAUTHN_RP_ORIGINS", "AUTH_WEBAUTHN_RP_ID",
+}
+
+// TestKnownEnvVars_CoversHasuraAuthPassthrough verifies every hasura-auth
+// setting the passthrough honours is in knownEnvVars (D-0918).
+func TestKnownEnvVars_CoversHasuraAuthPassthrough(t *testing.T) {
+	knownSet := make(map[string]bool, len(knownEnvVars))
+	for _, k := range knownEnvVars {
+		knownSet[k] = true
+	}
+	var missing []string
+	for _, v := range hasuraAuthPassthroughEnvVars {
+		if !knownSet[v] {
+			missing = append(missing, v)
+		}
+	}
+	if len(missing) > 0 {
+		t.Errorf("knownEnvVars is missing %d hasura-auth passthrough vars (false 'unknown env var' warnings): %v", len(missing), missing)
+	}
+}
