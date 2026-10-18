@@ -296,3 +296,43 @@ type boolValue struct{}
 func (boolValue) String() string   { return "false" }
 func (boolValue) Set(string) error { return nil }
 func (boolValue) Type() string     { return "bool" }
+
+// breakoutAliasArgs replaces a cobra alias in the leading command words with the
+// command's own name when the result is a break-out row's old spelling (D-0907:
+// `nself plugin scaffold` is an alias of `plugin init`). The tree is read before
+// it is prepared, while the break-out's core node still exists; afterwards the
+// node is detached and an alias can no longer be resolved. Any other argv, and
+// any alias that does not land on a break-out row, is returned unchanged.
+func breakoutAliasArgs(t *canonTableT, root *cobra.Command, args []string) []string {
+	start := commandStart(root, args)
+	if start < 0 {
+		return args
+	}
+	out, cur, changed := append([]string{}, args...), root, false
+	end := start
+	for ; end < len(out) && !strings.HasPrefix(out[end], "-"); end++ {
+		var next *cobra.Command
+		for _, c := range cur.Commands() {
+			if c.Name() == out[end] || c.HasAlias(out[end]) {
+				next = c
+				break
+			}
+		}
+		if next == nil {
+			break
+		}
+		if next.Name() != out[end] {
+			out[end], changed = next.Name(), true
+		}
+		cur = next
+	}
+	if !changed {
+		return args
+	}
+	for _, r := range t.Breakouts {
+		if hasPrefix(out[start:end], r.From) {
+			return out
+		}
+	}
+	return args
+}

@@ -68,6 +68,10 @@ func prepareInvocationWith(t *canonTableT, root *cobra.Command) error {
 	legacy := rewriteLegacyInvocation()
 	// compat.V15(P7-CANON-21): the argv names commands at their v1.4 paths -> argv rewritten between old and canonical spellings, tree relocated
 	v15 := compat.V15()
+	if v15 && len(os.Args) > 1 {
+		// D-0907: a cobra alias of a break-out command (plugin scaffold) becomes its own name before the tree detaches the node
+		os.Args = append([]string{os.Args[0]}, breakoutAliasArgs(t, root, os.Args[1:])...)
+	}
 	orig := append([]string{}, os.Args...)
 	args, notes, err := rewriteCanonArgsWith(t, root, processArgs(), v15)
 	if err != nil {

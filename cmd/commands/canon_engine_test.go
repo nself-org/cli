@@ -802,6 +802,12 @@ func TestCanonEnginePrepare(t *testing.T) {
 		{name: "v1.5 silenced", v15: true, argv: "--no-deprecation-warnings env use x", want: "--no-deprecation-warnings config env use x"},
 		{name: "v1.5 canonical", v15: true, argv: "config env use x", want: "config env use x"},
 		{name: "v1.5 breakout without the plugin mounted keeps argv", v15: true, argv: "runner ls", want: "runner ls"},
+		// D-0907: a cobra alias of a break-out command (plugin scaffold = plugin init) reaches the same row
+		{name: "v1.5 breakout typed as a cobra alias without the plugin mounted", v15: true, argv: "rn ls", want: "runner ls",
+			tweak: func(r *cobra.Command) { at(r, "runner").Aliases = []string{"rn"} }},
+		{name: "v1.5 breakout typed as a cobra alias with the plugin mounted", v15: true, mount: true, argv: "rn ls", want: "ci nodes ls",
+			stderr: "warning: 'nself runner' moved to 'nself ci nodes'; the old spelling is removed in v1.6.0\n",
+			tweak:  func(r *cobra.Command) { at(r, "runner").Aliases = []string{"rn"} }},
 		{name: "v1.5 breakout with the plugin mounted", v15: true, mount: true, argv: "runner ls", want: "ci nodes ls",
 			stderr: "warning: 'nself runner' moved to 'nself ci nodes'; the old spelling is removed in v1.6.0\n"},
 		{name: "v1.5 removed", v15: true, argv: "plugin marketplace search x", code: "E410"},
@@ -898,5 +904,19 @@ func TestHelpOnlyParentsComplete(t *testing.T) {
 	}
 	if p := unclassifiedParents(root, []string{"config"}, []string{"config"}); len(p) != 1 || !strings.Contains(p[0], "both") {
 		t.Errorf("double entry: %v", p)
+	}
+}
+
+// TestBreakoutAliasRealTree: `nself plugin scaffold` is a cobra alias of `plugin
+// init`, a break-out in v1.5 (D-0907). Its alias must resolve to the canonical
+// name before the tree detaches the core node.
+func TestBreakoutAliasRealTree(t *testing.T) {
+	reattachRealTree()
+	got := breakoutAliasArgs(&canonTable, RootCmd, []string{"plugin", "scaffold", "demo", "--tier", "pro"})
+	if want := "plugin init demo --tier pro"; strings.Join(got, " ") != want {
+		t.Fatalf("argv %q, want %q", strings.Join(got, " "), want)
+	}
+	if got := breakoutAliasArgs(&canonTable, RootCmd, []string{"plugin", "install", "x"}); strings.Join(got, " ") != "plugin install x" {
+		t.Fatalf("a non-break-out must be untouched, got %v", got)
 	}
 }
