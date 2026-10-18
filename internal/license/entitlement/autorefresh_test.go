@@ -327,3 +327,36 @@ func TestScheduledRemoveFailureIsReported(t *testing.T) {
 		t.Fatalf("err = %v, want class %s", err, ClassTimerRemove)
 	}
 }
+
+// TestScheduledRefreshStaysQuietOnStaleCache: the fail-open warning of license.Validate must not
+// reach stderr (--quiet allows one line per run).
+func TestScheduledRefreshStaysQuietOnStaleCache(t *testing.T) {
+	compattest.Set(t, true)
+	p := newArPing(t, time.Now(), "chat")
+	p.seedCache(t)
+	entry, err := license.ReadCache()
+	if err != nil || entry == nil {
+		t.Fatal(err)
+	}
+	entry.FetchedAt = time.Now().Add(-3 * 24 * time.Hour).Unix()
+	if err := license.WriteCache(entry); err != nil {
+		t.Fatal(err)
+	}
+	fakeTimer(t)
+	p.set("5xx", time.Now())
+	r, w, _ := os.Pipe()
+	old := os.Stderr
+	os.Stderr = w
+	_, runErr := RunScheduled(context.Background(), t.TempDir())
+	os.Stderr = old
+	_ = w.Close()
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	var failed *RefreshError
+	if !errors.As(runErr, &failed) || failed.Class != ClassPingUnavailable {
+		t.Fatalf("err = %v", runErr)
+	}
+	if buf.Len() != 0 {
+		t.Fatalf("RunScheduled wrote to stderr: %q", buf.String())
+	}
+}

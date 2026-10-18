@@ -18,8 +18,7 @@ import (
 
 var safePathRe = regexp.MustCompile(`^/[A-Za-z0-9._/-]+$`)
 
-// host carries every outside-world dependency so tests can fake it.
-type host struct {
+type host struct { // every outside-world dependency, so tests can fake it
 	goos, home, unitDir, launchDir, exe string
 	euid                                int
 	systemd, crontab                    bool
@@ -67,7 +66,7 @@ func (h host) backend() string {
 }
 
 // safePath applies the R7 rule and returns the resolved path and its owner uid.
-func (h host) safePath(p string, owner func(uid uint32) bool) (string, uint32, error) {
+func (h host) safePath(p string, wantDir bool, owner func(uid uint32) bool) (string, uint32, error) {
 	bad := func(why string) (string, uint32, error) { return "", 0, fmt.Errorf("%w: %s %q", ErrUnsafePath, why, p) }
 	if !safePathRe.MatchString(p) || filepath.Clean(p) != p {
 		return bad("not an absolute plain path")
@@ -83,11 +82,10 @@ func (h host) safePath(p string, owner func(uid uint32) bool) (string, uint32, e
 			return bad("group- or world-writable (or unreadable) path component " + cur)
 		}
 		st, ok := info.Sys().(*syscall.Stat_t)
-		if !ok || (cur == res && !owner(st.Uid)) || (cur != res && st.Uid != 0 && !owner(st.Uid)) {
-			return bad("unexpected owner of " + cur) // an owner could swap what is below it
-		}
-		if cur == res {
+		if cur == res && ok && owner(st.Uid) && info.IsDir() == wantDir && (wantDir || info.Mode().IsRegular()) {
 			uid = st.Uid
+		} else if !ok || cur == res || (st.Uid != 0 && st.Uid != uid) {
+			return bad("unexpected owner or type of " + cur) // an owner could swap what is below it
 		}
 		if cur == "/" || cur == h.trustAbove {
 			return res, uid, nil
@@ -96,16 +94,16 @@ func (h host) safePath(p string, owner func(uid uint32) bool) (string, uint32, e
 }
 
 func (h host) paths(projectDir, binPath string) (dir, bin string, uid uint32, err error) {
-	dir, uid, err = h.safePath(projectDir, func(u uint32) bool { return h.euid == 0 || int(u) == h.euid })
+	dir, uid, err = h.safePath(projectDir, true, func(u uint32) bool { return h.euid == 0 || int(u) == h.euid })
 	if err != nil {
 		return
 	}
-	bin = binPath // the unit keeps the stable (possibly symlinked) path; its target is what is validated
-	res, _, err := h.safePath(binPath, func(u uint32) bool { return u == 0 || u == uid })
-	if info, serr := os.Stat(res); err == nil && (serr != nil || !info.Mode().IsRegular()) {
-		err = fmt.Errorf("%w: binary %q is not a regular file", ErrUnsafePath, binPath)
+	own := func(u uint32) bool { return u == 0 || u == uid }
+	_, _, err = h.safePath(binPath, false, own) // the unit keeps the stable path; its target is validated
+	if _, _, derr := h.safePath(filepath.Dir(binPath), true, own); err == nil {
+		err = derr // the directory holding a (symlinked) binary path is trusted too
 	}
-	return dir, bin, uid, err
+	return dir, binPath, uid, err
 }
 
 func (h host) ensure(projectDir, binPath string) (Result, error) {
@@ -134,7 +132,7 @@ func (h host) ensure(projectDir, binPath string) (Result, error) {
 func (h host) status(dir string) TimerStatus {
 	hash, backend := Hash(dir), h.backend()
 	if h.goos == "linux" && fileExists(filepath.Join(h.unitDir, entUnitName(hash)+".timer")) {
-		backend = BackendSystemd // a root-installed unit is visible to (and checked for) non-root users
+		backend = BackendSystemd // a root-installed unit is visible to non-root users
 	}
 	if backend == "" {
 		return TimerStatus{Reason: ReasonNoBackend}
@@ -165,21 +163,20 @@ func (h host) installSystemd(bin, dir, hash string, uid uint32) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	u := entUnitName(hash)
-	c1, err := writeIfDiff(filepath.Join(h.unitDir, u+".service"), []byte(svc))
-	if err != nil {
-		return false, err
+	u, changed := entUnitName(hash), false
+	for ext, body := range map[string]string{".service": svc, ".timer": tmr} {
+		c, werr := writeIfDiff(filepath.Join(h.unitDir, u+ext), []byte(body))
+		if werr != nil {
+			return false, werr
+		}
+		changed = changed || c
 	}
-	c2, err := writeIfDiff(filepath.Join(h.unitDir, u+".timer"), []byte(tmr))
-	if err != nil {
-		return false, err
-	}
-	if c1 || c2 {
+	if changed {
 		if out, err := h.run("", "systemctl", "daemon-reload"); err != nil {
 			return true, cmdErr(out, err, "systemctl", "daemon-reload")
 		}
 	}
-	if _, err := h.run("", "systemctl", "is-active", "--quiet", u+".timer"); err == nil && !c1 && !c2 {
+	if _, err := h.run("", "systemctl", "is-active", "--quiet", u+".timer"); err == nil && !changed {
 		return false, nil
 	}
 	if out, err := h.run("", "systemctl", "enable", "--now", u+".timer"); err != nil {
@@ -208,8 +205,7 @@ func (h host) installCron(bin, dir, hash string) (bool, error) {
 	return true, nil
 }
 
-// cronList reads the user's crontab. "No crontab" is an empty crontab; any other failure is an
-// error, so a crontab we could not read is never overwritten. macOS never uses cron here.
+// cronList reads the crontab: "no crontab" is empty, any other failure an error (never overwrite what was not read).
 func (h host) cronList() (string, error) {
 	if h.goos != "linux" {
 		return "", ErrNoBackend
@@ -280,14 +276,16 @@ func (h host) remove(hash string) (r RemoveResult, firstErr error) {
 			r.Removed = true
 		}
 	}
-	if cur, err := h.cronList(); err == nil {
-		if rest, tagged := taggedLines(cur, entCronTag+hash); len(tagged) > 0 {
-			out, err := h.run(strings.Join(rest, "\n")+"\n", "crontab", "-")
-			if err != nil {
-				fail(cmdErr(out, err, "crontab", "-"))
-			} else {
-				r.Removed = true
-			}
+	cur, cerr := h.cronList()
+	if cerr != nil && h.goos == "linux" {
+		fail(cerr) // an unreadable crontab may still hold our line
+	}
+	if rest, tagged := taggedLines(cur, entCronTag+hash); cerr == nil && len(tagged) > 0 {
+		out, err := h.run(strings.Join(rest, "\n")+"\n", "crontab", "-")
+		if err != nil {
+			fail(cmdErr(out, err, "crontab", "-"))
+		} else {
+			r.Removed = true
 		}
 	}
 	return r, firstErr

@@ -230,7 +230,7 @@ func TestCronReadFailureKeepsForeignLines(t *testing.T) {
 	if f.cron != "MAILTO=ops\n0 3 * * * backup\n" {
 		t.Fatalf("foreign crontab was rewritten: %q", f.cron)
 	}
-	if res, err := Remove(dir); err != nil || res.Removed || f.cron != "MAILTO=ops\n0 3 * * * backup\n" {
+	if res, err := Remove(dir); err == nil || res.Removed || f.cron != "MAILTO=ops\n0 3 * * * backup\n" {
 		t.Fatalf("remove with an unreadable crontab: %+v %v %q", res, err, f.cron)
 	}
 }
@@ -250,6 +250,10 @@ func TestHostilePathRefused(t *testing.T) {
 	if err := os.Symlink(wwProj, link); err != nil {
 		t.Fatal(err)
 	}
+	binLink := filepath.Join(ww, "nself") // a symlink to a fine binary, in a world-writable directory
+	if err := os.Symlink(bin, binLink); err != nil {
+		t.Fatal(err)
+	}
 	gw := filepath.Join(root, "gw")
 	if err := os.Mkdir(gw, 0o755); err != nil || os.Chmod(gw, 0o775) != nil {
 		t.Fatal(err)
@@ -257,7 +261,7 @@ func TestHostilePathRefused(t *testing.T) {
 	bad := map[string]string{
 		"space": dir + " x", "squote": dir + "'", "dquote": dir + `"`, "subshell": dir + "$(id)", "backtick": dir + "`id`",
 		"percent": dir + "%", "semicolon": dir + ";", "newline": dir + "\nx", "dotdot": dir + "/../proj", "lt": dir + "<", "gt": dir + ">",
-		"amp": dir + "&", "relative": "proj", "empty": "", "worldwritable-parent": wwProj, "symlink-into-writable": link, "dot-segment": dir + "/./",
+		"amp": dir + "&", "relative": "proj", "empty": "", "worldwritable-parent": wwProj, "symlink-into-writable": link, "symlink-in-writable-dir": binLink, "dot-segment": dir + "/./",
 	}
 	for name, p := range bad {
 		for _, as := range []string{"dir", "bin"} {
