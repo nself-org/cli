@@ -11,9 +11,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/fslock"
 	"github.com/nself-org/cli/internal/license"
 )
 
@@ -113,9 +115,13 @@ func cachedToken() (string, error) {
 	return "", fmt.Errorf("cached token does not belong to a configured licence")
 }
 
+// writeLockWait bounds how long a writer waits for the build or timer holding the entitlement lock.
+const writeLockWait = 10 * time.Second
+
 // writeAtomic creates new files atomically and refreshes existing mounted inodes.
 // Purpose: keep single-file bind mounts current. Inputs: path/data. Outputs: error.
-// Constraints: 0600; SDK retries torn reads. SPORT: private state publication.
+// Constraints: 0600; writers serialise on <state>/entitlement.lock (D-0947); SDK retries torn
+// reads. SPORT: private state publication.
 func writeAtomic(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	if err := privateDirectories(dir); err != nil {
@@ -124,6 +130,11 @@ func writeAtomic(path string, data []byte) error {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
+	unlock, err := fslock.Acquire(filepath.Join(dir, "entitlement.lock"), writeLockWait)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	info, err := os.Lstat(path)
 	if err == nil {
 		if info.IsDir() {

@@ -11,6 +11,9 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
+
+	"github.com/nself-org/cli/internal/fslock"
 )
 
 // Purpose: install, check and remove the entitlement refresh timer on POSIX hosts (systemd as root,
@@ -185,11 +188,28 @@ func (h host) installSystemd(bin, dir, hash string, uid uint32) (bool, error) {
 	return true, nil
 }
 
+// cronLockWait bounds how long a crontab change waits for another nself process.
+const cronLockWait = 10 * time.Second
+
+// lockCron takes the per-user lock every crontab read-modify-write holds (D-0947): two builds of
+// different projects would otherwise each read the old crontab and the last writer would drop the other's line.
+func (h host) lockCron() (func(), error) {
+	if h.home == "" {
+		return nil, fmt.Errorf("no home directory for the crontab lock")
+	}
+	return fslock.Acquire(filepath.Join(h.home, ".nself", "entitlement-timer.lock"), cronLockWait)
+}
+
 func (h host) installCron(bin, dir, hash string) (bool, error) {
 	line, err := renderCron(bin, dir, hash)
 	if err != nil {
 		return false, err
 	}
+	unlock, err := h.lockCron()
+	if err != nil {
+		return false, err
+	}
+	defer unlock()
 	cur, err := h.cronList()
 	if err != nil {
 		return false, err // never overwrite a crontab we could not read
@@ -278,19 +298,33 @@ func (h host) remove(hash string) (r RemoveResult, firstErr error) {
 			r.Removed = true
 		}
 	}
-	cur, cerr := h.cronList()
-	if cerr != nil && cerr != ErrNoBackend { // no crontab command or not Linux: nothing to read
-		fail(cerr) // an unreadable crontab may still hold our line
-	}
-	if rest, tagged := taggedLines(cur, entCronTag+hash); cerr == nil && len(tagged) > 0 {
-		out, err := h.run(strings.Join(rest, "\n")+"\n", "crontab", "-")
-		if err != nil {
-			fail(cmdErr(out, err, "crontab", "-"))
-		} else {
-			r.Removed = true
-		}
-	}
+	fail(h.removeCron(hash, &r))
 	return r, firstErr
+}
+
+// removeCron drops the tagged crontab lines for hash ("" = all) under the user lock.
+func (h host) removeCron(hash string, r *RemoveResult) error {
+	if h.goos != "linux" || !h.crontab { // no crontab command or not Linux: nothing to read
+		return nil
+	}
+	unlock, err := h.lockCron()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	cur, err := h.cronList()
+	if err != nil {
+		return err // an unreadable crontab may still hold our line
+	}
+	rest, tagged := taggedLines(cur, entCronTag+hash)
+	if len(tagged) == 0 {
+		return nil
+	}
+	if out, err := h.run(strings.Join(rest, "\n")+"\n", "crontab", "-"); err != nil {
+		return cmdErr(out, err, "crontab", "-")
+	}
+	r.Removed = true
+	return nil
 }
 
 func cmdErr(out string, err error, name string, args ...string) error {
