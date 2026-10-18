@@ -29,6 +29,7 @@ import (
 	"github.com/nself-org/cli/internal/license"
 	"github.com/nself-org/cli/internal/output"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // fixtureLicenseKey is a synthetic key; fixtureAccessToken a synthetic token.
@@ -95,6 +96,14 @@ func runLicenseJSON(t *testing.T, cmd *cobra.Command, flags map[string]string, a
 	t.Helper()
 	cmd.SetContext(context.Background())
 	flags = mergeFlags(map[string]string{"json": "true"}, flags)
+	// Another test may have left a flag marked Changed (package-level commands).
+	cmd.InheritedFlags()
+	cmd.Flags().VisitAll(func(f *pflag.Flag) {
+		if _, want := flags[f.Name]; !want && f.Changed {
+			_ = f.Value.Set(f.DefValue)
+			f.Changed = false
+		}
+	})
 	return jsonV15(t, cmd, flags, func() error {
 		defer output.IsolateStdout()()
 		return cmd.RunE(cmd, args)

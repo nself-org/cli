@@ -203,6 +203,20 @@ func TestEffectivePresplitEquivalence(t *testing.T) {
 					// is json legacy, so `plugin info <n> --json` is not refused
 					// with E402; the frozen pre-split table says none.
 					want.JSON = JSONLegacy
+				case "account devices", "account licenses", "account team", "account logout", "logout", "license set",
+					"license add", "license remove", "license clear", "license restore", "license revoke", "license migrate",
+					"license export", "license import":
+					// P7-SURF-16 (lead ruling in the SURF Invalidations): the account
+					// fragment declares surface-only fields the frozen pre-split table
+					// lacks (confirm blocks, secret args and flags, cli_only member
+					// flags, surface cli-only on export), and the two logout rows are
+					// interactive. Compare everything else unchanged.
+					got.Confirm, got.Surface, got.SecretArgs = nil, "", nil
+					got.Flags = stripSurfaceFlagFields(got.Flags)
+					want.Flags = stripSurfaceFlagFields(want.Flags)
+					if k == "account logout" || k == "logout" {
+						want.Output = OutputInteractive
+					}
 				case "stop":
 					// P7-SURF-10: `stop` declares confirm {flags: []} (--volumes is
 					// destructive and stop has no --yes flag, so a machine surface
@@ -252,4 +266,23 @@ func TestLoadModeAware(t *testing.T) {
 	if again, _ := LoadRaw(); again != raw {
 		t.Error("LoadRaw is not memoised")
 	}
+}
+
+// stripSurfaceFlagFields drops the surface-only flag fields (cli_only, secret)
+// so a flag override compares on what the frozen pre-split table can hold.
+func stripSurfaceFlagFields(in map[string]FlagOverride) map[string]FlagOverride {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]FlagOverride, len(in))
+	for name, f := range in {
+		f.CLIOnly, f.Secret = false, false
+		if f != (FlagOverride{}) {
+			out[name] = f
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
