@@ -1,0 +1,7 @@
+{
+  "schema_version": "1",
+  "command": "license revoke",
+  "data": {
+    "revoked": true
+  }
+}

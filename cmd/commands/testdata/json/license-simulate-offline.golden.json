@@ -1,0 +1,13 @@
+{
+  "schema_version": "1",
+  "command": "license simulate-offline",
+  "data": {
+    "cleared": false,
+    "days": 5,
+    "state": "soft-warning",
+    "can_proceed": true,
+    "write_allowed": true,
+    "message": "offline for 5 days",
+    "banner": "license check overdue"
+  }
+}

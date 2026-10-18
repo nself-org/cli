@@ -16415,8 +16415,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/license.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -16437,8 +16437,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/license-account.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -16503,7 +16503,7 @@
           "side_effect": "remote",
           "json": null,
           "output": null,
-          "cli_only": false,
+          "cli_only": true,
           "secret": false
         }
       ],
@@ -16511,8 +16511,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/license-account-devices.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -16543,7 +16543,7 @@
           "side_effect": "remote",
           "json": null,
           "output": null,
-          "cli_only": false,
+          "cli_only": true,
           "secret": false
         },
         {
@@ -16568,8 +16568,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/license-account-licenses.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -16681,7 +16681,7 @@
       "canon": "subcommand",
       "target": null,
       "side_effect": "remote",
-      "output": "document",
+      "output": "interactive",
       "json": "none",
       "data_schema": null,
       "exit_codes": {},
@@ -16722,8 +16722,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/license-account-status.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -16754,7 +16754,7 @@
           "side_effect": "remote",
           "json": null,
           "output": null,
-          "cli_only": false,
+          "cli_only": true,
           "secret": false
         },
         {
@@ -16788,7 +16788,7 @@
           "side_effect": "remote",
           "json": null,
           "output": null,
-          "cli_only": false,
+          "cli_only": true,
           "secret": false
         },
         {
@@ -16805,7 +16805,7 @@
           "side_effect": "remote",
           "json": null,
           "output": null,
-          "cli_only": false,
+          "cli_only": true,
           "secret": false
         }
       ],
@@ -16813,8 +16813,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/license-account-team.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -16869,13 +16869,13 @@
           "name": "key",
           "required": true,
           "variadic": false,
-          "secret": false
+          "secret": true
         },
         {
           "name": "key",
           "required": false,
           "variadic": true,
-          "secret": false
+          "secret": true
         }
       ],
       "flags": [],
@@ -16883,8 +16883,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/license-add.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -16905,10 +16905,13 @@
       "target": null,
       "side_effect": "destructive",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/license-clear.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -16927,11 +16930,11 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/license-export.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
-      "surface": "all"
+      "surface": "cli-only"
     },
     {
       "path": "nself license health",
@@ -16967,8 +16970,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/license-health.v1.schema.json",
       "exit_codes": {
         "1": "any check fails (exits 0 when all checks pass)"
       },
@@ -17016,8 +17019,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/license-import.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -17056,8 +17059,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/license-list.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -17152,7 +17155,7 @@
       "canon": "subcommand",
       "target": null,
       "side_effect": "remote",
-      "output": "document",
+      "output": "interactive",
       "json": "none",
       "data_schema": null,
       "exit_codes": {},
@@ -17220,17 +17223,20 @@
           "json": null,
           "output": null,
           "cli_only": false,
-          "secret": false
+          "secret": true
         }
       ],
       "canon": "subcommand",
       "target": null,
       "side_effect": "remote",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/license-migrate.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -17335,8 +17341,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/license-refresh.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -17356,7 +17362,7 @@
           "name": "key-or-product",
           "required": true,
           "variadic": false,
-          "secret": false
+          "secret": true
         }
       ],
       "flags": [],
@@ -17364,10 +17370,13 @@
       "target": null,
       "side_effect": "destructive",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/license-remove.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -17397,15 +17406,15 @@
           "json": null,
           "output": null,
           "cli_only": false,
-          "secret": false
+          "secret": true
         }
       ],
       "canon": "subcommand",
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/license-restore.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -17426,8 +17435,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/license-revalidate.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -17466,10 +17475,15 @@
       "target": null,
       "side_effect": "destructive",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/license-revoke.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -17487,7 +17501,7 @@
           "name": "key",
           "required": true,
           "variadic": false,
-          "secret": false
+          "secret": true
         }
       ],
       "flags": [],
@@ -17495,10 +17509,13 @@
       "target": null,
       "side_effect": "destructive",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/license-set.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -17535,8 +17552,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/license-show.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -17582,8 +17599,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/license-simulate-offline.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -17622,8 +17639,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/license-status.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -17701,8 +17718,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/license-upgrade.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -17723,8 +17740,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/license-validate.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -21327,7 +21344,7 @@
     "deprecated_shims": 47,
     "plugin": 11,
     "core_missing": [],
-    "json_envelope": 273,
-    "json_legacy": 8
+    "json_envelope": 297,
+    "json_legacy": 1
   }
 }

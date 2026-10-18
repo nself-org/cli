@@ -33,6 +33,7 @@ Examples:
 			if err := license.ClearSimulation(); err != nil {
 				return err
 			}
+			setData(cmd, licenseSimulateData{Cleared: true})
 			fmt.Println("Simulation cleared. License cache restored to current time.")
 			return nil
 		}
@@ -51,6 +52,9 @@ Examples:
 			return err
 		}
 
+		banner := license.BannerAtWarning(*result)
+		setData(cmd, licenseSimulateData{Days: days, State: string(result.State), CanProceed: result.CanProceed,
+			WriteAllowed: result.WriteAllowed, Message: result.Message, Banner: banner})
 		fmt.Printf("Simulated %d days offline.\n", days)
 		fmt.Printf("Grace state: %s\n", result.State)
 		fmt.Printf("Can proceed: %v\n", result.CanProceed)
@@ -59,7 +63,6 @@ Examples:
 			fmt.Printf("Message: %s\n", result.Message)
 		}
 
-		banner := license.BannerAtWarning(*result)
 		if banner != "" {
 			fmt.Printf("\nBanner: %s\n", banner)
 		}

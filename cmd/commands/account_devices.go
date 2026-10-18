@@ -37,6 +37,9 @@ func runAccountDevices(cmd *cobra.Command, _ []string) error {
 	revoke, _ := cmd.Flags().GetString("revoke")
 	force, _ := cmd.Flags().GetBool("force")
 	jsonOut, _ := cmd.Flags().GetBool("json")
+	if err := accountJSONGuard(cmd, "revoke"); err != nil {
+		return err
+	}
 
 	af, err := requireLogin()
 	if err != nil {
@@ -72,6 +75,9 @@ func runAccountDevices(cmd *cobra.Command, _ []string) error {
 		return handleAuthError(err)
 	}
 
+	if jsonEnvelopeOn(cmd) {
+		return emitEnv(cmd, orEmpty(devices), true)
+	}
 	if jsonOut {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")

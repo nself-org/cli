@@ -7,43 +7,44 @@ commands:
   # cmd/commands/account.go:25 RunE path changes no persistent state (prints/reads only)
   license account: {side_effect: read, json: legacy}
   # cmd/commands/account_devices.go:36 lists devices; --revoke removes one on the account server
-  license account devices: {side_effect: read, json: legacy, flags: {revoke: {side_effect: remote}}}
+  license account devices: {side_effect: read, json: legacy, flags: {revoke: {side_effect: remote, cli_only: true}}} # --revoke prompts on the terminal and prints text; --json with it is refused (E402)
   # cmd/commands/account_licenses.go:36 lists licences; --activate changes them on the account server
-  license account licenses: {side_effect: read, json: legacy, flags: {activate: {side_effect: remote}}}
+  license account licenses: {side_effect: read, json: legacy, flags: {activate: {side_effect: remote, cli_only: true}}} # --activate prompts on the terminal and prints text; --json with it is refused (E402)
   # cmd/commands/account_login.go:38 device-code login creates a session on the account server
-  license account login: {side_effect: remote, output: interactive}
+  license account login: {side_effect: remote, output: interactive} # device-code flow: opens a browser and waits for a person to authorise
   # cmd/commands/account_logout.go:32 revokes the session on the account server, then deletes local credentials
-  license account logout: {side_effect: remote}
+  license account logout: {side_effect: remote, output: interactive} # drops this machine's account login (deletes ~/.nself/auth.json); a person runs it, a machine caller must not
   license account status: {side_effect: read, json: legacy}
   # cmd/commands/account_team.go:52 lists members; --invite/--remove/--role change them on the account server
-  license account team: {side_effect: read, json: legacy, flags: {invite: {side_effect: remote}, remove: {side_effect: remote}, role: {side_effect: remote}}}
+  license account team: {side_effect: read, json: legacy, flags: {invite: {side_effect: remote, cli_only: true}, remove: {side_effect: remote, cli_only: true}, role: {side_effect: remote, cli_only: true}}} # the member flags print text (--remove prompts); --json with one is refused (E402)
   # cmd/commands/account_transfer.go:32 moves licence ownership to another account; the owner cannot undo it
-  license account transfer: {side_effect: destructive, output: interactive}
-  license add: {side_effect: write}
-  license clear: {side_effect: destructive}
-  license export: {side_effect: write}
+  license account transfer: {side_effect: destructive, output: interactive} # prompts for the transfer on the terminal; the licence cannot be taken back
+  license add: {side_effect: write, secret_args: [key]}
+  license clear: {side_effect: destructive, confirm: {flags: []}}
+  # surface cli-only: the signed cache holds the licence JWT; --json prints a summary, the blob stays a terminal output
+  license export: {side_effect: write, surface: cli-only}
   # cmd/commands/license_validate.go:112 RunE path changes no persistent state (prints/reads only)
   license health: {side_effect: read, json: legacy, exit_codes: {"1": "any check fails (exits 0 when all checks pass)"}}
   license import: {side_effect: write}
   license list: {side_effect: read}
   # cmd/commands/login.go:33 device-code login creates a session on the account server
-  license login: {side_effect: remote, output: interactive}
+  license login: {side_effect: remote, output: interactive} # device-code flow: opens a browser and waits for a person to authorise
   # cmd/commands/logout.go:30 revokes the session on the account server, then deletes local credentials
-  license logout: {side_effect: remote}
+  license logout: {side_effect: remote, output: interactive} # drops this machine's account login (deletes ~/.nself/auth.json); a person runs it, a machine caller must not
   # cmd/commands/license_migrate.go:72 POSTs the legacy key to the licence server to attach it to an account
-  license migrate: {side_effect: remote}
+  license migrate: {side_effect: remote, flags: {key: {secret: true}}, confirm: {flags: []}}
   license refresh: {side_effect: write}
-  license remove: {side_effect: destructive}
+  license remove: {side_effect: destructive, secret_args: [key-or-product], confirm: {flags: []}}
   # cmd/commands/license_revoke.go:65 re-enables dormant plugins with a new key; deletes nothing
-  license restore: {side_effect: write}
+  license restore: {side_effect: write, flags: {key: {secret: true}}}
   license revalidate: {side_effect: write}
-  license revoke: {side_effect: destructive}
+  license revoke: {side_effect: destructive, confirm: {flags: [yes]}}
   # cmd/commands/license_keys.go:34 replaces every stored licence key; old keys are not restorable
-  license set: {side_effect: destructive}
+  license set: {side_effect: destructive, secret_args: [key], confirm: {flags: []}}
   license show: {side_effect: read, json: legacy}
   license simulate-offline: {side_effect: write}
   license status: {side_effect: read}
-  license tail: {side_effect: read, output: stream}
+  license tail: {side_effect: read, output: stream} # prints live colour-coded validation events until interrupted; no JSON record form
   # cmd/commands/license_validate.go:71 only opens the pricing page in a browser
   license upgrade: {side_effect: read}
   license validate: {side_effect: read}

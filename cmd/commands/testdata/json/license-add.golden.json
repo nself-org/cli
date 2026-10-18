@@ -1,0 +1,12 @@
+{
+  "schema_version": "1",
+  "command": "license add",
+  "data": {
+    "added": [
+      {
+        "key": "nself_pro_**************************1234",
+        "product": "ɳSelf Pro"
+      }
+    ]
+  }
+}

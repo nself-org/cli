@@ -41,6 +41,7 @@ var licenseValidateCmd = &cobra.Command{
 		}
 
 		allValid := true
+		validKeys := []string{}
 		for _, key := range keys {
 			ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
 			valid, err := plugin.ValidateLicenseRemote(ctx, key, pingURL)
@@ -51,6 +52,7 @@ var licenseValidateCmd = &cobra.Command{
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s: validation failed: %v\n", masked, err)
 				allValid = false
 			} else if valid {
+				validKeys = append(validKeys, masked)
 				fmt.Printf("%s: valid\n", masked)
 			} else {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s: invalid or expired\n", masked)
@@ -61,6 +63,7 @@ var licenseValidateCmd = &cobra.Command{
 		if !allValid {
 			return fmt.Errorf("one or more keys failed validation")
 		}
+		setData(cmd, licenseValidateData{Keys: validKeys})
 		return nil
 	},
 }
@@ -69,6 +72,10 @@ var licenseUpgradeCmd = &cobra.Command{
 	Use:   "upgrade",
 	Short: "Open pricing page in browser",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if jsonEnvelopeOn(cmd) { // an agent run starts no browser; the page is in the document
+			setData(cmd, licenseUpgradeData{URL: pricingURL})
+			return nil
+		}
 		var openCmd string
 		switch runtime.GOOS {
 		case "darwin":
@@ -187,6 +194,9 @@ Use --json for machine-readable output.`,
 				Status:          status,
 				Message:         message,
 			}
+			if jsonEnvelopeOn(cmd) {
+				return emitEnv(cmd, out, true)
+			}
 			return json.NewEncoder(os.Stdout).Encode(out)
 		}
 
@@ -237,6 +247,11 @@ Requires network connectivity.`,
 			return fmt.Errorf("license is invalid: %s", result.Message)
 		}
 
+		rev := licenseRevalidateData{Tier: result.Tier}
+		if !result.ExpiresAt.IsZero() {
+			rev.ExpiresAt = result.ExpiresAt.Format("2006-01-02")
+		}
+		setData(cmd, rev)
 		fmt.Printf("License revalidated. Tier: %s\n", result.Tier)
 		if !result.ExpiresAt.IsZero() {
 			fmt.Printf("Expires: %s\n", result.ExpiresAt.Format("2006-01-02"))

@@ -39,6 +39,7 @@ Use 'nself license restore --key <new-key>' to reactivate.`,
 			fmt.Println("This will revoke the local license and wipe the stored key.")
 			fmt.Println("Plugins will go DORMANT on the next build.")
 			fmt.Println("Run with --yes to confirm.")
+			setData(cmd, licenseRevokeData{})
 			return nil
 		}
 
@@ -46,6 +47,7 @@ Use 'nself license restore --key <new-key>' to reactivate.`,
 			return fmt.Errorf("revocation failed: %w", err)
 		}
 
+		setData(cmd, licenseRevokeData{Revoked: true})
 		fmt.Println("License revoked. Stored key removed.")
 		fmt.Println("Plugins will show DORMANT status after next 'nself build'.")
 		fmt.Println("To reactivate: nself license restore --key <new-key>")
@@ -95,6 +97,7 @@ var licenseRestoreCmd = &cobra.Command{
 		}
 
 		pp := license.DetectProduct(newKey)
+		setData(cmd, licenseRestoreData{Restored: true, Product: licenseProductName(pp, "")})
 		if pp != nil {
 			fmt.Printf("%s license restored.\n", pp.DisplayName)
 		} else {

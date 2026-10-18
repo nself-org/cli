@@ -76,12 +76,17 @@ func runLicenseMigrate(cmd *cobra.Command, args []string) error {
 	}
 
 	// If --account-id provided, perform the actual account-link migration.
+	doc := &licenseMigrateData{Mode: "status", Keys: []licenseMigrateKey{}}
+	run := runMigrateCheck
 	if migrateAccountID != "" {
-		return runMigrateLink(cmd.Context(), pingURL)
+		doc.Mode, run = "link", runMigrateLink
 	}
-
-	// Otherwise, show migration status for all configured keys.
-	return runMigrateCheck(cmd.Context(), pingURL)
+	// Without --account-id, show migration status for all configured keys.
+	if err := run(cmd.Context(), pingURL, doc); err != nil {
+		return err
+	}
+	setData(cmd, *doc)
+	return nil
 }
 
 func init() {

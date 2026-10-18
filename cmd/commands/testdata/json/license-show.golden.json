@@ -1,0 +1,15 @@
+{
+  "schema_version": "1",
+  "command": "license show",
+  "data": {
+    "configured": true,
+    "key_prefix": "...1234",
+    "tier": "ɳSelf Pro",
+    "bundles_unlocked": [
+      "chat"
+    ],
+    "plugins_available_count": 1,
+    "days_to_expire": 7,
+    "cache_expiry": "2026-10-25"
+  }
+}

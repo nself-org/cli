@@ -1,0 +1,13 @@
+{
+  "schema_version": "1",
+  "command": "license export",
+  "data": {
+    "tier": "plus",
+    "plugins_allowed": [
+      "chat"
+    ],
+    "fetched_at": 1790000000,
+    "expires_at": 1790600000,
+    "signed": true
+  }
+}

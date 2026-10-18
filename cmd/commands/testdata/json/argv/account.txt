@@ -1,0 +1,30 @@
+# account fragment conversion rows. See README.md for tags.
+# The harness runs with an empty HOME: no licence key, no account login, no
+# network. Rows that need either fail the same way in every mode and are
+# tagged no-json; their populated paths (set, add, remove, validate, refresh,
+# revalidate, export, import, restore, status with keys, the account lists)
+# are covered by TestLicenseEnvelopes, TestAccountEnvelopes and
+# TestAccountStatusStates in license_envelope_test.go and json_account_test.go,
+# which also assert no fixture key, JWT or token appears in any document.
+license
+license status
+license list
+license show #| legacy-json
+license clear
+license revoke
+license migrate
+license account status #| legacy-json
+license account devices #| legacy-json no-json=needs-an-account-login
+license account licenses #| legacy-json no-json=needs-an-account-login
+license account team #| legacy-json no-json=needs-an-account-login
+license validate #| no-json=needs-a-configured-key
+license health #| legacy-json no-json=needs-a-configured-key
+license export #| no-json=needs-a-licence-cache
+license refresh #| no-json=needs-a-configured-key
+license revalidate #| no-json=needs-a-configured-key
+license set short #| no-json=refuses-a-malformed-key
+license remove nself_fixture #| no-json=no-matching-key
+# Not run here: upgrade (opens a browser), login and account login (device-code
+# flow), account transfer (prompt) and tail (network stream); the first is
+# covered by TestLicenseEnvelopes, the rest are interactive or streams.
+license logout #| no-json=interactive-credential-removal

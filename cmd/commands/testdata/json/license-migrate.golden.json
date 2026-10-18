@@ -1,0 +1,15 @@
+{
+  "schema_version": "1",
+  "command": "license migrate",
+  "data": {
+    "mode": "status",
+    "keys": [
+      {
+        "key": "nself_pro_**************************1234",
+        "product": "Pro",
+        "remaining": "12 days",
+        "status": "legacy"
+      }
+    ]
+  }
+}

@@ -36,6 +36,9 @@ func init() {
 func runAccountLicenses(cmd *cobra.Command, _ []string) error {
 	activate, _ := cmd.Flags().GetString("activate")
 	jsonOut, _ := cmd.Flags().GetBool("json")
+	if err := accountJSONGuard(cmd, "activate"); err != nil {
+		return err
+	}
 
 	af, err := requireLogin()
 	if err != nil {
@@ -61,6 +64,9 @@ func runAccountLicenses(cmd *cobra.Command, _ []string) error {
 		return handleAuthError(err)
 	}
 
+	if jsonEnvelopeOn(cmd) {
+		return emitEnv(cmd, orEmpty(licenses), true)
+	}
 	if jsonOut {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")

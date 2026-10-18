@@ -5772,6 +5772,473 @@ export interface InitTemplateUpdateRequest {
   flags?: InitTemplateUpdateFlags;
 }
 
+export type LicenseAccountArgs = [];
+
+export interface LicenseAccountData {
+  bundles: null | Array<string>;
+  display_name: string;
+  email: string;
+  email_verified?: null | boolean;
+  mfa_enabled?: null | boolean;
+  status: string;
+  tier: string;
+}
+
+export type LicenseAccountDevicesArgs = [];
+
+export type LicenseAccountDevicesData = null | Array<{
+  id: string;
+  is_current: boolean;
+  last_active: string;
+  name: string;
+  os: string;
+}>;
+
+export type LicenseAccountDevicesFlags = {
+  /** Required to revoke the current device */
+  force?: boolean;
+};
+
+/** List and revoke registered devices */
+export interface LicenseAccountDevicesRequest {
+  args?: LicenseAccountDevicesArgs;
+  flags?: LicenseAccountDevicesFlags;
+}
+
+export type LicenseAccountFlags = Record<string, never>;
+
+export type LicenseAccountLicensesArgs = [];
+
+export type LicenseAccountLicensesData = null | Array<{
+  activated_at: string;
+  bundles: null | Array<string>;
+  expires_at: string;
+  id: string;
+  is_active: boolean;
+  product: string;
+  seats_included: number;
+  seats_used: number;
+  tier: string;
+}>;
+
+export type LicenseAccountLicensesFlags = Record<string, never>;
+
+/** List and manage account licenses */
+export interface LicenseAccountLicensesRequest {
+  args?: LicenseAccountLicensesArgs;
+  flags?: LicenseAccountLicensesFlags;
+}
+
+/** Manage your nSelf account, sessions, licenses, team, and devices */
+export interface LicenseAccountRequest {
+  args?: LicenseAccountArgs;
+  flags?: LicenseAccountFlags;
+}
+
+export type LicenseAccountStatusArgs = [];
+
+export interface LicenseAccountStatusData {
+  bundles: null | Array<string>;
+  display_name: string;
+  email: string;
+  email_verified?: null | boolean;
+  mfa_enabled?: null | boolean;
+  status: string;
+  tier: string;
+}
+
+export type LicenseAccountStatusFlags = Record<string, never>;
+
+/** Show current account summary */
+export interface LicenseAccountStatusRequest {
+  args?: LicenseAccountStatusArgs;
+  flags?: LicenseAccountStatusFlags;
+}
+
+export type LicenseAccountTeamArgs = [];
+
+export type LicenseAccountTeamData = null | Array<{
+  email: string;
+  joined_at: string;
+  name: string;
+  role: string;
+}>;
+
+export type LicenseAccountTeamFlags = Record<string, never>;
+
+/** Manage team members */
+export interface LicenseAccountTeamRequest {
+  args?: LicenseAccountTeamArgs;
+  flags?: LicenseAccountTeamFlags;
+}
+
+export type LicenseAddArgs = [string, string?, ...Array<string>];
+
+export interface LicenseAddData {
+  added: null | Array<{
+    key: string;
+    product: string;
+  }>;
+}
+
+export type LicenseAddFlags = Record<string, never>;
+
+/** Add one or more license keys */
+export interface LicenseAddRequest {
+  args: LicenseAddArgs;
+  flags?: LicenseAddFlags;
+}
+
+export type LicenseArgs = [];
+
+export type LicenseClearArgs = [];
+
+export interface LicenseClearData {
+  dry_run: boolean;
+  ok: boolean;
+  target: string;
+}
+
+export type LicenseClearFlags = Record<string, never>;
+
+/** Remove all saved license keys */
+export interface LicenseClearRequest {
+  args?: LicenseClearArgs;
+  flags?: LicenseClearFlags;
+  confirm?: string;
+}
+
+export interface LicenseData {
+  subcommands: null | Array<{
+    name: string;
+    summary: string;
+  }>;
+}
+
+export type LicenseFlags = Record<string, never>;
+
+export type LicenseHealthArgs = [];
+
+export interface LicenseHealthData {
+  cache_integrity: boolean;
+  format_ok: boolean;
+  health_score: number;
+  message?: string;
+  server_reachable: boolean;
+  server_valid: boolean;
+  status: string;
+}
+
+export type LicenseHealthFlags = Record<string, never>;
+
+/** Validate format, ping server, and report cache integrity */
+export interface LicenseHealthRequest {
+  args?: LicenseHealthArgs;
+  flags?: LicenseHealthFlags;
+}
+
+export type LicenseImportArgs = [string];
+
+export interface LicenseImportData {
+  dry_run: boolean;
+  ok: boolean;
+  target: string;
+}
+
+export type LicenseImportFlags = {
+  /** Required when NSELF_LICENSE_SKIP_VERIFY=1; explicit acknowledgment of skipped signature verification */
+  force?: boolean;
+};
+
+/** Import a previously exported license cache file */
+export interface LicenseImportRequest {
+  args: LicenseImportArgs;
+  flags?: LicenseImportFlags;
+}
+
+export type LicenseListArgs = [];
+
+export interface LicenseListData {
+  keys: null | Array<{
+    expires: string;
+    key: string;
+    plugins: null | Array<string>;
+    product: string;
+    status: string;
+  }>;
+  plugin_access?: null | {
+    granted: boolean;
+    plugin: string;
+  };
+  plugins: null | Array<string>;
+  products: null | Array<string>;
+}
+
+export type LicenseListFlags = {
+  /** Check access for a specific plugin by name */
+  plugin?: string;
+};
+
+/** Show all configured licenses (alias for status) */
+export interface LicenseListRequest {
+  args?: LicenseListArgs;
+  flags?: LicenseListFlags;
+}
+
+export type LicenseMigrateArgs = [];
+
+export interface LicenseMigrateData {
+  keys: null | Array<{
+    key: string;
+    product: string;
+    remaining: string;
+    status: string;
+  }>;
+  link?: null | {
+    account_id: string;
+    already_linked: boolean;
+    key: string;
+    tier: string;
+  };
+  mode: string;
+}
+
+export type LicenseMigrateFlags = {
+  /** nSelf account UUID to link the legacy key to */
+  "account-id"?: string;
+  /** Preview migration steps without applying changes */
+  "dry-run"?: boolean;
+  /** specific license key to migrate (defaults to auto-detected legacy key) */
+  key?: string;
+};
+
+/** Migrate legacy license key to a nSelf account */
+export interface LicenseMigrateRequest {
+  args?: LicenseMigrateArgs;
+  flags?: LicenseMigrateFlags;
+  confirm?: string;
+}
+
+export type LicenseRefreshArgs = [];
+
+export interface LicenseRefreshData {
+  entitlement_expires?: string;
+  keys: null | Array<{
+    error?: string;
+    expires_at?: string;
+    key: string;
+    refreshed: boolean;
+    tier?: string;
+  }>;
+  mode: string;
+  preview?: string;
+  timer_removed?: boolean;
+}
+
+export type LicenseRefreshFlags = {
+  /** With --remove-timer: remove the timers of every project of this user */
+  all?: boolean;
+  /** Project directory (default: the project around the working directory) */
+  project?: string;
+  /** Print at most one line (used by the unattended refresh timer) */
+  quiet?: boolean;
+  /** Remove the unattended entitlement refresh timer and exit */
+  "remove-timer"?: boolean;
+};
+
+/** Force-refresh license validation against ping.nself.org */
+export interface LicenseRefreshRequest {
+  args?: LicenseRefreshArgs;
+  flags?: LicenseRefreshFlags;
+}
+
+export type LicenseRemoveArgs = [string];
+
+export interface LicenseRemoveData {
+  removed: number;
+}
+
+export type LicenseRemoveFlags = Record<string, never>;
+
+/** Remove a license key by value or product name */
+export interface LicenseRemoveRequest {
+  args: LicenseRemoveArgs;
+  flags?: LicenseRemoveFlags;
+  confirm?: string;
+}
+
+/** Manage license keys for nSelf product bundles */
+export interface LicenseRequest {
+  args?: LicenseArgs;
+  flags?: LicenseFlags;
+}
+
+export type LicenseRestoreArgs = [];
+
+export interface LicenseRestoreData {
+  product: string;
+  restored: boolean;
+}
+
+export type LicenseRestoreFlags = {
+  /** New license key to restore with */
+  key?: string;
+};
+
+/** Reactivate dormant plugins with a new license key */
+export interface LicenseRestoreRequest {
+  args?: LicenseRestoreArgs;
+  flags?: LicenseRestoreFlags;
+}
+
+export type LicenseRevalidateArgs = [];
+
+export interface LicenseRevalidateData {
+  expires_at?: string;
+  tier: string;
+}
+
+export type LicenseRevalidateFlags = Record<string, never>;
+
+/** Force a fresh validation against ping.nself.org and update the cache */
+export interface LicenseRevalidateRequest {
+  args?: LicenseRevalidateArgs;
+  flags?: LicenseRevalidateFlags;
+}
+
+export type LicenseRevokeArgs = [];
+
+export interface LicenseRevokeData {
+  revoked: boolean;
+}
+
+export type LicenseRevokeFlags = Record<string, never>;
+
+/** Mark local license as revoked and wipe the stored key */
+export interface LicenseRevokeRequest {
+  args?: LicenseRevokeArgs;
+  flags?: LicenseRevokeFlags;
+  confirm?: string;
+}
+
+export type LicenseSetArgs = [string];
+
+export interface LicenseSetData {
+  key: string;
+  product: string;
+  replaced: number;
+}
+
+export type LicenseSetFlags = Record<string, never>;
+
+/** Replace all keys with a single key */
+export interface LicenseSetRequest {
+  args: LicenseSetArgs;
+  flags?: LicenseSetFlags;
+  confirm?: string;
+}
+
+export type LicenseShowArgs = [];
+
+export interface LicenseShowData {
+  bundles_unlocked: null | Array<string>;
+  cache_expiry?: string;
+  configured: boolean;
+  days_to_expire?: null | number;
+  key_prefix: string;
+  plugins_available_count: number;
+  tier: string;
+}
+
+export type LicenseShowFlags = Record<string, never>;
+
+/** Display license tier, bundles, plugins, and cache expiry */
+export interface LicenseShowRequest {
+  args?: LicenseShowArgs;
+  flags?: LicenseShowFlags;
+}
+
+export type LicenseSimulateOfflineArgs = [string];
+
+export interface LicenseSimulateOfflineData {
+  banner?: string;
+  can_proceed: boolean;
+  cleared: boolean;
+  days: number;
+  message?: string;
+  state: string;
+  write_allowed: boolean;
+}
+
+export type LicenseSimulateOfflineFlags = {
+  /** Clear simulation and restore cache to current time */
+  clear?: boolean;
+};
+
+/** Simulate being offline for N days (testing only) */
+export interface LicenseSimulateOfflineRequest {
+  args: LicenseSimulateOfflineArgs;
+  flags?: LicenseSimulateOfflineFlags;
+}
+
+export type LicenseStatusArgs = [];
+
+export interface LicenseStatusData {
+  keys: null | Array<{
+    expires: string;
+    key: string;
+    plugins: null | Array<string>;
+    product: string;
+    status: string;
+  }>;
+  plugin_access?: null | {
+    granted: boolean;
+    plugin: string;
+  };
+  plugins: null | Array<string>;
+  products: null | Array<string>;
+}
+
+export type LicenseStatusFlags = {
+  /** Check access for a specific plugin by name */
+  plugin?: string;
+};
+
+/** Show all configured licenses and plugin coverage */
+export interface LicenseStatusRequest {
+  args?: LicenseStatusArgs;
+  flags?: LicenseStatusFlags;
+}
+
+export type LicenseUpgradeArgs = [];
+
+export interface LicenseUpgradeData {
+  opened: boolean;
+  url: string;
+}
+
+export type LicenseUpgradeFlags = Record<string, never>;
+
+/** Open pricing page in browser */
+export interface LicenseUpgradeRequest {
+  args?: LicenseUpgradeArgs;
+  flags?: LicenseUpgradeFlags;
+}
+
+export type LicenseValidateArgs = [];
+
+export interface LicenseValidateData {
+  keys: null | Array<string>;
+}
+
+export type LicenseValidateFlags = Record<string, never>;
+
+/** Validate key against ping.nself.org */
+export interface LicenseValidateRequest {
+  args?: LicenseValidateArgs;
+  flags?: LicenseValidateFlags;
+}
+
 export type LogsArgs = [string?];
 
 export interface LogsData {

@@ -88,7 +88,7 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 
 <!-- BEGIN GENERATED: operations (tools/sdkgen, DO NOT HAND EDIT) -->
 
-259 operations. Every method takes `{ args, flags }` (plus `confirm`, or the free-form `argv` of a plugin command that declares no args or flags, where the operation declares it) and resolves to the typed `data` member.
+282 operations. Every method takes `{ args, flags }` (plus `confirm`, or the free-form `argv` of a plugin command that declares no args or flags, where the operation declares it) and resolves to the typed `data` member.
 
 | Method | Route | Summary |
 | --- | --- | --- |
@@ -326,6 +326,29 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 | `initTemplateList` | `POST /v1/commands/init/template/list` | List available app templates |
 | `initTemplatePublish` | `POST /v1/commands/init/template/publish` | Submit a template to the nSelf registry |
 | `initTemplateUpdate` | `POST /v1/commands/init/template/update` | Apply incremental migrations for the installed template |
+| `license` | `POST /v1/commands/license` | Manage license keys for nSelf product bundles |
+| `licenseAccount` | `POST /v1/commands/license/account` | Manage your nSelf account, sessions, licenses, team, and devices |
+| `licenseAccountDevices` | `POST /v1/commands/license/account/devices` | List and revoke registered devices |
+| `licenseAccountLicenses` | `POST /v1/commands/license/account/licenses` | List and manage account licenses |
+| `licenseAccountStatus` | `POST /v1/commands/license/account/status` | Show current account summary |
+| `licenseAccountTeam` | `POST /v1/commands/license/account/team` | Manage team members |
+| `licenseAdd` | `POST /v1/commands/license/add` | Add one or more license keys |
+| `licenseClear` | `POST /v1/commands/license/clear` | Remove all saved license keys |
+| `licenseHealth` | `POST /v1/commands/license/health` | Validate format, ping server, and report cache integrity |
+| `licenseImport` | `POST /v1/commands/license/import` | Import a previously exported license cache file |
+| `licenseList` | `POST /v1/commands/license/list` | Show all configured licenses (alias for status) |
+| `licenseMigrate` | `POST /v1/commands/license/migrate` | Migrate legacy license key to a nSelf account |
+| `licenseRefresh` | `POST /v1/commands/license/refresh` | Force-refresh license validation against ping.nself.org |
+| `licenseRemove` | `POST /v1/commands/license/remove` | Remove a license key by value or product name |
+| `licenseRestore` | `POST /v1/commands/license/restore` | Reactivate dormant plugins with a new license key |
+| `licenseRevalidate` | `POST /v1/commands/license/revalidate` | Force a fresh validation against ping.nself.org and update the cache |
+| `licenseRevoke` | `POST /v1/commands/license/revoke` | Mark local license as revoked and wipe the stored key |
+| `licenseSet` | `POST /v1/commands/license/set` | Replace all keys with a single key |
+| `licenseShow` | `POST /v1/commands/license/show` | Display license tier, bundles, plugins, and cache expiry |
+| `licenseSimulateOffline` | `POST /v1/commands/license/simulate-offline` | Simulate being offline for N days (testing only) |
+| `licenseStatus` | `POST /v1/commands/license/status` | Show all configured licenses and plugin coverage |
+| `licenseUpgrade` | `POST /v1/commands/license/upgrade` | Open pricing page in browser |
+| `licenseValidate` | `POST /v1/commands/license/validate` | Validate key against ping.nself.org |
 | `logs` | `POST /v1/commands/logs` | View and filter service logs |
 | `mcpSetup` | `POST /v1/commands/mcp/setup` | Print or write the MCP client config and AGENTS.md for this project |
 | `remove` | `POST /v1/commands/remove` | Remove an installed plugin or bundle |
