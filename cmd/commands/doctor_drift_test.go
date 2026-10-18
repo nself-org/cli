@@ -250,23 +250,24 @@ func TestReviewDoctorFixRespectsHandEditAndProdGate(t *testing.T) {
 	}
 }
 
-// TestDoctorDriftVirtualPluginKeys covers D-0382: a plugin compose fragment is
-// recorded under the virtual key "@plugins/<name>/docker-compose.plugin.yml".
-// Doctor resolves it under the plugin directory, so a fresh install is clean,
-// --fix stays clean on every rerun, a hand edit is drift and a removed plugin
-// is not.
-func TestDoctorDriftVirtualPluginKeys(t *testing.T) {
+// TestDoctorDriftPluginOverlay covers D-0382 and D-0318: a plugin compose
+// fragment is normalized into the project overlay
+// ".nself/plugins/<name>/docker-compose.plugin.yml", which the record tracks as
+// a project file. A fresh install is clean, --fix stays clean on every rerun,
+// a hand edit of the overlay is drift, the shared fragment is never rewritten
+// and a removed plugin is not drift.
+func TestDoctorDriftPluginOverlay(t *testing.T) {
 	isolateDoctorHome(t)
 	dir := t.TempDir()
 	plugins := t.TempDir()
 	t.Setenv("NSELF_PLUGIN_DIR", plugins)
-	const key = reconcile.PluginsPrefix + "fxplug/docker-compose.plugin.yml"
+	const key = ".nself/plugins/fxplug/docker-compose.plugin.yml"
 	fragment := filepath.Join(plugins, "fxplug", "docker-compose.plugin.yml")
 	if err := os.MkdirAll(filepath.Dir(fragment), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	// The fixture shape of the P7-LIVE-08 cascade suite: the build rewrites an
-	// nself/* image with a Dockerfile in place, so it records the fragment.
+	// nself/* image with a Dockerfile, so it records the overlay.
 	for name, body := range map[string]string{
 		"plugin.json":               `{"name":"fxplug","version":"1.0.0","description":"synthetic fixture","category":"utility","license":"MIT","port":3961,"language":"go"}`,
 		"docker-compose.plugin.yml": "services:\n  fxplug:\n    image: nself/fxplug:latest\n    ports:\n      - \"3961:3961\"\n",
@@ -311,21 +312,29 @@ func TestDoctorDriftVirtualPluginKeys(t *testing.T) {
 		clean(fmt.Sprintf("after fix run %d", i))
 	}
 
-	f, err := os.OpenFile(fragment, os.O_APPEND|os.O_WRONLY, 0)
+	// The shared fragment is never rewritten by the build.
+	shared, err := os.ReadFile(fragment)
+	if err != nil || !strings.Contains(string(shared), "nself/fxplug:latest") {
+		t.Fatalf("the shared fragment must stay as installed: %q, %v", shared, err)
+	}
+
+	overlay := filepath.Join(dir, filepath.FromSlash(key))
+	built, err := os.ReadFile(overlay)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.WriteString("# hand edit\n"); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.Close(); err != nil {
+	if err := os.WriteFile(overlay, append(append([]byte(nil), built...), []byte("# hand edit\n")...), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	r, _, err := checkGeneratedDrift(context.Background(), dir)
 	if err != nil || r.Status != "fail" || r.Message != "drift: "+key+" (hand-edited)" {
-		t.Fatalf("hand-edited fragment: %+v, %v", r, err)
+		t.Fatalf("hand-edited overlay: %+v, %v", r, err)
+	}
+	if err := os.WriteFile(overlay, built, 0o644); err != nil {
+		t.Fatal(err)
 	}
 
+	// Removing the plugin leaves the overlay in place, so nothing drifts.
 	if err := os.RemoveAll(filepath.Join(plugins, "fxplug")); err != nil {
 		t.Fatal(err)
 	}

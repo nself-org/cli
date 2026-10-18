@@ -285,12 +285,15 @@ func TestBuildPlanProdFixture(t *testing.T) {
 			if arts, _ := data["artifacts"].([]any); len(arts) < 5 {
 				t.Fatalf("artifacts not listed: %v", data["artifacts"])
 			}
-			var kinds []string
-			for _, e := range data["effects"].([]any) {
-				kinds = append(kinds, e.(map[string]any)["kind"].(string))
+			// D-0318: normalized plugin fragments are project overlays, planned as
+			// artifacts, not rewrites of the shared plugin directory.
+			var overlay bool
+			for _, a := range data["artifacts"].([]any) {
+				path, _ := a.(map[string]any)["path"].(string)
+				overlay = overlay || strings.HasPrefix(path, ".nself/plugins/")
 			}
-			if !strings.Contains(strings.Join(kinds, ","), "plugin-fragment") {
-				t.Fatalf("effects lack plugin-fragment: %v", kinds)
+			if !overlay {
+				t.Fatalf("artifacts lack a .nself/plugins overlay: %v", data["artifacts"])
 			}
 			c := data["containers"].(map[string]any)
 			items, _ := c["items"].([]any)

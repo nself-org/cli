@@ -125,9 +125,8 @@ func (s *GeneratedState) Save(projectDir string) error {
 // and the exact bytes of it: a copy of the current record with pb folded in
 // (RecordPlanned), serialised the way Save writes it. Computed once, so the plan can
 // report the record as an artifact (kind state) whose bytes are exactly what
-// the apply then writes — plan == apply stays exact. It also drops the
-// "@plugins/" entries of plugins whose directory is gone (pruneGonePlugins,
-// one disk check per entry at plan time). The record never holds an
+// the apply then writes — plan == apply stays exact. It also drops the legacy
+// "@plugins/" entries (pruneLegacyPluginKeys). The record never holds an
 // entry for itself: the folded set is the build's render, not the record, so
 // there is no self-reference to resolve.
 func PlannedRecord(state *GeneratedState, pb *nbuild.PlannedBuild) (*GeneratedState, []byte, error) {
@@ -144,9 +143,9 @@ func PlannedRecord(state *GeneratedState, pb *nbuild.PlannedBuild) (*GeneratedSt
 	for key := range pb.Files {
 		keep[displayPath(pb.PluginDir, key)] = true
 	}
-	// D-0557: a removed plugin leaves the record. D-0607: judged under the
-	// build's plugin directory, not the process env the plan build restored.
-	next.pruneGonePlugins(keep, pluginEntryIn(pluginDirOr(pb.PluginDir)))
+	// D-0318: the build no longer rewrites shared plugin fragments, so a
+	// legacy "@plugins/" key (D-0557) can only go stale and leaves the record.
+	next.pruneLegacyPluginKeys(keep)
 	body, err := next.body()
 	if err != nil {
 		return nil, nil, err
