@@ -36,8 +36,9 @@ func TestIsolationFollowups(t *testing.T) {
 
 	t.Run("default source surfaces outside table permissions are reported when a wall exists", func(t *testing.T) {
 		surfaces := `"name": "default", "native_queries": [{"root_field_name": "all_notes"}], ` +
-			`"functions": [{"function": {"schema": "public", "name": "purge_note"}, "configuration": {"exposed_as": "mutation"}, "permissions": [{"role": "user"}]},` +
-			`{"function": {"schema": "public", "name": "find_note"}, "configuration": {"exposed_as": "query"}, "permissions": [{"role": "user"}]}]`
+			`"functions": [{"function": {"schema": "public", "name": "purge_note"}, "permissions": [{"role": "user"}]},` +
+			`{"function": {"schema": "public", "name": "find_note"}, "configuration": {"exposed_as": "query"}, "permissions": [{"role": "user"}]},` +
+			`{"function": {"schema": "public", "name": "admin_only"}, "permissions": [{"role": "admin"}]}]`
 		meta := strings.Replace(string(fx.Metadata), `"name": "default"`, surfaces, 1)
 		dir := isoProject(t, []byte(meta), nil, psqlRows(fx), nil)
 		got := ""
@@ -46,8 +47,8 @@ func TestIsolationFollowups(t *testing.T) {
 				got += r.Message + "\n"
 			}
 		}
-		if !strings.Contains(got, "native queries") || !strings.Contains(got, "public.purge_note for role user") || strings.Contains(got, "find_note") {
-			t.Fatalf("want native queries and purge_note (not find_note) reported, got %q", got)
+		if !strings.Contains(got, "native queries") || !strings.Contains(got, "volatile function public.purge_note callable by user") || strings.Contains(got, "find_note") || strings.Contains(got, "admin_only") {
+			t.Fatalf("want native queries and the volatile purge_note (not the stable find_note) reported, got %q", got)
 		}
 		single := fixtures["single-app"]
 		meta = strings.Replace(string(single.Metadata), `"name": "default"`, surfaces, 1)
@@ -85,8 +86,36 @@ func TestIsolationFollowups(t *testing.T) {
 	t.Run("a cyclic role set terminates", func(t *testing.T) {
 		doc := `{"version":3,"inherited_roles":[{"role_name":"a","role_set":["b"]},{"role_name":"b","role_set":["a","user"]}],` +
 			`"sources":[{"name":"default","tables":[{"table":{"schema":"public","name":"notes"},"select_permissions":[{"role":"user","permission":{"filter":{}}}]}]}]}`
-		if _, err := parseIsolationMetadata([]byte(doc)); err != nil {
+		meta, err := parseIsolationMetadata([]byte(doc))
+		if err != nil {
 			t.Fatal(err)
+		}
+		if _, ok := meta.Tables[0].Perms["a"]["select"]; !ok {
+			t.Error("role a inherits user's select through b")
+		}
+	})
+
+	t.Run("sources the guard cannot bind or check are failures", func(t *testing.T) {
+		for name, tc := range map[string]struct{ src, contains string }{
+			"read replica":     {`"name": "default", "configuration": {"connection_info": {"database_url": {"from_env": "HASURA_GRAPHQL_DATABASE_URL"}}, "read_replicas": [{"database_url": "postgres://x@other/nself"}]}`, "read replicas"},
+			"connection tmpl":  {`"name": "default", "configuration": {"connection_info": {"database_url": {"from_env": "HASURA_GRAPHQL_DATABASE_URL"}}, "connection_template": {"template": "x"}}`, "connection template"},
+			"two default srcs": {`"name": "default"}, {"name": "default"`, "more than one source named default"},
+		} {
+			meta := strings.Replace(string(fx.Metadata), `"name": "default"`, tc.src, 1)
+			dir := isoProject(t, []byte(meta), nil, psqlRows(fx), nil)
+			res := IsolationChecks(context.Background(), dir)
+			if len(res) != 1 || res[0].Status != "fail" || !strings.Contains(res[0].Message, tc.contains) {
+				t.Errorf("%s: want one fail containing %q, got %+v", name, tc.contains, res)
+			}
+		}
+		meta := strings.Replace(string(fx.Metadata), `"sources": [`, `"sources": [{"name": "reporting", "native_queries": [{"root_field_name": "all_rows"}], "tables": []},`, 1)
+		dir := isoProject(t, []byte(meta), nil, psqlRows(fx), nil)
+		got := ""
+		for _, r := range IsolationChecks(context.Background(), dir) {
+			got += r.Name + "|" + r.Message
+		}
+		if !strings.Contains(got, `"reporting"`) {
+			t.Errorf("a source with only native queries must be reported, got %q", got)
 		}
 	})
 }

@@ -27,8 +27,11 @@ func isoProject(t *testing.T, meta []byte, metaErr error, psql string, psqlErr e
 	exportLiveMetadata = func(context.Context, *config.Config) ([]byte, error) { return meta, metaErr }
 	isoExecCapture = func(_ context.Context, container string, cmd []string) (string, string, error) {
 		sql := cmd[len(cmd)-1]
-		if container != "fx_postgres" || cmd[0] != "psql" || (sql != isoColumnsSQL && sql != isoRelationsSQL) {
+		if container != "fx_postgres" || cmd[0] != "psql" || (sql != isoColumnsSQL && sql != isoRelationsSQL && sql != isoVolatileSQL) {
 			t.Errorf("unexpected exec: %s %v", container, cmd)
+		}
+		if sql == isoVolatileSQL && psqlErr == nil { // purge_note is volatile in the fixtures that track it
+			return "public" + isoFieldSep + "purge_note\n", "", nil
 		}
 		if sql == isoRelationsSQL && psqlErr == nil { // every tracked table exists unless a test removes it
 			parsed, err := parseIsolationMetadata(meta)
@@ -137,6 +140,8 @@ func TestIsolationChecks(t *testing.T) {
 			{`"postgresql://u:p@other-server:5432/nself"`, "fail", "other-server"},
 			{`"postgresql://u:p@postgres:5433/nself"`, "fail", "postgres:5433"},
 			{`"not a url"`, "fail", "not understood"},
+			{`"postgresql://u:p@postgres:5432/nself?host=other-server"`, "fail", "connection parameters"},
+			{`"postgresql://u:p@postgres:5432/nself?dbname=other"`, "fail", "connection parameters"},
 			{`{"from_env":"SOME_OTHER_URL"}`, "fail", "HASURA_GRAPHQL_DATABASE_URL"},
 			{`{"connection_parameters":{"host":"other-server","database":"nself"}}`, "fail", "HASURA_GRAPHQL_DATABASE_URL"},
 			{`7`, "fail", "unknown shape"},
