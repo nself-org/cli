@@ -72,8 +72,12 @@ func resetCanonWarning() {
 
 // warningsSilenced reports whether --no-deprecation-warnings or --quiet is on
 // the command line. Flags are not parsed when the engine runs, so argv is read.
+// Words after `--` belong to the plugin and are not scanned.
 func warningsSilenced(args []string) bool {
 	for _, a := range args {
+		if a == "--" {
+			return false
+		}
 		if a == "--no-deprecation-warnings" || a == "--quiet" {
 			return true
 		}

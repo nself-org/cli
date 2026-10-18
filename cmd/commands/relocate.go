@@ -102,9 +102,26 @@ func relocateBreakout(cmdName string, args []string) (handled bool, err error) {
 		_, _ = fmt.Fprintf(relocateWarnOut, "warning: 'nself %s' now comes from the %s plugin; installed %s@%s\n", old, row.Plugin, row.Plugin, installed)
 	}
 	if err := plugin.ProxyBinary(proxyBinaryName(bin), row.Plugin, pluginArgs); err != nil {
-		return true, reportProxyFailure(os.Stderr, err)
+		return true, breakoutExecFailure(row.Plugin, err)
 	}
 	return true, nil
+}
+
+// breakoutExecFailure maps a proxy error from the auto-added binary. A plugin
+// that ran and failed mirrors its own status (silent, as everywhere else). A
+// binary that could not be run at all (noexec HOME, quarantine, bad format)
+// is returned as a coded E406 error so report() renders it, including the
+// --json envelope; a coded error from the proxy keeps its code.
+func breakoutExecFailure(slug string, err error) error {
+	var silent errs.Silencer
+	if errors.As(err, &silent) && silent.Silent() {
+		return reportProxyFailure(os.Stderr, err)
+	}
+	var ce *errs.CLIError
+	if errors.As(err, &ce) {
+		return err
+	}
+	return errs.Newf("E406", "plugin %q binary could not be run: %v", slug, err)
 }
 
 // proxyBinaryName turns the path the installer published into the bare name

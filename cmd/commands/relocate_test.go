@@ -488,3 +488,62 @@ func TestProxyBinaryName(t *testing.T) {
 		}
 	}
 }
+
+// TestRelocateExecFailureKeepsE406 pins D-0908: a break-out binary the OS will
+// not run (noexec HOME, quarantine, bad format) must come back as a coded E406
+// error, so report() can emit the --json envelope. It used to be flattened to
+// a silent exit 1 after a plain "Plugin error:" line.
+func TestRelocateExecFailureKeepsE406(t *testing.T) {
+	for name, seam := range map[string]func(slug, version string) (string, error){
+		"not executable": func(slug, _ string) (string, error) {
+			p := plugin.PublishedBinaryPath("nself-" + slug)
+			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+				return "", err
+			}
+			return p, os.WriteFile(p, []byte(stubScript), 0o644)
+		},
+		"exec refused by the OS": func(slug, _ string) (string, error) {
+			p := plugin.PublishedBinaryPath("nself-" + slug)
+			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+				return "", err
+			}
+			return p, os.WriteFile(p, []byte("not a program\n"), 0o755)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, calls, _ := relocateSetup(t, "", nil)
+			t.Setenv("HOME", t.TempDir())
+			autoAddPlugin = recordOver(calls, seam)
+			handled, err := relocateBreakout("ci", []string{"--json"})
+			if !handled {
+				t.Fatal("the break-out must be handled")
+			}
+			if code := aiCode(err); code != "E406" {
+				t.Fatalf("want a coded E406 error, got %q (%v)", code, err)
+			}
+			var silent errs.Silencer
+			if errors.As(err, &silent) && silent.Silent() {
+				t.Fatalf("a silent error prints no JSON envelope: %v", err)
+			}
+		})
+	}
+}
+
+// TestWarningsSilencedStopsAtDoubleDash pins D-0908: after `--` every word
+// belongs to the plugin, so --quiet there must not hide the relocation warning.
+func TestWarningsSilencedStopsAtDoubleDash(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want bool
+	}{
+		{[]string{"nself", "ci", "--quiet"}, true},
+		{[]string{"nself", "--no-deprecation-warnings", "ci"}, true},
+		{[]string{"nself", "ci", "--", "--quiet"}, false},
+		{[]string{"nself", "ci", "--", "--no-deprecation-warnings"}, false},
+		{[]string{"nself", "ci", "--quiet", "--", "x"}, true},
+	} {
+		if got := warningsSilenced(tc.args); got != tc.want {
+			t.Errorf("warningsSilenced(%v) = %v, want %v", tc.args, got, tc.want)
+		}
+	}
+}
