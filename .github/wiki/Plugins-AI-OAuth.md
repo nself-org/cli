@@ -151,6 +151,6 @@ A successful response confirms the pool is routing correctly.
 
 - [[cmd-ai]], full `nself ai` command reference, including `pool` subcommands
 - [[cmd-oauth]], `nself oauth refresh` for non-Gemini OAuth token refresh
-- [[plugin-nself-ai-gateway]], AI gateway configuration and supported providers
+- `plugin-nself-ai-gateway`, AI gateway configuration and supported providers
 
-← [[plugin-nself-ai-gateway]] | [[Home]] →
+← `plugin-nself-ai-gateway` | [[Home]] →
