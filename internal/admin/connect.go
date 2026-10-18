@@ -173,7 +173,12 @@ func adminHostKeyOptions(ctx context.Context, spec remote.HostSpec) ([]string, e
 	pinned := adminTrustedFingerprints(ctx, pinAlias, pinFile)
 	for _, key := range keys {
 		if operator[key.Fingerprint] || pinned[key.Fingerprint] {
-			opts := []string{"-o", "StrictHostKeyChecking=yes", "-o", pinOption}
+			// A shared master skips host-key checks, so strict connections need a fresh transport.
+			opts := []string{
+				"-o", "StrictHostKeyChecking=yes",
+				"-o", "ControlMaster=no", "-o", "ControlPath=none",
+				"-o", pinOption,
+			}
 			if spec.Port != 0 && !operator[key.Fingerprint] {
 				opts = append(opts, "-o", "HostKeyAlias="+pinAlias)
 			}
