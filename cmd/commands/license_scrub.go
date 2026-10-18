@@ -144,64 +144,6 @@ func licenseScrubAll(in []string) []string {
 	return out
 }
 
-// value returns a copy of src with every string leaf scrubbed.
-func (sc scrubber) value(src reflect.Value) reflect.Value {
-	switch src.Kind() {
-	case reflect.String:
-		out := reflect.New(src.Type()).Elem()
-		out.SetString(sc.str(src.String()))
-		return out
-	case reflect.Pointer:
-		if src.IsNil() {
-			return src
-		}
-		out := reflect.New(src.Type().Elem())
-		out.Elem().Set(sc.value(src.Elem()))
-		return out
-	case reflect.Interface:
-		if src.IsNil() {
-			return src
-		}
-		out := reflect.New(src.Type()).Elem()
-		out.Set(sc.value(src.Elem()))
-		return out
-	case reflect.Slice:
-		if src.IsNil() {
-			return src
-		}
-		out := reflect.MakeSlice(src.Type(), src.Len(), src.Len())
-		for i := 0; i < src.Len(); i++ {
-			out.Index(i).Set(sc.value(src.Index(i)))
-		}
-		return out
-	case reflect.Array:
-		out := reflect.New(src.Type()).Elem()
-		for i := 0; i < src.Len(); i++ {
-			out.Index(i).Set(sc.value(src.Index(i)))
-		}
-		return out
-	case reflect.Map:
-		if src.IsNil() {
-			return src
-		}
-		out := reflect.MakeMapWithSize(src.Type(), src.Len())
-		for it := src.MapRange(); it.Next(); {
-			out.SetMapIndex(it.Key(), sc.value(it.Value()))
-		}
-		return out
-	case reflect.Struct:
-		out := reflect.New(src.Type()).Elem()
-		out.Set(src)
-		for i := 0; i < src.NumField(); i++ {
-			if src.Type().Field(i).IsExported() {
-				out.Field(i).Set(sc.value(src.Field(i)))
-			}
-		}
-		return out
-	}
-	return src
-}
-
 // scrubDoc returns v with every string leaf scrubbed; the type is unchanged.
 func scrubDoc(v any) any {
 	if v == nil {
