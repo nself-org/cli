@@ -18,7 +18,7 @@ done
 [[ $(uname -s) == Linux ]] || echo 'PROVISIONAL (Constitution §10.3): Linux evidence is required'
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 FIXTURE=$ROOT/scripts/e2e/fixtures/proxy
-PLUGINS_REF=${PLUGINS_REF:-b3f4cc1fc2c6a4e6636f9e6dc607d30c247dd931}
+PLUGINS_REF=${PLUGINS_REF:-bfa72fc66c6f390792f85215b4e91a96599e449c}
 for tool in docker jq python3 curl openssl go git; do
   command -v "$tool" >/dev/null || { echo "FAIL: required tool missing: $tool" >&2; exit 1; }
 done

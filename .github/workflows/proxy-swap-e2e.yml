@@ -14,7 +14,7 @@ on:
       plugins_ref:
         description: Plugins checkout revision
         type: string
-        default: b3f4cc1fc2c6a4e6636f9e6dc607d30c247dd931
+        default: bfa72fc66c6f390792f85215b4e91a96599e449c
   pull_request:
     paths:
       - internal/build/proxy*
@@ -41,7 +41,7 @@ jobs:
     timeout-minutes: 40
     env:
       PLUGINS_DIR: ${{ github.workspace }}/.e2e-plugins
-      PLUGINS_REF: ${{ inputs.plugins_ref || 'b3f4cc1fc2c6a4e6636f9e6dc607d30c247dd931' }}
+      PLUGINS_REF: ${{ inputs.plugins_ref || 'bfa72fc66c6f390792f85215b4e91a96599e449c' }}
       E2E_EVIDENCE: ${{ github.workspace }}/.e2e-evidence/proxy-swap
     steps:
       - name: Checkout CLI
