@@ -70,13 +70,13 @@ func runMigrateCheck(ctx context.Context, pingURL string, doc *licenseMigrateDat
 		// Check migration status from the server.
 		status, err := fetchMigrationStatus(ctx, key, pingURL)
 		if err != nil {
-			doc.Keys = append(doc.Keys, licenseMigrateKey{Key: masked, Product: pp.DisplayName, Remaining: "?", Status: licenseScrub(fmt.Sprintf("Error: %v", err))})
+			doc.Keys = append(doc.Keys, licenseMigrateKey{Key: masked, Product: pp.DisplayName, Remaining: "?", Status: licenseScrub(fmt.Sprintf("Error: %v", err), migrateKeyFlag)})
 			tbl.AddRow(masked, pp.DisplayName, "?", fmt.Sprintf("Error: %v", err))
 			continue
 		}
 
 		if status.Error != "" {
-			doc.Keys = append(doc.Keys, licenseMigrateKey{Key: masked, Product: pp.DisplayName, Remaining: "?", Status: licenseScrub(fmt.Sprintf("Error: %s", status.Error))})
+			doc.Keys = append(doc.Keys, licenseMigrateKey{Key: masked, Product: pp.DisplayName, Remaining: "?", Status: licenseScrub(fmt.Sprintf("Error: %s", status.Error), migrateKeyFlag)})
 			tbl.AddRow(masked, pp.DisplayName, "?", fmt.Sprintf("Error: %s", status.Error))
 			continue
 		}
@@ -91,7 +91,7 @@ func runMigrateCheck(ctx context.Context, pingURL string, doc *licenseMigrateDat
 			daysStr = fmt.Sprintf("%d days", status.DaysRemaining)
 		}
 
-		doc.Keys = append(doc.Keys, licenseMigrateKey{Key: masked, Product: pp.DisplayName, Remaining: daysStr, Status: migStatus})
+		doc.Keys = append(doc.Keys, licenseMigrateKey{Key: masked, Product: pp.DisplayName, Remaining: daysStr, Status: licenseScrub(migStatus, migrateKeyFlag)})
 		tbl.AddRow(masked, pp.DisplayName, daysStr, migStatus)
 	}
 
@@ -145,7 +145,7 @@ func runMigrateLink(ctx context.Context, pingURL string, doc *licenseMigrateData
 		return fmt.Errorf("server error: %s", resp.Error)
 	}
 
-	doc.Link = &licenseMigrateLink{Key: masked, AccountID: resp.AccountID, Tier: resp.Tier, AlreadyLinked: resp.AlreadyMigrated}
+	doc.Link = &licenseMigrateLink{Key: masked, AccountID: licenseScrub(resp.AccountID, keyToMigrate), Tier: licenseScrub(resp.Tier, keyToMigrate), AlreadyLinked: resp.AlreadyMigrated}
 	if resp.AlreadyMigrated {
 		fmt.Printf("Key %s is already linked to account %s (tier: %s).\n",
 			masked, resp.AccountID, resp.Tier)

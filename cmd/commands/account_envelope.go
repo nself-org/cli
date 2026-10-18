@@ -41,6 +41,16 @@ func accountJSONGuard(cmd *cobra.Command, flags ...string) error {
 	return nil
 }
 
+// accountLicenseRows is the licence list for a document: no slice is nil, so
+// a reply that omits a licence's bundles prints [] not null.
+func accountLicenseRows(in []auth.LicenseInfo) []auth.LicenseInfo {
+	out := orEmpty(in)
+	for i := range out {
+		out[i].Bundles = orEmpty(out[i].Bundles)
+	}
+	return out
+}
+
 // accountCachedStatus is the status document built from the auth file only.
 func accountCachedStatus(af *auth.AuthFile, status string) accountStatusData {
 	tier := af.Tier

@@ -65,7 +65,7 @@ func runAccountLicenses(cmd *cobra.Command, _ []string) error {
 	}
 
 	if jsonEnvelopeOn(cmd) {
-		return emitEnv(cmd, orEmpty(licenses), true)
+		return emitEnv(cmd, accountLicenseRows(licenses), true)
 	}
 	if jsonOut {
 		enc := json.NewEncoder(os.Stdout)

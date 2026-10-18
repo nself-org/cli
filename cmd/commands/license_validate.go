@@ -123,6 +123,9 @@ Use --json for machine-readable output.`,
 		if len(keys) == 0 {
 			if jsonMode {
 				out := licenseHealthJSON{Status: "no_key", Message: "no license key configured"}
+				if jsonEnvelopeOn(cmd) {
+					return emitEnv(cmd, out, true)
+				}
 				return json.NewEncoder(os.Stdout).Encode(out)
 			}
 			fmt.Println("No license key configured.")

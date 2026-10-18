@@ -23981,13 +23981,7 @@
           },
           "flags": {
             "additionalProperties": false,
-            "properties": {
-              "force": {
-                "default": false,
-                "description": "Required when NSELF_LICENSE_SKIP_VERIFY=1; explicit acknowledgment of skipped signature verification",
-                "type": "boolean"
-              }
-            },
+            "properties": {},
             "type": "object"
           }
         },

@@ -5945,10 +5945,7 @@ export interface LicenseImportData {
   target: string;
 }
 
-export type LicenseImportFlags = {
-  /** Required when NSELF_LICENSE_SKIP_VERIFY=1; explicit acknowledgment of skipped signature verification */
-  force?: boolean;
-};
+export type LicenseImportFlags = Record<string, never>;
 
 /** Import a previously exported license cache file */
 export interface LicenseImportRequest {

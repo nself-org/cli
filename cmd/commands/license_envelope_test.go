@@ -9,6 +9,7 @@ package commands
 // JWT is built at run time so no token-shaped literal sits in the source.
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -38,8 +39,9 @@ const (
 
 // licenseFixture is an isolated HOME with a signing ping stub.
 type licenseFixture struct {
-	jwt string
-	dir string
+	jwt  string
+	dir  string
+	priv ed25519.PrivateKey
 }
 
 // newLicenseFixture isolates HOME, the key environment and the cache, and
@@ -75,7 +77,7 @@ func newLicenseFixture(t *testing.T) *licenseFixture {
 	t.Setenv("NSELF_PING_API_URL", srv.URL)
 	dir := t.TempDir()
 	t.Chdir(dir)
-	return &licenseFixture{jwt: jwt, dir: dir}
+	return &licenseFixture{jwt: jwt, dir: dir, priv: priv}
 }
 
 func mustJSON(t *testing.T, v any) []byte {
@@ -244,6 +246,62 @@ func TestLicenseRefreshFailureIsScrubbed(t *testing.T) {
 	}
 }
 
+// reply starts a ping stub that signs body, and points NSELF_PING_API_URL at it.
+func (fx *licenseFixture) reply(t *testing.T, body map[string]any) {
+	t.Helper()
+	raw := mustJSON(t, body)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-NSelf-License-Sig", hex.EncodeToString(ed25519.Sign(fx.priv, raw)))
+		_, _ = w.Write(raw)
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("NSELF_PING_API_URL", srv.URL)
+}
+
+// TestLicenseHostileReplyIsScrubbed: a server reason that carries another
+// licence key and a JWT reaches the document masked and redacted.
+func TestLicenseHostileReplyIsScrubbed(t *testing.T) {
+	fx := newLicenseFixture(t)
+	t.Setenv("NSELF_LICENSE_KEY_1", fixtureLicenseKey)
+	other := "nself_plus_zyxwvutsrqponmlkjihgfedcba9876"
+	fx.reply(t, map[string]any{"valid": false, "reason": "revoked " + other + " " + fx.jwt + " " + fixtureAccessToken})
+	out, err := runLicenseJSON(t, licenseRefreshCmd, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	noSecrets(t, "license refresh", out, fx.jwt, other)
+	oneEnvelope(t, out, "license refresh")
+	if !strings.Contains(out, license.MaskKey(other)) || !strings.Contains(out, "[REDACTED]") {
+		t.Errorf("hostile reason was not masked and redacted:\n%s", out)
+	}
+}
+
+// TestLicenseMigrateKeyFlagIsScrubbed: an explicit --key that is not
+// configured is masked when the transport error echoes the request URL.
+func TestLicenseMigrateKeyFlagIsScrubbed(t *testing.T) {
+	fx := newLicenseFixture(t)
+	t.Setenv("NSELF_PING_API_URL", "http://127.0.0.1:1/"+fixtureLicenseKey)
+	out, err := runLicenseJSON(t, licenseMigrateCmd, map[string]string{"key": fixtureLicenseKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	noSecrets(t, "license migrate", out, fx.jwt)
+	oneEnvelope(t, out, "license migrate")
+}
+
+// TestLicenseHealthWithoutKey: the no-key health answer is an envelope too.
+func TestLicenseHealthWithoutKey(t *testing.T) {
+	newLicenseFixture(t)
+	out, err := runLicenseJSON(t, licenseHealthCmd, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := oneEnvelope(t, out, "license health")
+	if !strings.Contains(string(doc["data"]), `"no_key"`) {
+		t.Errorf("health without a key: %s", out)
+	}
+}
+
 // TestLicenseShowV14Bytes: v1.4 keeps the bare pre-contract document.
 func TestLicenseShowV14Bytes(t *testing.T) {
 	newLicenseFixture(t)
@@ -258,6 +316,17 @@ func TestLicenseShowV14Bytes(t *testing.T) {
 	out, err := captureStdout(t, func() error { return licenseShowCmd.RunE(licenseShowCmd, nil) })
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Exact bytes: the output is the pre-contract struct, encoded as v1.4 does.
+	var legacy licenseShowJSON
+	dec := json.NewDecoder(strings.NewReader(out))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&legacy); err != nil {
+		t.Fatalf("v1.4 output is not the pre-contract document: %v\n%s", err, out)
+	}
+	var again bytes.Buffer
+	if err := json.NewEncoder(&again).Encode(legacy); err != nil || again.String() != out {
+		t.Fatalf("v1.4 show --json bytes changed:\n got %q\nwant %q", out, again.String())
 	}
 	var doc map[string]any
 	if err := json.Unmarshal([]byte(out), &doc); err != nil {

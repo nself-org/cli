@@ -105,7 +105,7 @@ func accountServer(t *testing.T, sessionOK bool) {
 		case "/account/devices":
 			_, _ = w.Write([]byte(`{"devices":[{"id":"dev-1","name":"laptop","os":"darwin","last_active":"2026-10-01T00:00:00Z","is_current":true}]}`))
 		case "/account/licenses":
-			_, _ = w.Write([]byte(`{"licenses":[{"id":"lic-1","product":"chat","tier":"plus","bundles":[],"seats_included":1,"seats_used":0,"is_active":true,"activated_at":"","expires_at":""}]}`))
+			_, _ = w.Write([]byte(`{"licenses":[{"id":"lic-1","product":"chat","tier":"plus","seats_included":1,"seats_used":0,"is_active":true,"activated_at":"","expires_at":""}]}`))
 		case "/account/team":
 			_, _ = w.Write([]byte(`{"members":[]}`))
 		default:
@@ -136,6 +136,9 @@ func TestAccountEnvelopes(t *testing.T) {
 		}
 		noSecrets(t, c.path, out)
 		doc := oneEnvelope(t, out, c.path)
+		if c.path == "license account licenses" && !strings.Contains(string(doc["data"]), `"bundles": []`) {
+			t.Errorf("a licence without bundles prints null, want []: %s", out)
+		}
 		if c.path == "license account team" && !strings.Contains(string(doc["data"]), "[]") {
 			t.Errorf("empty team is not []: %s", out)
 		}

@@ -16,6 +16,7 @@ package commands
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 
 	"github.com/nself-org/cli/internal/license"
@@ -54,13 +55,33 @@ func newLicenseStatusData() licenseStatusData {
 	return licenseStatusData{Keys: []licenseStatusKey{}, Products: []string{}, Plugins: []string{}}
 }
 
-// licenseScrub replaces every configured licence key in s with its mask, so
-// error text from a network or file failure cannot carry a key into a document.
-func licenseScrub(s string) string {
-	for _, key := range license.CollectLicenseKeys() {
+// licenseKeyShape matches a licence key (product prefix, then the secret part);
+// jwtShape matches a JWT.
+var (
+	licenseKeyShape = regexp.MustCompile(`nself_[a-z]+_[A-Za-z0-9_-]{8,}`)
+	jwtShape        = regexp.MustCompile(`eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}(\.[A-Za-z0-9_-]*)?`)
+	longTokenRun    = regexp.MustCompile(`[A-Za-z0-9_.-]{24,}`)
+)
+
+// licenseScrubMax caps the length of server text copied into a document.
+const licenseScrubMax = 200
+
+// licenseScrub masks every licence key in s and drops every JWT, so text from
+// a server reply, a network failure or a file error cannot carry a secret into
+// a document: the configured keys, the explicit extra keys (a --key flag),
+// anything shaped like a key or JWT, and any other 24-character token-like run
+// (an access or session token has no fixed shape). Output is capped.
+func licenseScrub(s string, extra ...string) string {
+	for _, key := range append(license.CollectLicenseKeys(), extra...) {
 		if key != "" {
 			s = strings.ReplaceAll(s, key, license.MaskKey(key))
 		}
+	}
+	s = jwtShape.ReplaceAllString(s, "[REDACTED]")
+	s = licenseKeyShape.ReplaceAllStringFunc(s, license.MaskKey)
+	s = longTokenRun.ReplaceAllString(s, "[REDACTED]")
+	if r := []rune(s); len(r) > licenseScrubMax {
+		s = string(r[:licenseScrubMax]) + "..."
 	}
 	return s
 }

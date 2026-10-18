@@ -25,7 +25,7 @@ commands:
   license export: {side_effect: write, surface: cli-only}
   # cmd/commands/license_validate.go:112 RunE path changes no persistent state (prints/reads only)
   license health: {side_effect: read, json: legacy, exit_codes: {"1": "any check fails (exits 0 when all checks pass)"}}
-  license import: {side_effect: write}
+  license import: {side_effect: write, flags: {force: {cli_only: true}}}
   license list: {side_effect: read}
   # cmd/commands/login.go:33 device-code login creates a session on the account server
   license login: {side_effect: remote, output: interactive} # device-code flow: opens a browser and waits for a person to authorise

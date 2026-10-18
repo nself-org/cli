@@ -155,7 +155,7 @@ every 6 hours. --remove-timer removes that timer by hand (--all: every project o
 				fmt.Fprintf(os.Stderr, "%s: invalid — %s\n", masked, result.Message)
 				continue
 			}
-			row := licenseRefreshKey{Key: masked, Refreshed: true, Tier: result.Tier}
+			row := licenseRefreshKey{Key: masked, Refreshed: true, Tier: licenseScrub(result.Tier)}
 			if !result.ExpiresAt.IsZero() {
 				row.ExpiresAt = result.ExpiresAt.Format("2006-01-02")
 			}
