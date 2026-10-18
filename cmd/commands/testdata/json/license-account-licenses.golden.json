@@ -1,0 +1,17 @@
+{
+  "schema_version": "1",
+  "command": "license account licenses",
+  "data": [
+    {
+      "id": "lic-1",
+      "product": "chat",
+      "tier": "plus",
+      "bundles": [],
+      "seats_included": 1,
+      "seats_used": 0,
+      "is_active": true,
+      "activated_at": "",
+      "expires_at": ""
+    }
+  ]
+}

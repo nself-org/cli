@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -47,7 +48,9 @@ func runLicenseStatus(cmd *cobra.Command, args []string) error {
 	pluginFilter, _ := cmd.Flags().GetString("plugin")
 
 	keys := license.CollectLicenseKeys()
+	doc := newLicenseStatusData()
 	if len(keys) == 0 {
+		setData(cmd, doc)
 		fmt.Println("No license keys configured.")
 		fmt.Printf("\nGet a product license at %s\n", pricingURL)
 		return nil
@@ -83,6 +86,7 @@ func runLicenseStatus(cmd *cobra.Command, args []string) error {
 		status := "Unknown"
 		expires := "-"
 		plugins := "-"
+		var rowPlugins []string
 
 		if retryAfter, isRL := plugin.IsRateLimited(err); isRL {
 			status = fmt.Sprintf("RATE LIMITED — retry after %ss", retryAfter)
@@ -103,6 +107,7 @@ func runLicenseStatus(cmd *cobra.Command, args []string) error {
 					expires = lvr.Expires
 				}
 				if len(lvr.Plugins) > 0 {
+					rowPlugins = lvr.Plugins
 					for _, p := range lvr.Plugins {
 						allPlugins[p] = true
 					}
@@ -116,10 +121,20 @@ func runLicenseStatus(cmd *cobra.Command, args []string) error {
 		}
 
 		allProducts = append(allProducts, productName)
+		doc.Keys = append(doc.Keys, licenseStatusKey{Key: masked, Product: licenseScrub(productName), Status: status, Expires: expires, Plugins: licenseScrubAll(rowPlugins)})
 		tbl.AddRow(masked, productName, status, expires, plugins)
 	}
 
 	tbl.Render()
+	doc.Products = licenseScrubAll(uniqueStrings(allProducts))
+	for p := range allPlugins {
+		doc.Plugins = append(doc.Plugins, licenseScrub(p))
+	}
+	sort.Strings(doc.Plugins)
+	if pluginFilter != "" {
+		doc.PluginAccess = &licensePluginAccess{Plugin: pluginFilter, Granted: allPlugins[pluginFilter]}
+	}
+	setData(cmd, doc)
 
 	// Summary.
 	if len(allProducts) > 0 {
@@ -177,6 +192,9 @@ Use --json for machine-readable output.`,
 		keys := license.CollectLicenseKeys()
 		if len(keys) == 0 {
 			if jsonMode {
+				if jsonEnvelopeOn(cmd) {
+					return emitLicenseShow(cmd, nil)
+				}
 				return json.NewEncoder(os.Stdout).Encode(map[string]string{"error": "no license key configured"})
 			}
 			fmt.Println("No license key configured.")
@@ -235,6 +253,9 @@ Use --json for machine-readable output.`,
 				PluginsCount: pluginsCount,
 				DaysToExpire: daysToExpire,
 				CacheExpiry:  cacheExpiry,
+			}
+			if jsonEnvelopeOn(cmd) {
+				return emitLicenseShow(cmd, &out)
 			}
 			return json.NewEncoder(os.Stdout).Encode(out)
 		}

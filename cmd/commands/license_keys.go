@@ -57,6 +57,7 @@ to add a key without replacing existing ones.`,
 			}
 		}
 		pp := license.DetectProduct(key)
+		setData(cmd, licenseSetData{Key: license.MaskKey(key), Product: licenseProductName(pp, ""), Replaced: replaced})
 		if pp != nil {
 			fmt.Printf("%s license key saved.\n", pp.DisplayName)
 		} else {
@@ -80,6 +81,7 @@ being saved. Supports up to 10 keys total.`,
 			pingURL = defaultPingURL
 		}
 
+		added := []licenseKeyRef{}
 		for _, key := range args {
 			masked := license.MaskKey(key)
 
@@ -108,6 +110,7 @@ being saved. Supports up to 10 keys total.`,
 			}
 
 			pp := license.DetectProduct(key)
+			added = append(added, licenseKeyRef{Key: masked, Product: licenseProductName(pp, "Unknown")})
 			if pp != nil {
 				ui.Success(fmt.Sprintf("%s license activated.", pp.DisplayName))
 				fmt.Printf("  %s Install plugins: %s\n",
@@ -118,6 +121,7 @@ being saved. Supports up to 10 keys total.`,
 				ui.Success(fmt.Sprintf("License key %s added.", masked))
 			}
 		}
+		setData(cmd, licenseAddData{Added: added})
 		return nil
 	},
 }
@@ -138,6 +142,7 @@ Examples:
 		if err != nil {
 			return err
 		}
+		setData(cmd, licenseRemoveData{Removed: removed})
 		if removed == 1 {
 			fmt.Println("License key removed.")
 		} else {

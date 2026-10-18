@@ -472,6 +472,52 @@ export interface Operations {
   initTemplatePublish(request?: T.InitTemplatePublishRequest, options?: CallOptions): Promise<T.InitTemplatePublishData>;
   /** Apply incremental migrations for the installed template (POST /v1/commands/init/template/update) */
   initTemplateUpdate(request?: T.InitTemplateUpdateRequest, options?: CallOptions): Promise<T.InitTemplateUpdateData>;
+  /** Manage license keys for nSelf product bundles (POST /v1/commands/license) */
+  license(request?: T.LicenseRequest, options?: CallOptions): Promise<T.LicenseData>;
+  /** Manage your nSelf account, sessions, licenses, team, and devices (POST /v1/commands/license/account) */
+  licenseAccount(request?: T.LicenseAccountRequest, options?: CallOptions): Promise<T.LicenseAccountData>;
+  /** List and revoke registered devices (POST /v1/commands/license/account/devices) */
+  licenseAccountDevices(request?: T.LicenseAccountDevicesRequest, options?: CallOptions): Promise<T.LicenseAccountDevicesData>;
+  /** List and manage account licenses (POST /v1/commands/license/account/licenses) */
+  licenseAccountLicenses(request?: T.LicenseAccountLicensesRequest, options?: CallOptions): Promise<T.LicenseAccountLicensesData>;
+  /** Show current account summary (POST /v1/commands/license/account/status) */
+  licenseAccountStatus(request?: T.LicenseAccountStatusRequest, options?: CallOptions): Promise<T.LicenseAccountStatusData>;
+  /** Manage team members (POST /v1/commands/license/account/team) */
+  licenseAccountTeam(request?: T.LicenseAccountTeamRequest, options?: CallOptions): Promise<T.LicenseAccountTeamData>;
+  /** Add one or more license keys (POST /v1/commands/license/add) */
+  licenseAdd(request: T.LicenseAddRequest, options?: CallOptions): Promise<T.LicenseAddData>;
+  /** Remove all saved license keys (POST /v1/commands/license/clear) */
+  licenseClear(request?: T.LicenseClearRequest, options?: CallOptions): Promise<T.LicenseClearData>;
+  /** Validate format, ping server, and report cache integrity (POST /v1/commands/license/health) */
+  licenseHealth(request?: T.LicenseHealthRequest, options?: CallOptions): Promise<T.LicenseHealthData>;
+  /** Import a previously exported license cache file (POST /v1/commands/license/import) */
+  licenseImport(request: T.LicenseImportRequest, options?: CallOptions): Promise<T.LicenseImportData>;
+  /** Show all configured licenses (alias for status) (POST /v1/commands/license/list) */
+  licenseList(request?: T.LicenseListRequest, options?: CallOptions): Promise<T.LicenseListData>;
+  /** Migrate legacy license key to a nSelf account (POST /v1/commands/license/migrate) */
+  licenseMigrate(request?: T.LicenseMigrateRequest, options?: CallOptions): Promise<T.LicenseMigrateData>;
+  /** Force-refresh license validation against ping.nself.org (POST /v1/commands/license/refresh) */
+  licenseRefresh(request?: T.LicenseRefreshRequest, options?: CallOptions): Promise<T.LicenseRefreshData>;
+  /** Remove a license key by value or product name (POST /v1/commands/license/remove) */
+  licenseRemove(request: T.LicenseRemoveRequest, options?: CallOptions): Promise<T.LicenseRemoveData>;
+  /** Reactivate dormant plugins with a new license key (POST /v1/commands/license/restore) */
+  licenseRestore(request?: T.LicenseRestoreRequest, options?: CallOptions): Promise<T.LicenseRestoreData>;
+  /** Force a fresh validation against ping.nself.org and update the cache (POST /v1/commands/license/revalidate) */
+  licenseRevalidate(request?: T.LicenseRevalidateRequest, options?: CallOptions): Promise<T.LicenseRevalidateData>;
+  /** Mark local license as revoked and wipe the stored key (POST /v1/commands/license/revoke) */
+  licenseRevoke(request?: T.LicenseRevokeRequest, options?: CallOptions): Promise<T.LicenseRevokeData>;
+  /** Replace all keys with a single key (POST /v1/commands/license/set) */
+  licenseSet(request: T.LicenseSetRequest, options?: CallOptions): Promise<T.LicenseSetData>;
+  /** Display license tier, bundles, plugins, and cache expiry (POST /v1/commands/license/show) */
+  licenseShow(request?: T.LicenseShowRequest, options?: CallOptions): Promise<T.LicenseShowData>;
+  /** Simulate being offline for N days (testing only) (POST /v1/commands/license/simulate-offline) */
+  licenseSimulateOffline(request: T.LicenseSimulateOfflineRequest, options?: CallOptions): Promise<T.LicenseSimulateOfflineData>;
+  /** Show all configured licenses and plugin coverage (POST /v1/commands/license/status) */
+  licenseStatus(request?: T.LicenseStatusRequest, options?: CallOptions): Promise<T.LicenseStatusData>;
+  /** Open pricing page in browser (POST /v1/commands/license/upgrade) */
+  licenseUpgrade(request?: T.LicenseUpgradeRequest, options?: CallOptions): Promise<T.LicenseUpgradeData>;
+  /** Validate key against ping.nself.org (POST /v1/commands/license/validate) */
+  licenseValidate(request?: T.LicenseValidateRequest, options?: CallOptions): Promise<T.LicenseValidateData>;
   /** View and filter service logs (POST /v1/commands/logs) */
   logs(request?: T.LogsRequest, options?: CallOptions): Promise<T.LogsData>;
   /** Print or write the MCP client config and AGENTS.md for this project (POST /v1/commands/mcp/setup) */
@@ -760,6 +806,29 @@ export function createOperations(transport: Transport): Operations {
     initTemplateList: (request, options) => transport.call<T.InitTemplateListData>("/v1/commands/init/template/list", request, options),
     initTemplatePublish: (request, options) => transport.call<T.InitTemplatePublishData>("/v1/commands/init/template/publish", request, options),
     initTemplateUpdate: (request, options) => transport.call<T.InitTemplateUpdateData>("/v1/commands/init/template/update", request, options),
+    license: (request, options) => transport.call<T.LicenseData>("/v1/commands/license", request, options),
+    licenseAccount: (request, options) => transport.call<T.LicenseAccountData>("/v1/commands/license/account", request, options),
+    licenseAccountDevices: (request, options) => transport.call<T.LicenseAccountDevicesData>("/v1/commands/license/account/devices", request, options),
+    licenseAccountLicenses: (request, options) => transport.call<T.LicenseAccountLicensesData>("/v1/commands/license/account/licenses", request, options),
+    licenseAccountStatus: (request, options) => transport.call<T.LicenseAccountStatusData>("/v1/commands/license/account/status", request, options),
+    licenseAccountTeam: (request, options) => transport.call<T.LicenseAccountTeamData>("/v1/commands/license/account/team", request, options),
+    licenseAdd: (request, options) => transport.call<T.LicenseAddData>("/v1/commands/license/add", request, options),
+    licenseClear: (request, options) => transport.call<T.LicenseClearData>("/v1/commands/license/clear", request, options),
+    licenseHealth: (request, options) => transport.call<T.LicenseHealthData>("/v1/commands/license/health", request, options),
+    licenseImport: (request, options) => transport.call<T.LicenseImportData>("/v1/commands/license/import", request, options),
+    licenseList: (request, options) => transport.call<T.LicenseListData>("/v1/commands/license/list", request, options),
+    licenseMigrate: (request, options) => transport.call<T.LicenseMigrateData>("/v1/commands/license/migrate", request, options),
+    licenseRefresh: (request, options) => transport.call<T.LicenseRefreshData>("/v1/commands/license/refresh", request, options),
+    licenseRemove: (request, options) => transport.call<T.LicenseRemoveData>("/v1/commands/license/remove", request, options),
+    licenseRestore: (request, options) => transport.call<T.LicenseRestoreData>("/v1/commands/license/restore", request, options),
+    licenseRevalidate: (request, options) => transport.call<T.LicenseRevalidateData>("/v1/commands/license/revalidate", request, options),
+    licenseRevoke: (request, options) => transport.call<T.LicenseRevokeData>("/v1/commands/license/revoke", request, options),
+    licenseSet: (request, options) => transport.call<T.LicenseSetData>("/v1/commands/license/set", request, options),
+    licenseShow: (request, options) => transport.call<T.LicenseShowData>("/v1/commands/license/show", request, options),
+    licenseSimulateOffline: (request, options) => transport.call<T.LicenseSimulateOfflineData>("/v1/commands/license/simulate-offline", request, options),
+    licenseStatus: (request, options) => transport.call<T.LicenseStatusData>("/v1/commands/license/status", request, options),
+    licenseUpgrade: (request, options) => transport.call<T.LicenseUpgradeData>("/v1/commands/license/upgrade", request, options),
+    licenseValidate: (request, options) => transport.call<T.LicenseValidateData>("/v1/commands/license/validate", request, options),
     logs: (request, options) => transport.call<T.LogsData>("/v1/commands/logs", request, options),
     mcpSetup: (request, options) => transport.call<T.McpSetupData>("/v1/commands/mcp/setup", request, options),
     remove: (request, options) => transport.call<T.RemoveData>("/v1/commands/remove", request, options),

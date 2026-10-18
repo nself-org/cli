@@ -1002,6 +1002,102 @@
       "id": "urn:nself:cli:schema:commands:init:v1"
     },
     {
+      "path": "commands/license-account-devices.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:license-account-devices:v1"
+    },
+    {
+      "path": "commands/license-account-licenses.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:license-account-licenses:v1"
+    },
+    {
+      "path": "commands/license-account-status.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:license-account-status:v1"
+    },
+    {
+      "path": "commands/license-account-team.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:license-account-team:v1"
+    },
+    {
+      "path": "commands/license-account.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:license-account:v1"
+    },
+    {
+      "path": "commands/license-add.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:license-add:v1"
+    },
+    {
+      "path": "commands/license-clear.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:license-clear:v1"
+    },
+    {
+      "path": "commands/license-export.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:license-export:v1"
+    },
+    {
+      "path": "commands/license-health.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:license-health:v1"
+    },
+    {
+      "path": "commands/license-import.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:license-import:v1"
+    },
+    {
+      "path": "commands/license-list.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:license-list:v1"
+    },
+    {
+      "path": "commands/license-migrate.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:license-migrate:v1"
+    },
+    {
+      "path": "commands/license-refresh.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:license-refresh:v1"
+    },
+    {
+      "path": "commands/license-remove.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:license-remove:v1"
+    },
+    {
+      "path": "commands/license-restore.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:license-restore:v1"
+    },
+    {
+      "path": "commands/license-revalidate.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:license-revalidate:v1"
+    },
+    {
+      "path": "commands/license-revoke.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:license-revoke:v1"
+    },
+    {
+      "path": "commands/license-set.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:license-set:v1"
+    },
+    {
+      "path": "commands/license-show.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:license-show:v1"
+    },
+    {
+      "path": "commands/license-simulate-offline.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:license-simulate-offline:v1"
+    },
+    {
+      "path": "commands/license-status.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:license-status:v1"
+    },
+    {
+      "path": "commands/license-upgrade.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:license-upgrade:v1"
+    },
+    {
+      "path": "commands/license-validate.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:license-validate:v1"
+    },
+    {
+      "path": "commands/license.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:license:v1"
+    },
+    {
       "path": "commands/logs-record.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:logs-record:v1"
     },

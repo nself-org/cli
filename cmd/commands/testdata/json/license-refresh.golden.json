@@ -1,0 +1,15 @@
+{
+  "schema_version": "1",
+  "command": "license refresh",
+  "data": {
+    "mode": "keys",
+    "keys": [
+      {
+        "key": "nself_pro_**************************1234",
+        "refreshed": true,
+        "tier": "plus",
+        "expires_at": "2027-01-02"
+      }
+    ]
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "schema_version": "1",
+  "command": "license set",
+  "data": {
+    "key": "nself_pro_**************************1234",
+    "product": "ɳSelf Pro",
+    "replaced": 1
+  }
+}

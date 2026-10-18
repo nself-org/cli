@@ -54,6 +54,9 @@ func runAccountTeam(cmd *cobra.Command, _ []string) error {
 	remove, _ := cmd.Flags().GetString("remove")
 	roleArgs, _ := cmd.Flags().GetStringSlice("role")
 	jsonOut, _ := cmd.Flags().GetBool("json")
+	if err := accountJSONGuard(cmd, "invite", "remove", "role"); err != nil {
+		return err
+	}
 
 	af, err := requireLogin()
 	if err != nil {
@@ -99,6 +102,9 @@ func runAccountTeam(cmd *cobra.Command, _ []string) error {
 		return handleAuthError(err)
 	}
 
+	if jsonEnvelopeOn(cmd) {
+		return emitDoc(cmd, orEmpty(members), true)
+	}
 	if jsonOut {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")

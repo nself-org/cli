@@ -1,0 +1,9 @@
+{
+  "schema_version": "1",
+  "command": "license validate",
+  "data": {
+    "keys": [
+      "nself_pro_**************************1234"
+    ]
+  }
+}

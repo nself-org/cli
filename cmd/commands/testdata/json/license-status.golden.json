@@ -1,0 +1,27 @@
+{
+  "schema_version": "1",
+  "command": "license status",
+  "data": {
+    "keys": [
+      {
+        "key": "nself_pro_**************************1234",
+        "product": "plus",
+        "status": "Active",
+        "expires": "2027-01-02",
+        "plugins": [
+          "chat"
+        ]
+      }
+    ],
+    "products": [
+      "plus"
+    ],
+    "plugins": [
+      "chat"
+    ],
+    "plugin_access": {
+      "plugin": "chat",
+      "granted": true
+    }
+  }
+}

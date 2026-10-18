@@ -46,6 +46,9 @@ func runAccountStatus(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		if err == auth.ErrNotLoggedIn {
 			fmt.Println("not logged in — run: nself account login")
+			if jsonEnvelopeOn(cmd) {
+				return emitAccountStatus(cmd, accountStatusData{Status: "not-logged-in", Bundles: []string{}})
+			}
 			return nil
 		}
 		return fmt.Errorf("account status: %w", err)
@@ -59,6 +62,9 @@ func runAccountStatus(cmd *cobra.Command, _ []string) error {
 	}
 	if infoErr != nil {
 		// Fall back to cached data.
+		if jsonEnvelopeOn(cmd) {
+			return emitAccountStatus(cmd, accountCachedStatus(af, "cached"))
+		}
 		if jsonOut {
 			return printCachedAccountJSON(af)
 		}
@@ -69,6 +75,9 @@ func runAccountStatus(cmd *cobra.Command, _ []string) error {
 
 	if !info.Authenticated {
 		fmt.Println("session expired — run: nself account login")
+		if jsonEnvelopeOn(cmd) {
+			return emitAccountStatus(cmd, accountCachedStatus(af, "expired"))
+		}
 		return nil
 	}
 
@@ -78,6 +87,9 @@ func runAccountStatus(cmd *cobra.Command, _ []string) error {
 		tier = "free"
 	}
 
+	if jsonEnvelopeOn(cmd) {
+		return emitAccountStatus(cmd, accountLiveStatus(af, acc.Email, acc.DisplayName, tier, acc.EmailVerified, acc.MFAEnabled))
+	}
 	if jsonOut {
 		out := map[string]interface{}{
 			"email":          acc.Email,

@@ -49,6 +49,7 @@ func scheduledRefresh(cmd *cobra.Command, projectDir string) error {
 		return errs.Exit(errs.ExitUserError)
 	}
 	out, err := runScheduledRefresh(cmd.Context(), projectDir)
+	doc := licenseRefreshData{Mode: "scheduled", Keys: []licenseRefreshKey{}}
 	var failed *entitlement.RefreshError
 	switch {
 	case errors.As(err, &failed):
@@ -60,10 +61,13 @@ func scheduledRefresh(cmd *cobra.Command, projectDir string) error {
 	case out.RootRequired:
 		return errs.Exit(maintenance.ExitGone)
 	case out.Removed:
+		doc.TimerRemoved = true
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "entitlement refresh timer removed (%s)\n", out.Reason)
 	case !out.Skipped && !out.Exp.IsZero():
+		doc.EntitlementExpires = out.Exp.Format(time.RFC3339)
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "entitlement refreshed exp=%s\n", out.Exp.Format(time.RFC3339))
 	}
+	setData(cmd, doc)
 	return nil
 }
 
@@ -77,6 +81,7 @@ func previewTimer(cmd *cobra.Command, projectDir string) error {
 	if err != nil {
 		return err
 	}
+	setData(cmd, licenseRefreshData{Mode: "timer-preview", Keys: []licenseRefreshKey{}, Preview: text})
 	_, _ = fmt.Fprint(cmd.OutOrStdout(), text)
 	return nil
 }
@@ -97,6 +102,7 @@ func removeTimerByHand(cmd *cobra.Command, projectDir string, all bool) error {
 	if res.RootRequired {
 		return errs.ExitWithf(errs.ExitUserError, "the systemd timer units are root-owned; run: sudo nself license refresh --remove-timer %s", scope)
 	}
+	setData(cmd, licenseRefreshData{Mode: "remove-timer", Keys: []licenseRefreshKey{}, TimerRemoved: res.Removed})
 	if res.Removed {
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "entitlement refresh timer removed")
 	} else {
@@ -132,6 +138,7 @@ every 6 hours. --remove-timer removes that timer by hand (--all: every project o
 		}
 
 		refreshed := false
+		doc := licenseRefreshData{Mode: "keys", Keys: []licenseRefreshKey{}}
 		for _, key := range keys {
 			ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
 			result, err := license.RefreshCache(ctx, key)
@@ -139,17 +146,25 @@ every 6 hours. --remove-timer removes that timer by hand (--all: every project o
 
 			masked := license.MaskKey(key)
 			if err != nil {
+				doc.Keys = append(doc.Keys, licenseRefreshKey{Key: masked, Error: "refresh failed: " + licenseScrub(err.Error())})
 				fmt.Fprintf(os.Stderr, "%s: refresh failed: %v\n", masked, err)
 				continue
 			}
 			if !result.Valid {
+				doc.Keys = append(doc.Keys, licenseRefreshKey{Key: masked, Error: "invalid: " + licenseScrub(result.Message)})
 				fmt.Fprintf(os.Stderr, "%s: invalid — %s\n", masked, result.Message)
 				continue
 			}
+			row := licenseRefreshKey{Key: masked, Refreshed: true, Tier: licenseScrub(result.Tier)}
+			if !result.ExpiresAt.IsZero() {
+				row.ExpiresAt = result.ExpiresAt.Format("2006-01-02")
+			}
+			doc.Keys = append(doc.Keys, row)
 			fmt.Printf("%s: refreshed (tier: %s, expires: %s)\n",
 				masked, result.Tier, result.ExpiresAt.Format("2006-01-02"))
 			refreshed = true
 		}
+		setData(cmd, doc)
 		// compat.V15(P7-PLUG-64): refresh leaves entitlement.jwt alone -> a verified refresh rewrites it
 		if dir := licenseProject(cmd); refreshed && compat.V15() && dir != "" {
 			return publishEntitlement(cmd, dir)
@@ -162,6 +177,9 @@ var licenseExportCmd = &cobra.Command{
 	Use:   "export",
 	Short: "Export signed license cache for air-gap transfer",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if jsonEnvelopeOn(cmd) { // the signed cache holds the licence JWT: a document carries its summary only
+			return exportCacheSummary(cmd)
+		}
 		data, err := license.ExportCache()
 		if err != nil {
 			return err

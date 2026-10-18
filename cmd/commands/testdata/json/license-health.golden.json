@@ -1,0 +1,12 @@
+{
+  "schema_version": "1",
+  "command": "license health",
+  "data": {
+    "format_ok": true,
+    "server_reachable": true,
+    "server_valid": true,
+    "cache_integrity": true,
+    "health_score": 3,
+    "status": "healthy"
+  }
+}

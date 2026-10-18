@@ -1,0 +1,15 @@
+{
+  "schema_version": "1",
+  "command": "license account",
+  "data": {
+    "status": "active",
+    "email": "alice@example.test",
+    "display_name": "Alice",
+    "tier": "plus",
+    "email_verified": true,
+    "mfa_enabled": false,
+    "bundles": [
+      "chat"
+    ]
+  }
+}
