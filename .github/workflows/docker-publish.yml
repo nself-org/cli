@@ -21,7 +21,8 @@ name: Docker Multi-Arch Publish
 #
 # Tags published:
 #   nself/nself:<version>   (e.g. nself/nself:1.4.13)
-#   nself/nself:latest      (non-prerelease, GitHub's latest only)
+#   nself/nself:latest      (non-prerelease, GitHub's latest only; points at the
+#                            versioned tag's index via `imagetools create`, no rebuild)
 
 on:
   workflow_run:
@@ -113,20 +114,15 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Tag as latest
+      # :latest is a second name for the versioned index, not a second build: the
+      # same platform manifests and the same provenance attestations, so both tags
+      # report one index digest (D-0351). Runs after the versioned push; a failure
+      # here fails the job.
+      - name: Tag as latest (same index as the versioned tag)
         if: steps.version.outputs.latest == 'true'
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: nself/nself:latest
-          build-args: |
-            VERSION=${{ steps.version.outputs.version }}
-            COMMIT=${{ steps.source.outputs.commit }}
-            BUILD_DATE=${{ steps.source.outputs.date }}
-            NSELF_LICENSE_PUBKEY_HEX=${{ secrets.NSELF_LICENSE_PUBKEY_HEX }}
-          cache-from: type=gha
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: docker buildx imagetools create -t nself/nself:latest "nself/nself:${VERSION}"
 
       - name: Summary
         run: |
