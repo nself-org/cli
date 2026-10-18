@@ -77,19 +77,19 @@ func TestIsolationRules(t *testing.T) {
 	}
 	for name, fx := range fixtures {
 		t.Run(name, func(t *testing.T) {
-			tables, unchecked, err := parseIsolationMetadata(fx.Metadata)
+			meta, err := parseIsolationMetadata(fx.Metadata)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if strings.Join(unchecked, ",") != strings.Join(fx.Unchecked, ",") {
-				t.Errorf("unchecked sources = %v, want %v", unchecked, fx.Unchecked)
+			if strings.Join(meta.Unchecked, ",") != strings.Join(fx.Unchecked, ",") {
+				t.Errorf("unchecked sources = %v, want %v", meta.Unchecked, fx.Unchecked)
 			}
 			var want []string
 			for _, w := range fx.Want {
 				want = append(want, fmt.Sprintf("%s %s %s %s fail=%v", w.Rule, w.Table, w.Role, w.Op, w.Fail))
 			}
 			sort.Strings(want)
-			got := isoKeys(isolationRules(tables, fx.columns(), fx.Strict))
+			got := isoKeys(isolationRules(meta.Tables, fx.columns(), fx.Strict))
 			if strings.Join(got, "\n") != strings.Join(want, "\n") {
 				t.Fatalf("%s\ngot:\n%s\nwant:\n%s", fx.Description, strings.Join(got, "\n"), strings.Join(want, "\n"))
 			}
@@ -104,12 +104,12 @@ func TestIsolationTemplateFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tables, _, err := parseIsolationMetadata(b)
+	meta, err := parseIsolationMetadata(b)
 	if err != nil {
 		t.Fatal(err)
 	}
 	cols := isoColumns{"public.notes": {isoColSAID: true}, "public.projects": {isoColSAID: true}, "public.app_members": {isoColSAID: true}}
-	if got := isolationRules(tables, cols, true); len(got) != 0 {
+	if got := isolationRules(meta.Tables, cols, true); len(got) != 0 {
 		t.Fatalf("template shape has findings: %v", isoKeys(got))
 	}
 }

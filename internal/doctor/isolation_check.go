@@ -17,6 +17,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -58,9 +59,12 @@ func IsolationChecks(ctx context.Context, projectDir string) []CheckResult {
 	if err != nil {
 		return []CheckResult{isoFail("metadata", fmt.Sprintf("live Hasura metadata unreadable (is the stack running?): %v", err))}
 	}
-	tables, unchecked, err := parseIsolationMetadata(live)
+	meta, err := parseIsolationMetadata(live)
 	if err != nil {
 		return []CheckResult{isoFail("metadata", fmt.Sprintf("Hasura metadata not understood: %v", err))}
+	}
+	if meta.DefaultDB != "" && meta.DefaultDB != cfg.Postgres.DB {
+		return []CheckResult{isoFail("source default", fmt.Sprintf("Hasura's default source reads database %q but the project's database is %q: the columns cannot be matched to the permissions", meta.DefaultDB, cfg.Postgres.DB))}
 	}
 	container := health.ContainerName(resolveProjectName(projectDir), "postgres")
 	out, stderr, err := isoExecCapture(ctx, container, []string{"psql", "-X", "-A", "-t", "-F", isoFieldSep,
@@ -72,8 +76,8 @@ func IsolationChecks(ctx context.Context, projectDir string) []CheckResult {
 	if err != nil {
 		return []CheckResult{isoFail("columns", err.Error())}
 	}
-	results := isolationResults(tables, cols, strict)
-	for _, src := range unchecked {
+	results := isolationResults(meta.Tables, cols, strict)
+	for _, src := range meta.Unchecked {
 		results = append(results, isoFail("source "+src, fmt.Sprintf("Hasura source %q tracks tables the guard cannot check: it reads columns from the default source's database only", src)))
 	}
 	return results
@@ -146,8 +150,22 @@ type isoMetaTable struct {
 }
 
 type isoMetaSource struct {
-	Name   string         `json:"name"`
+	Name          string `json:"name"`
+	Configuration struct {
+		ConnectionInfo struct {
+			DatabaseURL any `json:"database_url"` // string, or {"from_env": NAME} (trusted: nSelf generates it)
+		} `json:"connection_info"`
+	} `json:"configuration"`
 	Tables []isoMetaTable `json:"tables"`
+}
+
+// isoMeta is a parsed export: the default source's tables, the names of other
+// sources that have tables (unchecked), and the database a literal default
+// connection URL names ("" when it is not a literal URL).
+type isoMeta struct {
+	Tables    []isoTable
+	Unchecked []string
+	DefaultDB string
 }
 
 type isoMetaBody struct {
@@ -164,26 +182,31 @@ type isoMetaBody struct {
 // another database, so they are reported, never passed. Inherited roles get the
 // union of their members' select filters (an `_or`), so an unrestricted member
 // such as nself_admin shows up on every role that inherits it.
-func parseIsolationMetadata(doc []byte) ([]isoTable, []string, error) {
+func parseIsolationMetadata(doc []byte) (isoMeta, error) {
 	var m struct {
 		isoMetaBody
 		Metadata isoMetaBody `json:"metadata"`
 	}
 	if err := json.Unmarshal(doc, &m); err != nil {
-		return nil, nil, err
+		return isoMeta{}, err
 	}
 	sources := append(m.Sources, m.Metadata.Sources...)
 	if len(sources) == 0 {
-		return nil, nil, fmt.Errorf("no sources in the metadata document")
+		return isoMeta{}, fmt.Errorf("no sources in the metadata document")
 	}
-	var tables []isoTable
-	var unchecked []string
+	var out isoMeta
 	for _, src := range sources {
 		if src.Name != "default" {
 			if len(src.Tables) > 0 {
-				unchecked = append(unchecked, src.Name)
+				out.Unchecked = append(out.Unchecked, src.Name)
 			}
 			continue
+		}
+		if lit, ok := src.Configuration.ConnectionInfo.DatabaseURL.(string); ok {
+			u, uerr := url.Parse(lit)
+			if out.DefaultDB = "?"; uerr == nil {
+				out.DefaultDB = strings.TrimPrefix(u.Path, "/")
+			}
 		}
 		for _, mt := range src.Tables {
 			t := isoTable{Schema: mt.Table.Schema, Name: mt.Table.Name, Perms: map[string]map[string]isoPerm{}}
@@ -210,10 +233,10 @@ func parseIsolationMetadata(doc []byte) ([]isoTable, []string, error) {
 					t.Perms[inh.RoleName]["select"] = isoPerm{Filter: map[string]any{"_or": branches}}
 				}
 			}
-			tables = append(tables, t)
+			out.Tables = append(out.Tables, t)
 		}
 	}
-	return tables, unchecked, nil
+	return out, nil
 }
 
 // parseIsolationColumns reads the psql rows "schema<US>table<US>column".

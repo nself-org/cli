@@ -64,13 +64,13 @@ func TestHasuraMetadataInterchange(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		tables, _, err := parseIsolationMetadata(doc)
+		meta, err := parseIsolationMetadata(doc)
 		if err != nil {
 			t.Fatal(err)
 		}
 		cols := isoColumns{"public.np_auditlog_events": {isoColSAID: true}}
 		found := false
-		for _, f := range isolationRules(tables, cols, false) {
+		for _, f := range isolationRules(meta.Tables, cols, false) {
 			if f.Rule == "ISO-04" && f.Table == "public.np_auditlog_events" && f.Role == "user" && f.Op == "select" && f.Fail {
 				found = true
 			}
@@ -87,11 +87,11 @@ func TestHasuraMetadataInterchange(t *testing.T) {
 			t.Fatal(err)
 		}
 		doc, _ = json.Marshal(map[string]any{"sources": []any{map[string]any{"name": "default", "tables": cleanList}}})
-		tables, _, err = parseIsolationMetadata(doc)
+		meta, err = parseIsolationMetadata(doc)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := isolationRules(tables, cols, true); len(got) != 0 {
+		if got := isolationRules(meta.Tables, cols, true); len(got) != 0 {
 			t.Errorf("real plugin metadata has isolation findings: %v", isoKeys(got))
 		}
 	})

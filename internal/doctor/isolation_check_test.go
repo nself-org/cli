@@ -113,6 +113,21 @@ func TestIsolationChecks(t *testing.T) {
 			t.Fatalf("want a fail naming source reporting, got %q", got)
 		}
 	})
+	t.Run("default source on another database is a failure", func(t *testing.T) {
+		fx := fixtures["template-ok"]
+		for _, c := range []struct{ url, want string }{
+			{`"postgresql://u:p@postgres:5432/other"`, "fail"},
+			{`"postgresql://u:p@postgres:5432/nself"`, "pass"},
+			{`{"from_env":"HASURA_GRAPHQL_DATABASE_URL"}`, "pass"},
+		} {
+			meta := strings.Replace(string(fx.Metadata), `"name": "default"`, `"name": "default", "configuration": {"connection_info": {"database_url": `+c.url+`}}`, 1)
+			dir := isoProject(t, []byte(meta), nil, psqlRows(fx), nil)
+			res := IsolationChecks(context.Background(), dir)
+			if res[0].Status != c.want || (c.want == "fail" && (len(res) != 1 || !strings.Contains(res[0].Message, `"other"`))) {
+				t.Errorf("database_url %s: want %s, got %+v", c.url, c.want, res)
+			}
+		}
+	})
 	t.Run("column rows are parsed strictly", func(t *testing.T) {
 		if _, err := parseIsolationColumns("public" + isoFieldSep + "notes\n"); err == nil {
 			t.Error("short row accepted")
