@@ -19,12 +19,29 @@ func isoProject(t *testing.T, meta []byte, metaErr error, psql string, psqlErr e
 	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("PROJECT_NAME=fx\nENV=dev\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if !strings.Contains(string(meta), "database_url") { // a live export always states it
+		meta = []byte(strings.Replace(string(meta), `"name": "default"`, `"name": "default", "configuration": {"connection_info": {"database_url": {"from_env": "HASURA_GRAPHQL_DATABASE_URL"}}}`, 1))
+	}
 	savedMeta, savedExec := exportLiveMetadata, isoExecCapture
 	t.Cleanup(func() { exportLiveMetadata, isoExecCapture = savedMeta, savedExec })
 	exportLiveMetadata = func(context.Context, *config.Config) ([]byte, error) { return meta, metaErr }
 	isoExecCapture = func(_ context.Context, container string, cmd []string) (string, string, error) {
-		if container != "fx_postgres" || cmd[0] != "psql" || cmd[len(cmd)-1] != isoColumnsSQL {
+		sql := cmd[len(cmd)-1]
+		if container != "fx_postgres" || cmd[0] != "psql" || (sql != isoColumnsSQL && sql != isoRelationsSQL) {
 			t.Errorf("unexpected exec: %s %v", container, cmd)
+		}
+		if sql == isoRelationsSQL && psqlErr == nil { // every tracked table exists unless a test removes it
+			parsed, err := parseIsolationMetadata(meta)
+			if err != nil {
+				return "", "", nil
+			}
+			var rows []string
+			for _, tb := range parsed.Tables {
+				if tb.Name != "missing_relation" {
+					rows = append(rows, tb.Schema+isoFieldSep+tb.Name)
+				}
+			}
+			return strings.Join(rows, "\n") + "\n", "", nil
 		}
 		return psql, "", psqlErr
 	}
@@ -113,19 +130,33 @@ func TestIsolationChecks(t *testing.T) {
 			t.Fatalf("want a fail naming source reporting, got %q", got)
 		}
 	})
-	t.Run("default source on another database is a failure", func(t *testing.T) {
+	t.Run("default source must be proven to read the project database", func(t *testing.T) {
 		fx := fixtures["template-ok"]
-		for _, c := range []struct{ url, want string }{
-			{`"postgresql://u:p@postgres:5432/other"`, "fail"},
-			{`"postgresql://u:p@postgres:5432/nself"`, "pass"},
-			{`{"from_env":"HASURA_GRAPHQL_DATABASE_URL"}`, "pass"},
+		for _, c := range []struct{ url, want, contains string }{
+			{`"postgresql://u:p@postgres:5432/other"`, "fail", `"other"`},
+			{`"postgresql://u:p@other-server:5432/nself"`, "fail", "other-server"},
+			{`"postgresql://u:p@postgres:5433/nself"`, "fail", "postgres:5433"},
+			{`"not a url"`, "fail", "not understood"},
+			{`{"from_env":"SOME_OTHER_URL"}`, "fail", "HASURA_GRAPHQL_DATABASE_URL"},
+			{`{"connection_parameters":{"host":"other-server","database":"nself"}}`, "fail", "HASURA_GRAPHQL_DATABASE_URL"},
+			{`7`, "fail", "unknown shape"},
+			{`"postgresql://u:p@postgres:5432/nself"`, "pass", ""},
+			{`"postgresql://u:p@fx_postgres/nself"`, "pass", ""},
+			{`{"from_env":"HASURA_GRAPHQL_DATABASE_URL"}`, "pass", ""},
 		} {
 			meta := strings.Replace(string(fx.Metadata), `"name": "default"`, `"name": "default", "configuration": {"connection_info": {"database_url": `+c.url+`}}`, 1)
 			dir := isoProject(t, []byte(meta), nil, psqlRows(fx), nil)
 			res := IsolationChecks(context.Background(), dir)
-			if res[0].Status != c.want || (c.want == "fail" && (len(res) != 1 || !strings.Contains(res[0].Message, `"other"`))) {
+			if res[0].Status != c.want || (c.want == "fail" && (len(res) != 1 || !strings.Contains(res[0].Message, c.contains))) {
 				t.Errorf("database_url %s: want %s, got %+v", c.url, c.want, res)
 			}
+		}
+	})
+	t.Run("export without a default connection fails closed", func(t *testing.T) {
+		doc := `{"version":3,"sources":[{"name":"default","tables":[]}]}`
+		meta, err := parseIsolationMetadata([]byte(doc))
+		if err != nil || bindDefaultSource(meta.DefaultConn, "nself", "fx_postgres") == "" {
+			t.Errorf("want a binding failure, got %v / %+v", err, meta)
 		}
 	})
 	t.Run("column rows are parsed strictly", func(t *testing.T) {
