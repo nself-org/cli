@@ -69,6 +69,7 @@ func (t *SSHTransport) sshArgsContext(ctx context.Context) ([]string, error) {
 		"-o", "ForwardAgent=no",
 		"-o", "BatchMode=yes",
 	}
+	// compat.V15(P7-DEPL-14): shared ssh master allowed -> ControlMaster=no for every strict policy (D-0855).
 	if compat.V15() {
 		// A shared master skips host-key checks, including caller-supplied policies.
 		args = append(args, "-o", "ControlMaster=no", "-o", "ControlPath=none")
