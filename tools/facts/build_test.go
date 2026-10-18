@@ -84,7 +84,7 @@ func TestMarshalShape(t *testing.T) {
 }
 
 func TestBelowV15(t *testing.T) {
-	for v, want := range map[string]bool{"1.4.14": true, "1.4.99": true, "1.5.0": false, "1.5.0-rc.1": false, "2.0.0": false, "0.9.0": true, "x": true} {
+	for v, want := range map[string]bool{"1.4.14": true, "1.4.99": true, "1.5.0": false, "1.5.0-rc.1": true, "1.5.1-rc.1": false, "1.5.0+build": false, "2.0.0": false, "0.9.0": true, "x": true} {
 		if got := belowV15(v); got != want {
 			t.Errorf("belowV15(%q) = %v, want %v", v, got, want)
 		}

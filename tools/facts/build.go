@@ -90,7 +90,8 @@ func Marshal(f model.Facts) ([]byte, error) {
 }
 
 // belowV15 reports whether version is older than 1.5.0, the release where the
-// v1.5 surface becomes the default. An unparsable version counts as below.
+// v1.5 surface becomes the default. A 1.5.0 prerelease (1.5.0-rc.1) is older
+// than 1.5.0 (semver); an unparsable version counts as below.
 func belowV15(version string) bool {
 	m := semverRE.FindStringSubmatch(version)
 	if m == nil {
@@ -98,5 +99,8 @@ func belowV15(version string) bool {
 	}
 	var maj, min int
 	_, _ = fmt.Sscanf(m[1]+" "+m[2], "%d %d", &maj, &min)
-	return maj < 1 || (maj == 1 && min < 5)
+	if maj < 1 || (maj == 1 && min < 5) {
+		return true
+	}
+	return maj == 1 && min == 5 && m[3] == "0" && strings.HasPrefix(version[len(m[0]):], "-")
 }

@@ -87,3 +87,15 @@ func TestFillReadmeStrayEnd(t *testing.T) {
 		}
 	}
 }
+
+func TestFillReadmeCRLF(t *testing.T) {
+	in := "<!-- BEGIN GENERATED:facts:version -->\r\nold\r\n<!-- END GENERATED:facts:version -->\r\n"
+	got, err := FillReadme(in, testFacts("1.4.14"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "<!-- BEGIN GENERATED:facts:version -->\r\n1.4.14\r\n<!-- END GENERATED:facts:version -->\r\n"
+	if got != want {
+		t.Fatalf("CRLF block mangled: %q", got)
+	}
+}

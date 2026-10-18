@@ -79,14 +79,18 @@ func FillReadme(text string, f model.Facts) (string, error) {
 			return "", fmt.Errorf("facts block %q is not closed before the next BEGIN", key)
 		}
 		lineStart := i == 0 || rest[i-1] == '\n'
-		lineEnd := strings.HasPrefix(tail, "\n") || strings.HasPrefix(tail, "\r\n")
+		nl := "\n"
+		if strings.HasPrefix(tail, "\r\n") {
+			nl = "\r\n"
+		}
+		lineEnd := strings.HasPrefix(tail, nl)
 		if strings.Contains(rest[:i], endPrefix) {
 			return "", fmt.Errorf("END marker without a BEGIN marker before %q", key)
 		}
 		out.WriteString(rest[:i])
 		out.WriteString(begin)
 		if lineStart && lineEnd {
-			out.WriteString("\n" + body + "\n")
+			out.WriteString(nl + body + nl)
 		} else {
 			out.WriteString(body)
 		}

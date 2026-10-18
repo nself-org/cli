@@ -109,7 +109,7 @@ schemas-check: $(TOOLS_BIN)/schemagen
 ## generated file or a Go type that drifted from its schema exits non-zero with
 ## a message naming the check and the fix. The registry check regenerates with
 ## `make cmd-inventory` into the tree, compares every file it writes (registry,
-## inventory, Commands.md, Command-Canon.md) against what was committed (or
+## inventory, Commands.md, Command-Canon.md, facts.json, the README facts blocks) against what was committed (or
 ## hand-edited) before, then restores them, so a failing run leaves the tree as
 ## it found it. The wiki check runs tools/wikigen -check (the generated tables in
 ## error-codes.md and Exit-Codes.md) and scripts/contract-check-wiki.sh (the
@@ -120,7 +120,7 @@ CONTRACT_GOTEST := CGO_ENABLED=0 go test -mod=vendor -count=1
 CONTRACT_PKGS := ./internal/errs/... ./internal/output/... ./internal/canon/... ./internal/cmdregistry/... \
 	./internal/compat/... ./internal/portable/... ./internal/plugin/manifestv2/... ./tools/schemagen/...
 CONTRACT_REGEN := .github/command-registry.json .github/command-inventory.json .github/wiki/Commands.md \
-	.github/wiki/Command-Canon.md
+	.github/wiki/Command-Canon.md .github/facts.json README.md
 contract-check: $(TOOLS_BIN)/schemagen $(TOOLS_BIN)/wikigen
 	@set -e; \
 	fail() { echo "contract-check: FAILED: $$1" >&2; echo "contract-check: fix: $$2" >&2; exit 1; }; \

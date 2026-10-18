@@ -96,6 +96,7 @@ Every JSON contract is published as a JSON Schema (draft 2020-12) under `schemas
 | `schemas/bundle-ledger.v1.schema.json` | The bundle install-state ledger (contract `cli.bundle-ledger` v1) |
 | `schemas/catalog.v1.schema.json` | The plugin catalog (contract `plugins.catalog` v1): one row per slug and tier, bundles and counts |
 | `schemas/releases.v1.schema.json` | `releases.json`: version, sha256, signature and tarball, written only by the release pipeline |
+| `schemas/public-facts.v1.schema.json` | `.github/facts.json` (contract `cli.public-facts` v1): version, verbs and counts projected from `.github/VERSION` and the command registry by `tools/facts` |
 | `schemas/control-plane.v2.schema.json` | The control-plane inventory in `.nself/control-plane.yaml` (secrets never inlined) |
 | `schemas/lockfile.v1.schema.json` | The project lock `nself.lock.yaml` (contract `cli.lockfile` v1), as its parsed document |
 | `schemas/nself-yaml.v1.schema.json` | `nself.yaml`, the project manifest `nself build` reads |
