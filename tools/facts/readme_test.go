@@ -99,3 +99,10 @@ func TestFillReadmeCRLF(t *testing.T) {
 		t.Fatalf("CRLF block mangled: %q", got)
 	}
 }
+
+func TestFillReadmeForeignEndInsideBlock(t *testing.T) {
+	in := "<!-- BEGIN GENERATED:facts:version -->\nold\n<!-- END GENERATED:facts:verbs -->\nkeep me\n<!-- END GENERATED:facts:version -->\n"
+	if _, err := FillReadme(in, testFacts("1.5.0")); err == nil {
+		t.Fatal("a foreign END marker inside a block must be an error, not deleted text")
+	}
+}

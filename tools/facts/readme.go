@@ -75,6 +75,9 @@ func FillReadme(text string, f model.Facts) (string, error) {
 		if k < 0 {
 			return "", fmt.Errorf("facts block %q has no END marker", key)
 		}
+		if strings.Contains(tail[:k], endPrefix) {
+			return "", fmt.Errorf("facts block %q contains the END marker of another block", key)
+		}
 		if strings.Contains(tail[:k], beginPrefix) {
 			return "", fmt.Errorf("facts block %q is not closed before the next BEGIN", key)
 		}

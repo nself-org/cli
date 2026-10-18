@@ -39,11 +39,6 @@ echo "Generating $JSON_OUT ..."
 echo "Generating $REG_OUT ..."
 "$CMDINV" -format registry > "$REG_OUT"
 
-echo "Generating .github/facts.json ..."
-FACTS="bin/facts"
-CGO_ENABLED=0 go build -mod=vendor -o "$FACTS" ./tools/facts
-"$FACTS" -readme README.md
-
 echo "Generating $CANON_OUT ..."
 CANON_TMP=$(mktemp)
 "$CMDINV" -format canon -prose-from "$CANON_OUT" > "$CANON_TMP"
@@ -108,5 +103,14 @@ if [ -n "${NSELF_SPORT_DIR:-}" ] && [ -d "${NSELF_SPORT_DIR}" ]; then
 else
   echo "NSELF_SPORT_DIR not set or missing — skipping SPORT F02 refresh."
 fi
+
+# Last on purpose: facts.json hashes the registry written above and openapi.json, and a README
+# facts-marker problem (exit 2) must not leave the wiki pages half regenerated.
+echo "Refreshing .github/openapi.json (facts.json hashes it) ..."
+CGO_ENABLED=0 go run -mod=vendor ./tools/openapigen
+echo "Generating .github/facts.json ..."
+FACTS="bin/facts"
+CGO_ENABLED=0 go build -mod=vendor -o "$FACTS" ./tools/facts
+"$FACTS" -readme README.md
 
 echo "Done. $COUNT top-level commands."
