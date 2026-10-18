@@ -1158,6 +1158,10 @@
       "id": "urn:nself:cli:schema:proxy-routes:v1"
     },
     {
+      "path": "public-facts.v1.schema.json",
+      "id": "urn:nself:cli:schema:public-facts:v1"
+    },
+    {
       "path": "releases.v1.schema.json",
       "id": "urn:nself:cli:schema:releases:v1"
     },

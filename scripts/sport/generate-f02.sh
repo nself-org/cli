@@ -9,6 +9,10 @@
 #          .github/command-registry.json   (contract:cli.command-registry v1, the
 #                                           v1.5 document `nself help --json`
 #                                           serves; committed)
+#          .github/facts.json              (contract:cli.public-facts v1, projected
+#                                           from VERSION and the registry above by
+#                                           tools/facts; the README facts blocks
+#                                           are refreshed too; committed)
 #          .github/wiki/Commands.md        (public command index, committed)
 #          .github/wiki/Command-Canon.md   (every old spelling and where it went
 #                                           in v1.5; the removal-plan PROSE block
@@ -99,5 +103,14 @@ if [ -n "${NSELF_SPORT_DIR:-}" ] && [ -d "${NSELF_SPORT_DIR}" ]; then
 else
   echo "NSELF_SPORT_DIR not set or missing — skipping SPORT F02 refresh."
 fi
+
+# Last on purpose: facts.json hashes the registry written above and openapi.json, and a README
+# facts-marker problem (exit 2) must not leave the wiki pages half regenerated.
+echo "Refreshing .github/openapi.json (facts.json hashes it) ..."
+CGO_ENABLED=0 go run -mod=vendor ./tools/openapigen
+echo "Generating .github/facts.json ..."
+FACTS="bin/facts"
+CGO_ENABLED=0 go build -mod=vendor -o "$FACTS" ./tools/facts
+"$FACTS" -readme README.md
 
 echo "Done. $COUNT top-level commands."
