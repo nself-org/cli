@@ -14,8 +14,8 @@ import (
 // failingConnectDocker makes `network connect` fail for $FAIL_NET.
 func failingConnectDocker(t *testing.T, network string) {
 	t.Helper()
-	script := strings.Replace(fakeProxyDocker, `connect) echo "$4" >> "$FAKE_DIR/nets.txt" ;;`,
-		`connect) [ "$4" = "$FAIL_NET" ] && { echo "boom" >&2; exit 1; }; echo "$4" >> "$FAKE_DIR/nets.txt" ;;`, 1)
+	script := strings.Replace(fakeProxyDocker, `connect) [ "$5" = cid1 ] || echo "$4" >> "$FAKE_DIR/nets.txt" ;;`,
+		`connect) [ "$4" = "$FAIL_NET" ] && { echo "boom" >&2; exit 1; }; [ "$5" = cid1 ] || echo "$4" >> "$FAKE_DIR/nets.txt" ;;`, 1)
 	if script == fakeProxyDocker {
 		t.Fatal("the fake docker script changed: update failingConnectDocker")
 	}

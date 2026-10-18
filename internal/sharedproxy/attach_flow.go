@@ -8,7 +8,10 @@ package sharedproxy
 // lock, so a network a concurrent start connected is never recorded as
 // connected by this call. Every error exit re-quarantines exactly the files
 // this call restored (attachRun.restored), unless the call ended settled:
-// nginx reloaded with the broken project(s) quarantined.
+// nginx reloaded with the broken project(s) quarantined. A cold owner is never
+// started before its merged configuration passes nginx -t, run in a throwaway
+// container (D-0928); a failure there is attributed and quarantined like a
+// failure in the running owner.
 
 import (
 	"context"
@@ -30,6 +33,11 @@ type attachRun struct {
 	out       Outcome
 	connected []Registration // connected by this call, for the rollback
 	restored  []Registration // Files = what this call took out of quarantine
+	// test runs nginx -t on the owner's configuration, finish puts a passing
+	// configuration live. Running owner: exec in it, reload. Cold owner: a
+	// throwaway container, then start and reload.
+	test   func() (stdout, stderr string, err error)
+	finish func() error
 }
 
 // undo disconnects every network this call connected.
@@ -78,6 +86,7 @@ func attach(ctx context.Context, ownerDir, self string, regs []Registration) (Ou
 		return Outcome{}, nil
 	}
 	a := &attachRun{ctx: ctx, ownerDir: ownerDir, self: self}
+	a.test, a.finish = a.execTest, a.execFinish
 	settled, err := a.run(regs)
 	if err != nil && !settled {
 		if qerr := a.requarantine(); qerr != nil {
@@ -151,20 +160,64 @@ func (a *attachRun) run(regs []Registration) (settled bool, err error) {
 		a.out.Attached = append(a.out.Attached, r.Project)
 	}
 	if cold && len(a.out.Attached) > 0 {
-		if err := startAndWait(a.ctx, nginx); err != nil {
+		a.test, a.finish = a.coldTest, a.finishCold
+		_, stderr, terr := a.test()
+		var exit *docker.RunLikeExit
+		switch {
+		case terr != nil && !errors.As(terr, &exit):
 			a.undo()
 			a.out.Attached = nil
-			return false, e506("the owner's nginx did not start after it was attached", err, "")
+			return false, e506("cannot test the configuration before the owner's nginx starts", terr, stderr)
+		case terr != nil:
+			return a.quarantineBad(terr, stderr)
 		}
+		if err := a.startCold(); err != nil {
+			return false, err
+		}
+		a.test, a.finish = a.execTest, a.execFinish
 	}
 	if len(a.out.Attached) == 0 {
 		return false, nil
 	}
-	_, stderr, terr := nginxTest(a.ctx, nginx)
+	_, stderr, terr := a.test()
 	if terr == nil {
-		return false, reload(a.ctx, nginx, &a.out, a.undo)
+		return false, a.finish()
 	}
 	return a.quarantineBad(terr, stderr)
+}
+
+// execTest is nginx -t in the running owner; execFinish reloads it.
+func (a *attachRun) execTest() (string, string, error) { return nginxTest(a.ctx, a.nginx) }
+func (a *attachRun) execFinish() error                 { return reload(a.ctx, a.nginx, &a.out, a.undo) }
+
+// coldTest is nginx -t for a stopped owner: a throwaway container with the
+// owner's image and mounts, on the networks the owner is attached to now.
+func (a *attachRun) coldTest() (string, string, error) {
+	nets, err := docker.ContainerNetworks(a.ctx, a.nginx)
+	if err != nil {
+		return "", "", err
+	}
+	nets = slices.DeleteFunc(nets, func(n string) bool { return n == "host" || n == "none" })
+	return docker.RunLike(a.ctx, docker.LikeSpec{Container: a.nginx, Networks: nets, Args: []string{"nginx", "-t"}})
+}
+
+// startCold starts the cold owner and waits for it to stay up. A failure
+// leaves nothing attached.
+func (a *attachRun) startCold() error {
+	if err := startAndWait(a.ctx, a.nginx); err != nil {
+		a.undo()
+		a.out.Attached = nil
+		return e506("the owner's nginx did not start after it was attached", err, "")
+	}
+	return nil
+}
+
+// finishCold starts the cold owner whose configuration passed and reloads it.
+func (a *attachRun) finishCold() error {
+	if err := a.startCold(); err != nil {
+		return err
+	}
+	return reload(a.ctx, a.nginx, &a.out, a.undo)
 }
 
 // quarantineBad is R3: quarantine the project(s) whose file nginx -t names (the
@@ -219,9 +272,9 @@ func (a *attachRun) quarantineBad(terr error, stderr string) (settled bool, err 
 			}
 			a.out.Attached = slices.DeleteFunc(a.out.Attached, func(p string) bool { return p == r.Project })
 		}
-		_, text2, err2 := nginxTest(a.ctx, a.nginx)
+		_, text2, err2 := a.test()
 		if err2 == nil {
-			if err := reload(a.ctx, a.nginx, &a.out, a.undo); err != nil {
+			if err := a.finish(); err != nil {
 				return false, err
 			}
 			return true, e506(fmt.Sprintf("nginx -t rejected the files of %s; they were moved to nginx/shared/quarantine/ and the owner keeps serving", strings.Join(a.out.Quarantined, ", ")), terr, stderr)

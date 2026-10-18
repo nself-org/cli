@@ -21,21 +21,36 @@ import (
 
 const fakeProxyDocker = `#!/bin/sh
 echo "$@" >> "$FAKE_DIR/calls.log"
+# A throwaway container (docker start -a) runs nginx -t against the owner's files.
+if [ "$1" = start ] && [ "$2" = -a ]; then
+  while read f; do
+    if [ -n "$f" ] && [ -e "$OWNER_DIR/$f" ]; then
+      echo "nginx: [emerg] unknown directive \"bogus\" in /etc/nginx/$(echo $f | sed 's#^nginx/##'):3" >&2
+      echo "nginx: configuration file /etc/nginx/nginx.conf test failed" >&2
+      touch "$FAKE_DIR/oneoff-exited"; exit 1
+    fi
+  done < "$FAKE_DIR/broken.txt"
+  echo "nginx: configuration file /etc/nginx/nginx.conf test is successful" >&2; exit 0
+fi
 nets_json() { s=""; while read n; do [ -n "$n" ] && s="$s${s:+,}\"$n\":{}"; done < "$FAKE_DIR/nets.txt"; printf '{%s}' "$s"; }
 case "$1" in
   ps) [ -f "$FAKE_DIR/stopped" ] || echo ownerid ;;
   inspect)
     case "$3" in
       '{{json .NetworkSettings.Networks}}') nets_json ;;
+      '{{.Config.Image}}') echo nginx:test ;;
+      '{{.State.Status}}') if [ -f "$FAKE_DIR/oneoff-exited" ]; then echo exited; else echo created; fi ;;
       *) st=$(cat "$FAKE_DIR/state" 2>/dev/null || echo running)
          printf '{"Id":"ownerid","Name":"/owner_nginx","State":{"Status":"%s"},"Config":{"Labels":{"com.docker.compose.service":"nginx","com.docker.compose.project.working_dir":"%s"}}}' "$st" "$OWNER_DIR" ;;
     esac ;;
+  create) echo cid1 ;;
+  rm) ;;
   start) echo running > "$FAKE_DIR/state" ;;
   stop) echo exited > "$FAKE_DIR/state" ;;
   network)
     case "$2" in
       inspect) n=$(eval echo \$$#); if grep -qx "$n" "$FAKE_DIR/existing.txt"; then echo "$n"; else echo "Error: No such network: $n" >&2; exit 1; fi ;;
-      connect) echo "$4" >> "$FAKE_DIR/nets.txt" ;;
+      connect) [ "$5" = cid1 ] || echo "$4" >> "$FAKE_DIR/nets.txt" ;;
       disconnect) grep -vx "$4" "$FAKE_DIR/nets.txt" > "$FAKE_DIR/nets.new"; mv "$FAKE_DIR/nets.new" "$FAKE_DIR/nets.txt" ;;
     esac ;;
   exec)

@@ -13,7 +13,10 @@ package sharedproxy
 // (not an E506) when the owner's nginx container is not running.
 // A cold owner (stopped or crash-looping nginx) is attached by the owner's own
 // start only, then started, so a hand-written snippet with a static upstream
-// can resolve it. A fronted project's start leaves a stopped owner alone.
+// can resolve it. A fronted project's start leaves a stopped owner alone. The
+// cold owner starts only after `nginx -t` passed in a throwaway container with
+// its image, mounts and networks (a broken conf is quarantined first), and
+// only counts as started once it has stayed running for a grace period.
 // Constraints: only a network named exactly `<project>_network` for a valid
 // project is ever touched, and only the owner's nginx container is ever
 // connected; networks are never created or removed here; `nginx -s reload`
@@ -112,30 +115,41 @@ func e506(msg string, cause error, text string) error {
 	return e
 }
 
-// startPoll and startWait bound how long startAndWait waits for the container
-// to report running; variables so tests do not sleep.
+// startPoll, startWait and startGrace bound startAndWait: how often it samples
+// the container, how long it waits for the first running sample, and how long
+// the container must then stay running; variables so tests do not sleep.
 var (
-	startPoll = 250 * time.Millisecond
-	startWait = 10 * time.Second
+	startPoll  = 250 * time.Millisecond
+	startWait  = 10 * time.Second
+	startGrace = 2 * time.Second
 )
 
-// startAndWait starts the container and waits until it stays running for one
-// poll interval.
+// startAndWait starts the container and waits until it has been running for
+// startGrace without a break. A broken configuration makes nginx exit at once
+// and Docker restart it, so the first running sample proves nothing: a sample
+// that is not running after a running one fails the wait.
 func startAndWait(ctx context.Context, name string) error {
 	if err := docker.StartContainer(ctx, name); err != nil {
 		return err
 	}
 	deadline := time.Now().Add(startWait)
+	var upSince time.Time
 	for {
 		time.Sleep(startPoll)
 		st, err := docker.InspectState(ctx, name)
 		if err != nil {
 			return err
 		}
-		if st == "running" {
+		switch {
+		case st == "running" && upSince.IsZero():
+			upSince = time.Now()
+		case st != "running" && !upSince.IsZero():
+			return fmt.Errorf("container %s was running, then %s: it is crash-looping", name, st)
+		}
+		if !upSince.IsZero() && time.Since(upSince) >= startGrace {
 			return nil
 		}
-		if time.Now().After(deadline) {
+		if upSince.IsZero() && time.Now().After(deadline) {
 			return fmt.Errorf("container %s is %s after %s", name, st, startWait)
 		}
 	}
