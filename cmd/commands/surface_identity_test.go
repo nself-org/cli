@@ -60,7 +60,9 @@ type surfaceCase struct {
 	cli               []string
 	req               map[string]any
 	confirm           bool
-	maskDigits        bool
+	maskDigits        bool     // doctor: digits inside check messages (free disk, port holders) vary
+	fail              bool     // the command is expected to answer with an error envelope
+	containers        bool     // the stub docker reports a running container for the run
 	plan              bool     // plan form: the machine answer carries the CLI --plan data as confirmation.plan
 	volatileKeys      []string // members that differ per run (random secrets feed the plan id)
 }
@@ -85,7 +87,7 @@ func surfaceCases() []surfaceCase {
 			req: map[string]any{"args": []string{"PROJECT_DESCRIPTION", "surface identity"}}, confirm: true, volatileKeys: []string{"plan_id"}},
 		{name: "reset (confirm)", tool: "nself_reset", route: "/v1/commands/reset", cli: []string{"reset", "--yes=true"}, confirm: true},
 		{name: "plugin read", tool: "nself_fx_status", route: "/v1/commands/fx/status", cli: []string{"fx", "status"}},
-		{name: "logs (fails)", tool: "nself_logs", route: "/v1/commands/logs", cli: []string{"logs"}},
+		{name: "logs (fails)", tool: "nself_logs", route: "/v1/commands/logs", cli: []string{"logs"}, fail: true},
 	}
 }
 
@@ -104,8 +106,13 @@ func normalise(t *testing.T, raw []byte, c surfaceCase, maskNonce bool) any {
 		switch x := x.(type) {
 		case map[string]any:
 			for k, e := range x {
-				if surfaceVolatile[k] || (maskNonce && k == "confirm") || slices.Contains(c.volatileKeys, k) {
+				// A volatile member is masked only when it holds a non-empty string, so a
+				// null or missing value on one surface still differs from a real one.
+				if str, isStr := e.(string); isStr && str != "" &&
+					(surfaceVolatile[k] || (maskNonce && k == "confirm") || slices.Contains(c.volatileKeys, k)) {
 					x[k] = "<volatile>"
+				} else if c.maskDigits && k == "message" && isStr {
+					x[k] = surfaceDigits.ReplaceAllString(str, "#")
 				} else {
 					x[k] = walk(e)
 				}
@@ -113,10 +120,6 @@ func normalise(t *testing.T, raw []byte, c surfaceCase, maskNonce bool) any {
 		case []any:
 			for i, e := range x {
 				x[i] = walk(e)
-			}
-		case string:
-			if c.maskDigits {
-				return surfaceDigits.ReplaceAllString(x, "#")
 			}
 		}
 		return x
@@ -176,6 +179,7 @@ func surfaceDiff(a, b any, path string) string {
 type surfaceEnv struct {
 	bin, proj, token string
 	envName          string // ENV in the fixture .env; empty is dev
+	stubs            string // dir of the stub docker
 	base             string // http://127.0.0.1:port
 	mcp              *stdioSession
 }
@@ -190,7 +194,21 @@ func (e *surfaceEnv) resetProject(t *testing.T) {
 	if envName == "" {
 		envName = "dev"
 	}
-	if err := os.WriteFile(filepath.Join(e.proj, ".env"), []byte("PROJECT_NAME=fixture\nENV="+envName+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(e.proj, ".env"), []byte("PROJECT_NAME=fixture\nENV="+envName+"\nMINIO_ENABLED=false\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// containers switches the stub docker between "no containers" and one running
+// container whose logs are two fixed lines.
+func (e *surfaceEnv) containers(t *testing.T, on bool) {
+	t.Helper()
+	marker := filepath.Join(e.stubs, "with-containers")
+	if !on {
+		_ = os.Remove(marker)
+		return
+	}
+	if err := os.WriteFile(marker, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -265,10 +283,14 @@ func (e *surfaceEnv) checkCase(t *testing.T, c surfaceCase) {
 		e.checkPlan(t, c)
 		return
 	}
+	e.containers(t, c.containers)
 	cli := e.runCLI(t, c.cli...)
 	want := normalise(t, cli, c, false)
 	cliEnv := envelopeOf(t, cli)
 	_, hasData := cliEnv["data"]
+	if hasData == c.fail {
+		t.Fatalf("%s: expected failure %v but the CLI envelope has data %v: %.400s", c.name, c.fail, hasData, cli)
+	}
 
 	httpReq, mcpReq := c.req, c.req
 	if c.confirm {
@@ -344,7 +366,7 @@ func (e *surfaceEnv) checkPlan(t *testing.T, c surfaceCase) {
 	}
 	_ = json.Unmarshal(cliEnv["data"], &cliPlan)
 	if cliPlan.PlanID == "" || !cliPlan.Requires {
-		t.Fatalf("%s: the staging plan does not require confirmation: %s", c.name, cli)
+		t.Fatalf("%s: the staging plan does not require confirmation: %.600s", c.name, cli)
 	}
 	want := normalise(t, cliEnv["data"], c, false)
 
@@ -381,17 +403,17 @@ func (e *surfaceEnv) checkPlan(t *testing.T, c surfaceCase) {
 }
 
 // checkStream compares the follow form of `logs`: NDJSON over HTTP equals the
-// CLI's lines, and MCP refuses it because it never carries a stream. With the
-// stub docker the stream is one error line, so this proves the HTTP stream
-// path hands the CLI's bytes through; multi-line NDJSON framing is proven in
-// internal/httpapi TestNDJSONStream.
+// CLI's lines (two log records and a result line from the stub docker), and
+// MCP refuses it because it never carries a stream.
 func (e *surfaceEnv) checkStream(t *testing.T) {
 	t.Helper()
+	e.containers(t, true)
+	defer e.containers(t, false)
 	cli := strings.TrimSpace(string(e.runCLI(t, "logs", "--follow")))
 	e.resetProject(t)
 	_, raw := e.postHTTP(t, "/v1/commands/logs", map[string]any{"flags": map[string]any{"follow": true}}, "application/x-ndjson")
 	got := strings.TrimSpace(string(raw))
-	if cli == "" || strings.Count(cli, "\n") != strings.Count(got, "\n") {
+	if strings.Count(cli, "\n") < 2 || strings.Count(cli, "\n") != strings.Count(got, "\n") {
 		t.Fatalf("logs --follow: CLI lines %q, HTTP lines %q", cli, got)
 	}
 	cl, hl := strings.Split(cli, "\n"), strings.Split(got, "\n")
@@ -454,6 +476,19 @@ func startSurfaceHTTP(t *testing.T, proj, token string) string {
 	return "http://" + ln.Addr().String()
 }
 
+// dockerStub is a docker that fails every call, except that while the file
+// with-containers sits beside it, it reports one container and two log lines.
+const dockerStub = `#!/bin/sh
+here=$(dirname "$0")
+if [ -f "$here/with-containers" ]; then
+  case " $* " in
+    *' ps -q '*) printf 'abc123\n'; exit 0 ;;
+    *' logs '*) printf 'postgres-1  | 2026-10-18T10:00:00Z ready\npostgres-1  | 2026-10-18T10:00:01Z accepting connections\n'; exit 0 ;;
+  esac
+fi
+exit 1
+`
+
 func TestSurfaceIdentity(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fixture stubs are shell scripts")
@@ -478,7 +513,7 @@ func TestSurfaceIdentity(t *testing.T) {
 	if err := os.MkdirAll(stubs, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(stubs, "docker"), []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(stubs, "docker"), []byte(dockerStub), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
@@ -496,7 +531,7 @@ func TestSurfaceIdentity(t *testing.T) {
 	compattest.Set(t, true)
 	resetMachineRegistry()
 
-	e := &surfaceEnv{bin: bin, proj: proj, token: "surface-identity-token"}
+	e := &surfaceEnv{bin: bin, proj: proj, token: "surface-identity-token", stubs: stubs}
 	e.resetProject(t) // the MCP server refuses to start outside a project
 	e.base = startSurfaceHTTP(t, proj, e.token)
 	s, err := newMCPServer("stdio", true)
@@ -512,14 +547,20 @@ func TestSurfaceIdentity(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) { e.checkCase(t, c) })
 	}
+	t.Run("logs (with containers)", func(t *testing.T) {
+		e.checkCase(t, surfaceCase{name: "logs (with containers)", tool: "nself_logs", route: "/v1/commands/logs", cli: []string{"logs"}, containers: true})
+	})
 	t.Run("logs --follow (stream)", e.checkStream)
 	t.Log("CHECKED-TestSurfaceIdentity")
 }
 
 // handSurfacePatterns find a tool or route registered outside the generators.
+// handMountPattern is checked in every package (Server.Mount is exported);
+// handRoutePattern only in the packages that build the HTTP API.
 var (
-	handToolPattern  = regexp.MustCompile(`\.(AddTools?|SetTools|AddSessionTools?)\(|mcp\.NewTool\(|mcp\.NewToolWith\w+\(|mcp\.Tool\{|server\.ServerTool\{`)
-	handRoutePattern = regexp.MustCompile(`\.(Mount|Handle|HandleFunc)\(|http\.NewServeMux\(`)
+	handToolPattern  = regexp.MustCompile(`\.(AddTools?|AddTaskTools?|SetTools|AddSessionTools?)\(|mcp\.NewTool\(|mcp\.NewToolWith\w+\(|mcp\.Tool\{|server\.ServerTool\{`)
+	handMountPattern = regexp.MustCompile(`\.Mount\(`)
+	handRoutePattern = regexp.MustCompile(`\.(Handle|HandleFunc)\(|http\.NewServeMux\(`)
 )
 
 // handToolAllowed are the only files that may register an MCP tool: the
@@ -533,19 +574,20 @@ var handToolAllowed = map[string]bool{
 var handRouteAllowed = map[string]bool{"internal/httpapi/server.go": true}
 
 // handSurfaceFindings reports each non-comment line of src (a non-test Go
-// file at the repo-relative path rel) that registers a tool or a route when
-// rel is not allowed to.
-func handSurfaceFindings(rel, src string, tools, routes bool) []string {
+// file at the repo-relative path rel) that registers an MCP tool, a Mount or,
+// when httpPkg is set, a mux route, in a file that is not allowed to.
+func handSurfaceFindings(rel, src string, httpPkg bool) []string {
 	var out []string
 	for i, line := range strings.Split(src, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(line), "//") {
 			continue
 		}
-		if tools && !handToolAllowed[rel] && handToolPattern.MatchString(line) {
-			out = append(out, rel+":"+strconv.Itoa(i+1)+": hand MCP tool registration: "+strings.TrimSpace(line))
+		where := rel + ":" + strconv.Itoa(i+1) + ": "
+		if !handToolAllowed[rel] && handToolPattern.MatchString(line) {
+			out = append(out, where+"hand MCP tool registration: "+strings.TrimSpace(line))
 		}
-		if routes && !handRouteAllowed[rel] && handRoutePattern.MatchString(line) {
-			out = append(out, rel+":"+strconv.Itoa(i+1)+": hand HTTP route registration: "+strings.TrimSpace(line))
+		if !handRouteAllowed[rel] && (handMountPattern.MatchString(line) || (httpPkg && handRoutePattern.MatchString(line))) {
+			out = append(out, where+"hand HTTP route registration: "+strings.TrimSpace(line))
 		}
 	}
 	return out
@@ -558,16 +600,23 @@ func handSurfaceFindings(rel, src string, tools, routes bool) []string {
 func TestSurfaceNoHandSurface(t *testing.T) {
 	plantedTool := "package commands\nfunc rogue(s *server.MCPServer) { s.AddTool(mcp.NewTool(\"nself_rogue\"), nil) }\n"
 	plantedRoute := "package httpapi\nfunc (s *Server) rogue() { s.mux.HandleFunc(\"/v1/rogue\", nil) }\n"
-	if len(handSurfaceFindings("cmd/commands/rogue.go", plantedTool, true, false)) == 0 {
+	if len(handSurfaceFindings("cmd/commands/rogue.go", plantedTool, false)) == 0 {
 		t.Error("a planted hand MCP tool was not found")
 	}
-	if len(handSurfaceFindings("internal/httpapi/rogue.go", plantedRoute, false, true)) == 0 {
+	if len(handSurfaceFindings("internal/httpapi/rogue.go", plantedRoute, true)) == 0 {
 		t.Error("a planted hand HTTP route was not found")
 	}
-	if got := handSurfaceFindings("internal/mcpgen/tools.go", plantedTool, true, false); len(got) != 0 {
+	if got := handSurfaceFindings("internal/mcpgen/tools.go", plantedTool, false); len(got) != 0 {
 		t.Errorf("the generator file is allowed to register tools: %v", got)
 	}
-	if got := handSurfaceFindings("cmd/commands/x.go", "// s.AddTool(mcp.NewTool(\"x\"))\n", true, true); len(got) != 0 {
+	plantedMount := "package commands\nfunc rogue(srv interface{ Mount(string, any) }) { srv.Mount(\"/x\", nil) }\n"
+	if len(handSurfaceFindings("cmd/commands/rogue_mount.go", plantedMount, false)) == 0 {
+		t.Error("a planted Server.Mount outside the HTTP API packages was not found")
+	}
+	if len(handSurfaceFindings("cmd/commands/rogue_task.go", "func f() { s.AddTaskTool(mcp.Tool{}, nil) }\n", false)) == 0 {
+		t.Error("a planted task tool was not found")
+	}
+	if got := handSurfaceFindings("cmd/commands/x.go", "// s.AddTool(mcp.NewTool(\"x\"))\n", true); len(got) != 0 {
 		t.Errorf("a comment is not a registration: %v", got)
 	}
 
@@ -585,7 +634,7 @@ func TestSurfaceNoHandSurface(t *testing.T) {
 			files = append(files, rel)
 			// The HTTP API lives in internal/httpapi and is wired by internal/builtin/admin.
 			routes := strings.HasPrefix(rel, "internal/httpapi/") || strings.HasPrefix(rel, "internal/builtin/admin/")
-			found = append(found, handSurfaceFindings(rel, string(b), true, routes)...)
+			found = append(found, handSurfaceFindings(rel, string(b), routes)...)
 			return nil
 		})
 	}

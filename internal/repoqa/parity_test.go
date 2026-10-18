@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/canon"
 	"github.com/nself-org/cli/internal/cmdregistry"
 	"github.com/nself-org/cli/internal/invoke"
 )
@@ -94,6 +95,33 @@ func parityDiffs(rows []parityRow, reg *cmdregistry.Registry, tools, routes map[
 		}
 	}
 	var diffs []string
+	// Completeness and uniqueness: the rows are exactly the visible depth-1
+	// commands (tools/parity's own selection, restated from the registry).
+	paths := map[string]bool{}
+	for _, c := range reg.Commands {
+		paths[c.Path] = true
+	}
+	expected := map[string]bool{}
+	for _, c := range reg.Commands {
+		if !paths[c.Parent] && c.Name != "help" && !c.Hidden && c.Canon != canon.CanonPlugin {
+			expected[c.Name] = true
+		}
+	}
+	seen := map[string]bool{}
+	for _, r := range rows {
+		if seen[r.Name] {
+			diffs = append(diffs, r.Name+": listed twice")
+		}
+		seen[r.Name] = true
+		if !expected[r.Name] {
+			diffs = append(diffs, r.Name+": not a top-level command of the registry")
+		}
+	}
+	for name := range expected {
+		if !seen[name] {
+			diffs = append(diffs, name+": top-level command missing from the matrix")
+		}
+	}
 	for _, r := range rows {
 		w := want[r.Name]
 		switch {
@@ -180,6 +208,11 @@ func TestParityFromRegistry(t *testing.T) {
 	forged[0].HTTPRoute = true
 	if len(parityDiffs(forged, &reg, tools, routes)) == 0 {
 		t.Error("a tampered HTTP route count was not detected")
+	}
+
+	// Negative: a matrix that dropped a family must differ.
+	if len(parityDiffs(matrix.Rows[1:], &reg, tools, routes)) == 0 {
+		t.Error("a matrix without its first row was not detected")
 	}
 
 	// No generator reads the hand MCP files as text, and the old pieces are gone.
