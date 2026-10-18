@@ -22,6 +22,14 @@ import (
 
 const envProbeDir = "NSELF_BUNDLE_OPLOCK_PROBE_DIR"
 
+// Timing budgets (D-0850). A probe re-executes the test binary, so on a loaded
+// gate host its start-up alone can take seconds; the budgets only catch hangs.
+const (
+	opLockProbeTimeout      = 20 * time.Second
+	opLockProbeChildTimeout = 15 * time.Second
+	opLockGuardTimeout      = 6 * time.Minute
+)
+
 // TestBundleOpLockProbeProcess is the child: it does nothing unless envProbeDir
 // is set. Exit 0: the lock was acquired. Exit 3: still busy after 200 ms.
 func TestBundleOpLockProbeProcess(t *testing.T) {
@@ -44,9 +52,9 @@ func TestBundleOpLockProbeProcess(t *testing.T) {
 // probeOpLock runs the probe child against pluginDir and returns its exit code.
 func probeOpLock(t *testing.T, pluginDir string) int {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), opLockProbeTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestBundleOpLockProbeProcess$", "-test.timeout=2s")
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestBundleOpLockProbeProcess$", "-test.timeout="+opLockProbeChildTimeout.String())
 	cmd.Env = append(os.Environ(), envProbeDir+"="+pluginDir)
 	err := cmd.Run()
 	if ctx.Err() != nil {
@@ -71,7 +79,7 @@ func needsOSLock(t *testing.T) {
 
 func guardOperationLockTest(t *testing.T) {
 	t.Helper()
-	guard := time.AfterFunc(5*time.Second, func() { panic("operation lock test timed out: " + t.Name()) })
+	guard := time.AfterFunc(opLockGuardTimeout, func() { panic("operation lock test timed out: " + t.Name()) })
 	t.Cleanup(func() { guard.Stop() })
 }
 
