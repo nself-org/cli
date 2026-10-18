@@ -26,6 +26,7 @@ on:
       - internal/compose/generator.go
       - internal/compose/proxy_omit*
       - scripts/e2e/**
+      - cmd/commands/bundle_reconcile*.go
       - cmd/commands/ssl_acme*.go
       - internal/ssl/acme/**
       - internal/docker/run_oneshot*
