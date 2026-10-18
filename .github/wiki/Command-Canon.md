@@ -13,6 +13,7 @@ Where every old command spelling went in the v1.5 canon (ADR 0016). The change a
 | `nself bundle` | `nself config bundles` | move | v1.5.0 | v1.6.0 |
 | `nself bundle remove` | `nself remove` | shim | v1.5.0 | v1.6.0 |
 | `nself ci` | `nself ci` (plugin ci) | breakout | v1.5.0 | — |
+| `nself ci eval` | `nself eval` (plugin nself-eval-gate) | breakout | v1.5.0 | — |
 | `nself dev` | `nself start dev` | move | v1.5.0 | v1.6.0 |
 | `nself env` | `nself config env` | move | v1.5.0 | v1.6.0 |
 | `nself functions` | `nself functions` (plugin functions) | breakout | v1.5.0 | — |
@@ -68,7 +69,7 @@ Where every old command spelling went in the v1.5 canon (ADR 0016). The change a
 | `nself urls` | `nself status urls` | move | v1.5.0 | v1.6.0 |
 | `nself verify-sbom` | `nself update verify-sbom` | move | v1.5.0 | v1.6.0 |
 
-Total rows: 59
+Total rows: 60
 
 <!-- END GENERATED:canon-table -->
 

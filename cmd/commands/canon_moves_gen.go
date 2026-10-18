@@ -64,6 +64,7 @@ var canonTable = canonTableT{
 		{From: []string{"update", "project"}, Summary: "Upgrade a project's layout from an older nself"},
 	},
 	Breakouts: []canonRowT{
+		{From: []string{"ci", "eval"}, To: []string{"eval"}, Since: "v1.5.0", Plugin: "nself-eval-gate"},
 		{From: []string{"plugin", "debug"}, To: []string{"plugin-dev", "debug"}, Since: "v1.5.0", Plugin: "plugin-dev"},
 		{From: []string{"plugin", "dev"}, To: []string{"plugin-dev", "dev"}, Since: "v1.5.0", Plugin: "plugin-dev"},
 		{From: []string{"plugin", "init"}, To: []string{"plugin-dev", "init"}, Since: "v1.5.0", Plugin: "plugin-dev"},

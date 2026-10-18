@@ -50,6 +50,7 @@ commands:
 
 breakouts:
   - {from: ci, plugin: ci, to: ci, since: v1.5.0}
+  - {from: ci eval, plugin: nself-eval-gate, to: eval, since: v1.5.0}
   - {from: runner, plugin: ci, to: ci nodes, since: v1.5.0}
   - {from: functions, plugin: functions, to: functions, since: v1.5.0}
   - {from: server, plugin: infra, to: infra server, since: v1.5.0}
