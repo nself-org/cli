@@ -39,6 +39,12 @@ const autoInstallTierEnv = "NSELF_PLUGIN_INSTALL_TIER"
 // autoInstallPlugin installs the free command plugin slug (at version, when
 // given) and returns the path of its published binary.
 func autoInstallPlugin(slug, version string) (string, error) {
+	// Loading the project config exports the whole .env cascade (secrets
+	// included) into the process, and the plugin run that follows inherits the
+	// process environment. Put the environment back once the install is done, so
+	// the plugin sees what a mounted plugin sees: the shell plus its declared
+	// settings (D-0905).
+	defer restoreEnvironment(os.Environ())()
 	// Load the project config first: it exports the project's .env into the
 	// process, and must not be able to overwrite the policy set below.
 	cfg, err := loadConfig()
@@ -162,6 +168,32 @@ func autoInstallBinaryName(slug string, m *plugin.PluginManifest) string {
 		return m.BinaryName
 	}
 	return "nself-" + slug
+}
+
+// restoreEnvironment returns a func that puts the process environment back to
+// the snapshot: keys added since are unset, changed or removed keys get their
+// old value again.
+func restoreEnvironment(snapshot []string) func() {
+	return func() {
+		before := make(map[string]string, len(snapshot))
+		for _, e := range snapshot {
+			if k, v, ok := strings.Cut(e, "="); ok && k != "" {
+				before[k] = v
+			}
+		}
+		for _, e := range os.Environ() {
+			if k, _, ok := strings.Cut(e, "="); ok {
+				if _, kept := before[k]; !kept {
+					_ = os.Unsetenv(k)
+				}
+			}
+		}
+		for k, v := range before {
+			if cur, ok := os.LookupEnv(k); !ok || cur != v {
+				_ = os.Setenv(k, v)
+			}
+		}
+	}
 }
 
 // autoInstallSetEnv sets each variable and returns a func that puts the
