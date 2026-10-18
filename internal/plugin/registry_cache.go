@@ -49,7 +49,33 @@ func (c *registryHTTPClient) readCacheWithMaxAge(maxAge time.Duration) (*Registr
 		return nil, err
 	}
 
-	return parseRegistryJSON(data)
+	reg, err := parseRegistryJSON(data)
+	if err != nil {
+		return nil, err
+	}
+	var scope struct {
+		Origin string `json:"origin"`
+	}
+	_ = json.Unmarshal(data, &scope)
+	reg.Origin = scope.Origin
+	if !c.originAccepted(reg.Origin, maxAge == 0) {
+		return nil, fmt.Errorf("cache is from another registry")
+	}
+	return reg, nil
+}
+
+// originAccepted reports whether a cache recording origin may answer for this
+// client (D-0849). An exclusive client accepts only its own registry. Others
+// also accept a file with no recorded origin (older CLI, or the plan pin of
+// `nself update --yes`) and, as the last resort, the fallback host's cache.
+func (c *registryHTTPClient) originAccepted(origin string, lastResort bool) bool {
+	if origin == c.primaryURL {
+		return true
+	}
+	if c.exclusive {
+		return false
+	}
+	return origin == "" || (lastResort && origin == c.fallbackURL)
 }
 
 func (c *registryHTTPClient) writeCache(reg *Registry) error {
@@ -78,6 +104,7 @@ func (r Registry) MarshalJSON() ([]byte, error) {
 	type envelope struct {
 		Version   string        `json:"version"`
 		FetchedAt string        `json:"fetchedAt,omitempty"`
+		Origin    string        `json:"origin,omitempty"`
 		Plugins   []pluginEntry `json:"plugins"`
 	}
 	entries := make([]pluginEntry, 0, len(r.Plugins))
@@ -181,6 +208,7 @@ func (r Registry) MarshalJSON() ([]byte, error) {
 	return json.Marshal(envelope{
 		Version:   "1.0.0",
 		FetchedAt: r.FetchedAt,
+		Origin:    r.Origin,
 		Plugins:   entries,
 	})
 }
