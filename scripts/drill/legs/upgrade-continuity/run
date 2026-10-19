@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# Drill leg: upgrade-continuity (P7-CI-20). A stack on version N survives `nself update stack`.
+#
+# Purpose: prove, as job `drill-upgrade-continuity` of the `drills` pipeline (.nself/ci.yaml),
+#   that a project created and started by the latest released cli (N) is upgraded by the cli
+#   under test (N+1, built from the ref) with every seeded row identical afterwards. Each step is
+#   one check of a nested ci.evidence/v1 document; the first failed step marks the later ones
+#   skipped.
+# Steps:
+#   fetch-n       the latest release for this OS and CPU, sha256 checked against checksums.txt
+#   init-n        N runs `nself init` in an empty directory, stdin /dev/null
+#   start-n       N runs `nself start`, `nself status` exit 0, Hasura answers a GraphQL query
+#   seed          a migration creates public.drill_seed (50 rows); the digest is recorded
+#   upgrade       N+1 runs `nself update stack --yes --json`; the report status is "complete"
+#   healthy       N+1: `nself status` exit 0 and Hasura answers again
+#   rows-identical  the table has the digest recorded at seed time
+# Inputs: NSELF_BIN (N+1, the cli under test; default <repo>/.nself/bin/nself, built from this
+#   checkout when missing), DRILL_PREV_BIN (N; default: downloaded from the latest GitHub
+#   release, which needs no API call and no token), DRILL_OUT_ROOT (default
+#   <repo>/.nself/drill-out; results go to <root>/upgrade-continuity), DRILL_INIT_TIMEOUT (120),
+#   DRILL_START_TIMEOUT (600), DRILL_UPGRADE_TIMEOUT (1200), DRILL_HEALTH_TIMEOUT (600).
+#   The nself-ci exec funnel passes none of them, so a pipeline run uses the defaults.
+# Outputs: <out>/<step>.log, <out>/evidence.json, and the same document as the last stdout line;
+#   tool_versions holds both versions. When N and N+1 are the same version the upgrade still runs
+#   (the steps are version independent) and the step excerpt says so.
+# Exit: 0 every step passed, 1 a step failed, 2 a missing tool or the cli could not be built.
+# Cleanup: `nself stop --volumes` and `docker compose down -v` run on every exit path. HOME is a
+#   throw-away directory.
+# Runs only on GitHub-hosted runners or a local box with Docker; never point it at a server.
+
+# NSELF, PROJ_DIR and the *_BIN names are read by the sourced helpers.
+# shellcheck disable=SC2034,SC2153
+set -u
+HERE=$(cd "$(dirname "$0")" && pwd)
+ROOT=$(cd "$HERE/../../../.." && pwd)
+LEG=upgrade-continuity
+PROJ=drillupgrade
+OUT=${DRILL_OUT_ROOT:-$ROOT/.nself/drill-out}/$LEG
+RELEASE_BASE=${DRILL_RELEASE_BASE:-https://github.com/nself-org/cli/releases}
+# shellcheck source=/dev/null
+. "$HERE/../clean-host/lib.sh"
+
+need_tools || exit 2
+command -v curl >/dev/null 2>&1 || { log "curl is required"; exit 2; }
+ref_bin || exit 2
+mkdir -p "$OUT"
+OUT=$(cd "$OUT" && pwd)
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/drill-$LEG.XXXXXX")
+PROJ_DIR=$WORK/$PROJ
+finish() {
+  cleanup_stack
+  rm -rf "$WORK"
+}
+ev_begin "$LEG" "$OUT"
+trap finish EXIT
+trap 'exit 143' INT TERM
+
+# fetch_release: download N for this host into $WORK/prev/nself. The latest tag comes from the
+# checksums.txt of the /latest/download redirect; the tarball is then fetched by that exact tag.
+fetch_release() {
+  local os arch sums line sha name ver
+  os=$(uname -s | tr '[:upper:]' '[:lower:]')
+  case "$(uname -m)" in x86_64) arch=amd64 ;; aarch64 | arm64) arch=arm64 ;; *) echo "no release for $(uname -m)"; return 1 ;; esac
+  mkdir -p "$WORK/prev"
+  sums=$WORK/prev/checksums.txt
+  curl --fail --silent --show-error --location --proto '=https' --max-time 120 -o "$sums" "$RELEASE_BASE/latest/download/checksums.txt" || return 1
+  line=$(grep -E "  nself-[0-9][0-9.]*-$os-$arch\.tar\.gz\$" "$sums" | head -n 1)
+  sha=${line%% *}
+  name=${line##* }
+  [ -n "$sha" ] && [ -n "$name" ] || { echo "checksums.txt has no nself-<version>-$os-$arch.tar.gz"; return 1; }
+  ver=${name#nself-}
+  ver=${ver%%-"$os"-*}
+  curl --fail --silent --show-error --location --proto '=https' --max-time 300 -o "$WORK/prev/$name" "$RELEASE_BASE/download/v$ver/$name" || return 1
+  [ "$(sha256_of <"$WORK/prev/$name")" = "$sha" ] || { echo "sha256 of $name does not match checksums.txt"; return 1; }
+  tar -xzf "$WORK/prev/$name" -C "$WORK/prev" || return 1
+  PREV_BIN=$(find "$WORK/prev" -type f -name nself -perm -u+x | head -n 1)
+  [ -n "$PREV_BIN" ] || { echo "the tarball holds no nself binary"; return 1; }
+}
+
+step_fetch_n() {
+  if [ -n "${DRILL_PREV_BIN:-}" ]; then
+    PREV_BIN=$DRILL_PREV_BIN
+    [ -x "$PREV_BIN" ] || { echo "DRILL_PREV_BIN is not an executable file"; return 1; }
+  else
+    fetch_release || return 1
+  fi
+  PREV_VERSION=$(env -u CI "$PREV_BIN" version | head -n 1)
+  REF_VERSION=$(env -u CI "$REF_BIN" version | head -n 1)
+  [ -n "$PREV_VERSION" ] && [ -n "$REF_VERSION" ] || { echo "nself version printed nothing"; return 1; }
+  ev_tool nself_n "$PREV_VERSION"
+  ev_tool nself_n_plus_1 "$REF_VERSION"
+  if [ "$PREV_VERSION" = "$REF_VERSION" ]; then note "N and N+1 are both: $REF_VERSION"; else note "N: $PREV_VERSION; N+1: $REF_VERSION"; fi
+}
+
+step_init_n() {
+  NSELF=$PREV_BIN
+  mkdir -p "$PROJ_DIR"
+  nself_t "${DRILL_INIT_TIMEOUT:-120}" init || return 1
+  proj_init
+}
+
+step_start_n() {
+  nself_t "${DRILL_START_TIMEOUT:-600}" start || return 1
+  wait_healthy
+}
+
+step_seed() {
+  seed_rows || return 1
+  SEED_DIGEST=$(row_digest) || return 1
+  case "$SEED_DIGEST" in "50 "*) ;; *) echo "unexpected seed digest: $SEED_DIGEST"; return 1 ;; esac
+  note "$SEED_DIGEST"
+}
+
+step_upgrade() {
+  local report
+  NSELF=$REF_BIN
+  report=$WORK/update-stack.json
+  nself_t "${DRILL_UPGRADE_TIMEOUT:-1200}" update stack --yes --json >"$report" || { cat "$report"; return 1; }
+  jq -e '.data.status == "complete"' "$report" >/dev/null || { cat "$report"; echo "update stack did not report status complete"; return 1; }
+  cp "$report" "$OUT/update-stack.json"
+  note "$(jq -r '[.data.steps[] | .name + " " + .result] | join(", ")' "$report")"
+}
+
+step_healthy() { wait_healthy; }
+
+step_rows_identical() {
+  local now
+  now=$(row_digest) || return 1
+  if [ "$now" != "$SEED_DIGEST" ]; then
+    echo "row digest differs: before '$SEED_DIGEST', after '$now'"
+    return 1
+  fi
+  note "$now"
+}
+
+run_steps fetch-n init-n start-n seed upgrade healthy rows-identical
+ev_emit
+ev_result
