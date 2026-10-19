@@ -27,9 +27,9 @@ func RotateDualWindow(projectRoot, env, key string) error {
 	}
 
 	oldValue := entry.Value
-	newValue, _ := generateRotationValue(key)
+	newValue, hint := generateRotationValue(key)
 	if newValue == "" {
-		return fmt.Errorf("secret %q requires manual rotation through provider", key)
+		return fmt.Errorf("secret %q requires manual rotation: %s", key, hint)
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)

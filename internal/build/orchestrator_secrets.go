@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
 )
 
@@ -92,6 +93,13 @@ func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects, s
 			continue
 		}
 		toWrite = append(toWrite, secretEntry{c.key, *c.dst})
+	}
+
+	// AUTH_ENCRYPTION_KEY for a new v1.5 project (D-0660), generated once.
+	if key, ok, err := newAuthEncryptionKey(sink, workdir, cfg, onDisk); err != nil {
+		return err
+	} else if ok {
+		toWrite = append(toWrite, secretEntry{compose.AuthEncryptionKeyEnv, key})
 	}
 
 	// HASURA_GRAPHQL_JWT_SECRET: Hasura is a core service, so if the JWT

@@ -217,6 +217,10 @@ func Rotate(projectRoot, env, key string) (string, error) {
 func generateRotationValue(key string) (value string, hint string) {
 	keyUpper := strings.ToUpper(key)
 	switch {
+	case keyUpper == "AUTH_ENCRYPTION_KEY":
+		// Encrypts every TOTP secret in auth.users (D-0660): a new value locks out every
+		// TOTP user, and a random alphanumeric string is not the 64 hex characters auth needs.
+		return "", "AUTH_ENCRYPTION_KEY is never rotated automatically: changing or losing it locks out every user who signs in with TOTP."
 	case strings.HasSuffix(keyUpper, "_PASSWORD") || strings.HasSuffix(keyUpper, "_PASS"):
 		return generateRandomString(32), "Remember to update the corresponding database/service password."
 	case strings.Contains(keyUpper, "JWT") || strings.Contains(keyUpper, "SECRET"):

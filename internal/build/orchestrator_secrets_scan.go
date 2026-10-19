@@ -48,7 +48,7 @@ func secretScanList(workdir string, sink Sink) []string {
 // persistedSecretKeys are the keys persistGeneratedSecrets owns.
 var persistedSecretKeys = []string{
 	"PLUGIN_INTERNAL_SECRET", "NOTIFY_INTERNAL_SECRET", "CRON_INTERNAL_SECRET",
-	"HASURA_GRAPHQL_JWT_SECRET", "POSTGRES_PASSWORD", "HASURA_GRAPHQL_ADMIN_SECRET",
+	"HASURA_GRAPHQL_JWT_SECRET", "POSTGRES_PASSWORD", "HASURA_GRAPHQL_ADMIN_SECRET", "AUTH_ENCRYPTION_KEY",
 }
 
 // scanEnvFiles returns the set of keys defined in any scanned env file (or
