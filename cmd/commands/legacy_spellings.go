@@ -109,6 +109,19 @@ func warnLegacySpelling(name string) {
 	}
 }
 
+// movedNotes drops the identity notes (From == To: the ci and functions
+// break-outs keep their path and only gain a plugin), which must not warn or
+// record a deprecation (D-1116).
+func movedNotes(notes []canonNote) []canonNote {
+	var moved []canonNote
+	for _, n := range notes {
+		if n.Old != n.New {
+			moved = append(moved, n)
+		}
+	}
+	return moved
+}
+
 // warnLegacyChain emits the warning for a legacy spelling (empty when the user
 // typed none) and the canon rewrites that followed it.
 //
@@ -117,6 +130,7 @@ func warnLegacySpelling(name string) {
 // canonical path (`dns-setup` -> `config trust dns`), not the v1.4 spelling the
 // registry item names; registry.yaml replacement strings are untouched.
 func warnLegacyChain(legacy string, notes []canonNote) {
+	notes = movedNotes(notes)
 	switch {
 	case len(notes) == 0 && legacy != "":
 		warnLegacySpelling(legacy)
