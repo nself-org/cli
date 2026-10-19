@@ -37,7 +37,7 @@ type Checksums struct {
 }
 
 // RegistryEntry is one plugin in registry.json. Key names and types are the
-// basis entries' (released CLIs decode them); ReleaseSignature and Catalog are
+// basis entries' (released CLIs decode them); ReleaseSignature, PlatformSignatures and Catalog are
 // additive keys that v1.4.12 ignores.
 type RegistryEntry struct {
 	Name            string `json:"name"`
@@ -69,5 +69,8 @@ type RegistryEntry struct {
 	DownloadURL      string     `json:"download_url,omitempty"`
 	ReleaseTag       string     `json:"releaseTag,omitempty"`
 	ReleaseSignature *Signature `json:"release_signature,omitempty"`
-	Catalog          *Info      `json:"catalog,omitempty"`
+	// PlatformSignatures sits at the entry level, never inside Checksums, which
+	// released CLIs decode.
+	PlatformSignatures map[string]*Signature `json:"platform_signatures,omitempty"`
+	Catalog            *Info                 `json:"catalog,omitempty"`
 }

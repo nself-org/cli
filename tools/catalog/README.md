@@ -43,7 +43,11 @@ clock). Exit 0 ok, 1 `-check` found a difference, 2 bad input or a data problem 
   The public repo never reads licensed manifests; it reads the licensed `registry.json` this tool wrote.
 - **releases.json** (`schemas/releases.v1.schema.json`) is release data written by the release pipeline
   from published bytes: per slug `version`, `sha256`, `release_signature` (`{key_id, alg: ed25519, sig}` or
-  null), `tarball_url`, and optional `release_tag`, `tarball`, `platform_checksums`, `binaries`. A manifest
+  null), `tarball_url`, and optional `release_tag`, `tarball`, `platform_checksums`, `platform_signatures`,
+  `binaries`. `platform_signatures` is `{<platform>: {key_id, alg: ed25519, sig}}` (contract
+  plugins.release-signature v1.1): each platform is one of darwin-amd64, darwin-arm64, linux-amd64,
+  linux-arm64, windows-amd64 and also a key of `platform_checksums`, and the row's `release_signature`
+  must not be null (it is the anchor). A malformed value is a problem and the run exits 2. A manifest
   with no row is left out of the registry (no checksum yet) and named on stderr (`-require-released` makes it
   an error); a row with no plugin directory is an error. When the manifest and the row disagree on the
   version, the registry carries the release and a note names both.
@@ -59,14 +63,15 @@ clock). Exit 0 ok, 1 `-check` found a difference, 2 bad input or a data problem 
 ## Outputs
 
 `registry.json` keeps the key names and types of the registry released CLIs decode (v1.4.12). It adds
-`_generated`, `generated_from`, `release_signature` (when signed) and a per-entry `catalog` block (the
+`_generated`, `generated_from`, `release_signature` (when signed), `platform_signatures` (when the release has them,
+unchanged from releases.json and only at the entry level, never inside `checksums`) and a per-entry `catalog` block (the
 manifest-only columns, so the catalog is built from registries alone). Dropped: the hand-written `note`,
 the two timestamps `generated_at` and `last_updated`, the licensed `version` and `checksum_provenance`
 envelope keys, and the licensed `security_always_free` entry key (no manifest v2 home, read by no CLI).
 `tier` is `free` or `pro` on the wire. `tier_pair` is set when the slug is in the peer registry.
 
 `catalog.json` has one row per slug and tier sorted by `(slug, tier)`; a tier-pair slug has a row per
-tier and counts once. `counts.json` keeps the existing shape (`free`, `pro`, `overlap`, `totals`,
+tier and counts once. A row carries `platform_signatures` (copied from its registry entry) only when the release has them. `counts.json` keeps the existing shape (`free`, `pro`, `overlap`, `totals`,
 `advertised`) with `generated_from` in place of `generated_at` and `sources`.
 
 All files: sorted keys, 2-space indent, trailing newline, no HTML escaping, byte-identical for identical

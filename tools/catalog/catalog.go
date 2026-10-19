@@ -77,7 +77,8 @@ func rowOf(slug, tier string, e model.RegistryEntry, b *model.Bundles) (model.Ca
 		Maturity: in.Maturity, Installable: e.Installable == nil || *e.Installable,
 		ServiceKind: in.ServiceKind, Commands: in.Commands, Requires: in.Requires,
 		Bundles: membership(b, slug, tier), Checksum: e.Checksum, ReleaseSignature: e.ReleaseSignature,
-		TarballURL: firstNonEmpty(e.TarballURL, e.DownloadURL),
+		PlatformSignatures: e.PlatformSignatures,
+		TarballURL:         firstNonEmpty(e.TarballURL, e.DownloadURL),
 	}
 	if row.Bundles == nil {
 		row.Bundles = []string{}

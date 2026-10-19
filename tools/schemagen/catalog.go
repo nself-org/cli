@@ -31,6 +31,7 @@ func init() {
 		{Pointer: row + "/properties/bundles", Set: arr},
 		{Pointer: row + "/properties/commands/properties/subcommands", Set: arr},
 		{Pointer: row + "/properties/release_signature/properties/alg", Set: map[string]any{"const": model.SigAlg}},
+		{Pointer: row + "/properties/platform_signatures/additionalProperties/properties/alg", Set: map[string]any{"const": model.SigAlg}},
 		{Pointer: "/properties/bundles/additionalProperties/properties/tier", Set: map[string]any{"enum": anyList(model.Tiers)}},
 		{Pointer: "/properties/bundles/additionalProperties/properties/plugins", Set: arr},
 		{Pointer: "/properties/counts/properties/schema_version", Set: map[string]any{"const": model.CountsVersion}},
@@ -50,5 +51,6 @@ func init() {
 		{Pointer: rel + "/properties/sha256", Set: map[string]any{"pattern": sha256Pattern}},
 		{Pointer: rel + "/properties/release_signature/properties/alg", Set: map[string]any{"const": model.SigAlg}},
 		{Pointer: rel + "/properties/platform_checksums", Set: map[string]any{"type": "object"}},
+		{Pointer: rel + "/properties/platform_signatures/additionalProperties/properties/alg", Set: map[string]any{"const": model.SigAlg}},
 	}})
 }

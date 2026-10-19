@@ -256,6 +256,33 @@
             ],
             "type": "string"
           },
+          "platform_signatures": {
+            "additionalProperties": {
+              "additionalProperties": false,
+              "properties": {
+                "alg": {
+                  "const": "ed25519",
+                  "type": "string"
+                },
+                "key_id": {
+                  "type": "string"
+                },
+                "sig": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key_id",
+                "alg",
+                "sig"
+              ],
+              "type": [
+                "null",
+                "object"
+              ]
+            },
+            "type": "object"
+          },
           "release_signature": {
             "additionalProperties": false,
             "properties": {
