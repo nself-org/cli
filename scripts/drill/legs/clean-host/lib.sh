@@ -11,7 +11,7 @@
 #   of stdout (ev_emit). All other messages go to stderr.
 # Constraints: bash 3.2 compatible (macOS); needs jq, timeout (or gtimeout), docker with compose.
 #   No secret is printed: the step logs are the CLI's own output and a failed step's excerpt
-#   is its last five log lines, ANSI-stripped and cut to 800 bytes. Runs only on a runner or a
+#   is its last five log lines, ANSI-stripped and cut to 800 characters. Runs only on a runner or a
 #   local box with Docker; never point it at a server.
 
 # shellcheck source=/dev/null disable=SC2153
@@ -194,7 +194,7 @@ wait_healthy() {
 }
 
 # sql <statement>: one statement through the Postgres container, tuples only.
-sql() { in_proj "$NSELF" exec -T "${PROJECT_NAME}_postgres" -- psql -U "$PG_USER" -d "$PG_DB" -At -v ON_ERROR_STOP=1 -c "$1"; }
+sql() { nself_t 60 exec -T "${PROJECT_NAME}_postgres" -- psql -U "$PG_USER" -d "$PG_DB" -At -v ON_ERROR_STOP=1 -c "$1"; }
 
 # seed_rows: a migration creates public.drill_seed (50 rows) and `nself db migrate up` applies it.
 seed_rows() {

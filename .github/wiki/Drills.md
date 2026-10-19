@@ -59,7 +59,7 @@ Both drills stop the stack with `nself stop --volumes` (and `docker compose down
 
 ### One stack at a time
 
-The stack's compose file publishes fixed host ports (5432, 8080, 4000, 80, 443) and `nself-ci` starts every drill job at once. The legs that start a stack (`two-command`, `clean-host`, `upgrade-continuity`) therefore take one host-wide lock, `scripts/drill/stack-lock.sh` (the directory `/tmp/nself-drill-stack.lock`, one path for every job; a lock whose holder process is gone is taken over). They run one after another; a waiting leg's job timeout keeps running, so the three together need less than `NSELF_CI_TIMEOUT` (80 minutes in the nightly workflow, 120 for the job). A new leg that starts a stack sources the same file. `DRILL_LOCK_TIMEOUT` (default 3600 seconds) bounds the wait.
+The stack's compose file publishes fixed host ports (5432, 8080, 4000, 80, 443) and `nself-ci` starts every drill job at once. The legs that start a stack (`two-command`, `clean-host`, `upgrade-continuity`) therefore take one host-wide lock, `scripts/drill/stack-lock.sh` (the directory `/tmp/nself-drill-stack.lock`, one path for every job; a lock whose holder process is gone is taken over). They run one after another; a waiting leg's job timeout keeps running, so the three together must finish within `NSELF_CI_TIMEOUT`; a waiting leg that reaches the cap reports a failure, not a skip (80 minutes in the nightly workflow, 120 for the job). A new leg that starts a stack sources the same file. `DRILL_LOCK_TIMEOUT` (default 3600 seconds) bounds the wait.
 
 Each leg takes a few minutes on top of the image pulls. A run of the funnel without `NSELF_CI_TIMEOUT` needs it raised to at least 20 minutes per leg.
 

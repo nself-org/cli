@@ -26,7 +26,14 @@ stack_lock_acquire() {
     fi
     holder=$(cat "$STACK_LOCK_DIR/pid" 2>/dev/null || true)
     if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; then
-      mv "$STACK_LOCK_DIR" "$STACK_LOCK_DIR.dead.$$" 2>/dev/null && rm -rf "$STACK_LOCK_DIR.dead.$$"
+      # Takeover is guarded by a second mkdir mutex and re-reads the holder inside it, so two
+      # waiters cannot both remove a lock the first one has already replaced.
+      if mkdir "$STACK_LOCK_DIR.takeover" 2>/dev/null; then
+        if [ "$(cat "$STACK_LOCK_DIR/pid" 2>/dev/null || true)" = "$holder" ]; then
+          rm -rf "$STACK_LOCK_DIR"
+        fi
+        rmdir "$STACK_LOCK_DIR.takeover" 2>/dev/null || true
+      fi
       continue
     fi
     [ "$(date +%s)" -ge "$end" ] && return 1
