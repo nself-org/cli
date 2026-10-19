@@ -95,6 +95,14 @@ func TestPlatformSignaturesProjected(t *testing.T) {
 	if validateAgainst(t, "releases.v1.schema.json", rel) == nil {
 		t.Error("releases schema accepted platform_signatures alg rsa")
 	}
+	// and rejects a null value or a name that is not a platform
+	row := rel["releases"].(map[string]any)["ai-cli"].(map[string]any)
+	for name, v := range map[string]any{"darwin-arm64": nil, "freebsd-amd64": fakeSig("x")} {
+		row["platform_signatures"] = map[string]any{name: v}
+		if validateAgainst(t, "releases.v1.schema.json", rel) == nil {
+			t.Errorf("releases schema accepted platform_signatures.%s = %v", name, v)
+		}
+	}
 }
 
 // validateAgainst validates doc against the committed schema file.

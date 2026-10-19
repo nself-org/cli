@@ -276,9 +276,15 @@
                 "alg",
                 "sig"
               ],
-              "type": [
-                "null",
-                "object"
+              "type": "object"
+            },
+            "propertyNames": {
+              "enum": [
+                "darwin-amd64",
+                "darwin-arm64",
+                "linux-amd64",
+                "linux-arm64",
+                "windows-amd64"
               ]
             },
             "type": "object"
