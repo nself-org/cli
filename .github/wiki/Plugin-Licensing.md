@@ -1,6 +1,6 @@
 # Plugin Licensing
 
-Pro plugins (62 total) require a valid ɳSelf license key. Free plugins (25 total) are MIT licensed and require no key.
+Licensed plugins require a valid ɳSelf license key. Free plugins are MIT licensed and require no key.
 
 ## Key Format
 
@@ -40,7 +40,7 @@ Shows your current tier, expiry, and which plugin categories are available.
 nself license remove
 ```
 
-## Install Pro Plugins
+## Install Licensed Plugins
 
 After setting your key:
 
@@ -93,8 +93,8 @@ NSELF_LICENSE_SKIP_VERIFY=1 nself license import cache.json --force
 
 | Tier | Monthly | Annual | Plugin Access |
 |------|---------|--------|--------------|
-| Free | $0 | $0 | 29 free plugins only |
-| Basic | $0.99 | $9.99 | All 109 pro plugins |
+| Free | $0 | $0 | Free plugins only |
+| Basic | $0.99 | $9.99 | Licensed plugins outside the Pro-tier AI suite |
 | Pro | $1.99 | $19.99 | Basic + full AI suite |
 | Elite | $4.99 | $49.99 | Pro + email support |
 | Business | $9.99 | $99.99 | Elite + 24h support |

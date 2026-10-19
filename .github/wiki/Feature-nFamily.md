@@ -57,7 +57,7 @@ Most families share photos and updates across a mix of iMessage, WhatsApp, Insta
 
 ## ɳFamily Plugin Bundle
 
-The ɳFamily bundle uses these ɳSelf Pro plugins:
+The ɳFamily bundle uses these licensed plugins:
 
 | Plugin | Purpose |
 |--------|---------|

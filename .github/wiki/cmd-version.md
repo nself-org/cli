@@ -45,7 +45,7 @@ nself version --json
 **Sample output:**
 
 ```
-nself version 1.0.0
+nself version X.Y.Z
   Go version:  go1.23.4
   Git commit:  a1b2c3d
   Build date:  2026-03-28T00:00:00Z

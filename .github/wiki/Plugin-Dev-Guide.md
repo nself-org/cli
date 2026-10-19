@@ -138,7 +138,7 @@ Before submitting a PR to the plugins repository:
 - [ ] `README.md` covers: what it does, env vars, usage
 
 **Free plugins:** submit a PR to [nself-org/plugins](https://github.com/nself-org/plugins).
-**Pro plugins:** contact the ɳSelf team.
+**Licensed plugins:** contact the ɳSelf team.
 
 ## See Also
 

@@ -4,7 +4,7 @@
 
 - [What is ɳSelf?](#what-is-nself)
 - [Is ɳSelf free?](#is-nself-free)
-- [What is the difference between free and Pro plugins?](#what-is-the-difference-between-free-and-pro-plugins)
+- [What is the difference between free and Licensed plugins?](#what-is-the-difference-between-free-and-licensed-plugins)
 - [Can I run multiple ɳSelf projects on one server?](#can-i-run-multiple-nself-projects-on-one-server)
 - [How does ɳSelf compare to Supabase or Nhost?](#how-does-nself-compare-to-supabase-or-nhost)
 - [Does ɳSelf require Docker?](#does-nself-require-docker)
@@ -25,11 +25,11 @@
 
 ## Is ɳSelf free?
 
-Yes. The core CLI and 29 free plugins are MIT licensed and free forever, including commercial use. Revenue comes from 109 paid Pro plugins starting at $9.99/year.
+Yes. The core CLI and the free plugins are MIT licensed and free forever, including commercial use. Revenue comes from licensed plugins, sold through Bundles or ɳSelf+.
 
-## What is the difference between free and Pro plugins?
+## What is the difference between free and Licensed plugins?
 
-Free plugins (25) handle foundational use cases: monitoring, backup, cron, search, notifications, and more. Pro plugins (52) add advanced capabilities: AI, live video (LiveKit), commerce, CMS, SSO/SAML, media transcoding, DRM, WAF, and more. Pro plugins require a license key from [nself.org](https://nself.org).
+Free plugins handle foundational use cases: monitoring, backup, cron, search, notifications, and more. Licensed plugins add advanced capabilities: AI, live video (LiveKit), commerce, CMS, SSO/SAML, media transcoding, DRM, WAF, and more. Licensed plugins require a license key from [nself.org](https://nself.org).
 
 ## Can I run multiple ɳSelf projects on one server?
 
@@ -101,7 +101,7 @@ Email `security@nself.org` or open a private advisory on GitHub. Do not file pub
 
 ## How do I contribute a plugin?
 
-Read [[Plugin-Dev-Guide]] for the plugin SDK and submission process. Free plugins are accepted via pull request to the `nself-org/plugins` repository. Pro plugins are reviewed privately.
+Read [[Plugin-Dev-Guide]] for the plugin SDK and submission process. Free plugins are accepted via pull request to the `nself-org/plugins` repository. Licensed plugins are reviewed privately.
 
 ---
 ← [[Home]] | [[_Sidebar]]

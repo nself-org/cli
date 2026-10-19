@@ -17,7 +17,7 @@ When the bundle is installed, your ɳSelf backend gains social posts, photo stor
 
 ## Plugins Included
 
-7 pro plugins, all `tier: pro` (Basic tier or higher).
+The bundle's licensed plugins are all `tier: pro` (Basic tier or higher).
 
 | Plugin | Tier | Language | What It Does |
 |--------|------|----------|-------------|

@@ -87,7 +87,7 @@ plugin missing, it fails with E404 and tells you to run
 `nself add nself-eval-gate`.
 
 `nself doctor --deep` no longer runs `CI-VAULT-SYNC-01` in v1.5. That check read
-`~/.claude/vault.env`, an operator-private file, so product code must not
+the operator's private secret store, so product code must not
 depend on it. `CI-TOKEN-01` still runs. v1.4 is unchanged.
 <!-- END PROSE:description -->
 

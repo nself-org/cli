@@ -47,42 +47,12 @@ SDK registry. Use this when creating a new SDK release or troubleshooting publis
 
 ---
 
-## Flutter SDK (`nself_plugin_sdk` on pub.dev)
-
-**Workflow:** `sdk/flutter/.github/workflows/sdk-flutter-publish.yml`
-
-**OIDC status:** `id-token: write` is set and reserved for when pub.dev adds OIDC support.
-As of 2026, pub.dev does not yet support keyless OIDC publishing. Track:
-[dart-lang/pub-dev#6687](https://github.com/dart-lang/pub-dev/issues/6687).
-
-### Current setup (secret-based)
-
-1. On a local machine with Dart SDK installed, run:
-   ```bash
-   dart pub token add https://pub.dev
-   ```
-   This creates credentials at `~/.pub-cache/credentials.json`.
-2. Copy the JSON content and add it as the `PUB_DEV_CREDENTIALS` repository secret
-   in `nself-org/cli` → Settings → Secrets → Actions.
-3. The workflow injects the credential via the `PUB_DEV_CREDENTIALS` env var before
-   calling `dart pub publish --force`.
-
-### Rotation
-
-Pub.dev credentials expire when the OAuth token expires (typically 1 year).
-Rotate by repeating the `dart pub token add` step above and updating the secret.
-
-**Trigger:** push a tag matching `sdk-flutter/v*` (e.g. `sdk-flutter/v2.1.0`).
-
----
-
 ## Summary Table
 
 | SDK | Registry | Method | Secret needed |
 |-----|----------|--------|---------------|
 | TypeScript | npm | OIDC provenance + NPM_TOKEN | `NPM_TOKEN` |
 | Python | PyPI | OIDC Trusted Publisher | none (after setup) |
-| Flutter | pub.dev | OAuth credentials | `PUB_DEV_CREDENTIALS` |
 
 ---
 

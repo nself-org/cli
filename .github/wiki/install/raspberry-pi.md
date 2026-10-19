@@ -70,7 +70,7 @@ chmod +x /usr/local/bin/nself
 
 ```bash
 nself version
-# nself v1.0.9 (linux/arm64)
+# nself vX.Y.Z (linux/arm64)
 
 nself doctor
 ```

@@ -19,7 +19,7 @@ ClawDE itself runs free locally with limited functionality. The ClawDE bundle un
 
 ## Plugins Included
 
-Candidate set (4 pro plugins, all `tier: pro`).
+Candidate set: licensed plugins, all `tier: pro`.
 
 | Plugin | Tier | Language | What It Does |
 |--------|------|----------|-------------|

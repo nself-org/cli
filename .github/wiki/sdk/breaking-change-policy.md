@@ -1,6 +1,6 @@
 # Plugin SDK Breaking-Change Policy
 
-Applies to all four Plugin SDK languages: Go, TypeScript, Python, and Flutter/Dart.
+Applies to all three Plugin SDK languages: Go, TypeScript, and Python.
 
 ---
 
@@ -57,7 +57,7 @@ Every MAJOR version bump requires a `MIGRATION.md` file committed to the SDK rep
 
 ## Cross-SDK Version Alignment
 
-All four SDKs (Go, TypeScript, Python, Flutter/Dart) maintain synchronized MAJOR versions. If one SDK ships a breaking change, all four SDKs bump to the same MAJOR version in the same release cycle.
+All three SDKs (Go, TypeScript, Python) maintain synchronized MAJOR versions. If one SDK ships a breaking change, all three SDKs bump to the same MAJOR version in the same release cycle.
 
 MINOR and PATCH versions may diverge between SDKs based on individual language needs.
 
@@ -103,11 +103,6 @@ CHANGELOG entries are mandatory. A release without one is incomplete.
 - Public functions, classes, and module-level constants are part of the API.
 - Dropping a supported Python version counts as a breaking change.
 
-### Flutter/Dart (`sdk/flutter/`)
-
-- Widget constructors and public method signatures are part of the API.
-- Minimum Flutter SDK version bumps count as breaking if they drop a supported version.
-
 ---
 
 ## Summary Table
@@ -116,7 +111,7 @@ CHANGELOG entries are mandatory. A release without one is incomplete.
 |---|---|
 | Deprecation period | Min 1 MINOR version before removal |
 | Migration guide | Required for every MAJOR bump |
-| Cross-SDK MAJOR sync | All 4 SDKs bump together |
+| Cross-SDK MAJOR sync | All 3 SDKs bump together |
 | RC tags | Required before any MAJOR release |
 | RC window | Min 2 weeks before final |
 | Changelog | Required for every release |

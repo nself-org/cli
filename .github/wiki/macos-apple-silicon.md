@@ -99,7 +99,7 @@ nself version
 Expected output:
 
 ```
-nself version 1.0.9
+nself version X.Y.Z
 ```
 
 ---

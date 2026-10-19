@@ -49,7 +49,7 @@
 ```bash
 brew upgrade nself-org/nself/nself
 nself --version
-# Expected: nself v1.0.9 (darwin/arm64)
+# Expected: nself vX.Y.Z (darwin/arm64), the latest release
 ```
 
 ### Linux

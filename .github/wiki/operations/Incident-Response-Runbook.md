@@ -332,10 +332,7 @@ For single-maintainer: IC = Technical Lead. Scribe and Comms can be the same per
 
 **3. Open Zoom bridge:**
 
-Use the standing bridge URL stored in vault:
-```bash
-source ~/.claude/vault.env && echo $INCIDENT_ZOOM_URL
-```
+Use the standing bridge URL stored in the operator's secret store (`INCIDENT_ZOOM_URL`).
 
 Paste the URL in the channel topic immediately. For P2: text-only in Slack is fine.
 

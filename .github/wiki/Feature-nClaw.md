@@ -3,7 +3,7 @@
 ɳClaw is a self-hosted AI personal assistant built on ɳSelf. It combines multi-provider LLM routing, a knowledge graph, email management, calendar integration, browser automation, voice interaction, and 19+ tools into a single system that runs on your own server.
 
 **Status:** Active (shipping since Phase 223)
-**Repos:** nself-org/nclaw (client apps), plugins-pro (server plugins)
+**Repos:** nself-org/nclaw (client apps), bundles (server plugins)
 **Marketing site:** claw.nself.org
 **Client platforms:** iOS, Android, macOS, Web
 **Admin interface:** nself-admin ɳClaw tab (localhost:3021)

@@ -103,7 +103,7 @@ chmod +x /usr/local/bin/nself
 
 ```bash
 nself version
-# nself v1.0.9 (linux/amd64)
+# nself vX.Y.Z (linux/amd64)
 
 nself doctor
 # All checks should show green

@@ -47,7 +47,7 @@ Region: us-east-1  # MinIO ignores region but requires a value
 
 ## Pro Storage Plugin
 
-For multi-provider S3 storage (AWS S3, Cloudflare R2, Backblaze B2), see the **object-storage** pro plugin.
+For multi-provider S3 storage (AWS S3, Cloudflare R2, Backblaze B2), see the **object-storage** licensed plugin.
 
 ## See Also
 

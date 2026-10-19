@@ -309,7 +309,7 @@ This block is written once by `nself init` into `.env.secrets` (never `.env`, ne
 | `AI_TIMEOUT_PAID_MS` | int | `0` | No | Timeout override for the paid tier, in milliseconds. `0` falls back to the router's built-in default. |
 | `AI_POOL_OAUTH_CLIENT_ID` | string | *(empty)* | No | OAuth client ID for the pooled-key provisioning flow. |
 | `AI_POOL_OAUTH_CLIENT_SECRET` | string | *(empty)* | No | OAuth client secret for the pooled-key provisioning flow. |
-| `NSELF_MASTER_SECRET` | string | *(generated)* | **Yes** (once AI is configured) | Key-encryption-key protecting stored OAuth refresh tokens and pooled API keys. Generated once by `nself init` and must never be regenerated or changed afterward — doing so makes all previously-encrypted material unreadable. |
+| `NSELF_MASTER_SECRET` | string | *(generated)* | **Yes** (once AI is configured) | Key-encryption-key protecting stored OAuth refresh tokens and pooled API keys. Generated once by `nself init`. Rotate it only with the ai plugin's `rekey` subcommand: set `NSELF_MASTER_SECRET_PREVIOUS` to the old value and `NSELF_MASTER_SECRET` to the new one, run `rekey --dry-run`, then `rekey`, and remove the previous value once no rows remain under it. Changing the value any other way makes previously-encrypted material unreadable. The CLI's own uses of the variable still need care on rotation. |
 
 ---
 

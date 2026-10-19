@@ -1,7 +1,7 @@
 # CI Hygiene Enforcement Policy
 
-**Applies to:** All 11 nSelf sub-repos (cli, admin, nchat, nclaw, ntask, ntv, clawde, plugins,
-plugins-pro, homebrew-nself, web)
+**Applies to:** every nSelf sub-repo (cli, admin, nchat, nclaw, ntask, clawde, plugins,
+bundles, homebrew-nself, web)
 
 **Authority:** GCI § Clean Repo Root, Clean Working Tree, Doc-Sync Ritual, nSelf-First Doctrine
 (PPI), CI/CD 100% Green Hard Rule (PPI)
@@ -140,14 +140,13 @@ Any compose file without an approved header: **CRITICAL** — workflow fails, PR
 | nchat | ✅ | ✅ | ✅ |
 | nclaw | ✅ | ✅ | ✅ |
 | ntask | ✅ | ✅ | ✅ |
-| ntv | ✅ | ✅ | ✅ |
 | clawde | ✅ | ✅ | ✅ |
 | plugins | ✅ | ✅ | ✅ |
-| plugins-pro | ✅ | ✅ | ✅ |
+| bundles | ✅ | ✅ | ✅ |
 | homebrew-nself | ✅ | ✅ | ✅ |
 | web | ✅ | ✅ | ✅ |
 
-**Coverage:** 11/11 repos for all three workflows as of 2026-06-01.
+**Coverage:** all repos for all three workflows as of 2026-06-01.
 
 ---
 

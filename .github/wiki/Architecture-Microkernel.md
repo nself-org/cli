@@ -19,7 +19,7 @@ Every plugin declares itself in a 12-field YAML manifest. The schema is defined 
 | `name` | slug | Lowercase, hyphenated. Must be unique in the registry |
 | `version` | semver | `MAJOR.MINOR.PATCH` |
 | `tier` | enum | `free`, `basic`, or `pro` |
-| `bundle` | enum | `nChat`, `nClaw`, `nFamily`, `nTV`, `ClawDE`, `ɳSelf+`, or `none` |
+| `bundle` | enum | `nChat`, `nClaw`, `nFamily`, `ClawDE`, `ɳSelf+`, or `none` |
 | `language` | enum | `go`, `rust`, `ts`, `py`, or `flutter` |
 | `services` | array | Each entry: `{name, port, healthcheck, image}` |
 | `tables` | array | `np_*`-prefixed Postgres table schemas |
@@ -50,7 +50,7 @@ The kernel guarantees five invariants. Plugins that violate any of them fail to 
 
 - **Table prefix.** Plugin tables must use the `np_*` prefix. The loader rejects any migration that creates a non-prefixed table.
 - **Bind address.** Plugin services bind to `127.0.0.1`. External traffic enters through Nginx only.
-- **Signature.** Pro plugins must carry a valid Ed25519 signature. The CLI loader refuses unsigned or tampered pro plugins, with no override.
+- **Signature.** Licensed plugins must carry a valid Ed25519 signature. The CLI loader refuses unsigned or tampered licensed plugins, with no override.
 - **License revocation.** License changes propagate within 24 hours through cached TTL. The system runs FAIL-OPEN for 7 days when ping.nself.org is unreachable, then fails closed.
 - **Convention Wall.** Multi-app isolation uses `source_account_id TEXT`; Cloud multi-tenancy uses `tenant_id UUID`. The two columns are never mixed in the same table. See [Multi-Tenant Conventions](Multi-Tenant-Conventions).
 

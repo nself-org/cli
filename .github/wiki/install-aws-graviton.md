@@ -57,7 +57,7 @@ rm nself.tar.gz
 
 ```bash
 nself version
-# nself v1.1.1
+# nself vX.Y.Z
 
 file $(which nself)
 # /usr/local/bin/nself: ELF 64-bit LSB executable, ARM aarch64

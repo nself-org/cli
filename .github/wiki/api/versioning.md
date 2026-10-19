@@ -63,7 +63,7 @@ nself api changelog ai
 
 ## CI Gate (G11)
 
-Pull requests to `plugins-pro` that add a new endpoint to `plugin.json` without a `deprecated_in`
+Pull requests to `bundles` that add a new endpoint to `plugin.json` without a `deprecated_in`
 grace period on any replaced endpoint are blocked by the `api-compat.yml` workflow.
 
 To override: a reviewer must add the `breaking-change-approved` label. This is audited in release

@@ -15,7 +15,7 @@
 
 Complete, production-ready backend stack — PostgreSQL, GraphQL API, Authentication, and Nginx — launched from a single command. Extend with free and paid plugins (`nself plugin count` for current totals). MIT licensed core, forever.
 
-**v1.3.5 is out.** See the [changelog](.github/wiki/Changelog.md) for what shipped. [Release notes](https://github.com/nself-org/cli/releases/tag/v1.3.5)
+**v<!-- BEGIN GENERATED:facts:version -->1.4.15<!-- END GENERATED:facts:version --> is out.** See the [changelog](.github/wiki/Changelog.md) for what shipped. [Release notes](https://github.com/nself-org/cli/releases/latest)
 
 ```bash
 brew install nself-org/nself/nself
@@ -127,7 +127,7 @@ See [Plugins](#plugins) for the full inventory.
 ## Key Features
 
 - Complete backend in under 5 minutes on any machine with Docker
-- 50 CLI commands — full control from the terminal over every service and operation
+- Full control from the terminal over every service and operation
 - Built-in CI gate (`nself ci`) — replaces external CI for merge enforcement
 - Core services always-on; optional services enable with one line in `.env`
 - Plugins extend the stack without touching core config (`nself plugin count` for current totals)
@@ -188,11 +188,11 @@ The installer always fetches `checksums.txt` from the same GitHub release and ve
 For the most paranoid setups, pin the expected SHA-256 in your shell or CI config:
 
 ```bash
-# Obtain the expected checksum for a specific release:
-curl -fsSL https://github.com/nself-org/cli/releases/download/v1.3.5/checksums.txt
+# Obtain the expected checksum for a specific release (replace X.Y.Z with that release):
+curl -fsSL https://github.com/nself-org/cli/releases/download/vX.Y.Z/checksums.txt
 
 # Install with a pinned version and pinned SHA-256:
-NSELF_VERSION=v1.3.5 \
+NSELF_VERSION=vX.Y.Z \
 NSELF_INSTALL_PIN_SHA256=<sha256-from-checksums.txt> \
 curl -fsSL https://install.nself.org | bash
 ```
@@ -252,7 +252,14 @@ nself build && nself restart
 
 ## CLI Command Reference
 
-ɳSelf provides **47 top-level commands** organized by domain. Full reference: [nself.org/docs/cli](https://nself.org/docs/cli).
+ɳSelf provides a small set of top-level commands organized by domain. The core verbs are <!-- BEGIN GENERATED:facts:verbs -->`init`, `start`, `stop`, `restart`, `status`, `logs`, `doctor`, `build`, `reset`, `clean`, `add`, `remove`, `config`, `db`, `backup`, `deploy`, `update`, `license`, `mcp`, `exec`<!-- END GENERATED:facts:verbs -->.
+
+Current surface:
+
+<!-- truth: exempt tools/facts renders this count from the command registry -->
+<!-- BEGIN GENERATED:facts:top-level -->20 top-level commands in v1.5 mode, `NSELF_V15=1`<!-- END GENERATED:facts:top-level -->
+
+Full reference: [nself.org/docs/cli](https://nself.org/docs/cli).
 
 ### Stack lifecycle
 
@@ -336,7 +343,7 @@ Run `nself help <command>` for subcommand details.
 | Built-in billing integration | Yes | No | No | No | No |
 | White-label support | Yes | No | No | No | No |
 | Setup time | ~5 min | 30+ min | 30+ min | 15+ min | N/A |
-| Plugin ecosystem | 256 total (129 free + 127 pro) | Limited | Limited | App templates | No |
+| Plugin ecosystem | Free and licensed plugins (`nself plugin count`) | Limited | Limited | App templates | No |
 | Deploy anywhere | Yes | Cloud-first | Cloud-first | Yes | No |
 | Data ownership | Full | Shared | Shared | Full | No |
 
@@ -344,13 +351,13 @@ Run `nself help <command>` for subcommand details.
 
 ## Pricing
 
-The nself CLI and 129 free MIT plugins are fully FOSS. Free forever, including commercial use. Pro plugins require a membership key.
+The nself CLI and the free MIT plugins are fully FOSS. Free forever, including commercial use. Licensed plugins require a membership key.
 
 | Tier | Monthly | Annual | What's included |
 |------|---------|--------|-----------------|
-| Free | $0 | $0 | Core CLI + 129 free MIT plugins |
-| Bundle | $0.99/mo | $9.99/yr | Every pro plugin in one bundle (ɳTask, ɳChat, ɳClaw, ɳFamily, ɳSentry, or ClawDE) |
-| ɳSelf+ | $3.99/mo | $39.99/yr | All 6 bundles + all apps + priority support |
+| Free | $0 | $0 | Core CLI + free MIT plugins |
+| Bundle | $0.99/mo | $9.99/yr | All licensed plugins of one Bundle (ɳChat, ɳClaw, ɳFamily, ɳSentry, or ClawDE); the Task Bundle is free |
+| ɳSelf+ | $3.99/mo | $39.99/yr | Every bundle + all apps + priority support |
 | ɳCloud | custom | custom | Managed hosting + ɳSelf+ license + cloud-exclusive features |
 
 Annual pricing saves ~17% vs monthly. See [nself.org/pricing](https://nself.org/pricing) for current offers and migration from prior tiers.
@@ -364,7 +371,7 @@ nself plugin install ai
 
 ## Plugins
 
-### Free plugins (29 — MIT, no key required)
+### Free plugins (MIT, no key required)
 
 Install any free plugin with `nself plugin install <name>`:
 
@@ -384,7 +391,7 @@ Install any free plugin with `nself plugin install <name>`:
 
 Full inventory: [nself.org/plugins](https://nself.org/plugins)
 
-### Pro plugins (127 — license-gated, starting at $0.99/mo)
+### Licensed plugins (license-gated, starting at $0.99/mo)
 
 ```bash
 nself license set nself_pro_xxxxxx
@@ -403,7 +410,7 @@ Categories include AI and intelligence, real-time communication, media processin
 - `compliance` — GDPR, CCPA, HIPAA, SOC 2, PCI-DSS coverage
 - `auth` — WebAuthn/passkeys, TOTP 2FA, magic links, device-code flow
 
-Pro plugins are [source-available](https://nself.org/legal/bundle-license). License validated server-side via `ping.nself.org`. Revoked keys render plugins inert on next build.
+Licensed plugins are [source-available](https://nself.org/legal/bundle-license). License validated server-side via `ping.nself.org`. Revoked keys render plugins inert on next build.
 
 ---
 
@@ -519,13 +526,13 @@ Tests live in `internal/` alongside the packages they test. Coverage target: 70%
 
 MIT, free for personal and commercial use. See [LICENSE](LICENSE).
 
-Pro plugins (count generated from the plugins-pro registry, not hand-typed here) are [source-available](https://nself.org/legal/bundle-license) under the nSelf Bundle License. Compiled binaries are distributed through `ping.nself.org` after license validation.
+Licensed plugins (count generated from the bundles registry, not hand-typed here) are [source-available](https://nself.org/legal/bundle-license) under the nSelf Bundle License. Compiled binaries are distributed through `ping.nself.org` after license validation.
 
 ---
 
 <div align="center">
 
-**ɳSelf CLI v1.3.5** · [nself.org](https://nself.org) · [GitHub](https://github.com/nself-org/cli)
+**ɳSelf CLI v<!-- BEGIN GENERATED:facts:version -->1.4.15<!-- END GENERATED:facts:version -->** · [nself.org](https://nself.org) · [GitHub](https://github.com/nself-org/cli)
 
 [Get Started](#quick-start) · [Documentation](https://nself.org/docs) · [Pricing](#pricing)
 

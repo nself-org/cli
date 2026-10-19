@@ -13,8 +13,8 @@
 
 | Tier | Price | Includes |
 |------|-------|---------|
-| **Free** | $0 | Core CLI + 29 free plugins (MIT licensed) |
-| **Basic** | $0.99/mo or $9.99/yr | All 55 standard pro plugins (excludes Pro-tier AI suite) |
+| **Free** | $0 | Core CLI + free plugins (MIT licensed) |
+| **Basic** | $0.99/mo or $9.99/yr | The standard licensed plugins (excludes Pro-tier AI suite) |
 | **Pro** | $1.99/mo or $19.99/yr | Basic + AI suite (ai, browser, claw, claw-budget, claw-web, post, voice) |
 | **Elite** | $4.99/mo or $49.99/yr | Pro + email support |
 | **Business** | $9.99/mo or $99.99/yr | Elite + 24h email support + priority feature requests |
@@ -25,7 +25,7 @@ Annual plans save ~17% compared to monthly. Existing $9.99/yr keys are grandfath
 
 ## Plugin Categories
 
-### Free Plugins (25), MIT Licensed
+### Free Plugins, MIT Licensed
 
 No license key required. Install with `nself plugin install {name}`.
 
@@ -41,7 +41,7 @@ No license key required. Install with `nself plugin install {name}`.
 | Notifications | notifications, notify |
 | Infrastructure | backup, monitoring, mlflow |
 
-### Pro Plugins (62), License Key Required
+### Licensed Plugins, License Key Required
 
 Require a valid ɳSelf license key. See [[Plugin-Licensing]].
 
@@ -77,7 +77,6 @@ Bundles group plugins that work together to deliver a complete feature set. Per 
 |--------|-------|---------|----------|
 | [[bundle-nclaw]] | $0.99/mo | ai, claw, claw-web, mux, voice, browser, google, notify, cron, claw-budget, claw-news | AI personal assistant: email, calendar, news, budget, tools |
 | [[bundle-clawde]] | $1.99/mo / $19.99/yr | TBD (cloud sync, premium models, team features) | ClawDE+ remote/mobile sync via API |
-| [[bundle-nmedia]] | $0.99/mo | media-processing, streaming, epg, tmdb, stream-gateway, podcast (+ free torrent-manager, content-acquisition) | Self-hosted media acquisition, processing, and streaming |
 | [[bundle-nfamily]] | $0.99/mo | social, photos, activity-feed, moderation, realtime, cms, chat | Private family social, photo sharing, activity feeds |
 | [[bundle-nchat]] | $0.99/mo | chat, livekit, recording, moderation, bots, realtime, auth | Messaging with video calls, bots, and moderation |
 
@@ -93,7 +92,6 @@ The free `monitoring` plugin bundles 10 services in one install: alertmanager, g
 - [[Plugin-Licensing]], License keys, tiers, and validation
 - [[Plugin-Dev-Guide]], Build your own plugin
 - [[Plugin-Architecture]], Technical internals
-- [[bundle-nmedia]], nMedia plugin bundle guide
 
 ---
 ← [[Home]] | [[_Sidebar]]

@@ -111,7 +111,7 @@ Running `nself doctor` validates your configuration before you deploy:
 - Validates password strength (dev: warning, staging/prod: hard failure)
 - Confirms no wildcard CORS domains are configured in production
 - Reports misconfigured or conflicting ports
-- Verifies that service toggles are internally consistent, for example, flagging if a pro plugin that requires Redis is enabled while Redis is disabled
+- Verifies that service toggles are internally consistent, for example, flagging if a licensed plugin that requires Redis is enabled while Redis is disabled
 
 Run `nself doctor` after setting up a new environment and after any significant change to your env files. It is also run automatically as part of `nself build`.
 

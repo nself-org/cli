@@ -29,7 +29,7 @@ WSL2 is required for any local-dev workflow that involves Docker containers or l
 2. **Install Ubuntu 22.04 LTS.** `wsl --install -d Ubuntu-22.04`. Launch once to set username + password.
 3. **Install Docker Desktop.** Enable "Use WSL 2 based engine" during install. After install: Settings -> Resources -> WSL Integration -> toggle Ubuntu-22.04 ON.
 4. **Install ɳSelf inside Ubuntu.** `brew tap nself-org/nself && brew install nself` (Linuxbrew).
-5. **Verify.** `nself version` -> expect `nself v1.0.12 (linux/amd64)` (or current).
+5. **Verify.** `nself version` -> expect `nself vX.Y.Z (linux/amd64)` (or current).
 
 Full transcript: [[windows-wsl2]].
 

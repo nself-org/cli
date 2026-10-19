@@ -17,7 +17,7 @@ See [[cmd-add]] for the current command. [[Command-Canon]] lists every move.
 Install a plugin or bundle by name.
 
 This is the short form of `nself plugin install`, with bundle awareness: if
-the name is a bundle (`nchat`, `nclaw`, `ntv`, `nfamily`, `clawde`, `nsentry`)
+the name is a bundle (`nchat`, `nclaw`, `nfamily`, `clawde`, `nsentry`)
 the whole bundle is installed, otherwise the name is resolved as a plugin.
 
 Third-party plugins install by URL rather than by name:
