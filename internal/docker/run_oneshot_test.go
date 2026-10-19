@@ -174,3 +174,17 @@ func TestRunOneShot_NoRemoveOnSuccess(t *testing.T) {
 		t.Errorf("last docker call = %q, want only the run", argv)
 	}
 }
+
+// TestRunOneShot_PreCancelledRemovesNothing: a context that ended before docker
+// started leaves a caller-named container (which may be another run's) alone.
+func TestRunOneShot_PreCancelledRemovesNothing(t *testing.T) {
+	dir := installHangingDocker(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, _, err := RunOneShot(ctx, RunSpec{Image: "img", Name: "someone-elses"}); err == nil {
+		t.Fatal("want an error")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "rm")); err == nil {
+		t.Error("docker rm ran although the run never started")
+	}
+}

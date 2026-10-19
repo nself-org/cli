@@ -153,7 +153,9 @@ func RunOneShot(ctx context.Context, spec RunSpec) (stdout, stderr string, err e
 	var so, se bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &so, &se
 	runErr := cmd.Run()
-	if ctx.Err() != nil {
+	// Remove only a container this run may have created: a run cancelled before
+	// docker started cannot have, and a caller-set name may belong to another.
+	if ctx.Err() != nil && cmd.Process != nil {
 		removeAfterCancel(spec.Name)
 	}
 	if runErr != nil {
