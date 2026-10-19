@@ -5,11 +5,22 @@
     "licensed": {}
   },
   "refs": {
-    "free": [],
+    "free": [
+      "nself-org/plugins@63f29729fa637558f7fecf99672fcfb9623c4ba7",
+      "nself-org/plugins@bc6ee963bd70a46c60ff713299d35ab093f8c258",
+      "nself-org/plugins@93cad14e1384f0270f61ec9d28d81043dc86008a"
+    ],
     "licensed": []
   },
   "tiers": {
-    "free": {},
+    "free": {
+      "ci": "1.2.7",
+      "functions": "1.2.7",
+      "minio": "1.2.7",
+      "plugin-dev": "1.2.7",
+      "tokens": "1.2.9",
+      "traefik": "1.2.7"
+    },
     "licensed": {}
   }
 }

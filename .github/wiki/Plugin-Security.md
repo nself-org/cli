@@ -13,7 +13,16 @@ The public keys are compiled into the CLI (`internal/plugin/verify/signature/key
 - A key verifies only its own tier. A free-tier signature on a licensed entry (or the reverse) fails with E122.
 - Key ids are derived: `plugins-` plus the first 16 hex characters of the SHA-256 of the 32-byte public key. Revoking an id revokes the key.
 - The signed text is `nself-plugin-v1\n<slug>\n<version>\n<sha256 hex of the source tarball>\n`, raw Ed25519, signature as standard padded base64.
-- A tier that has no key pinned yet cannot verify anything, so a signature on it is treated as missing (below). The production keys are pinned in a later release; a tier with a pinned key never falls back.
+- A tier that has no key pinned yet cannot verify anything, so a signature on it is treated as missing (below). A tier with a pinned key never falls back. The free tier is pinned (table below); the licensed tier is pinned later.
+
+#### Pinned production keys
+
+| Tier | Key id | Public key file (sha256 of the file) | Pinned by |
+|---|---|---|---|
+| free | `plugins-2ebca8dfad98e19e` | `scripts/release/keys/plugins-release-free-2ebca8dfad98e19e.pub` in `nself-org/plugins` (`6720a63381e247173ed79f9cdf49e82df0e3f2ed4e7fa7a897b5bde6c6e84a4a`) | P7-PLUG-71 |
+| licensed | not pinned yet | n/a | P7-PLUG-72 |
+
+The compiled-in free key equals that file; `TestFreeTierPinned` fails when the table loses the key, holds a second free key, or lets one key serve both tiers, and `TestRealRelease` verifies a real signed `ci` 1.2.11 entry (and rejects the same entry with one flipped signature byte).
 
 ### Install order
 
