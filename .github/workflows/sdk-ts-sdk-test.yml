@@ -3,7 +3,8 @@ name: SDK ts-sdk Tests
 # Guards @nself/sdk (sdk/ts-sdk): the frozen install the publish workflow runs
 # on every tag. A Dependabot bump that regenerates pnpm-lock.yaml without the
 # package.json pnpm.overrides block fails here (ERR_PNPM_LOCKFILE_CONFIG_MISMATCH)
-# instead of at the next release tag (D-1208).
+# instead of at the next release tag (the publish workflow's `|| pnpm install`
+# fallback freezes too, because pnpm freezes by default under CI) (D-1208).
 
 on:
   push:
