@@ -20,7 +20,7 @@ import (
 
 var refRE = regexp.MustCompile(`^origin/[A-Za-z0-9][A-Za-z0-9._/-]*$`)
 
-const fetchTimeout = 60 * time.Second
+const fetchSeconds = 60
 
 // GitCLI runs git in Root.
 type GitCLI struct{ Root string }
@@ -45,7 +45,7 @@ func (g GitCLI) HasOrigin(ctx context.Context) bool {
 
 // Fetch refreshes origin.
 func (g GitCLI) Fetch(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
+	ctx, cancel := context.WithTimeout(ctx, fetchSeconds*time.Second)
 	defer cancel()
 	_, err := g.run(ctx, "fetch", "--quiet", "origin")
 	return err
@@ -55,7 +55,7 @@ func (g GitCLI) Fetch(ctx context.Context) error {
 func (g GitCLI) DefaultRef(ctx context.Context) (string, error) {
 	// The remote's own answer first: a local origin/HEAD goes stale when the
 	// default branch is renamed.
-	lsCtx, cancel := context.WithTimeout(ctx, fetchTimeout)
+	lsCtx, cancel := context.WithTimeout(ctx, fetchSeconds*time.Second)
 	defer cancel()
 	if out, err := g.run(lsCtx, "ls-remote", "--symref", "origin", "HEAD"); err == nil {
 		if branch, ok := symrefBranch(string(out)); ok && refRE.MatchString("origin/"+branch) {

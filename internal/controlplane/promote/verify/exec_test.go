@@ -74,3 +74,26 @@ func TestLimitWriterDropsTheExcess(t *testing.T) {
 		t.Fatalf("buffer = %q, want abcde", buf.String())
 	}
 }
+
+func TestCheckEvidenceMessages(t *testing.T) {
+	run := func(out string, exit int) EvidenceRunner {
+		return func(context.Context, string, string) ([]byte, int, error) { return []byte(out), exit, nil }
+	}
+	err := checkEvidence(context.Background(), run(`{"error":{"message":"boom happened"}}`, 11), "f", testRev)
+	if codeOf(err) != "E497" || !strings.Contains(err.Error(), "exit 11") || !strings.Contains(err.Error(), "boom happened") {
+		t.Fatalf("with message: %v", err)
+	}
+	err = checkEvidence(context.Background(), run(`not json`, 11), "f", testRev)
+	if codeOf(err) != "E497" || !strings.Contains(err.Error(), "exit 11") || strings.Contains(err.Error(), "boom") {
+		t.Fatalf("without message: %v", err)
+	}
+	err = checkEvidence(context.Background(), run(`{"error":{}}`, 12), "f", testRev)
+	if codeOf(err) != "E497" || strings.Contains(err.Error(), "(exit 12):") {
+		t.Fatalf("empty message must not add a suffix: %v", err)
+	}
+	// Quarantine outranks a failing exit status.
+	err = checkEvidence(context.Background(), run(`{"data":{"quarantined":true}}`, 10), "f", testRev)
+	if codeOf(err) != "E498" {
+		t.Fatalf("quarantined with exit 10: %v, want E498", err)
+	}
+}

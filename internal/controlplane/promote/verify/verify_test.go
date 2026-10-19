@@ -84,6 +84,10 @@ func TestPromoteReleaseCodes(t *testing.T) {
 		}},
 		{name: "plugin cannot start", want: "E499", post: func(r *release) { r.runErr = errors.New("no such file") }},
 		{name: "unreadable report", want: "E497", post: func(r *release) { r.report = "not json" }},
+		{name: "evidence is not JSON", want: "E497", mut: func(r *release) (string, signing.Signer) {
+			r.evidence = []byte("not json")
+			return PayloadType, r.signer
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -216,5 +220,91 @@ func TestPromoteReleaseHomeMustBeAbsolute(t *testing.T) {
 		if len(r.runs) != 0 {
 			t.Errorf("home %q: evidence ran: %v", home, r.runs)
 		}
+	}
+}
+
+// TestPromoteReleaseTrustFileFailures: unreadable, malformed and unfetchable
+// trust material refuses with E493 and never reaches the evidence.
+func TestPromoteReleaseTrustFileFailures(t *testing.T) {
+	cases := []struct {
+		name string
+		set  func(r *release)
+	}{
+		{"operator keys path is a directory", func(r *release) {
+			if err := os.MkdirAll(filepath.Join(r.home, ".nself", "ci", "trust", keysName), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"malformed committed keys", func(r *release) { r.git.files[trustRel+keysName] = []byte("garbage line\n") }},
+		{"malformed committed revoked list", func(r *release) { r.git.files[trustRel+revokedName] = []byte("not-a-key-id\n") }},
+		{"malformed operator revoked list", func(r *release) {
+			dir := filepath.Join(r.home, ".nself", "ci", "trust")
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, revokedName), []byte("x y z\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"git show fails", func(r *release) { r.git.showErr = errors.New("object missing") }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRelease(t)
+			r.write(PayloadType, r.signer)
+			tc.set(r)
+			if _, err := Verify(context.Background(), r.input()); codeOf(err) != "E493" {
+				t.Fatalf("err = %v, want E493", err)
+			}
+			if len(r.runs) != 0 {
+				t.Fatalf("evidence ran: %v", r.runs)
+			}
+		})
+	}
+}
+
+// TestPromoteReleaseNoWarningWhenWorkingCopyMatches: identical copies are silent.
+func TestPromoteReleaseNoWarningWhenWorkingCopyMatches(t *testing.T) {
+	r := newRelease(t)
+	dir := filepath.Join(r.repo, ".nself", "trust")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, keysName), r.git.files[trustRel+keysName], 0o600); err != nil {
+		t.Fatal(err)
+	}
+	trust, err := LoadTrust(context.Background(), r.git, r.home, r.repo)
+	if err != nil || len(trust.Warnings) != 0 || len(trust.Keys) != 1 {
+		t.Fatalf("trust = %+v err = %v, want one key and no warnings", trust, err)
+	}
+	// Both files differing still gives exactly one combined warning.
+	r.git.files[trustRel+revokedName] = []byte(r.key.ID + "\n")
+	if err := os.WriteFile(filepath.Join(dir, keysName), []byte("# other\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, revokedName), []byte("# other\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	trust, err = LoadTrust(context.Background(), r.git, r.home, r.repo)
+	if err != nil || len(trust.Warnings) != 1 || !strings.Contains(trust.Warnings[0], keysName) || !strings.Contains(trust.Warnings[0], revokedName) {
+		t.Fatalf("warnings = %v err = %v, want one warning naming both files", trust.Warnings, err)
+	}
+}
+
+func TestReadBoundedLimit(t *testing.T) {
+	dir := t.TempDir()
+	at := filepath.Join(dir, "at")
+	if err := os.WriteFile(at, make([]byte, maxFile), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := readBounded(at); err != nil || len(data) != maxFile {
+		t.Fatalf("a file of exactly %d bytes: len %d err %v, want it read whole", maxFile, len(data), err)
+	}
+	over := filepath.Join(dir, "over")
+	if err := os.WriteFile(over, make([]byte, maxFile+1), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readBounded(over); err == nil || !strings.Contains(err.Error(), "larger") {
+		t.Fatalf("a file one byte over the limit: err %v, want a size refusal", err)
 	}
 }

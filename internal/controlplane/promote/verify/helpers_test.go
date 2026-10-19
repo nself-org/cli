@@ -29,6 +29,7 @@ const (
 type fakeGit struct {
 	noOrigin bool
 	fetchErr error
+	showErr  error
 	files    map[string][]byte
 	fetched  int
 }
@@ -39,6 +40,9 @@ func (g *fakeGit) DefaultRef(context.Context) (string, error) {
 	return "origin/main", nil
 }
 func (g *fakeGit) Show(_ context.Context, _ string, path string) ([]byte, bool, error) {
+	if g.showErr != nil {
+		return nil, false, g.showErr
+	}
 	d, ok := g.files[path]
 	return d, ok, nil
 }

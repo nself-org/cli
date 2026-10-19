@@ -163,3 +163,21 @@ func TestGitCLIDefaultRefFollowsTheRemote(t *testing.T) {
 		t.Fatalf("DefaultRef = %q, %v; want origin/main from the remote", ref, err)
 	}
 }
+
+// TestGitCLIDefaultRefFallsBackToTheLocalHead: with the remote unreachable the
+// local origin/HEAD answers, ahead of the origin/main guess.
+func TestGitCLIDefaultRefFallsBackToTheLocalHead(t *testing.T) {
+	work := gitRepo(t, "# k\n")
+	g := GitCLI{Root: work}
+	ctx := context.Background()
+	gitIn(t, work, "push", "origin", "HEAD:refs/heads/other")
+	if err := g.Fetch(ctx); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, work, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/other")
+	gitIn(t, work, "remote", "set-url", "origin", filepath.Join(work, "gone.git"))
+	ref, err := g.DefaultRef(ctx)
+	if err != nil || ref != "origin/other" {
+		t.Fatalf("DefaultRef = %q, %v; want origin/other from the local origin/HEAD", ref, err)
+	}
+}

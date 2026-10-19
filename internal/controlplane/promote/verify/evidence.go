@@ -27,7 +27,7 @@ import (
 
 const (
 	maxEvidenceOutput = 4 << 20
-	evidenceTimeout   = 5 * time.Minute
+	evidenceSeconds   = 300
 )
 
 // EvidenceRunner runs `ci evidence verify --file <file> --at-revision <rev>
@@ -84,7 +84,7 @@ func ExecEvidence(binary, pluginDir, repoRoot string) EvidenceRunner {
 		if err := insidePluginDir(binary, pluginDir); err != nil {
 			return nil, 0, err
 		}
-		ctx, cancel := context.WithTimeout(ctx, evidenceTimeout)
+		ctx, cancel := context.WithTimeout(ctx, evidenceSeconds*time.Second)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, binary, "evidence", "verify", "--file", file, "--at-revision", revision, "--json") //nolint:gosec // binary comes from plugin mount discovery; arguments are fixed
 		cmd.Dir = repoRoot
@@ -110,9 +110,7 @@ type limitWriter struct {
 
 func (l *limitWriter) Write(p []byte) (int, error) {
 	n := len(p)
-	if n > l.left {
-		p = p[:l.left]
-	}
+	p = p[:min(n, l.left)]
 	l.left -= len(p)
 	_, _ = l.w.Write(p)
 	return n, nil
