@@ -302,6 +302,34 @@ func TestCanonEngineWarningOnce(t *testing.T) {
 	}
 }
 
+// D-1093: a break-out row that maps a spelling to itself (ci -> ci once the ci
+// plugin is mounted) must print no notice and record no meta deprecation, and
+// must not use up the once-per-process warning.
+func TestCanonEngineSameSpellingNoNotice(t *testing.T) {
+	output.ResetState()
+	t.Cleanup(output.ResetState)
+	same := []canonNote{{Kind: "breakout", Old: "ci", New: "ci", RemovalAt: "v1.6.0"}}
+	args := []string{"--json", "ci", "run"}
+	resetCanonWarning()
+	var out bytes.Buffer
+	emitCanonWarning(&out, args, same, "", "")
+	if out.Len() != 0 {
+		t.Errorf("same spelling must print nothing, got %q", out.String())
+	}
+	var doc bytes.Buffer
+	if err := output.EmitData(output.Writer{Out: &doc, Err: io.Discard}, "ci run", 1); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(doc.String(), `"deprecations"`) {
+		t.Errorf("same spelling must record no deprecation:\n%s", doc.String())
+	}
+	real := []canonNote{{Kind: "move", Old: "env", New: "config env", RemovalAt: "v1.6.0"}}
+	emitCanonWarning(&out, []string{"env"}, real, "", "")
+	if !strings.Contains(out.String(), "'nself env' moved to 'nself config env'") {
+		t.Errorf("a later real move must still warn, got %q", out.String())
+	}
+}
+
 func TestCanonEngineMeta(t *testing.T) {
 	output.ResetState()
 	t.Cleanup(output.ResetState)

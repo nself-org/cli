@@ -84,7 +84,9 @@ func warningsSilenced(args []string) bool {
 // emitCanonWarning prints the first note's move notice once per process (stderr
 // unless silenced) and, in JSON mode, records every note for meta.deprecations.
 // old overrides the first note's old spelling (a legacy spelling the user typed)
-// and final, when set, replaces its new path.
+// and final, when set, replaces its new path. A note whose old and new spellings
+// are equal (a break-out row that maps a plugin command to itself, D-1093) says
+// nothing: no notice, no meta entry, and the once-per-process warning is kept.
 func emitCanonWarning(w io.Writer, args []string, notes []canonNote, old, final string) {
 	if len(notes) == 0 {
 		return
@@ -96,10 +98,15 @@ func emitCanonWarning(w io.Writer, args []string, notes []canonNote, old, final 
 	if final == "" {
 		final = n.New
 	}
+	if old == final {
+		return
+	}
 	if output.JSONRequestedFromArgs(args) {
 		output.AddDeprecation(old, final, n.RemovalAt)
 		for _, x := range notes[1:] {
-			output.AddDeprecation(x.Old, x.New, x.RemovalAt)
+			if x.Old != x.New {
+				output.AddDeprecation(x.Old, x.New, x.RemovalAt)
+			}
 		}
 	}
 	canonWarn.mu.Lock()
