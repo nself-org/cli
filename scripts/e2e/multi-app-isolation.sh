@@ -185,6 +185,9 @@ cp "$W/tok-a-member@example.invalid.hdr" "$W/ua.hdr"
 cp "$W/tok-b-member@example.invalid.hdr" "$W/ub.hdr"
 cp "$W/tok-b-outsider@example.invalid.hdr" "$W/uc.hdr"
 mint "$W/forged.hdr" 11111111-1111-4111-8111-111111111111 app_b
+# A real app_a member (it has an app_members row for app_a only) whose token claims app_b: the membership
+# filter must match the claimed app id, not just the user id (D-1176).
+mint "$W/forged-member.hdr" "$UA" app_b
 
 # ---- seed with the admin secret: 3 rows in app_a, 2 in app_b, per table ------------------------
 # fields TABLE APP LABEL: GraphQL object fields (projects also need a name).
@@ -211,6 +214,11 @@ for T in notes projects; do
 
   test "$(nrows "$W/forged.hdr" "$T")" = 0 || fail "$T: forged app_b token reads rows"
   pass "$T: forged app_b token (no membership) reads nothing"
+
+  test "$(nrows "$W/forged-member.hdr" "$T")" = 0 || fail "$T: app_a member with a forged app_b claim reads rows"
+  test "$(errcode "$W/forged-member.hdr" "mutation { insert_${T}_one(object:{$(fields "$T" app_b forged | sed 's/source_account_id:"app_b", //')}) { id } }")" = permission-error || fail "$T: app_a member with a forged app_b claim inserted"
+  test "$(count_b "$T")" = 2 || fail "$T: forged-claim insert changed app_b"
+  pass "$T: app_a member forging an app_b claim reads zero rows and cannot insert (D-1176)"
 
   test "$(nrows "$W/uc.hdr" "$T")" = 0 || fail "$T: app_b signup without membership reads app_b rows"
   test "$(errcode "$W/uc.hdr" "mutation { insert_${T}_one(object:{$(fields "$T" app_b outsider | sed 's/source_account_id:"app_b", //')}) { id } }")" = permission-error || fail "$T: app_b signup without membership inserted"
