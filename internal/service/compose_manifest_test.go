@@ -88,3 +88,34 @@ func TestComposeForFollowsBuildManifests(t *testing.T) {
 		}
 	})
 }
+
+// service.Start runs compose with the same sealed environment as `nself start`
+// and restart: a POSTGRES_PASSWORD exported in the shell never reaches compose,
+// so the value in --env-file wins (D-0703 review).
+func TestStartDropsExportedProjectVariables(t *testing.T) {
+	bin, _ := fakeDocker(t)
+	seen := filepath.Join(t.TempDir(), "seen.txt")
+	writeFile(t, filepath.Dir(bin), "docker", "#!/bin/sh\necho \"[$POSTGRES_PASSWORD]\" > '"+seen+"'\n")
+	t.Setenv("PATH", filepath.Dir(bin)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("POSTGRES_PASSWORD", "exported-in-shell")
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, dir, "docker-compose.yml", "services:\n  postgres:\n    image: x\n")
+	writeFile(t, dir, ".env", "PROJECT_NAME=t\n")
+	t.Chdir(dir)
+	if err := os.Chmod(filepath.Join(filepath.Dir(bin), "docker"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := Start(context.Background(), "postgres"); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(seen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(string(raw)); got != "[]" {
+		t.Fatalf("compose saw POSTGRES_PASSWORD %s, want it unset", got)
+	}
+}

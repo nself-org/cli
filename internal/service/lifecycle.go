@@ -140,7 +140,7 @@ func Start(ctx context.Context, serviceName string) error {
 	if err != nil {
 		return err
 	}
-	return c.ComposeUp(ctx, dir, canon)
+	return config.WithComposeEnvironment(func() error { return c.ComposeUp(ctx, dir, canon) })
 }
 
 // Stop stops a named nSelf service via `docker compose stop <service>`.
@@ -158,7 +158,7 @@ func Stop(ctx context.Context, serviceName string) error {
 	if err != nil {
 		return err
 	}
-	return c.ComposeStop(ctx, dir, canon)
+	return config.WithComposeEnvironment(func() error { return c.ComposeStop(ctx, dir, canon) })
 }
 
 // Restart restarts a named nSelf service via `docker compose restart <service>`.
@@ -175,7 +175,7 @@ func Restart(ctx context.Context, serviceName string) error {
 	if err != nil {
 		return err
 	}
-	return c.ComposeRestart(ctx, dir, canon)
+	return config.WithComposeEnvironment(func() error { return c.ComposeRestart(ctx, dir, canon) })
 }
 
 // PSEntry represents a single service row in the `nself service ps` output.
@@ -198,7 +198,11 @@ func PS(ctx context.Context) ([]PSEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	containers, err := c.ComposePs(ctx, dir)
+	var containers []docker.ContainerInfo
+	err = config.WithComposeEnvironment(func() (psErr error) {
+		containers, psErr = c.ComposePs(ctx, dir)
+		return psErr
+	})
 	if err != nil {
 		return nil, fmt.Errorf("service ps: %w", err)
 	}
@@ -236,12 +240,12 @@ func Update(ctx context.Context, serviceName string) error {
 	// Pull the latest image for the specific service.
 	pullCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
-	if err := c.ComposePullService(pullCtx, dir, canon); err != nil {
+	if err := config.WithComposeEnvironment(func() error { return c.ComposePullService(pullCtx, dir, canon) }); err != nil {
 		return fmt.Errorf("pulling image for %s: %w", canon, err)
 	}
 
 	// Restart the service with the new image (--no-deps = don't restart dependents).
-	return c.ComposeUp(ctx, dir, canon)
+	return config.WithComposeEnvironment(func() error { return c.ComposeUp(ctx, dir, canon) })
 }
 
 // Scale adjusts the replica count for a named service via
@@ -263,7 +267,7 @@ func Scale(ctx context.Context, serviceName string, replicas int) error {
 	if err != nil {
 		return err
 	}
-	return c.ComposeScale(ctx, dir, canon, replicas)
+	return config.WithComposeEnvironment(func() error { return c.ComposeScale(ctx, dir, canon, replicas) })
 }
 
 // shortID returns the first 12 characters of a container ID, matching the
