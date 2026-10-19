@@ -80,12 +80,15 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 	if restored {
 		// Before the database restore: a recorded image that is gone refuses the
 		// rollback here, with the containers and the database untouched (D-0700).
-		// An unreadable model is not decided here: the re-apply reports it after the
-		// database restore, as it always did.
-		if model, merr := ReadComposeModel(ctx, r, rp, set.Compose, set.EnvManifest); merr == nil {
-			if keep, err = imagesToRestore(ctx, r, o.Tar, model); err != nil {
-				return err
+		model, merr := ReadComposeModel(ctx, r, rp, set.Compose, set.EnvManifest)
+		if merr != nil {
+			// With a record, a pull on a later retry would bring the new image back: stop
+			// before the database restore. Without one the re-apply reports it, as it always did.
+			if saved, found, rerr := readImageRecord(ctx, r, o.Tar); rerr == nil && found && len(saved) > 0 {
+				return fmt.Errorf("rollback stopped before the database restore: the restored compose cannot be resolved to check the recorded images (the files are restored): %w", merr)
 			}
+		} else if keep, err = imagesToRestore(ctx, r, o.Tar, model); err != nil {
+			return err
 		}
 	}
 	switch {

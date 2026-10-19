@@ -141,3 +141,18 @@ func TestRollbackWithoutOrWithTamperedRecord(t *testing.T) {
 		}
 	})
 }
+
+func TestRollbackStopsWhenTheModelCannotBeReadAndARecordExists(t *testing.T) {
+	f, _, _, roll := rollbackFixture(t)
+	f.fail["config --format json"] = errBoom
+	err := roll()
+	if err == nil || !strings.Contains(err.Error(), "before the database restore") {
+		t.Fatalf("err = %v", err)
+	}
+	got := steps(f)
+	for _, late := range []string{"dbbackup", "pull", "up:db"} {
+		if indexOf(got, late) >= 0 {
+			t.Errorf("step %q ran after the stop: %v", late, got)
+		}
+	}
+}
