@@ -5,13 +5,13 @@
 #   443) and the nself-ci executor starts every drill job at once, so two legs that run
 #   `nself start` would collide. Each such leg takes this lock before it starts a stack and
 #   drops it on exit; the others wait. Legs that do not publish those ports do not need it.
-# Inputs: ROOT (repo root, set by the caller); DRILL_LOCK_DIR (default <repo>/.nself/drill-stack.lock);
+# Inputs: DRILL_LOCK_DIR (default /tmp/nself-drill-stack.lock: one path for every job, whatever checkout copy or TMPDIR the executor gives it);
 #   DRILL_LOCK_TIMEOUT (seconds to wait, default 3600; a leg's own job timeout also runs while it waits).
 # Outputs: stack_lock_acquire (0 holding the lock, 1 after the timeout), stack_lock_release.
 # Constraints: mkdir is the atomic step. The holder's pid is stored; a lock whose holder is gone is
 #   taken over. Bash 3.2 compatible.
 
-STACK_LOCK_DIR=${DRILL_LOCK_DIR:-$ROOT/.nself/drill-stack.lock}
+STACK_LOCK_DIR=${DRILL_LOCK_DIR:-/tmp/nself-drill-stack.lock}
 STACK_LOCK_HELD=0
 
 stack_lock_acquire() {
