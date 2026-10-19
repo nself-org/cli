@@ -135,17 +135,12 @@ func Prune(cfg *config.Config, opts PruneOptions) (*PruneResult, error) {
 		result.Pruned = append(result.Pruned, e.ID)
 
 		if !opts.DryRun {
-			// Find and remove the actual file.
-			files, _ := os.ReadDir(backupDir)
-			for _, f := range files {
-				if f.Name() == e.ID || filepath.Base(f.Name()) == e.ID {
-					path := filepath.Join(backupDir, f.Name())
-					if err := os.Remove(path); err != nil {
-						slog.Warn("failed to remove backup", "path", path, "error", err)
-					} else {
-						slog.Info("pruned backup", "path", path)
-					}
-				}
+			// Remove the entry's own file: the ID has no extension.
+			path := filepath.Join(backupDir, e.File)
+			if err := os.Remove(path); err != nil {
+				slog.Warn("failed to remove backup", "path", path, "error", err)
+			} else {
+				slog.Info("pruned backup", "path", path)
 			}
 		}
 	}

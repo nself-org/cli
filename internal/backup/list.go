@@ -23,6 +23,7 @@ type BackupEntry struct {
 	Type      string    `json:"type"`      // full, metadata, minio, wal
 	Tag       string    `json:"tag"`       // user tag if present
 	Encrypted bool      `json:"encrypted"` // .age suffix
+	File      string    `json:"-"`         // file name on disk, extension included
 }
 
 // ListOptions holds flags for `nself backup list`.
@@ -88,7 +89,8 @@ func List(cfg *config.Config, opts ListOptions) ([]BackupEntry, error) {
 // newBackupEntry builds the entry for one backup file name.
 func newBackupEntry(name string, size int64, mod time.Time) BackupEntry {
 	be := BackupEntry{
-		ID:        strings.TrimSuffix(strings.TrimSuffix(name, ".age"), filepath.Ext(strings.TrimSuffix(name, ".age"))),
+		ID:        backupIDFromName(name),
+		File:      name,
 		Date:      mod,
 		Size:      size,
 		Type:      inferBackupType(name),
@@ -96,6 +98,21 @@ func newBackupEntry(name string, size int64, mod time.Time) BackupEntry {
 	}
 	be.Tag = parseBackupTag(be.ID)
 	return be
+}
+
+// backupIDFromName derives the extension-less backup ID from a file name.
+// Inputs: a backup file name. Outputs: the name without ".age" and without the
+// payload extension (".tar.gz", ".dump", or any single extension).
+// Constraints: ".tar.gz" is one extension, so a metadata backup's tag does not
+// end in ".tar".
+func backupIDFromName(name string) string {
+	id := strings.TrimSuffix(name, ".age")
+	for _, ext := range []string{".tar.gz", ".dump"} {
+		if strings.HasSuffix(id, ext) {
+			return strings.TrimSuffix(id, ext)
+		}
+	}
+	return strings.TrimSuffix(id, filepath.Ext(id))
 }
 
 // backupTagPattern matches "<project>_<type>_<YYYYMMDD>_<HHMMSS>[_<tag>]" as
