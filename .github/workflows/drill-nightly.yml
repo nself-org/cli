@@ -44,7 +44,7 @@ env:
   CI_RELEASE_URL: "https://github.com/nself-org/plugins/releases/download/v1.2.12/ci-1.2.12-linux-amd64.tar.gz"
   CI_RELEASE_SHA256: "12c1836702fa54f5fa52ae72eb2585be6b978614cfd72b27371165b466641d40"
   NSELF_V15: "1"          # for the nself-ci process only (the plugin binary does not follow the cli flip; kept until v1.6); the legs set their own
-  NSELF_CI_TIMEOUT: 80m   # the two-command leg runs both compat modes in one job (default 10m)
+  NSELF_CI_TIMEOUT: 80m   # per-job timeout, passed as --timeout below (the env var alone does not reach discovered drill jobs, which keep the 10m default); the importers leg has a 75 min budget
 
 jobs:
   drills:
@@ -100,7 +100,7 @@ jobs:
           set -o pipefail
           mkdir -p "$RUNNER_TEMP/evidence"
           status=0
-          "$NSELF_CI_BIN" --no-status --pipeline "$PIPELINE" --json > "$RUNNER_TEMP/evidence/evidence.json" || status=$?
+          "$NSELF_CI_BIN" --no-status --pipeline "$PIPELINE" --timeout "$NSELF_CI_TIMEOUT" --json > "$RUNNER_TEMP/evidence/evidence.json" || status=$?
           {
             echo "### $PIPELINE (nself-ci $CI_VERSION)"
             echo "exit code: $status"
@@ -114,6 +114,16 @@ jobs:
           name: drills-evidence
           path: ${{ runner.temp }}/evidence/evidence.json
           if-no-files-found: warn
+          retention-days: 30
+
+      - name: Keep the importers logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: drills-importers-results
+          path: ~/.nself/drill-out/importers/
+          if-no-files-found: warn
+          include-hidden-files: true
           retention-days: 30
 
       - name: Keep the drill results

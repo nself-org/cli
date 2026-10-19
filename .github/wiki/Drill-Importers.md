@@ -25,12 +25,12 @@ One check per source. Each runs the same Linux e2e script a developer runs by ha
 - One fixture at a time, in the order above. A source that fails does not stop the next one, and the leg exits 1 when any check did not pass.
 - Each script runs the way the e2e line of the importers plan runs it: a `docker:27-cli` container on the host network with the docker socket, the checkout and a work dir mounted at the same path as on the host, and a static Linux `nself` built from this checkout on `PATH`. The script tears its own fixture down (`compose down -v`) in a trap; the leg removes the container and the work dir after each source, and on CI it also removes any container or volume left behind and prunes images when the runner is short of disk.
 - Time: 15 minutes per source, 75 minutes for the whole leg. A source that overruns, or that has no time left, is an `error` check with failure class `timeout`. A skipped source is never reported as a pass.
-- The nightly workflow gives drill jobs 80 minutes (`NSELF_CI_TIMEOUT`), so the 75-minute budget fits.
+- The nightly workflow passes `--timeout 80m` to `nself-ci`, so every drill job may run 80 minutes and the 75-minute budget fits. (A drill job has a 10-minute default; the `NSELF_CI_TIMEOUT` variable alone does not raise it for discovered drill jobs.)
 - It runs on a GitHub-hosted `ubuntu-latest` runner. A run on a Mac proves nothing for the record.
 
 ## The evidence
 
-The leg prints progress lines on stderr and, as the last line of stdout, one compact `ci.evidence/v1` document with one check per source (`importers/<source>`, kind `test`, required). `nself ci` reads that line, validates it, and folds the failing checks into the one check of the `drill-importers` job. The pipeline evidence of the nightly run is the artifact `drills-evidence`; per-source logs are in `.nself/drill-out/importers/<source>.log`, uploaded with the other drill results.
+The leg prints progress lines on stderr and, as the last line of stdout, one compact `ci.evidence/v1` document with one check per source (`importers/<source>`, kind `test`, required). `nself ci` reads that line, validates it, and folds the failing checks into the one check of the `drill-importers` job. The pipeline evidence of the nightly run is the artifact `drills-evidence`; per-source logs are in `~/.nself/drill-out/importers/<source>.log`, uploaded as the artifact `drills-importers-results`.
 
 A failed check carries the exit code, `failure_class` `code`, and the last lines of the script output as its excerpt. An `error` check means the script did not get an answer: the budget ran out, Docker or Go was missing, or the image could not be pulled.
 
@@ -56,7 +56,7 @@ DRILL_SOURCES_DIR="$D" bash scripts/drill/legs/importers/run   # firebase fails,
 | Variable | Meaning | Default |
 |---|---|---|
 | `DRILL_SOURCES_DIR` | run `<dir>/<source>.sh` directly with bash, no container | unset |
-| `DRILL_OUT_ROOT` | result root; logs go to `<root>/importers/` | `.nself/drill-out` |
+| `DRILL_OUT_ROOT` | result root; logs go to `<root>/importers/` | `~/.nself/drill-out` |
 | `DRILL_SOURCE_TIMEOUT` | seconds per source | 900 |
 | `DRILL_BUDGET` | seconds for the whole leg | 4500 |
 | `NSELF_LINUX_BIN` | a static Linux `nself` to mount instead of building one | built from the checkout |
@@ -67,7 +67,7 @@ On GitHub a throwaway runner keeps no run store, so a red nightly run is the ale
 
 ## When a source turns red
 
-1. Open the `drills-evidence` artifact and read the excerpt of the failing check, then its full log in `drills-two-command-results/importers/<source>.log`.
+1. Open the `drills-evidence` artifact and read the excerpt of the failing check, then its full log in the artifact `drills-importers-results` (`<source>.log`).
 2. Fixtures are pinned by digest in `test/fixtures/import/<source>/`. If an upstream image moved, bump the digest deliberately in the fixture and rerun.
 3. If the script drifted from the importer's behaviour, fix the script in the same change that changed the behaviour, and rerun this leg.
 

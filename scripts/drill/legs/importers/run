@@ -11,7 +11,8 @@
 # Usage: run [--list]      --list prints the seven check ids and runs nothing.
 # Inputs (all optional): DRILL_SOURCES_DIR (use <dir>/<source>.sh instead of scripts/e2e, run
 #   directly with bash, no container: for tests of this leg), DRILL_OUT_ROOT (result root; default
-#   <repo>/.nself/drill-out; logs land in <root>/importers/<source>.log), DRILL_SOURCE_TIMEOUT
+#   ~/.nself/drill-out, because the pipeline runs a leg in a throwaway copy of the repo; logs land
+#   in <root>/importers/<source>.log, which the nightly workflow uploads), DRILL_SOURCE_TIMEOUT
 #   (seconds per source, default 900), DRILL_BUDGET (seconds for the whole leg, default 4500),
 #   NSELF_LINUX_BIN (a static linux nself; built from this checkout when missing).
 # Outputs: progress lines on stderr; the evidence document on stdout.
@@ -37,7 +38,7 @@ esac
 # shellcheck source=lib-evidence.sh
 . "$HERE/lib-evidence.sh"
 
-OUT=${DRILL_OUT_ROOT:-$ROOT/.nself/drill-out}/importers
+OUT=${DRILL_OUT_ROOT:-${HOME:-$ROOT}/.nself/drill-out}/importers
 LIMIT=${DRILL_SOURCE_TIMEOUT:-900}
 BUDGET=${DRILL_BUDGET:-4500}
 IMAGE=docker:27-cli
