@@ -148,7 +148,8 @@ func Install(ctx context.Context, r InstallReq) (map[string]int, error) {
 	for _, t := range r.Targets {
 		s, err := prepare(r, t)
 		if err != nil {
-			return nil, err
+			// Tag it so the commands answer E471 (issued, not installed), not a bare refusal.
+			return nil, fmt.Errorf("%w%.0w", err, ErrInstall)
 		}
 		swaps = append(swaps, s)
 	}
@@ -203,6 +204,11 @@ func prepare(r InstallReq, target string) (swap, error) {
 			return swap{}, fmt.Errorf("converting %s: %w", target, err)
 		}
 		if err := point(link, genName(base, prev)); err != nil {
+			// Put the directory back: a half-converted target would serve nothing until Repair runs.
+			_ = os.Remove(link + ".tmp-link")
+			if rerr := os.Rename(filepath.Join(parent, genName(base, prev)), link); rerr != nil {
+				return swap{}, errors.Join(err, fmt.Errorf("restoring %s: %w", target, rerr))
+			}
 			return swap{}, err
 		}
 	case err == nil && prev < 0:
