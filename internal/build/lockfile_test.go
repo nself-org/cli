@@ -18,6 +18,7 @@ import (
 	"github.com/nself-org/cli/internal/bundle/ledger"
 	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/compose"
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/lock"
 	"github.com/nself-org/cli/internal/version"
@@ -737,5 +738,62 @@ func TestLockUnverifiableWarnsOnce(t *testing.T) {
 	}
 	if n := strings.Count(log.String(), "msg=m "); n != 1 {
 		t.Fatalf("warnOnce printed %d times, want 1", n)
+	}
+}
+
+// TestBootstrapNoPinSourceNotice: a v1.5 build with no lock and no compose
+// moves an existing project to the v1.5 hasura default, so it says so and names
+// the backup step; a new project (no postgres volume), a v1.4 build and a project
+// whose compose file supplies the pin stay silent (D-0719).
+func TestBootstrapNoPinSourceNotice(t *testing.T) {
+	const notice = "hasura takes the v1.5 default graphql-engine"
+	cases := []struct {
+		name       string
+		v15        bool
+		volume     bool
+		compose    string
+		wantNotice bool
+	}{
+		{"existing project, no pin source", true, true, "", true},
+		{"new project", true, false, "", false},
+		{"v1.4 build", false, true, "", false},
+		{"compose supplies the pin", true, true, "services:\n  hasura:\n    image: " + hasura240 + "\n", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := newPlanFixture(t, "dev-minimal")
+			compattest.Set(t, c.v15)
+			prev := projectPostgresVolumeExists
+			var asked string
+			projectPostgresVolumeExists = func(name string) bool { asked = name; return c.volume }
+			t.Cleanup(func() { projectPostgresVolumeExists = prev })
+			if c.compose != "" {
+				withExistingCompose(t, f, c.compose)
+			}
+			st := newBuildState(f.workdir, BuildOptions{})
+			cfg, err := config.LoadWithOptions(f.workdir, config.LoadOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			st.cfg = cfg
+			log := captureSlog(t)
+			if _, err := st.bootstrapPins(); err != nil {
+				t.Fatal(err)
+			}
+			got := strings.Contains(log.String(), notice)
+			if got != c.wantNotice {
+				t.Fatalf("notice printed = %v, want %v:\n%s", got, c.wantNotice, log.String())
+			}
+			if c.wantNotice {
+				for _, w := range []string{"nself backup create", "HASURA_VERSION", cfg.ProjectName + "_postgres_data"} {
+					if !strings.Contains(log.String(), w) {
+						t.Errorf("notice lacks %q:\n%s", w, log.String())
+					}
+				}
+				if asked != cfg.ProjectName+"_postgres_data" {
+					t.Errorf("asked about volume %q", asked)
+				}
+			}
+		})
 	}
 }
