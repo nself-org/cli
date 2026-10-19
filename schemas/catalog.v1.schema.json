@@ -256,6 +256,39 @@
             ],
             "type": "string"
           },
+          "platform_signatures": {
+            "additionalProperties": {
+              "additionalProperties": false,
+              "properties": {
+                "alg": {
+                  "const": "ed25519",
+                  "type": "string"
+                },
+                "key_id": {
+                  "type": "string"
+                },
+                "sig": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key_id",
+                "alg",
+                "sig"
+              ],
+              "type": "object"
+            },
+            "propertyNames": {
+              "enum": [
+                "darwin-amd64",
+                "darwin-arm64",
+                "linux-amd64",
+                "linux-arm64",
+                "windows-amd64"
+              ]
+            },
+            "type": "object"
+          },
           "release_signature": {
             "additionalProperties": false,
             "properties": {

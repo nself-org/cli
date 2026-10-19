@@ -29,4 +29,8 @@ type Release struct {
 	Binaries []string `json:"binaries,omitempty"`
 	// PlatformChecksums holds one sha256 per per-platform binary tarball.
 	PlatformChecksums map[string]string `json:"platform_checksums,omitempty"`
+	// PlatformSignatures holds one signature per per-platform binary tarball
+	// (contract:plugins.release-signature v1.1). Each key is also a key of
+	// PlatformChecksums, and the source ReleaseSignature must be set.
+	PlatformSignatures map[string]*Signature `json:"platform_signatures,omitempty"`
 }

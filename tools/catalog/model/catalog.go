@@ -30,7 +30,10 @@ type CatalogPlugin struct {
 	TierPair         bool       `json:"tier_pair"`
 	Checksum         string     `json:"checksum"`
 	ReleaseSignature *Signature `json:"release_signature"`
-	TarballURL       string     `json:"tarball_url"`
+	// PlatformSignatures is written only for a release that carries them, so a
+	// row without them is byte-identical to before.
+	PlatformSignatures map[string]*Signature `json:"platform_signatures,omitempty"`
+	TarballURL         string                `json:"tarball_url"`
 }
 
 // CatalogBundle is one bundle of bundles.json: tier is free or licensed.

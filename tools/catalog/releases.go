@@ -77,6 +77,44 @@ func validateReleases(r *model.Releases) []string {
 				probs = append(probs, s+": platform_checksums."+p+" must be 64 lowercase hex characters")
 			}
 		}
+		probs = append(probs, platformSignatureProblems(s, rel)...)
+	}
+	return probs
+}
+
+// platformSignatureProblems lists every problem in rel.PlatformSignatures
+// (contract:plugins.release-signature v1.1): each key is a known platform with a
+// platform_checksums entry, each value is a complete ed25519 signature, and the
+// source release_signature is set because it is the anchor.
+func platformSignatureProblems(slug string, rel model.Release) []string {
+	if len(rel.PlatformSignatures) == 0 {
+		return nil
+	}
+	var probs []string
+	if rel.ReleaseSignature == nil {
+		probs = append(probs, slug+": platform_signatures needs a release_signature (the source signature is the anchor)")
+	}
+	known := map[string]bool{}
+	for _, p := range model.Platforms {
+		known[p] = true
+	}
+	names := make([]string, 0, len(rel.PlatformSignatures))
+	for p := range rel.PlatformSignatures {
+		names = append(names, p)
+	}
+	sort.Strings(names)
+	for _, p := range names {
+		pre := slug + ": platform_signatures." + p
+		if !known[p] {
+			probs = append(probs, pre+" is not a platform (want one of "+strings.Join(model.Platforms, ", ")+")")
+		}
+		if _, ok := rel.PlatformChecksums[p]; !ok {
+			probs = append(probs, pre+" has no platform_checksums."+p)
+		}
+		sig := rel.PlatformSignatures[p]
+		if sig == nil || sig.KeyID == "" || sig.Sig == "" || sig.Alg != model.SigAlg {
+			probs = append(probs, pre+" needs key_id, sig and alg "+model.SigAlg)
+		}
 	}
 	return probs
 }

@@ -30,6 +30,10 @@ const (
 	BinaryPattern = `^nself-[a-z][a-z0-9-]*$`
 )
 
+// Platforms are the platform names a platform_checksums or platform_signatures
+// key may take (contract:plugins.release-signature v1.1).
+var Platforms = []string{"darwin-amd64", "darwin-arm64", "linux-amd64", "linux-arm64", "windows-amd64"}
+
 // Tiers is the catalog `tier` enum.
 var Tiers = []string{TierFree, TierLicensed}
 

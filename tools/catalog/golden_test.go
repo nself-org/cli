@@ -21,11 +21,11 @@ func TestGoldenRegistriesAndCatalog(t *testing.T) {
 
 // additive are the registry keys this tool adds to the basis shape; released
 // CLIs ignore them (decode test).
-var additive = map[string]bool{"catalog": true, "release_signature": true}
+var additive = map[string]bool{"catalog": true, "release_signature": true, "platform_signatures": true}
 
 // TestKeySetMatchesBasis pins the entry key set to the real basis registries:
 // every generated key is a basis key (of either registry: one decoder reads both)
-// or one of the two additive keys, and every
+// or one of the additive keys, and every
 // basis key of the tier the manifests can supply is produced by at least one entry.
 func TestKeySetMatchesBasis(t *testing.T) {
 	basis := decodeMap(t, readFile(t, filepath.Join(td, "basis-keys.json")))
