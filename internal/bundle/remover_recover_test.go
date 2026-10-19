@@ -6,7 +6,6 @@ package bundle
 
 import (
 	"bytes"
-	"context"
 	"os"
 	"strings"
 	"testing"
@@ -65,7 +64,7 @@ func TestRecoverLostBundleOnlyClearsTheIntent(t *testing.T) {
 		writeIntent(t, dir, "d1", "d2")
 		var out bytes.Buffer
 		rec := &recorder{}
-		_, err := Remove(context.Background(), "family", baseOpts(dir, &out, rec))
+		_, err := Remove(opCtx(t), "family", baseOpts(dir, &out, rec))
 		expectUnrecorded(t, err, out.String())
 		if len(rec.calls) != 0 || !isAlreadyInstalled(dir, "d1") || !isAlreadyInstalled(dir, "d2") {
 			t.Errorf("removed %v from an unrecorded bundle", rec.names())
@@ -93,7 +92,7 @@ func TestRecoverDeletedLedgerKeepsLeftovers(t *testing.T) {
 		}
 		var out bytes.Buffer
 		rec := &recorder{}
-		_, err := Remove(context.Background(), "family", baseOpts(dir, &out, rec))
+		_, err := Remove(opCtx(t), "family", baseOpts(dir, &out, rec))
 		expectUnrecorded(t, err, out.String())
 		if len(rec.calls) != 0 || !isAlreadyInstalled(dir, "d1") || !isAlreadyInstalled(dir, "d2") {
 			t.Errorf("removed %v after the ledger was deleted", rec.names())
@@ -120,12 +119,12 @@ func TestRecoverDryRunAndRealRunAgree(t *testing.T) {
 		var dry, real bytes.Buffer
 		opts := baseOpts(dir, &dry, &recorder{})
 		opts.DryRun = true
-		_, dryErr := Remove(context.Background(), "family", opts)
+		_, dryErr := Remove(opCtx(t), "family", opts)
 		expectUnrecorded(t, dryErr, dry.String())
 		if !intentFileExists(dir) {
 			t.Fatal("a dry run cleared the intent")
 		}
-		_, realErr := Remove(context.Background(), "family", baseOpts(dir, &real, &recorder{}))
+		_, realErr := Remove(opCtx(t), "family", baseOpts(dir, &real, &recorder{}))
 		expectUnrecorded(t, realErr, real.String())
 		if (dryErr == nil) != (realErr == nil) {
 			t.Errorf("dry run err=%v, real run err=%v", dryErr, realErr)
@@ -145,7 +144,7 @@ func TestRecoverStaleIntentIsCleared(t *testing.T) {
 		writeIntent(t, dir, "d1", "d2") // neither is on disk
 		var out bytes.Buffer
 		rec := &recorder{}
-		_, err := Remove(context.Background(), "family", baseOpts(dir, &out, rec))
+		_, err := Remove(opCtx(t), "family", baseOpts(dir, &out, rec))
 		if intentFileExists(dir) {
 			t.Error("the stale intent was not cleared")
 		}
@@ -168,7 +167,7 @@ func TestRecoverBadIntentRefusesBeforeRemoving(t *testing.T) {
 	}
 	var out bytes.Buffer
 	rec := &recorder{}
-	_, err := Remove(context.Background(), "family", baseOpts(dir, &out, rec))
+	_, err := Remove(opCtx(t), "family", baseOpts(dir, &out, rec))
 	if err == nil || !strings.Contains(err.Error(), p) {
 		t.Fatalf("err = %v, want it to name %s", err, p)
 	}

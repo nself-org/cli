@@ -114,7 +114,7 @@ func TestRemoveCrashBetweenMembersNoPriorLedger(t *testing.T) {
 
 		var out bytes.Buffer
 		rec := &recorder{}
-		res, err := Remove(context.Background(), "family", baseOpts(dir, &out, rec))
+		res, err := Remove(opCtx(t), "family", baseOpts(dir, &out, rec))
 		if err != nil {
 			t.Fatalf("rerun: %v\n%s", err, out.String())
 		}
@@ -152,7 +152,7 @@ func TestRemoveCrashBetweenMembersWithoutIntentIsTheBug(t *testing.T) {
 		rec := &recorder{}
 		opts := baseOpts(dir, &out, rec)
 		opts.noIntent = true
-		_, err := Remove(context.Background(), "family", opts)
+		_, err := Remove(opCtx(t), "family", opts)
 		if len(rec.calls) != 0 || !isAlreadyInstalled(dir, "d1") || !isAlreadyInstalled(dir, "d2") {
 			t.Fatalf("the rerun removed %v; the bug removes nothing", rec.names())
 		}
@@ -173,7 +173,7 @@ func TestRemoveCrashWithPriorLedger(t *testing.T) {
 		crashBetweenMembers(t, dir, false)
 		var out bytes.Buffer
 		rec := &recorder{}
-		if _, err := Remove(context.Background(), "family", baseOpts(dir, &out, rec)); err != nil {
+		if _, err := Remove(opCtx(t), "family", baseOpts(dir, &out, rec)); err != nil {
 			t.Fatalf("rerun: %v\n%s", err, out.String())
 		}
 		if !sameStrings(rec.names(), []string{"d2", "d1"}) || intentFileExists(dir) {
@@ -207,7 +207,7 @@ func TestRemoveFinalLedgerWriteFails(t *testing.T) {
 		rec := &recorder{}
 		opts := baseOpts(dir, &out, rec)
 		opts.writeHook = failLedgerWrite(dir, 2) // 1 = checkpoint, 2 = final
-		res, err := Remove(context.Background(), "family", opts)
+		res, err := Remove(opCtx(t), "family", opts)
 		if err == nil || !strings.Contains(err.Error(), "removed d3, d2, d1 but updating the bundle ledger") {
 			t.Fatalf("err = %v, want the 'removed ... but updating the bundle ledger' wording", err)
 		}
@@ -221,7 +221,7 @@ func TestRemoveFinalLedgerWriteFails(t *testing.T) {
 			t.Fatal("the intent must be cleared before the final write")
 		}
 		out.Reset()
-		if _, err := Remove(context.Background(), "family", baseOpts(dir, &out, &recorder{})); err != nil {
+		if _, err := Remove(opCtx(t), "family", baseOpts(dir, &out, &recorder{})); err != nil {
 			t.Fatalf("rerun: %v\n%s", err, out.String())
 		}
 		l := loadLedger(t, dir)
@@ -255,7 +255,7 @@ func TestRemoveFirstWriteFailureRemovesNothing(t *testing.T) {
 				rec := &recorder{}
 				opts := baseOpts(dir, &out, rec)
 				opts.writeHook = c.hook(dir)
-				_, err := Remove(context.Background(), "family", opts)
+				_, err := Remove(opCtx(t), "family", opts)
 				if err == nil || !strings.Contains(err.Error(), "nothing was removed") {
 					t.Fatalf("err = %v, want a nothing-was-removed error", err)
 				}

@@ -28,7 +28,7 @@ func TestRemoveKeepsSharedMember(t *testing.T) {
 			rec := &recorder{}
 			opts := removeOpts(pluginDir, &out, rec)
 			opts.KeepData = true
-			res, err := Remove(context.Background(), "chat", opts)
+			res, err := Remove(opCtx(t), "chat", opts)
 			if err != nil {
 				t.Fatalf("remove chat: %v\n%s", err, out.String())
 			}
@@ -105,7 +105,7 @@ func TestRemoveExplicitSurvives(t *testing.T) {
 		rec := &recorder{}
 		opts := removeOpts(dir, &out, rec)
 		opts.KeepData = true
-		if _, err := Remove(context.Background(), "chat", opts); err != nil {
+		if _, err := Remove(opCtx(t), "chat", opts); err != nil {
 			t.Fatalf("remove: %v\n%s", err, out.String())
 		}
 		if !sameStrings(rec.names(), []string{"py"}) {
@@ -144,7 +144,7 @@ func TestRemoveDeleteDataNeedsConfirm(t *testing.T) {
 			rec := &recorder{}
 			opts := removeOpts(dir, &out, rec)
 			mut(&opts)
-			_, err := Remove(context.Background(), bundleSlug, opts)
+			_, err := Remove(opCtx(t), bundleSlug, opts)
 			after := ledgerBytes(t, dir)
 			if err != nil && !bytes.Equal(before, after) {
 				t.Error("a refused remove changed the ledger")
@@ -392,7 +392,7 @@ func TestRemoveUnrecordedBundle(t *testing.T) {
 		rec := &recorder{}
 		opts := removeOpts(dir, &out, rec)
 		opts.KeepData = true
-		_, err := Remove(context.Background(), "family", opts)
+		_, err := Remove(opCtx(t), "family", opts)
 		if len(rec.calls) != 0 || !isAlreadyInstalled(dir, "d1") {
 			t.Fatalf("nothing may be removed: calls=%v", rec.calls)
 		}

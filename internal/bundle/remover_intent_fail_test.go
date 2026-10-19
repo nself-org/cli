@@ -5,7 +5,6 @@ package bundle
 
 import (
 	"bytes"
-	"context"
 	"strings"
 	"testing"
 
@@ -17,7 +16,7 @@ func TestRemoveMemberFailureKeepsIntent(t *testing.T) {
 		dir := familyDir(t)
 		var out bytes.Buffer
 		rec := &recorder{failOn: "d2"}
-		res, err := Remove(context.Background(), "family", baseOpts(dir, &out, rec))
+		res, err := Remove(opCtx(t), "family", baseOpts(dir, &out, rec))
 		if err == nil || !strings.Contains(err.Error(), "stopped at d2") || !strings.Contains(err.Error(), "'nself bundle remove family' again") {
 			t.Fatalf("err = %v, want the stopped-at wording", err)
 		}
@@ -31,7 +30,7 @@ func TestRemoveMemberFailureKeepsIntent(t *testing.T) {
 			t.Errorf("intent = %+v ok=%v, want remaining [d1 d2]", in, ok)
 		}
 		out.Reset()
-		if _, err := Remove(context.Background(), "family", baseOpts(dir, &out, &recorder{})); err != nil {
+		if _, err := Remove(opCtx(t), "family", baseOpts(dir, &out, &recorder{})); err != nil {
 			t.Fatalf("rerun: %v", err)
 		}
 		if intentFileExists(dir) || isAlreadyInstalled(dir, "d1") || isAlreadyInstalled(dir, "d2") {
@@ -45,7 +44,7 @@ func TestRemoveDryRunWritesNoIntent(t *testing.T) {
 	var out bytes.Buffer
 	opts := baseOpts(dir, &out, &recorder{})
 	opts.DryRun = true
-	if _, err := Remove(context.Background(), "family", opts); err != nil {
+	if _, err := Remove(opCtx(t), "family", opts); err != nil {
 		t.Fatal(err)
 	}
 	if ledgerBytes(t, dir) != nil || intentFileExists(dir) {
@@ -86,7 +85,7 @@ func TestRemoveKillBeforeFinalWriteResumesCleanly(t *testing.T) {
 			}
 		}
 		out.Reset()
-		if _, err := Remove(context.Background(), "family", baseOpts(dir, &out, &recorder{})); err != nil {
+		if _, err := Remove(opCtx(t), "family", baseOpts(dir, &out, &recorder{})); err != nil {
 			t.Fatalf("rerun: %v\n%s", err, out.String())
 		}
 		l := loadLedger(t, dir)

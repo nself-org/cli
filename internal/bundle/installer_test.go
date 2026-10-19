@@ -48,7 +48,7 @@ func TestInstall_MetaBundleNotInstallable(t *testing.T) {
 func TestInstall_TaskBundleInstallable(t *testing.T) {
 	setupOfflineRegistry(t, mockTaskRegistry())
 	var buf bytes.Buffer
-	res, err := Install(context.Background(), "task", InstallOpts{DryRun: true, Out: &buf, Channel: ChannelStable})
+	res, err := Install(opCtx(t), "task", InstallOpts{DryRun: true, Out: &buf, Channel: ChannelStable})
 	if err != nil {
 		t.Fatalf("task dry run: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestInstall_DryRunWithMockedRegistry(t *testing.T) {
 	defer func() { _ = os.RemoveAll(dir) }()
 
 	var buf bytes.Buffer
-	res, err := Install(context.Background(), "nsentry", InstallOpts{
+	res, err := Install(opCtx(t), "nsentry", InstallOpts{
 		DryRun:  true,
 		Out:     &buf,
 		Channel: ChannelStable,
@@ -111,7 +111,7 @@ func TestInstall_AtomicRollbackOnFailure(t *testing.T) {
 		return os.RemoveAll(filepath.Join(pd, name))
 	}
 
-	res, err := Install(context.Background(), "nsentry", InstallOpts{
+	res, err := Install(opCtx(t), "nsentry", InstallOpts{
 		Out:                   &buf,
 		Channel:               ChannelStable,
 		PluginDir:             pluginDir,
@@ -155,7 +155,7 @@ func TestReviewerUpgradeRollbackChangesMembership(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(oldDir, "old-data"), []byte("preserve me"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	res, err := Install(context.Background(), "nsentry", InstallOpts{
+	res, err := Install(opCtx(t), "nsentry", InstallOpts{
 		PluginDir: pluginDir,
 		Out:       &bytes.Buffer{},
 		bundleEntitledChecker: func(context.Context, string, string) (bool, error) {
@@ -213,7 +213,7 @@ func TestInstall_ForceStillValidatesLicense(t *testing.T) {
 		return nil
 	}
 
-	_, err := Install(context.Background(), "nsentry", InstallOpts{
+	_, err := Install(opCtx(t), "nsentry", InstallOpts{
 		Force:     true,
 		Out:       &buf,
 		Channel:   ChannelStable,
@@ -249,7 +249,7 @@ func TestInstall_LicenseFailWithoutForce(t *testing.T) {
 		return errors.New("no license key configured")
 	}
 
-	res, err := Install(context.Background(), "nsentry", InstallOpts{
+	res, err := Install(opCtx(t), "nsentry", InstallOpts{
 		Out:            &buf,
 		Channel:        ChannelStable,
 		PluginDir:      pluginDir,
@@ -269,7 +269,7 @@ func TestInstall_StrictModeMissingPlugin(t *testing.T) {
 	defer func() { _ = os.RemoveAll(dir) }()
 
 	var buf bytes.Buffer
-	_, err := Install(context.Background(), "nsentry", InstallOpts{
+	_, err := Install(opCtx(t), "nsentry", InstallOpts{
 		DryRun:  true,
 		Strict:  true,
 		Out:     &buf,

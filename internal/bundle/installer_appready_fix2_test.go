@@ -6,7 +6,6 @@ package bundle
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -57,7 +56,7 @@ func TestRemoveFreeBundleLifted(t *testing.T) {
 		recordBundle(t, pluginDir, "task")
 		rec := &recorder{}
 		var out bytes.Buffer
-		res, err := Remove(context.Background(), "task", removeOpts(pluginDir, &out, rec))
+		res, err := Remove(opCtx(t), "task", removeOpts(pluginDir, &out, rec))
 		if err != nil {
 			t.Fatalf("free bundle remove: %v\n%s", err, out.String())
 		}
@@ -94,7 +93,7 @@ func TestBundleInstallRecordsPreexistingMembersExplicit(t *testing.T) {
 	writeMember(t, pluginDir, "notifications", 1, nil) // on disk after the ledger exists, unrecorded
 	var out bytes.Buffer
 	opts := freeOpts(t, pluginDir, &out, func(name string) error { writeMember(t, pluginDir, name, 1, nil); return nil })
-	if _, err := Install(context.Background(), "task", opts); err != nil {
+	if _, err := Install(opCtx(t), "task", opts); err != nil {
 		t.Fatalf("install: %v\n%s", err, out.String())
 	}
 	l, _, err := store.Load()

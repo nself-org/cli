@@ -14,7 +14,7 @@ import (
 )
 
 func TestRemove_UnknownBundle(t *testing.T) {
-	_, err := Remove(context.Background(), "bogus", RemoveOpts{Out: &bytes.Buffer{}, DryRun: true})
+	_, err := Remove(opCtx(t), "bogus", RemoveOpts{Out: &bytes.Buffer{}, DryRun: true})
 	if err == nil {
 		t.Fatal("expected error for unknown bundle")
 	}
@@ -24,7 +24,7 @@ func TestRemove_UnknownBundle(t *testing.T) {
 }
 
 func TestRemove_MetaBundleRejected(t *testing.T) {
-	_, err := Remove(context.Background(), "nself-plus", RemoveOpts{Out: &bytes.Buffer{}, DryRun: true})
+	_, err := Remove(opCtx(t), "nself-plus", RemoveOpts{Out: &bytes.Buffer{}, DryRun: true})
 	if err == nil {
 		t.Fatal("expected error for nself-plus")
 	}
@@ -43,7 +43,7 @@ func TestRemove_DryRunListsInstalled(t *testing.T) {
 	// P7-PLUG-20: remove plans from the ledger, so the bundle must be recorded.
 	recordBundle(t, pluginDir, "sentry")
 	var buf bytes.Buffer
-	res, err := Remove(context.Background(), "nsentry", RemoveOpts{
+	res, err := Remove(opCtx(t), "nsentry", RemoveOpts{
 		DryRun:    true,
 		Out:       &buf,
 		PluginDir: pluginDir,
@@ -81,7 +81,7 @@ func TestRemove_FullSuccess(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	res, err := Remove(context.Background(), "nsentry", RemoveOpts{
+	res, err := Remove(opCtx(t), "nsentry", RemoveOpts{
 		Out:       &buf,
 		PluginDir: pluginDir,
 		remover:   removeFn,
@@ -118,7 +118,7 @@ func TestRemove_KeepDataPropagates(t *testing.T) {
 		return os.RemoveAll(filepath.Join(pd, name))
 	}
 	var buf bytes.Buffer
-	_, err := Remove(context.Background(), "nsentry", RemoveOpts{
+	_, err := Remove(opCtx(t), "nsentry", RemoveOpts{
 		KeepData:  true,
 		Out:       &buf,
 		PluginDir: pluginDir,
@@ -159,7 +159,7 @@ func TestRemove_PartialFailure(t *testing.T) {
 		return os.RemoveAll(filepath.Join(pd, name))
 	}
 	var buf bytes.Buffer
-	res, err := Remove(context.Background(), "nsentry", RemoveOpts{
+	res, err := Remove(opCtx(t), "nsentry", RemoveOpts{
 		Out:       &buf,
 		PluginDir: pluginDir,
 		remover:   removeFn,

@@ -32,7 +32,7 @@ func TestBundleInstallReconcileFailureReturnsError(t *testing.T) {
 		})
 		boom := errors.New("regenerate failed")
 		opts.Hooks = &appready.Hooks{Reconcile: func(context.Context) error { return boom }}
-		res, err := Install(context.Background(), "task", opts)
+		res, err := Install(opCtx(t), "task", opts)
 		if err == nil || !errors.Is(err, boom) {
 			t.Fatalf("err = %v, want it to wrap the reconcile error", err)
 		}
@@ -66,7 +66,7 @@ func TestFreeBundleStillRunsPluginLicenceCheck(t *testing.T) {
 	var out bytes.Buffer
 	opts := freeOpts(t, pluginDir, &out, func(string) error { t.Error("a plugin was installed after the licence step failed"); return nil })
 	opts.licenseChecker = nil // the real per-plugin pre-flight
-	res, err := Install(context.Background(), "task", opts)
+	res, err := Install(opCtx(t), "task", opts)
 	if err == nil || !strings.Contains(err.Error(), "license validation failed") {
 		t.Fatalf("err = %v, want license validation failed", err)
 	}
