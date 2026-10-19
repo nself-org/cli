@@ -72,6 +72,22 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 	if err := fb.restore(ctx, o); err != nil {
 		return err
 	}
+	set, restored, err := restoredSet(ctx, o)
+	if err != nil {
+		return err
+	}
+	var keep []imageTag
+	if restored {
+		// Before the database restore: a recorded image that is gone refuses the
+		// rollback here, with the containers and the database untouched (D-0700).
+		// An unreadable model is not decided here: the re-apply reports it after the
+		// database restore, as it always did.
+		if model, merr := ReadComposeModel(ctx, r, rp, set.Compose, set.EnvManifest); merr == nil {
+			if keep, err = imagesToRestore(ctx, r, o.Tar, model); err != nil {
+				return err
+			}
+		}
+	}
 	switch {
 	case o.BackupID != "" && o.DBRestored:
 		emit(o.Out, "  [skip] database backup %s was already restored by an earlier rollback; not restoring it again", o.BackupID)
@@ -88,7 +104,7 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 	}
 	// The front files are back: the live fronting nginx is tested and reloaded even
 	// when the re-apply failed, else it keeps serving the rolled-back confs.
-	aerr := reapplyRestored(ctx, o)
+	aerr := reapplyRestored(ctx, o, set, restored, keep)
 	ferr := fb.reload(ctx, o)
 	switch {
 	case aerr != nil && ferr != nil:
@@ -101,37 +117,47 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 	return ferr
 }
 
-// reapplyRestored re-applies the restored artifact set: the pull, the services
-// in compose order with the health gate, nginx and hasura. A host whose tar held
-// no compose set (a first deploy) is restored but not re-applied.
-func reapplyRestored(ctx context.Context, o RollbackOptions) error {
+// restoredSet reads the compose set the restored tree names. restored is false
+// for a host whose tar held no compose file (a first deploy): nothing to re-apply.
+func restoredSet(ctx context.Context, o RollbackOptions) (set ArtifactSet, restored bool, err error) {
 	r, rp := o.Remote, o.RemotePath
 	compose, err := remoteLines(ctx, r, path.Join(rp, ".nself", "compose-files.txt"))
 	if err != nil {
-		return err
+		return set, false, err
 	}
 	envs, err := remoteLines(ctx, r, path.Join(rp, ".nself", "compose-env-files.txt"))
 	if err != nil {
-		return err
+		return set, false, err
 	}
 	if len(compose) == 0 {
 		// A host last deployed by v1.4 has no manifest, only docker-compose.yml.
 		single, err := remoteLines(ctx, r, path.Join(rp, "docker-compose.yml"))
 		if err != nil {
-			return err
+			return set, false, err
 		}
 		if len(single) == 0 {
-			emit(o.Out, "  [skip] the restored tree has no compose file (it was a first deploy): files restored, nothing re-applied")
-			return nil
+			return set, false, nil
 		}
 		compose = []string{path.Join(rp, "docker-compose.yml")}
 		if e, _ := remoteLines(ctx, r, path.Join(rp, ".env")); len(e) > 0 {
 			envs = []string{path.Join(rp, ".env")}
 		}
 	}
+	return ArtifactSet{Compose: compose, EnvManifest: envs}, true, nil
+}
+
+// reapplyRestored re-applies the restored artifact set: the pull (skipped for
+// the images keep puts back), the services in compose order with the health
+// gate, nginx and hasura. A host whose tar held no compose set (a first deploy)
+// is restored but not re-applied.
+func reapplyRestored(ctx context.Context, o RollbackOptions, set ArtifactSet, restored bool, keep []imageTag) error {
+	if !restored {
+		emit(o.Out, "  [skip] the restored tree has no compose file (it was a first deploy): files restored, nothing re-applied")
+		return nil
+	}
 	emit(o.Out, "  [running] re-apply the restored artifact set")
 	return ReapplyRemote(ctx, ApplyOptions{
-		Remote: r, RemotePath: rp, Set: ArtifactSet{Compose: compose, EnvManifest: envs}, StrictHasura: o.StrictHasura, Clock: o.Clock, Out: o.Out,
+		Remote: o.Remote, RemotePath: o.RemotePath, Set: set, StrictHasura: o.StrictHasura, Clock: o.Clock, Out: o.Out, KeepImages: keep,
 	})
 }
 

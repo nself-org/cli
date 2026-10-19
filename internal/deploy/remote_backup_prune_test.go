@@ -142,6 +142,9 @@ func TestApplyPrunesOldTarsOnSuccessOnly(t *testing.T) {
 	seed := func(rp string) {
 		seedTars(t, rp, "01", "02", "03", "04", "05", "06", "07")
 		writeFile(t, filepath.Join(rp, ".nself", "backups", "restore-keep", "x"), "x", 0o600)
+		for _, d := range []string{"01", "07"} { // the image record travels with its tar (D-0700)
+			writeFile(t, imageRecordPath(filepath.Join(rp, ".nself", "backups", tarName(d))), "", 0o600)
+		}
 	}
 	f, o, rp := applyFixture(t, "")
 	seed(rp)
@@ -157,12 +160,15 @@ func TestApplyPrunesOldTarsOnSuccessOnly(t *testing.T) {
 	// The new tar and the four newest old ones stay: 5 in all.
 	var tars []string
 	for _, n := range listBackups(t, rp) {
-		if strings.HasPrefix(n, "pre-deploy-") {
+		if strings.HasPrefix(n, "pre-deploy-") && !strings.HasSuffix(n, ".images") { // the image record is checked below
 			tars = append(tars, n)
 		}
 	}
 	if len(tars) != PreDeployTarKeep || contains(tars, tarName("01")) || !contains(tars, tarName("07")) {
 		t.Errorf("tars after a good deploy: %v", tars)
+	}
+	if exists(imageRecordPath(filepath.Join(rp, ".nself", "backups", tarName("01")))) || !exists(imageRecordPath(filepath.Join(rp, ".nself", "backups", tarName("07")))) || !exists(imageRecordPath(res.PreDeployTar)) {
+		t.Errorf("image records after the prune: %v", listBackups(t, rp))
 	}
 	for _, d := range []string{"01", "02", "03"} {
 		if !strings.Contains(out.String(), "  [pruned] "+tarName(d)+" (old pre-deploy tar)") {

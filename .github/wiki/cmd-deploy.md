@@ -639,6 +639,12 @@ file. v1.4 mode keeps the push described above, byte for byte. One flow runs per
    prunes nothing, and a prune error is only a warning. Both paths are
    recorded in `.nself/state/deploy.json` (`pre_deploy_tars`, one per host; `pre_deploy_tar` for the
    primary).
+   Next to each tar the apply writes `pre-deploy-<id>.images` (mode 600): the image id every
+   non-digest image ref pointed at before the pull. A rollback points those refs back at those
+   ids and pulls only the services it has no record for, so a mutable tag (`app:latest`) the
+   deploy moved does not bring the new image back. If a recorded image is gone from the host the
+   rollback stops with `E489` before the database restore; load the old image again (or pin it
+   by digest) and rerun. A deploy made before this record existed rolls back with the plain pull.
 5. **Verified backup (tier prod).** Right after the tar and before anything is synced or any compose
    command runs: `nself backup create --tag pre-deploy-<id>` on the host, the backup is found in
    `nself backup list --format json`, and `nself backup verify <id> --restore-test --cleanup`

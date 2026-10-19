@@ -24,6 +24,8 @@ func stackHandler(rp string, crash string) func(string) (string, bool) {
 			upDone[m[1]] = true
 		}
 		switch {
+		case strings.Contains(s, `printf 'OK`): // the rollback's check that the recorded images exist
+			return "OK " + fakeImageID("a") + "\nOK " + fakeImageID("b") + "\n", true
 		case strings.Contains(s, "docker image inspect"):
 			return fakeImageID("a") + " postgres:16\n" + fakeImageID("b") + " web:1\n", true
 		case strings.Contains(s, "docker tag"):
@@ -60,10 +62,14 @@ func fakeImageID(digit string) string { return "sha256:" + strings.Repeat(digit,
 
 func classify(s string) string {
 	switch {
+	case strings.Contains(s, `printf 'OK`):
+		return "imgcheck"
 	case strings.Contains(s, "docker image inspect"):
 		return "imgsave"
 	case strings.Contains(s, "docker tag"):
 		return "imgrestore"
+	case strings.Contains(s, ".images") && strings.Contains(s, `mv -f "$t"`):
+		return "imgrecord"
 	case strings.HasPrefix(s, "rsync "):
 		return "rsync"
 	case strings.Contains(s, "deploy.lock"):
@@ -154,7 +160,7 @@ func applyFixture(t *testing.T, crash string) (*fakeRemote, ApplyOptions, string
 	return f, o, rp
 }
 
-var orderedMilestones = []string{"snapshot", "lock", "tar", "dbbackup", "shipped", "rsync", "perms", "model", "nginx", "imgsave", "pull", "preview", "up:db", "up:web", "up:nginx", "reload", "hasura"}
+var orderedMilestones = []string{"snapshot", "lock", "tar", "dbbackup", "shipped", "rsync", "perms", "model", "nginx", "imgsave", "imgrecord", "pull", "preview", "up:db", "up:web", "up:nginx", "reload", "hasura"}
 
 func TestRemoteApplyOrder(t *testing.T) {
 	f, o, rp := applyFixture(t, "")
@@ -214,6 +220,7 @@ func TestRemoteApplyOrder(t *testing.T) {
 		{"model", "config --format json", any, "model", true},
 		{"nginx -t", "docker run --rm", any, "nginx", true},
 		{"image ids", "docker image inspect", any, "imgsave", true},
+		{"image record", `mv -f "$t"`, any, "imgrecord", true},
 		{"pull", " pull", any, "pull", true},
 		{"preview", "up -d --dry-run", any, "preview", true},
 		{"first up", "up -d --no-deps -- 'db'", any, "up:db", false},
