@@ -45,6 +45,10 @@ func (r *acmeRun) adopt(ctx context.Context, args []string) error {
 		return e151(acmeRefuse("pass the certbot directory: --adopt-certbot=<dir>", "%v", err))
 	}
 	hosts, _ := ssl.ServedHosts(r.res.NginxDir)
+	hosts, notes := acme.ResolveServedLinks(r.res.SSLDir, hosts) // a conf naming a top-level cert-dir symlink (D-1214)
+	for _, n := range notes {
+		r.say("%s", n)
+	}
 	// A webroot lineage with no credential is adopted as http-01 only when the served nginx answers
 	// the challenge location for every name (a probe token file over local HTTP).
 	probe := func(host string) error {

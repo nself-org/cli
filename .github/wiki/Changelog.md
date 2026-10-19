@@ -8,6 +8,7 @@ follows Keep a Changelog, with Conventional Commit classification.
 `nself --help` lists 20 verbs and fits one screen. Every other former top-level command moved, was shimmed, or left core for a plugin. Each old spelling keeps working through all v1.5.x releases with a deprecation warning and is removed at v1.6.0; break-outs and removals have no removal date. The full table is generated in [[Command-Canon]]; `scripts/ci/old-spellings.sh` lists the Go literals and doc lines that still name an old spelling.
 
 - feat(canon): final ratchet: surface budget 52 to 20 with equality restored (`TestCommandSurfaceBudgetIsTight`), permanent ceiling (`TestCanonCeiling`), no pending command (`TestCanonNoPending`), shim lifetime (`TestCanonShimLifetime`: fails at 1.6.0 until the rows are deleted), root help fits 45 lines (`TestHelpFits`) (P7-CANON-17)
+- fix(ssl): `trust ssl setup --acme --adopt-certbot` follows a served conf that names a top-level ssl-dir symlink to `certificates/<name>` (one hop, refusing any link that leaves `certificates/`), so lineages such as api.task and auth.task can leave host certbot (D-1214)
 
 ### Moved
 

@@ -60,12 +60,14 @@ nself stop
 nself start
 # A target that already holds an auth user is refused before any write (E519) and stays unchanged.
 docker compose exec -T postgres psql -U postgres -d nself -Atc "INSERT INTO auth.users (id, email, email_verified, created_at, updated_at, disabled, avatar_url, locale, phone_number_verified, default_role, is_anonymous, otp_hash_expires_at, ticket_expires_at, display_name, metadata) VALUES (gen_random_uuid(), 'pre-existing@example.invalid', false, now(), now(), false, '', 'en', false, 'user', false, 'epoch', 'epoch', '', '{}')"
+REPORTS_BEFORE=$(ls -d .nself/import/*/report.json | wc -l)
 if nself db import postgres --from-env SRC_URL --json > "$W/authused.json" 2> "$W/authused.err"; then echo 'FAIL: used auth.users accepted'; exit 1; fi
 grep -q E519 "$W/authused.json" "$W/authused.err"
 grep -q 'auth.users is not empty' "$W/authused.json" "$W/authused.err"
 test "$(docker compose exec -T postgres psql -U postgres -d nself -Atc "SELECT to_regclass('public.notes') IS NULL")" = t
 test "$(docker compose exec -T postgres psql -U postgres -d nself -Atc "SELECT count(*) FROM auth.users")" = 1
-jq -e '.wrote==false' "$(ls -dt .nself/import/*/report.json | head -1)"
+# The refusal comes from the target checks, before a run directory exists: no new report, nothing written.
+test "$(ls -d .nself/import/*/report.json | wc -l)" = "$REPORTS_BEFORE"
 docker compose exec -T postgres psql -U postgres -d nself -Atc "DELETE FROM auth.users WHERE email='pre-existing@example.invalid'"
 nself db import postgres --from-env SRC_URL --json > "$W/reimport.json"
 jq -e '.data.result=="pass" and (.data.mismatches|length)==0 and .data.users.equal==true and .data.wrote==true' "$W/reimport.json"
