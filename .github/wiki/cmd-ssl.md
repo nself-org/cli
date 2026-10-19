@@ -123,9 +123,12 @@ Adoption follows a served conf that names a top-level symlink of the ssl dir
 (for example `/etc/nginx/ssl/api-task-nself-org/` linking to
 `certificates/api-task-nself-org`). The link is followed one hop and only when
 it lands on `certificates/<name>` inside the ssl dir; the run prints a note
-naming the link. A link that is absolute outside the ssl dir, climbs out with
-`..`, chains through another link, or resolves outside `certificates/` is not
-followed, the note says why, and the lineage is refused as before. Nothing in
+naming the link. A link is not followed, the note says why, and the lineage is
+refused as before, when it is absolute but not under `/etc/nginx/ssl` (the path
+nginx sees), contains `..`, chains through another link, points at a directory
+that does not exist, resolves outside `certificates/`, or `certificates/` is
+itself a symlink. Two lineages whose confs reach one `certificates/<name>`
+(through links or directly) are refused even with `--lineage`. Nothing in
 the ssl dir is rewritten by this step.
 
 | Flag | Applies to | Description |

@@ -3,11 +3,14 @@ package acme
 // served_links.go: let adoption see through a served conf that names a
 // top-level symlink in the ssl dir (D-1214). nself-web renders confs such as
 // /etc/nginx/ssl/api-task-nself-org/fullchain.pem where api-task-nself-org is
-// a symlink to certificates/api-task-nself-org. The link is followed one hop,
-// lexically, and only when it lands on certificates/<one plain name>; links
-// that are absolute outside the ssl dir, climb out with "..", chain through
-// another link, or sit behind a symlinked certificates dir are left alone
-// (the lineage is then refused as before). Reads only; never writes.
+// a symlink to certificates/api-task-nself-org. The link is followed one hop
+// and only when it lands on certificates/<one plain name> and the kernel
+// resolves it to the same directory (so a ".." behind another link cannot hide
+// a different place). Links that are absolute but not under the container ssl
+// path (the host path does not exist inside nginx), contain "..", chain through
+// another link, point at a missing directory or sit behind a symlinked
+// certificates dir are left alone (the lineage is then refused as before).
+// Reads only; never writes.
 
 import (
 	"fmt"
@@ -15,6 +18,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/nself-org/cli/internal/nginxtopo"
@@ -30,7 +34,13 @@ var topNameRE = regexp.MustCompile(`^[A-Za-z0-9_-][A-Za-z0-9._-]*$`)
 func ResolveServedLinks(sslDir string, hosts map[string]string) (map[string]string, []string) {
 	out, notes, seen := make(map[string]string, len(hosts)), []string{}, map[string]bool{}
 	prefix := nginxtopo.NginxSSLContainerPath + "/"
-	for host, cert := range hosts {
+	names := make([]string, 0, len(hosts))
+	for host := range hosts {
+		names = append(names, host)
+	}
+	sort.Strings(names) // stable notes
+	for _, host := range names {
+		cert := hosts[host]
 		out[host] = cert
 		p := path.Clean(cert)
 		top, rest, ok := strings.Cut(strings.TrimPrefix(p, prefix), "/")
@@ -55,17 +65,25 @@ func ResolveServedLinks(sslDir string, hosts map[string]string) (map[string]stri
 // certificates/<name>. It returns ("", "") when top is not a symlink and
 // ("", reason) when it is one that must not be followed.
 func linkedLineageDir(sslDir, top string) (name, why string) {
-	if fi, err := os.Lstat(filepath.Join(sslDir, top)); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+	at := filepath.Join(sslDir, top)
+	if fi, err := os.Lstat(at); err != nil || fi.Mode()&os.ModeSymlink == 0 {
 		return "", ""
 	}
-	dest, err := os.Readlink(filepath.Join(sslDir, top))
+	dest, err := os.Readlink(at)
 	if err != nil {
 		return "", "its target cannot be read"
 	}
-	if filepath.IsAbs(dest) {
-		rel, ok := relUnder(dest, sslDir, nginxtopo.NginxSSLContainerPath)
-		if !ok {
-			return "", fmt.Sprintf("%s is outside the ssl directory", dest)
+	// Clean is textual: a ".." behind another link would vanish, so refuse it on the raw text.
+	for _, el := range strings.Split(filepath.ToSlash(dest), "/") {
+		if el == ".." {
+			return "", fmt.Sprintf("%s climbs out with ..", dest)
+		}
+	}
+	container := filepath.IsAbs(dest)
+	if container { // nginx resolves the link inside its own mount, so only the container path counts
+		rel, err := filepath.Rel(nginxtopo.NginxSSLContainerPath, dest)
+		if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+			return "", fmt.Sprintf("%s is not under %s, the path nginx sees", dest, nginxtopo.NginxSSLContainerPath)
 		}
 		dest = rel
 	}
@@ -77,31 +95,19 @@ func linkedLineageDir(sslDir, top string) (name, why string) {
 	if fi, err := os.Lstat(certs); err == nil && fi.Mode()&os.ModeSymlink != 0 {
 		return "", "certificates/ is itself a symlink"
 	}
-	if real, err := filepath.EvalSymlinks(filepath.Join(sslDir, filepath.FromSlash(dest))); err == nil {
-		base, berr := filepath.EvalSymlinks(certs)
-		if rel, e := filepath.Rel(base, real); berr != nil || e != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			return "", fmt.Sprintf("%s resolves outside certificates/", dest)
+	want := filepath.Join(sslDir, filepath.FromSlash(dest))
+	real, err := filepath.EvalSymlinks(want)
+	if err != nil {
+		return "", fmt.Sprintf("%s does not exist", dest)
+	}
+	base, err := filepath.EvalSymlinks(certs)
+	if rel, e := filepath.Rel(base, real); err != nil || e != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Sprintf("%s resolves outside certificates/", dest)
+	}
+	if !container { // the kernel's answer for the link must be the directory named, whatever the text says
+		if got, err := filepath.EvalSymlinks(at); err != nil || got != real {
+			return "", fmt.Sprintf("it resolves to %s, not %s", got, real)
 		}
 	}
 	return strings.TrimPrefix(dest, "certificates/"), ""
-}
-
-// relUnder returns p relative to the first root that contains it.
-func relUnder(p string, roots ...string) (string, bool) {
-	for _, r := range roots {
-		for _, cand := range []string{r, evalOr(r)} {
-			if rel, err := filepath.Rel(cand, p); err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-				return rel, true
-			}
-		}
-	}
-	return "", false
-}
-
-// evalOr resolves symlinks in p, or returns p when it cannot.
-func evalOr(p string) string {
-	if e, err := filepath.EvalSymlinks(p); err == nil {
-		return e
-	}
-	return p
 }

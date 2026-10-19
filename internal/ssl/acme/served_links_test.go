@@ -54,9 +54,9 @@ func TestACMEResolveServedLinks(t *testing.T) {
 		{"relative link with ./ and trailing slash", func(t *testing.T, ssl, _ string) {
 			link(t, "./certificates/api-task/", filepath.Join(ssl, "api-task"))
 		}, servedSSL + "api-task/privkey.pem", servedSSL + "certificates/api-task/privkey.pem", "adopting"},
-		{"absolute link inside the ssl dir", func(t *testing.T, ssl, _ string) {
+		{"absolute host path is refused: nginx cannot see it", func(t *testing.T, ssl, _ string) {
 			link(t, filepath.Join(ssl, "certificates", "api-task"), filepath.Join(ssl, "api-task"))
-		}, servedSSL + "api-task/fullchain.pem", servedSSL + "certificates/api-task/fullchain.pem", "adopting"},
+		}, servedSSL + "api-task/fullchain.pem", "", "not under /etc/nginx/ssl"},
 		{"absolute link written for the container", func(t *testing.T, ssl, _ string) {
 			link(t, "/etc/nginx/ssl/certificates/api-task", filepath.Join(ssl, "api-task"))
 		}, servedSSL + "api-task/fullchain.pem", servedSSL + "certificates/api-task/fullchain.pem", "adopting"},
@@ -81,13 +81,23 @@ func TestACMEResolveServedLinks(t *testing.T) {
 		{"missing entry", func(t *testing.T, _, _ string) {}, servedSSL + "ghost/fullchain.pem", "", ""},
 		{"escape: absolute link outside the ssl dir", func(t *testing.T, ssl, outside string) {
 			link(t, outside, filepath.Join(ssl, "api-task"))
-		}, servedSSL + "api-task/fullchain.pem", "", "outside the ssl directory"},
+		}, servedSSL + "api-task/fullchain.pem", "", "not under /etc/nginx/ssl"},
 		{"escape: relative link out with ..", func(t *testing.T, ssl, _ string) {
 			link(t, "../outside", filepath.Join(ssl, "api-task"))
-		}, servedSSL + "api-task/fullchain.pem", "", "not certificates/<name>"},
+		}, servedSSL + "api-task/fullchain.pem", "", "climbs out with .."},
 		{"escape: dotdot hidden after certificates", func(t *testing.T, ssl, _ string) {
 			link(t, "certificates/../../outside", filepath.Join(ssl, "api-task"))
-		}, servedSSL + "api-task/fullchain.pem", "", "not certificates/<name>"},
+		}, servedSSL + "api-task/fullchain.pem", "", "climbs out with .."},
+		{"escape: dotdot behind another link (textual Clean would hide it)", func(t *testing.T, ssl, outside string) {
+			link(t, outside, filepath.Join(ssl, "sub"))
+			link(t, "sub/../certificates/api-task", filepath.Join(ssl, "api-task"))
+		}, servedSSL + "api-task/fullchain.pem", "", "climbs out with .."},
+		{"escape: absolute container-style link with ..", func(t *testing.T, ssl, _ string) {
+			link(t, "/etc/nginx/ssl/certificates/../../../x", filepath.Join(ssl, "api-task"))
+		}, servedSSL + "api-task/fullchain.pem", "", "climbs out with .."},
+		{"target directory is missing", func(t *testing.T, ssl, _ string) {
+			link(t, "certificates/gone", filepath.Join(ssl, "api-task"))
+		}, servedSSL + "api-task/fullchain.pem", "", "certificates/gone does not exist"},
 		{"escape: certificates/<name> is itself a link out", func(t *testing.T, ssl, outside string) {
 			link(t, "certificates/api-task", filepath.Join(ssl, "api-task"))
 			if err := os.Remove(filepath.Join(ssl, "certificates", "api-task")); err != nil {
@@ -166,5 +176,39 @@ func TestACMEPlanThroughServedLink(t *testing.T) {
 	}
 	if len(refused) != 1 || !strings.HasPrefix(refused[0], "auth: ") || !strings.Contains(refused[0], "auth-task") {
 		t.Fatalf("the escaping link must stay refused: %v", refused)
+	}
+}
+
+// One lineage whose names are served through a safe link and an escaping one is
+// refused whole; two links to one directory are not adopted by two lineages,
+// when --lineage selects only one of them (the other still owns the directory).
+func TestACMEPlanMixedAndSharedLinks(t *testing.T) {
+	ssl, outside := linkTree(t, "shared")
+	link(t, "certificates/shared", filepath.Join(ssl, "a"))
+	link(t, "certificates/shared", filepath.Join(ssl, "b"))
+	link(t, outside, filepath.Join(ssl, "bad"))
+	hosts := map[string]string{
+		"one.example.org": servedSSL + "a/fullchain.pem",
+		"two.example.org": servedSSL + "bad/fullchain.pem",
+		"b.example.org":   servedSSL + "b/fullchain.pem",
+	}
+	resolved, _ := ResolveServedLinks(ssl, hosts)
+	mixed := []Certbot{{Name: "mixed", Authenticator: "dns-cloudflare", Domains: []string{"one.example.org", "two.example.org"}}}
+	if ad, refused := Plan(mixed, resolved, "cloudflare", ""); len(ad) != 0 || len(refused) != 1 || !strings.Contains(refused[0], `"bad"`) {
+		t.Fatalf("a lineage with one escaping link must be refused whole: %+v %v", ad, refused)
+	}
+	hosts["two.example.org"] = servedSSL + "a/privkey.pem"
+	resolved, _ = ResolveServedLinks(ssl, hosts)
+	two := []Certbot{
+		{Name: "l1", Authenticator: "dns-cloudflare", Domains: []string{"one.example.org", "two.example.org"}},
+		{Name: "l2", Authenticator: "dns-cloudflare", Domains: []string{"b.example.org"}},
+	}
+	for _, only := range []string{"", "l1", "l2"} {
+		ad, refused := Plan(two, resolved, "cloudflare", only)
+		if only == "" && (len(ad) != 1 || ad[0].Name != "l1" || len(refused) != 1 || !strings.Contains(refused[0], "already served by lineage l1")) ||
+			only == "l1" && (len(ad) != 0 || len(refused) != 1 || !strings.Contains(refused[0], "already served by lineage l2")) ||
+			only == "l2" && (len(ad) != 0 || len(refused) != 1 || !strings.Contains(refused[0], "already served by lineage l1")) {
+			t.Errorf("only=%q: shared target must be owned once: %+v %v", only, ad, refused)
+		}
 	}
 }

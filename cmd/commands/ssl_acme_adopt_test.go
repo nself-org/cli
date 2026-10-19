@@ -173,7 +173,7 @@ func TestACMEAdoptRefusesSymlinkEscape(t *testing.T) {
 	acmeWriteFile(t, cred, []byte("dns_cloudflare_api_token = cf-token-0123456789abcdef\n"))
 	before := acmeTree(t, f.root)
 	out, err := f.run(sslSetupCmd, "--acme", "--adopt-certbot="+le, "--dns-credential-file="+cred, "--lineage=api.task.nself.org")
-	if err == nil || !strings.Contains(out, "not followed") || !strings.Contains(out, "outside the ssl directory") || !strings.Contains(out, "refused api.task.nself.org") {
+	if err == nil || !strings.Contains(out, "not followed") || !strings.Contains(out, "not under /etc/nginx/ssl") || !strings.Contains(out, "refused api.task.nself.org") {
 		t.Fatalf("want the escaping link named and the lineage refused, got err=%v\n%s", err, out)
 	}
 	if acmeTree(t, f.root) != before || len(f.set) != 0 || len(f.execs) != 0 {
