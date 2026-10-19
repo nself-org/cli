@@ -41,7 +41,9 @@ internal/migration/testdata/v0.9-fixture/.env
 /postgres/
 /monitoring/
 services/
-.nself/
+# Local nSelf state. .nself/ci.yaml is the committed CI pipeline config (P7-CI-18).
+**/.nself/*
+!/.nself/ci.yaml
 backups/
 
 # IDE
