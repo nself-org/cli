@@ -75,3 +75,4 @@ jobs:
           name: proxy-swap-evidence
           path: ${{ env.E2E_EVIDENCE }}
           if-no-files-found: warn
+          retention-days: 14
