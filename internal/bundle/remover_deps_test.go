@@ -6,7 +6,6 @@ package bundle
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -55,7 +54,7 @@ func removeChat(t *testing.T, dir string, mod func(*RemoveOpts)) (*RemoveResult,
 	if mod != nil {
 		mod(&opts)
 	}
-	res, err := Remove(context.Background(), "chat", opts)
+	res, err := Remove(opCtx(t), "chat", opts)
 	return res, out.String(), rec, err
 }
 

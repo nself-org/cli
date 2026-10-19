@@ -7,7 +7,6 @@ package bundle
 
 import (
 	"bytes"
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -105,7 +104,7 @@ func TestRemoveKeepsCatalogMemberOfRecordedBundle(t *testing.T) {
 		rec := &recorder{}
 		opts := removeOpts(dir, &out, rec)
 		opts.KeepData = true
-		res, err := Remove(context.Background(), "chat", opts)
+		res, err := Remove(opCtx(t), "chat", opts)
 		if err != nil {
 			t.Fatalf("remove chat: %v\n%s", err, out.String())
 		}
@@ -156,7 +155,7 @@ func TestRemovePlanDataLine(t *testing.T) {
 			opts := removeOpts(dir, &out, &recorder{})
 			opts.DryRun = true
 			mut(&opts)
-			if _, err := Remove(context.Background(), bundleSlug, opts); err != nil {
+			if _, err := Remove(opCtx(t), bundleSlug, opts); err != nil {
 				t.Fatal(err)
 			}
 			for _, line := range strings.Split(out.String(), "\n") {

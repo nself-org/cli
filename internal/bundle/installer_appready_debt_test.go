@@ -40,7 +40,7 @@ func TestBundleInstallSkippedMemberNotAppReady(t *testing.T) {
 		ServiceHealth:  func(context.Context) error { return nil },
 		Timeout:        time.Second, Interval: 10 * time.Millisecond,
 	}
-	res, err := Install(context.Background(), "task", opts)
+	res, err := Install(opCtx(t), "task", opts)
 	if err != nil {
 		t.Fatalf("install: %v\n%s", err, out.String())
 	}
@@ -88,7 +88,7 @@ func TestBundleInstallRestoresCatalogHolders(t *testing.T) {
 	}
 	var out bytes.Buffer
 	opts := paidOpts(pluginDir, &out, func(name string) error { writeMember(t, pluginDir, name, 1, nil); return nil })
-	if _, err := Install(context.Background(), "chat", opts); err != nil {
+	if _, err := Install(opCtx(t), "chat", opts); err != nil {
 		t.Fatalf("install chat: %v\n%s", err, out.String())
 	}
 	l := loadLedger(t, pluginDir)

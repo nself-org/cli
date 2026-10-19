@@ -121,7 +121,7 @@ func TestBundleInstallDryRun(t *testing.T) {
 	count := func(context.Context) error { atomic.AddInt32(&hookCalls, 1); return nil }
 	opts.Hooks = &appready.Hooks{Reconcile: count, Start: count}
 
-	res, err := Install(context.Background(), "task", opts)
+	res, err := Install(opCtx(t), "task", opts)
 	if err != nil {
 		t.Fatalf("dry run: %v\n%s", err, out.String())
 	}
@@ -180,7 +180,7 @@ func TestBundleInstallMemberFailsE135(t *testing.T) {
 			opts.Hooks.Start = func(context.Context) error { atomic.AddInt32(&started, 1); return nil }
 		}
 
-		res, err := Install(context.Background(), "task", opts)
+		res, err := Install(opCtx(t), "task", opts)
 		text := out.String()
 		if compat.V15() {
 			for _, want := range []string{"NOT APP-READY: step readiness failed for plugin notifications", "readiness FAILED"} {
@@ -274,7 +274,7 @@ func TestBundleInstallAppReady(t *testing.T) {
 		ServiceHealth:  func(context.Context) error { return nil },
 		Timeout:        time.Second, Interval: 10 * time.Millisecond,
 	}
-	res, err := Install(context.Background(), "task", opts)
+	res, err := Install(opCtx(t), "task", opts)
 	if err != nil {
 		t.Fatalf("install: %v\n%s", err, out.String())
 	}
@@ -298,7 +298,7 @@ func TestBundleInstallLegacyNoHooks(t *testing.T) {
 		writeMember(t, pluginDir, name, portOf(t, srv), nil)
 		return nil
 	})
-	res, err := Install(context.Background(), "task", opts)
+	res, err := Install(opCtx(t), "task", opts)
 	if err != nil || res.Reconciled || !res.Changed || res.Report.AppReady {
 		t.Fatalf("legacy: err=%v reconciled=%v changed=%v report=%+v", err, res.Reconciled, res.Changed, res.Report)
 	}
@@ -322,7 +322,7 @@ func TestBundleInstallNoProject(t *testing.T) {
 	})
 	opts.Hooks = &appready.Hooks{Reconcile: func(context.Context) error { return appready.ErrNoProject },
 		Start: func(context.Context) error { t.Error("start ran outside a project"); return nil }}
-	res, err := Install(context.Background(), "task", opts)
+	res, err := Install(opCtx(t), "task", opts)
 	if err != nil || res.Report.AppReady || !res.Reconciled || !strings.Contains(out.String(), "NOT VERIFIED") {
 		t.Fatalf("no project: err=%v report=%+v\n%s", err, res.Report, out.String())
 	}
@@ -344,7 +344,7 @@ func TestBundleInstallRollbackLeavesLedgerAtPreInstallState(t *testing.T) {
 	opts.remover = func(_ context.Context, _ *config.Config, name, pd string) error {
 		return os.RemoveAll(filepath.Join(pd, name))
 	}
-	if _, err := Install(context.Background(), "task", opts); err == nil {
+	if _, err := Install(opCtx(t), "task", opts); err == nil {
 		t.Fatal("expected the member failure")
 	}
 	l, persisted, err := ledger.NewStore(pluginDir).Load()
