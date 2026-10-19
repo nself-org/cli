@@ -81,6 +81,11 @@ script_for() {
 prepare() {
   [ -z "${DRILL_SOURCES_DIR:-}" ] || return 0
   docker info >/dev/null 2>&1 || { PREP_ERR="docker is not available"; return 0; }
+  # The pipeline's throwaway copy of the repo may be private to its user (0600 files, 0700 dirs). The
+  # fixtures are bind-mounted into containers that run as other users (postgres uid 999), which then
+  # fail with "Permission denied"; Colima's mounts hide this. Read bits only, never write or exec.
+  chmod -R a+rX "$ROOT/test/fixtures" "$ROOT/scripts/e2e/fixtures" 2>/dev/null || true
+  { echo "umask $(umask) uid $(id -u)"; stat -c '%a %u %n' "$ROOT/test/fixtures/import/postgres/seed.sql" 2>/dev/null || true; } > "$OUT/env.log"
   if [ -n "${NSELF_LINUX_BIN:-}" ] && [ -x "$NSELF_LINUX_BIN" ]; then
     LINUX_BIN=$NSELF_LINUX_BIN
   else
@@ -144,6 +149,7 @@ execute() {
     ${TO:+$TO "$USED_LIMIT"} bash "$script" > "$logf" 2>&1 &
   else
     WDIR=$(mktemp -d "${TMPDIR:-/tmp}/importers-$s.XXXXXX")
+    chmod 755 "$WDIR"
     CNAME="drill-importers-$s-$$"
     local rel; rel=$(printf %q "${script#"$ROOT"/}")
     [ -n "$TO" ] || log "no timeout command; $s runs without a time limit"

@@ -37,7 +37,7 @@ A failed check carries the exit code, `failure_class` `code`, and the last lines
 ## Run it
 
 ```
-nself ci --pipeline drills              # all drills, including this one
+nself-ci --pipeline drills              # all drills, including this one
 bash scripts/drill/legs/importers/run   # this leg alone (needs Docker and Go)
 ```
 
