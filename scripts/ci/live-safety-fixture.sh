@@ -159,10 +159,13 @@ run_nself prod 1 build --plan --json
 [ "$(jget 'd["empty"]')" = True ] || fail "plan after apply is not empty"
 ok "--yes --plan-id applies; the plan afterwards is empty"
 
-# A same-shape content change (one env value swapped) must also refuse the old id.
+# A same-shape content change (a rendered secret swapped for another of the same
+# length) must refuse the old id. The key must render (not MINIO_*; D-1018).
+sed -i.bak 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=swapped-pass-aaaa/' "$WORK/prod/project/.env" && rm -f "$WORK/prod/project/.env.bak"
 run_nself prod 1 build --plan --json
+[ "$(jget 'd["empty"]')" = False ] || fail "swapping a rendered secret left the plan empty"
 SAME="$(jget 'd["plan_id"]')"
-sed -i.bak 's/^MINIO_ROOT_USER=minio-user-Tq8Zk/MINIO_ROOT_USER=minio-user-Tq8Zj/' "$WORK/prod/project/.env" && rm -f "$WORK/prod/project/.env.bak"
+sed -i.bak 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=swapped-pass-bbbb/' "$WORK/prod/project/.env" && rm -f "$WORK/prod/project/.env.bak"
 T2="$(tree prod)"
 run_nself prod 1 build --yes --plan-id "$SAME" --json
 [ "$RC" = 1 ] || fail "same-shape change: stale --plan-id exited $RC, want 1"
