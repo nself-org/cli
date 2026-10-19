@@ -79,6 +79,9 @@ func TestPromoteReleaseCodes(t *testing.T) {
 		{name: "quarantined", want: "E498", post: func(r *release) {
 			r.report = `{"data":{"class":"release","result":"pass","quarantined":true}}`
 		}},
+		{name: "quarantine verdict absent", want: "E497", post: func(r *release) {
+			r.report = `{"data":{"class":"release","result":"pass"}}`
+		}},
 		{name: "plugin cannot start", want: "E499", post: func(r *release) { r.runErr = errors.New("no such file") }},
 		{name: "unreadable report", want: "E497", post: func(r *release) { r.report = "not json" }},
 	}
@@ -196,5 +199,22 @@ func TestPromoteReleaseMissingFiles(t *testing.T) {
 	}
 	if _, err := Verify(context.Background(), r.input()); codeOf(err) != "E497" {
 		t.Fatalf("missing evidence: %v, want E497", err)
+	}
+}
+
+// TestPromoteReleaseHomeMustBeAbsolute: an empty or relative home would make a
+// working-tree file a trust root, so it refuses before anything is read.
+func TestPromoteReleaseHomeMustBeAbsolute(t *testing.T) {
+	for _, home := range []string{"", "rel/home", "."} {
+		r := newRelease(t)
+		r.write(PayloadType, r.signer)
+		in := r.input()
+		in.Home = home
+		if _, err := Verify(context.Background(), in); codeOf(err) != "E493" {
+			t.Errorf("home %q: %v, want E493", home, err)
+		}
+		if len(r.runs) != 0 {
+			t.Errorf("home %q: evidence ran: %v", home, r.runs)
+		}
 	}
 }

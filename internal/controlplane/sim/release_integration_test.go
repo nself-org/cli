@@ -48,6 +48,8 @@ type relFixture struct {
 	exit   int
 	report string
 	runs   int
+	// noPlugin models a machine without the ci plugin: no evidence runner.
+	noPlugin bool
 }
 
 // signedRelease writes a release signed by a trusted ci-release key; tweak may
@@ -86,11 +88,14 @@ func signedRelease(t *testing.T, tweak func(m map[string]any, trust map[string][
 }
 
 func (f *relFixture) input() verify.Input {
-	return verify.Input{Dir: f.dir, RepoRoot: f.dir, Home: f.dir, Git: f.git,
-		Evidence: func(context.Context, string, string) ([]byte, int, error) {
+	in := verify.Input{Dir: f.dir, RepoRoot: f.dir, Home: f.dir, Git: f.git}
+	if !f.noPlugin {
+		in.Evidence = func(context.Context, string, string) ([]byte, int, error) {
 			f.runs++
 			return []byte(f.report), f.exit, nil
-		}}
+		}
+	}
+	return in
 }
 
 func TestSimPromoteReleaseVerify(t *testing.T) {
@@ -131,7 +136,9 @@ func TestSimPromoteReleaseVerify(t *testing.T) {
 		exit   int
 		report string
 		digest string
+		noPlug bool
 	}{
+		{name: "missing ci plugin", want: "E499", noPlug: true},
 		{name: "tampered digest", want: "E495", digest: "sha256:" + strings.Repeat("9", 64)},
 		{name: "wrong key id", want: "E493", tweak: func(m map[string]any, _ map[string][]byte, _ *signing.Key, s *signing.Signer) {
 			_, other := signingtest.NewKey(t, signing.PurposeCIRelease)
@@ -157,7 +164,7 @@ func TestSimPromoteReleaseVerify(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f := signedRelease(t, tc.tweak)
-			f.exit = tc.exit
+			f.exit, f.noPlugin = tc.exit, tc.noPlug
 			if tc.report != "" {
 				f.report = tc.report
 			}

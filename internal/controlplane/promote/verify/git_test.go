@@ -123,3 +123,43 @@ func TestGitCLINoOriginAndBrokenFetch(t *testing.T) {
 		t.Fatal("DefaultRef succeeded without origin refs")
 	}
 }
+
+func TestSymrefBranch(t *testing.T) {
+	cases := []struct {
+		in     string
+		want   string
+		wantOK bool
+	}{
+		{"ref: refs/heads/main\tHEAD\n0123\tHEAD\n", "main", true},
+		{"ref: refs/heads/feat/x\tHEAD\n", "feat/x", true},
+		{"0123\tHEAD\n", "", false},
+		{"ref: refs/heads/\tHEAD\n", "", false},
+		{"ref: refs/heads/main\n", "", false},
+		{"", "", false},
+	}
+	for _, tc := range cases {
+		got, ok := symrefBranch(tc.in)
+		if got != tc.want || ok != tc.wantOK {
+			t.Errorf("symrefBranch(%q) = %q, %v; want %q, %v", tc.in, got, ok, tc.want, tc.wantOK)
+		}
+	}
+}
+
+// TestGitCLIDefaultRefFollowsTheRemote proves the remote's HEAD wins over a
+// stale local origin/HEAD.
+func TestGitCLIDefaultRefFollowsTheRemote(t *testing.T) {
+	work := gitRepo(t, "# k\n")
+	g := GitCLI{Root: work}
+	ctx := context.Background()
+	if err := g.Fetch(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// Point the local origin/HEAD at a branch the remote does not default to.
+	gitIn(t, work, "push", "origin", "HEAD:refs/heads/other")
+	gitIn(t, work, "fetch", "origin")
+	gitIn(t, work, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/other")
+	ref, err := g.DefaultRef(ctx)
+	if err != nil || ref != "origin/main" {
+		t.Fatalf("DefaultRef = %q, %v; want origin/main from the remote", ref, err)
+	}
+}

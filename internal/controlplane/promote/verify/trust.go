@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/sdk/go/v2/signing"
@@ -53,6 +54,11 @@ type Trust struct {
 func LoadTrust(ctx context.Context, g Git, home, repoRoot string) (Trust, error) {
 	var keyDocs, revDocs [][]byte
 	var t Trust
+	if !filepath.IsAbs(home) {
+		// An empty or relative home would resolve against the process working
+		// directory, which is normally the project tree: never a trust root.
+		return t, errs.New("E493", "cannot locate the operator home directory, so ~/.nself/ci/trust cannot be read").WithFix("Set HOME to an absolute path.")
+	}
 	for _, f := range []struct {
 		name string
 		dst  *[][]byte
@@ -73,6 +79,7 @@ func LoadTrust(ctx context.Context, g Git, home, repoRoot string) (Trust, error)
 		if err != nil {
 			return t, errs.Wrap("E493", "cannot find the default branch of origin", err)
 		}
+		var differing []string
 		for _, f := range []struct {
 			name string
 			dst  *[][]byte
@@ -84,9 +91,12 @@ func LoadTrust(ctx context.Context, g Git, home, repoRoot string) (Trust, error)
 			if found {
 				*f.dst = append(*f.dst, data)
 			}
-			if w := workingCopyDiffers(filepath.Join(repoRoot, trustRel+f.name), data, found); w {
-				t.Warnings = append(t.Warnings, fmt.Sprintf("working-tree %s differs from %s; only the committed copy is trusted", trustRel+f.name, ref))
+			if workingCopyDiffers(filepath.Join(repoRoot, trustRel+f.name), data, found) {
+				differing = append(differing, trustRel+f.name)
 			}
+		}
+		if len(differing) > 0 {
+			t.Warnings = append(t.Warnings, fmt.Sprintf("working-tree %s differs from %s; only the committed copy is trusted", strings.Join(differing, " and "), ref))
 		}
 	}
 	return parseTrust(t, keyDocs, revDocs)

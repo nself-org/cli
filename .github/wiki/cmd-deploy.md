@@ -187,6 +187,14 @@ The evidence is judged by the ci plugin (`nself ci evidence verify --file
 <dir>/evidence.json --at-revision <manifest revision> --json`), so freshness,
 binding, class and quarantine have one implementation. There is no bypass flag.
 
+`--release` belongs to the environment form. `deploy promote --release <dir>`
+with no source and target is refused with `E401` instead of flipping the canary.
+`--dry-run` with `--release` prints the plan and verifies nothing. The hidden
+`nself promote` shim has no `--release`; `deploy promote-env` has it. The digest
+check covers the services that carry an image identity: a build-context service
+has none, so on a non-prod target it passes the check unproven (prod refuses such
+a service earlier, in the compare step).
+
 The inventory field `require_verified_release` on an environment makes
 `--release` mandatory. It defaults to true for tier `prod` when the ci plugin is
 installed. Without `--release` and without the requirement, `promote` prints one

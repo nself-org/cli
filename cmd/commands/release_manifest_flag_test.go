@@ -17,10 +17,12 @@ import (
 // The suite must not depend on a ci plugin installed on the machine running it.
 func init() { ciPluginBinaryFn = func() (string, bool) { return "", false } }
 
-func withCIPlugin(t *testing.T, installed bool) {
+func withCIPlugin(t *testing.T, installed bool) { withCIBinary(t, "/nonexistent/nself-ci", installed) }
+
+func withCIBinary(t *testing.T, binary string, installed bool) {
 	t.Helper()
 	old := ciPluginBinaryFn
-	ciPluginBinaryFn = func() (string, bool) { return "/nonexistent/nself-ci", installed }
+	ciPluginBinaryFn = func() (string, bool) { return binary, installed }
 	t.Cleanup(func() { ciPluginBinaryFn = old })
 }
 
@@ -91,6 +93,18 @@ func TestReleaseVerifyRequired(t *testing.T) {
 			t.Fatalf("err = %v, want E499", err)
 		}
 	})
+	t.Run("installed but unmountable ci plugin is required and refuses", func(t *testing.T) {
+		withCIBinary(t, "", true)
+		cmd, _ := releaseCmd(t, "")
+		if err := wirePromoteRelease(cmd, dir, &cpromote.Engine{}, promoteStateFor("prodsim", controlplane.TierProd, false)); !codeIs(err, "E499") {
+			t.Fatalf("no release: %v, want E499 (a broken plugin must not make verification optional)", err)
+		}
+		cmd, _ = releaseCmd(t, t.TempDir())
+		err := wirePromoteRelease(cmd, dir, &cpromote.Engine{}, promoteStateFor("prodsim", controlplane.TierProd, false))
+		if !codeIs(err, "E499") || !strings.Contains(err.Error(), "cannot be mounted") {
+			t.Fatalf("with release: %v, want E499 cannot be mounted", err)
+		}
+	})
 	t.Run("release given installs the hook and the digest check", func(t *testing.T) {
 		withCIPlugin(t, true)
 		cmd, _ := releaseCmd(t, t.TempDir())
@@ -130,5 +144,14 @@ func TestVerifiedReleaseRequiredDefaults(t *testing.T) {
 		if got := verifiedReleaseRequired(tc.env, tc.ci); got != tc.want {
 			t.Errorf("%s: got %v, want %v", tc.name, got, tc.want)
 		}
+	}
+}
+
+// TestReleaseFlagRefusedOnTheCanaryForm: --release must not be silently
+// ignored by the zero-argument canary flip.
+func TestReleaseFlagRefusedOnTheCanaryForm(t *testing.T) {
+	cmd, _ := releaseCmd(t, t.TempDir())
+	if err := runDeployPromoteBody(cmd, nil); !codeIs(err, "E401") {
+		t.Fatalf("err = %v, want E401", err)
 	}
 }

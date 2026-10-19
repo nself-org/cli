@@ -53,6 +53,15 @@ func (g GitCLI) Fetch(ctx context.Context) error {
 
 // DefaultRef returns origin/<default branch>.
 func (g GitCLI) DefaultRef(ctx context.Context) (string, error) {
+	// The remote's own answer first: a local origin/HEAD goes stale when the
+	// default branch is renamed.
+	lsCtx, cancel := context.WithTimeout(ctx, fetchTimeout)
+	defer cancel()
+	if out, err := g.run(lsCtx, "ls-remote", "--symref", "origin", "HEAD"); err == nil {
+		if branch, ok := symrefBranch(string(out)); ok && refRE.MatchString("origin/"+branch) {
+			return "origin/" + branch, nil
+		}
+	}
 	if out, err := g.run(ctx, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"); err == nil {
 		if ref := strings.TrimSpace(string(out)); refRE.MatchString(ref) {
 			return ref, nil
@@ -80,4 +89,17 @@ func (g GitCLI) Show(ctx context.Context, ref, path string) ([]byte, bool, error
 	}
 	data, err := g.run(ctx, "show", ref+":./"+path) // ./ makes the path relative to Root, not the repository top
 	return data, err == nil, err
+}
+
+// symrefBranch reads "ref: refs/heads/<branch>\tHEAD" from ls-remote --symref.
+func symrefBranch(out string) (string, bool) {
+	for _, line := range strings.Split(out, "\n") {
+		rest, ok := strings.CutPrefix(line, "ref: refs/heads/")
+		if !ok {
+			continue
+		}
+		branch, _, found := strings.Cut(rest, "\t")
+		return branch, found && branch != ""
+	}
+	return "", false
 }

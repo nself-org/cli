@@ -17,11 +17,18 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
 
 	"github.com/nself-org/cli/internal/errs"
 )
 
-const maxEvidenceOutput = 4 << 20
+const (
+	maxEvidenceOutput = 4 << 20
+	evidenceTimeout   = 5 * time.Minute
+)
 
 // EvidenceRunner runs `ci evidence verify --file <file> --at-revision <rev>
 // --json` and returns its stdout and exit status. err is non-nil only when the
@@ -32,7 +39,7 @@ type evidenceReport struct {
 	Data struct {
 		Class       string `json:"class"`
 		Result      string `json:"result"`
-		Quarantined bool   `json:"quarantined"`
+		Quarantined *bool  `json:"quarantined"` // nil: absent, which must not read as "not quarantined"
 	} `json:"data"`
 	Error struct {
 		Message string `json:"message"`
@@ -49,7 +56,7 @@ func checkEvidence(ctx context.Context, run EvidenceRunner, file, revision strin
 	}
 	var rep evidenceReport
 	parsed := json.Unmarshal(out, &rep) == nil
-	if parsed && rep.Data.Quarantined {
+	if parsed && rep.Data.Quarantined != nil && *rep.Data.Quarantined {
 		return errs.New("E498", "the ci plugin reports this release as quarantined")
 	}
 	if exit != 0 {
@@ -59,8 +66,8 @@ func checkEvidence(ctx context.Context, run EvidenceRunner, file, revision strin
 		}
 		return errs.New("E497", msg)
 	}
-	if !parsed {
-		return errs.New("E497", "ci evidence verify printed no readable report")
+	if !parsed || rep.Data.Quarantined == nil {
+		return errs.New("E497", "ci evidence verify printed no readable report with a quarantine verdict")
 	}
 	if rep.Data.Class != "release" || rep.Data.Result != "pass" {
 		return errs.Newf("E497", "release evidence is class %q result %q; a passing release-class document is required", clip(rep.Data.Class), clip(rep.Data.Result))
@@ -70,8 +77,15 @@ func checkEvidence(ctx context.Context, run EvidenceRunner, file, revision strin
 
 // ExecEvidence returns the production EvidenceRunner: it runs the ci plugin
 // binary (a mount.Spec.BinaryPath) with the evidence verify argv, in repoRoot.
-func ExecEvidence(binary, repoRoot string) EvidenceRunner {
+// Like the mount proxy it re-checks, right before the exec, that the binary
+// still resolves to a regular executable file inside pluginDir.
+func ExecEvidence(binary, pluginDir, repoRoot string) EvidenceRunner {
 	return func(ctx context.Context, file, revision string) ([]byte, int, error) {
+		if err := insidePluginDir(binary, pluginDir); err != nil {
+			return nil, 0, err
+		}
+		ctx, cancel := context.WithTimeout(ctx, evidenceTimeout)
+		defer cancel()
 		cmd := exec.CommandContext(ctx, binary, "evidence", "verify", "--file", file, "--at-revision", revision, "--json") //nolint:gosec // binary comes from plugin mount discovery; arguments are fixed
 		cmd.Dir = repoRoot
 		cmd.Env = os.Environ()
@@ -102,4 +116,26 @@ func (l *limitWriter) Write(p []byte) (int, error) {
 	l.left -= len(p)
 	_, _ = l.w.Write(p)
 	return n, nil
+}
+
+// insidePluginDir proves binary is a regular executable file whose resolved
+// path lies under pluginDir.
+func insidePluginDir(binary, pluginDir string) error {
+	root, err := filepath.EvalSymlinks(pluginDir)
+	if err != nil {
+		return fmt.Errorf("plugin directory is unavailable: %w", err)
+	}
+	resolved, err := filepath.EvalSymlinks(binary)
+	if err != nil {
+		return fmt.Errorf("ci plugin binary is unavailable: %w", err)
+	}
+	rel, err := filepath.Rel(root, resolved)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("ci plugin binary resolves outside the plugins directory")
+	}
+	info, err := os.Stat(resolved)
+	if err != nil || !info.Mode().IsRegular() || (runtime.GOOS != "windows" && info.Mode().Perm()&0o111 == 0) {
+		return fmt.Errorf("ci plugin binary is not an executable file")
+	}
+	return nil
 }

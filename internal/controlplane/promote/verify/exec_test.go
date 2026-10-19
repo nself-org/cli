@@ -25,7 +25,7 @@ func fakePlugin(t *testing.T, script string) string {
 func TestExecEvidenceRunsTheVerifyArgv(t *testing.T) {
 	repo := t.TempDir()
 	bin := fakePlugin(t, `printf '%s|' "$@"; pwd; exit 10`)
-	out, exit, err := ExecEvidence(bin, repo)(context.Background(), "/x/evidence.json", testRev)
+	out, exit, err := ExecEvidence(bin, filepath.Dir(bin), repo)(context.Background(), "/x/evidence.json", testRev)
 	if err != nil || exit != 10 {
 		t.Fatalf("exit %d err %v, want exit 10 and no error", exit, err)
 	}
@@ -39,12 +39,25 @@ func TestExecEvidenceRunsTheVerifyArgv(t *testing.T) {
 }
 
 func TestExecEvidenceExitZeroAndMissingBinary(t *testing.T) {
-	out, exit, err := ExecEvidence(fakePlugin(t, `printf ok`), t.TempDir())(context.Background(), "f", testRev)
+	ok := fakePlugin(t, `printf ok`)
+	out, exit, err := ExecEvidence(ok, filepath.Dir(ok), t.TempDir())(context.Background(), "f", testRev)
 	if err != nil || exit != 0 || string(out) != "ok" {
 		t.Fatalf("out %q exit %d err %v", out, exit, err)
 	}
-	if _, _, err := ExecEvidence(filepath.Join(t.TempDir(), "absent"), t.TempDir())(context.Background(), "f", testRev); err == nil {
+	dir := t.TempDir()
+	if _, _, err := ExecEvidence(filepath.Join(dir, "absent"), dir, t.TempDir())(context.Background(), "f", testRev); err == nil {
 		t.Fatal("a missing binary reported no error")
+	}
+	// A binary outside the plugins directory, or not executable, is refused.
+	if _, _, err := ExecEvidence(ok, t.TempDir(), t.TempDir())(context.Background(), "f", testRev); err == nil || !strings.Contains(err.Error(), "outside") {
+		t.Fatalf("outside binary: %v", err)
+	}
+	plain := filepath.Join(filepath.Dir(ok), "plain")
+	if err := os.WriteFile(plain, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ExecEvidence(plain, filepath.Dir(ok), t.TempDir())(context.Background(), "f", testRev); err == nil || !strings.Contains(err.Error(), "executable") {
+		t.Fatalf("non-executable binary: %v", err)
 	}
 }
 

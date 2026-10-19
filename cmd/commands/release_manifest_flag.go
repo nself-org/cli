@@ -26,13 +26,21 @@ import (
 
 const releaseManifestKey = "release_manifest"
 
-// ciPluginBinaryFn finds the installed ci plugin's mounted binary. A variable
-// so tests can supply a fake plugin.
-var ciPluginBinaryFn = func() (string, bool) {
-	specs, _ := mount.Discover(resolvePluginDir(), canonTable.Verbs)
+// ciPluginBinaryFn finds the installed ci plugin's mounted binary. installed is
+// true when a ci plugin is present at all; an entry that cannot be mounted
+// (bad binary, collision) reports installed with an empty binary, so a broken
+// plugin makes verification required but impossible instead of silently
+// optional. A variable so tests can supply a fake plugin.
+var ciPluginBinaryFn = func() (binary string, installed bool) {
+	specs, problems := mount.Discover(resolvePluginDir(), canonTable.Verbs)
 	for _, s := range specs {
 		if s.Slug == "ci" && s.Command == "ci" {
 			return s.BinaryPath, true
+		}
+	}
+	for _, p := range problems {
+		if p.Slug == "ci" {
+			return "", true
 		}
 	}
 	return "", false
@@ -40,8 +48,9 @@ var ciPluginBinaryFn = func() (string, bool) {
 
 func init() {
 	const usage = "Release directory holding release-manifest.dsse.json and evidence.json; verified before any target change"
-	// The deprecated promote and promote-env forms share the engine, so they
-	// take the flag too: without it a required target could never be promoted.
+	// deploy promote-env (promoteCmd) shares the engine, so it takes the flag
+	// too: without it a required target could never be promoted that way. The
+	// hidden `nself promote` shim has no flags and fails closed on such targets.
 	for _, c := range []*cobra.Command{deployPromoteCmd, promoteCmd} {
 		c.Flags().String("release", "", usage)
 	}
@@ -60,11 +69,11 @@ func verifiedReleaseRequired(env controlplane.Environment, ciInstalled bool) boo
 func wirePromoteRelease(cmd *cobra.Command, workdir string, eng *cpromote.Engine, st *cpromote.State) error {
 	release, _ := cmd.Flags().GetString("release")
 	binary, ciInstalled := ciPluginBinaryFn()
-	var env controlplane.Environment
-	if inv, err := controlplane.Load(workdir); err == nil {
-		env = inv.Environments[st.Target]
+	inv, err := controlplane.Load(workdir)
+	if err != nil {
+		return err
 	}
-	required := verifiedReleaseRequired(env, ciInstalled)
+	required := verifiedReleaseRequired(inv.Environments[st.Target], ciInstalled)
 	switch {
 	case release == "" && required:
 		return errs.Newf("E499", "target %s requires a verified release: pass --release <dir>", st.Target)
@@ -75,6 +84,8 @@ func wirePromoteRelease(cmd *cobra.Command, workdir string, eng *cpromote.Engine
 		return nil
 	case !ciInstalled:
 		return errs.New("E499", "the ci plugin is not installed, so --release cannot be verified")
+	case binary == "":
+		return errs.New("E499", "the ci plugin is installed but cannot be mounted, so --release cannot be verified")
 	}
 	dir, err := filepath.Abs(release)
 	if err != nil {
@@ -84,7 +95,7 @@ func wirePromoteRelease(cmd *cobra.Command, workdir string, eng *cpromote.Engine
 	in := verify.Input{
 		Dir: dir, RepoRoot: workdir, Home: home,
 		Git:      verify.GitCLI{Root: workdir},
-		Evidence: verify.ExecEvidence(binary, workdir),
+		Evidence: verify.ExecEvidence(binary, resolvePluginDir(), workdir),
 		Warn:     func(msg string) { _, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning:", msg) },
 	}
 	eng.Verify = func(ctx context.Context, s *cpromote.State) error {
