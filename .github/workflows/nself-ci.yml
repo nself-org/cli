@@ -1,0 +1,117 @@
+# The nself-ci gate of the cli repository (P7-CI-56, Epic D18), instantiated from
+# plugins:free/ci/templates/nself-ci.yml (P7-CI-07).
+#
+# Purpose: run this repository's default pipeline (.nself/ci.yaml) with the PINNED,
+#   released nself-ci inside a job named exactly `nself-ci`. Branch protection
+#   matches that name (P7-CI-55). A check run, unlike a commit status, is also
+#   produced on fork and Dependabot pull requests, whose tokens are read-only.
+# The pin: CI_VERSION, CI_RELEASE_URL and CI_RELEASE_SHA256 are the linux-amd64
+#   `ci-release` of the plugins repository (the same pin as plugins nself-ci.yml).
+#   To move the pin, change the three values in one commit; rollback of a bad
+#   release is a revert of that commit. The binary is never built from this checkout.
+# Duplication: ci.yml still runs the same Go checks across the OS matrix plus the
+#   v1.5 leg, vendor sync and contract gate; it is retired later (debt row).
+# Rules (see the template): job name `nself-ci`, no `paths:` filter, no matrix, no
+#   cancel-in-progress, actions pinned by sha, read-only token, `--no-status`.
+
+name: nself-ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CI_VERSION: "1.2.11"
+  CI_RELEASE_URL: "https://github.com/nself-org/plugins/releases/download/v1.2.11/ci-1.2.11-linux-amd64.tar.gz"
+  CI_RELEASE_SHA256: "0ca65f839b007764f70ba9e8e719aee88f336efb74b932297b2b9097cbdd0016"
+  GITLEAKS_SHA256: "5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba" # gitleaks 8.21.2 linux_x64
+  NSELF_V15: "1"          # the ci binary does not follow the cli flip; kept until v1.6
+
+jobs:
+  nself-ci:
+    name: nself-ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check the pin
+        run: |
+          for v in CI_VERSION CI_RELEASE_URL CI_RELEASE_SHA256; do
+            if [ -z "${!v}" ]; then
+              echo "::error::$v is not set in this workflow's env block"
+              exit 1
+            fi
+          done
+          case "$CI_RELEASE_URL" in https://*) ;; *) echo "::error::CI_RELEASE_URL must be an https URL"; exit 1 ;; esac
+
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      # The tools .nself/ci.yaml names, taken from PATH: go (go-vet, go-build, go-test),
+      # bash (gofmt), gitleaks (secrets-tree) and age (the config secrets leak gate
+      # inside go-test fails without it, D-0413).
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+
+      - name: Install age and age-keygen
+        run: |
+          go install filippo.io/age/cmd/age@v1.3.2 filippo.io/age/cmd/age-keygen@v1.3.2
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Install gitleaks
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --proto '=https' --output "$RUNNER_TEMP/gitleaks.tar.gz" \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz
+          echo "$GITLEAKS_SHA256  $RUNNER_TEMP/gitleaks.tar.gz" | sha256sum --check --strict -
+          mkdir -p "$RUNNER_TEMP/gitleaks"
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP/gitleaks" gitleaks
+          echo "$RUNNER_TEMP/gitleaks" >> "$GITHUB_PATH"
+
+      - name: Install the pinned nself-ci
+        run: |
+          set -euo pipefail
+          tarball="$RUNNER_TEMP/nself-ci.tar.gz"
+          curl --fail --silent --show-error --location --proto '=https' --output "$tarball" "$CI_RELEASE_URL"
+          echo "$CI_RELEASE_SHA256  $tarball" | sha256sum --check --strict -
+          mkdir -p "$RUNNER_TEMP/nself-ci"
+          tar -xzf "$tarball" -C "$RUNNER_TEMP/nself-ci"
+          bin="$(find "$RUNNER_TEMP/nself-ci" -type f -name nself-ci | head -n 1)"
+          if [ -z "$bin" ]; then
+            echo "::error::the release tarball holds no nself-ci binary"
+            exit 1
+          fi
+          chmod +x "$bin"
+          echo "NSELF_CI_BIN=$bin" >> "$GITHUB_ENV"
+
+      - name: Run the gate
+        env:
+          NSELF_CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/evidence"
+          status=0
+          "$NSELF_CI_BIN" --no-status --json > "$RUNNER_TEMP/evidence/nself-ci.json" || status=$?
+          {
+            echo "### nself-ci $CI_VERSION"
+            echo "exit code: $status"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - name: Keep the evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/evidence/
+          if-no-files-found: warn
+          retention-days: 30
