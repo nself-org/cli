@@ -1,0 +1,92 @@
+# Cross-platform binary smoke of the cli repo (P7-CI-22).
+#
+# Purpose: build `nself` from the ref on a hosted macOS and a hosted Windows runner and run
+#   scripts/drill/cross-platform/run against it: `nself version`, `nself help --json`, and
+#   `nself init` in a temp directory with zero prompts. No Docker, no secret, no network beyond the
+#   checkout and the Go toolchain. Windows = WSL2 for Docker (owner answer 6c): the Linux drills
+#   (drill-nightly) cover it; this workflow covers the native binary.
+# Why a workflow of its own: the drills pipeline (scripts/drill/legs, run by nself-ci) cannot place
+#   a macOS or a Windows job, so the leg script lives outside `drills_dir` and is not a drill job.
+# Differences from drill-nightly: the same build-from-ref step and checkout shape, but no pinned
+#   nself-ci (the script runs directly) and a matrix over the two hosted runners. The pull_request
+#   trigger runs it for changes to its own paths, because workflow_dispatch cannot start a
+#   workflow that is not on the default branch.
+# Red is the alert: a schedule that stops firing shows as a missing run in the Actions tab. A runner
+#   availability failure is re-run, never counted green (Constitution 14.2).
+# Constraints: actions pinned by commit sha, read-only token, no secrets.
+
+name: drill-cross-platform
+
+on:
+  schedule:
+    - cron: '45 2 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'scripts/drill/cross-platform/**'
+      - '.github/workflows/drill-cross-platform.yml'
+
+concurrency:
+  group: drill-cross-platform-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  cross-platform:
+    name: cross-platform (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-2022]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check the tools
+        run: |
+          for t in jq bash; do
+            command -v "$t" >/dev/null || { echo "::error::$t is not on this runner"; exit 1; }
+          done
+          bash --version | head -n 1
+          jq --version
+
+      - name: Build nself from this ref
+        run: |
+          # A version no release carries, so the check proves the build's own value reached the binary.
+          version="0.0.0-smoke.${GITHUB_RUN_ID}"
+          ext=""
+          if [ "$RUNNER_OS" = Windows ]; then ext=".exe"; fi
+          mkdir -p .nself/bin
+          CGO_ENABLED=0 go build -mod=vendor -trimpath \
+            -ldflags "-X github.com/nself-org/cli/internal/version.Version=${version}" \
+            -o ".nself/bin/nself${ext}" ./cmd/nself
+          echo "NSELF_EXPECT_VERSION=${version}" >> "$GITHUB_ENV"
+          echo "NSELF_EXPECT_GOOS=$(go env GOOS)" >> "$GITHUB_ENV"
+
+      - name: Run the smoke
+        run: bash scripts/drill/cross-platform/run
+
+      - name: Keep the results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cross-platform-${{ matrix.os }}
+          path: .nself/drill-out/cross-platform/
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 30

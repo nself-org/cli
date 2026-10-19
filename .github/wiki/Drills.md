@@ -96,6 +96,25 @@ The first two need Docker and take about as long as the Two-Command Drill (tens 
 
 The job is named `drills` and allows 120 minutes. It has no secrets and a read-only token.
 
+## Platforms
+
+The drills above run on Linux with Docker. The platform matrix is split so that each runner does only what it can:
+
+| Platform | What runs | Where |
+|---|---|---|
+| Linux | every drill leg, with Docker | `drill-nightly` (`ubuntu-latest`) |
+| Windows | the Linux drills, inside WSL2 | Windows = WSL2 (owner answer 6c): Docker on Windows runs in WSL2, which is Linux, so the Linux drills are its Docker coverage |
+| macOS, native Windows | the binary smoke below, no Docker | `drill-cross-platform` (`macos-latest`, `windows-2022`) |
+
+`scripts/drill/cross-platform/run` is not a drill leg: it sits outside `scripts/drill/legs`, because the drills pipeline of `nself-ci` cannot place a macOS or a Windows job. `.github/workflows/drill-cross-platform.yml` runs it directly, as job `cross-platform` with a matrix over the two hosted runners (free on this public repo). It runs at 02:45 UTC, on `workflow_dispatch`, and on pull requests that touch the script or the workflow. Per runner it:
+
+1. builds `nself` from the ref with its own `GOOS` and a version no release carries (`0.0.0-smoke.<run id>`);
+2. `version`: `nself version` and `nself version --json` print that version, and `platform` names the runner's OS;
+3. `help-json`: `nself help --json` parses and lists the verbs, `init` and `start` among them;
+4. `init`: `nself init` in an empty temp directory, stdin `/dev/null`, under a timeout (120 s), writes `.env` with `PROJECT_NAME`. A prompt would hit end of input or the timeout and fail the step.
+
+HOME and USERPROFILE point at a throw-away directory, so nothing touches the runner's real home. Run it locally against any build: `NSELF_BIN=./nself scripts/drill/cross-platform/run`. Results (`results.json`, one log per step) are kept as the artifact `cross-platform-<os>`. Needs `jq`; no Docker, no secret.
+
 ## Read overdue
 
 A drill job is overdue when no passing, commit-bound run newer than `max_age` (36 hours) exists in the machine's run store. A throwaway runner keeps no store, so on GitHub a red run is the alert and a missing run (a schedule that stopped firing) is the staleness signal: check the Actions tab for `drill-nightly`. A runner-availability failure (image pull, runner start) is re-run, never counted as a pass. On a machine that keeps its run store, `nself ci evidence --pipeline drills` exits 10 and names the overdue drills.
