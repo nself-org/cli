@@ -11,7 +11,7 @@
 #   of stdout (ev_emit). All other messages go to stderr.
 # Constraints: bash 3.2 compatible (macOS); needs jq, timeout (or gtimeout), docker with compose.
 #   No secret is printed: the step logs are the CLI's own output and a failed step's excerpt
-#   is its last five log lines, ANSI-stripped and cut to 800 bytes. Runs only on a runner or a
+#   is its last five log lines, ANSI-stripped and cut to 800 characters. Runs only on a runner or a
 #   local box with Docker; never point it at a server.
 
 # shellcheck source=/dev/null disable=SC2153
