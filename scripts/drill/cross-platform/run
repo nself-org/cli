@@ -20,7 +20,7 @@
 # Outputs: <out>/<step>.log per step, <out>/results.json (cross-platform-smoke/v1).
 # Exit: 0 every step passed, 1 a step failed, 2 a missing tool or no binary.
 # Constraints: bash 3.2 compatible (macOS) and Git Bash (Windows); needs jq. Needs no Docker, no
-#   network, no secret. HOME and USERPROFILE point at a throw-away directory, so nothing is read from or
+#   network, no secret. HOME, USERPROFILE, APPDATA and LOCALAPPDATA point at a throw-away directory, so nothing is read from or
 #   written to the runner's real home. Never point it at a server.
 
 set -u
@@ -56,8 +56,15 @@ mkdir -p "$WORK/home"
 export HOME=$WORK/home
 if command -v cygpath >/dev/null 2>&1; then USERPROFILE=$(cygpath -w "$WORK/home"); else USERPROFILE=$WORK/home; fi
 export USERPROFILE
+mkdir -p "$WORK/appdata" "$WORK/localappdata"
+export APPDATA=$WORK/appdata LOCALAPPDATA=$WORK/localappdata
 
-TIMEOUT_BIN=$(command -v timeout || command -v gtimeout || true)
+# Only GNU coreutils timeout takes `-k 5 N cmd`: Git Bash can find Windows' own timeout.exe first.
+TIMEOUT_BIN=""
+for t in timeout gtimeout; do
+  p=$(command -v "$t" 2>/dev/null) || continue
+  if "$p" --version 2>&1 | grep -q GNU; then TIMEOUT_BIN=$p; break; fi
+done
 
 # run_t <seconds> <logfile> <cmd...>: stdin /dev/null (so a prompt hits EOF), no TTY, the variables that
 # would switch the cli into non-interactive mode removed, output to the log. Exit 124 on timeout.
@@ -81,8 +88,16 @@ run_t() {
   return "$rc"
 }
 
+# jqr <jq args>: jq -r with any CR removed (jq.exe may write CRLF).
+jqr() { jq -r "$@" | tr -d '\r'; }
+
+# why <rc> <what> <logfile>: the failure text for a command that exited rc.
+why() {
+  if [ "$1" -eq 124 ]; then echo "$2 timed out (a prompt?): $(last_lines "$3")"; else echo "$2 exited $1: $(last_lines "$3")"; fi
+}
+
 # last_lines <file>: the last five lines, CR and ANSI stripped, cut to 400 characters.
-last_lines() { tail -n 5 "$1" 2>/dev/null | tr -d '\r' | sed 's/\x1b\[[0-9;]*m//g' | tr '\n' ' ' | cut -c1-400; }
+last_lines() { tail -n 5 "$1" 2>/dev/null | tr -d '\r' | sed "s/$(printf '\033')\[[0-9;]*m//g" | tr '\n' ' ' | cut -c1-400; }
 
 RESULTS=$WORK/results.ndjson
 : >"$RESULTS"
@@ -102,12 +117,16 @@ step() {
 }
 
 step_version() {
-  local text json ver
-  run_t "$STEP_T" "$OUT/version.log" "$BIN" version || { echo "nself version exited non-zero: $(last_lines "$OUT/version.log")"; return 1; }
+  local text json ver plat rc
+  run_t "$STEP_T" "$OUT/version.log" "$BIN" version
+  rc=$?
+  [ "$rc" -eq 0 ] || { why "$rc" "nself version" "$OUT/version.log"; return 1; }
   text=$(head -n 1 "$OUT/version.log" | tr -d '\r')
-  run_t "$STEP_T" "$OUT/version-json.log" "$BIN" version --json || { echo "nself version --json exited non-zero"; return 1; }
+  run_t "$STEP_T" "$OUT/version-json.log" "$BIN" version --json
+  rc=$?
+  [ "$rc" -eq 0 ] || { why "$rc" "nself version --json" "$OUT/version-json.log"; return 1; }
   json=$(tr -d '\r' <"$OUT/version-json.log")
-  ver=$(printf '%s' "$json" | jq -r '.version // empty') || { echo "version --json did not parse"; return 1; }
+  ver=$(printf '%s' "$json" | jqr '.version // empty') || { echo "version --json did not parse"; return 1; }
   [ -n "$ver" ] || { echo "version --json has no version"; return 1; }
   if [ -n "${NSELF_EXPECT_VERSION:-}" ]; then
     [ "$ver" = "$NSELF_EXPECT_VERSION" ] || { echo "version is $ver, built as $NSELF_EXPECT_VERSION"; return 1; }
@@ -115,19 +134,21 @@ step_version() {
     printf '%s' "$ver" | grep -Eq '^[0-9]+[.][0-9]+[.][0-9]+' || { echo "version $ver is not x.y.z"; return 1; }
   fi
   case "$text" in *"$ver"*) ;; *) echo "text output '$text' does not name $ver"; return 1 ;; esac
-  printf '%s' "$json" | jq -e --arg g "$GOOS_WANT" '.platform | startswith($g + "/")' >/dev/null ||
-    { echo "platform is $(printf '%s' "$json" | jq -r '.platform'), expected $GOOS_WANT/*"; return 1; }
-  echo "$ver on $(printf '%s' "$json" | jq -r '.platform')"
+  plat=$(printf '%s' "$json" | jqr '.platform')
+  case "$plat" in "$GOOS_WANT"/*) ;; *) echo "platform is $plat, expected $GOOS_WANT/*"; return 1 ;; esac
+  echo "$ver on $plat"
 }
 
 step_help_json() {
-  local doc
-  run_t "$STEP_T" "$OUT/help-json.log" "$BIN" help --json || { echo "nself help --json exited non-zero: $(last_lines "$OUT/help-json.log")"; return 1; }
+  local doc rc
+  run_t "$STEP_T" "$OUT/help-json.log" "$BIN" help --json
+  rc=$?
+  [ "$rc" -eq 0 ] || { why "$rc" "nself help --json" "$OUT/help-json.log"; return 1; }
   doc=$(tr -d '\r' <"$OUT/help-json.log")
   printf '%s' "$doc" | jq -e . >/dev/null 2>&1 || { echo "help --json is not JSON: $(last_lines "$OUT/help-json.log")"; return 1; }
   printf '%s' "$doc" | jq -e '.command == "help" and (.data.verbs | index("init")) != null and (.data.verbs | index("start")) != null' >/dev/null ||
     { echo "help --json lacks the help envelope or the init and start verbs"; return 1; }
-  echo "$(printf '%s' "$doc" | jq -r '.data.verbs | length') verbs"
+  echo "$(printf '%s' "$doc" | jqr '.data.verbs | length') verbs"
 }
 
 step_init() {
@@ -135,10 +156,7 @@ step_init() {
   mkdir -p "$dir"
   (cd "$dir" && run_t "$INIT_T" "$OUT/init.log" "$BIN" init)
   rc=$?
-  [ "$rc" -eq 0 ] || {
-    if [ "$rc" -eq 124 ]; then echo "init timed out after ${INIT_T}s (a prompt?): $(last_lines "$OUT/init.log")"; else echo "init exited $rc: $(last_lines "$OUT/init.log")"; fi
-    return 1
-  }
+  [ "$rc" -eq 0 ] || { why "$rc" "nself init" "$OUT/init.log"; return 1; }
   [ -s "$dir/.env" ] || { echo "init wrote no .env"; return 1; }
   name=$(tr -d '\r' <"$dir/.env" | sed -n 's/^PROJECT_NAME=//p' | head -n 1)
   [ -n "$name" ] || { echo "init wrote no PROJECT_NAME"; return 1; }

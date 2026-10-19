@@ -103,7 +103,7 @@ The drills above run on Linux with Docker. The platform matrix is split so that 
 | Platform | What runs | Where |
 |---|---|---|
 | Linux | every drill leg, with Docker | `drill-nightly` (`ubuntu-latest`) |
-| Windows | the Linux drills, inside WSL2 | Windows = WSL2 (owner answer 6c): Docker on Windows runs in WSL2, which is Linux, so the Linux drills are its Docker coverage |
+| Windows | Docker coverage = the Linux drills | Windows = WSL2 (owner answer 6c): Docker on Windows runs in WSL2, which is Linux, so WSL2 runs the same Linux drills and `drill-nightly` covers it |
 | macOS, native Windows | the binary smoke below, no Docker | `drill-cross-platform` (`macos-latest`, `windows-2022`) |
 
 `scripts/drill/cross-platform/run` is not a drill leg: it sits outside `scripts/drill/legs`, because the drills pipeline of `nself-ci` cannot place a macOS or a Windows job. `.github/workflows/drill-cross-platform.yml` runs it directly, as job `cross-platform` with a matrix over the two hosted runners (free on this public repo). It runs at 02:45 UTC, on `workflow_dispatch`, and on pull requests that touch the script or the workflow. Per runner it:
@@ -113,7 +113,7 @@ The drills above run on Linux with Docker. The platform matrix is split so that 
 3. `help-json`: `nself help --json` parses and lists the verbs, `init` and `start` among them;
 4. `init`: `nself init` in an empty temp directory, stdin `/dev/null`, under a timeout (120 s), writes `.env` with `PROJECT_NAME`. A prompt would hit end of input or the timeout and fail the step.
 
-HOME and USERPROFILE point at a throw-away directory, so nothing touches the runner's real home. Run it locally against any build: `NSELF_BIN=./nself scripts/drill/cross-platform/run`. Results (`results.json`, one log per step) are kept as the artifact `cross-platform-<os>`. Needs `jq`; no Docker, no secret.
+HOME, USERPROFILE, APPDATA and LOCALAPPDATA point at a throw-away directory, so nothing touches the runner's real home. Run it locally against any build: `NSELF_BIN=./nself scripts/drill/cross-platform/run`. Results (`results.json`, one log per step) are kept as the artifact `cross-platform-<os>`. Needs `jq`; no Docker, no secret.
 
 ## Read overdue
 
