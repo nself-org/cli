@@ -1,0 +1,23 @@
+name: zz-adopt19-debug
+on:
+  pull_request:
+    paths: ['.github/workflows/zz-adopt19-debug.yml']
+permissions:
+  contents: read
+jobs:
+  dbg:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: probe
+        run: |
+          set +e
+          cat /etc/os-release | head -3; docker version --format '{{.Server.Version}}'; id; umask
+          ls -ld /home/runner /home/runner/work /home/runner/work/cli "$PWD" "$PWD/test/fixtures/import/postgres"
+          ls -ln test/fixtures/import/postgres; stat -c '%a %u:%g %n' test/fixtures/import/postgres/seed.sql
+          echo "--- direct mount"
+          docker run --rm -v "$PWD/test/fixtures/import/postgres/seed.sql:/x:ro" postgres:16 sh -c 'id; ls -ln /x; head -c 80 /x'
+          echo "--- nested compose"
+          export FIXTURE_PASSWORD=x FIXTURE_PORT=25416 FIXTURE17_PORT=25417
+          docker run --rm --init --network host -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD":"$PWD" -w "$PWD" docker:27-cli sh -c "FIXTURE_PASSWORD=x docker compose -p dbg -f test/fixtures/import/postgres/compose.yml up -d source16 --wait; docker compose -p dbg -f test/fixtures/import/postgres/compose.yml logs --tail 40 source16; docker compose -p dbg -f test/fixtures/import/postgres/compose.yml down -v"
