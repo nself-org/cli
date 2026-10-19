@@ -99,7 +99,9 @@ func (st *buildState) generateCompose() error {
 	st.filesGenerated++
 
 	// ── Step 9.5: Discover plugin compose files ────────────────────
-	pluginComposeFiles, err := discoverPluginComposeFilesFx(st.fx, st.sink, st.workdir, st.pluginDir, &st.entitlementRefreshed)
+	pluginComposeFiles, err := discoverPluginComposeFilesWanted(st.fx, st.sink, st.workdir, st.pluginDir, func(name string) bool {
+		return compose.PluginFragmentWanted(name, st.cfg)
+	}, &st.entitlementRefreshed)
 	if err != nil {
 		var refresh *EntitlementRefreshError
 		if !errors.As(err, &refresh) || errs.Describe(err) == nil || errs.Describe(err).Code != "E125" {

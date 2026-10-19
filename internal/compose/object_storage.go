@@ -57,6 +57,22 @@ func ActiveStore(cfg *config.Config, installed bool) string {
 	return "none"
 }
 
+// Purpose: decide whether an installed plugin's compose fragment joins this project's stack.
+// Inputs: the plugin directory name and the loaded config.
+// Outputs: false only for the minio plugin in v1.5 when MinIO is not this project's active store.
+// Constraints: the plugin is installed machine-wide, so intent comes from the project (D-0702);
+// every other plugin, and v1.4, merge as before.
+func PluginFragmentWanted(name string, cfg *config.Config) bool {
+	if name != "minio" {
+		return true
+	}
+	// compat.V15(P7-PLUG-60): the minio fragment merges into every project once installed -> only where ActiveStore picks the plugin
+	if compat.V15() {
+		return ActiveStore(cfg, true) == "minio-plugin"
+	}
+	return true
+}
+
 // ActiveStoreConnection returns the internal endpoint and configured region for
 // the store selected by ActiveStore.
 // Inputs: loaded config and whether the MinIO plugin is installed.
