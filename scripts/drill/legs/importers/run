@@ -83,17 +83,18 @@ prepare() {
   docker info >/dev/null 2>&1 || { PREP_ERR="docker is not available"; return 0; }
   # The pipeline's throwaway copy of the repo may be private to its user (0600 files, 0700 dirs). The
   # fixtures are bind-mounted into containers that run as other users (postgres uid 999), which then
-  # fail with "Permission denied"; Colima's mounts hide this. Read bits only, never write or exec.
-  chmod -R a+rX "$ROOT/test/fixtures" "$ROOT/scripts/e2e/fixtures" 2>/dev/null || true
-  { echo "umask $(umask) uid $(id -u)"; stat -c '%a %u %n' "$ROOT/test/fixtures/import/postgres/seed.sql" 2>/dev/null || true; } > "$OUT/env.log"
+  # fail with "Permission denied"; Colima's mounts hide this. Read bits only, and only on CI, where the
+  # copy is throwaway; a developer's own checkout is left alone.
+  [ "${CI:-}" != true ] || chmod -R a+rX "$ROOT/test/fixtures" "$ROOT/scripts/e2e/fixtures" 2>/dev/null || true
+  { echo "umask $(umask) uid $(id -u)"; f=$ROOT/test/fixtures/import/postgres/seed.sql; stat -c '%a %u %n' "$f" 2>/dev/null || stat -f '%Lp %u %N' "$f" 2>/dev/null || true; } > "$OUT/env.log"
   if [ -n "${NSELF_LINUX_BIN:-}" ] && [ -x "$NSELF_LINUX_BIN" ]; then
     LINUX_BIN=$NSELF_LINUX_BIN
   else
     command -v go >/dev/null 2>&1 || { PREP_ERR="go is not on PATH and NSELF_LINUX_BIN is not set"; return 0; }
-    log "building the static linux nself into $OUT/nself-linux"
-    (cd "$ROOT" && GOOS=linux CGO_ENABLED=0 ${TO:+$TO 600} go build -mod=vendor -o "$OUT/nself-linux" ./cmd/nself) > "$OUT/prepare.log" 2>&1 \
+    log "building the static linux nself into $(dirname "$OUT")/nself-linux"
+    (cd "$ROOT" && GOOS=linux CGO_ENABLED=0 ${TO:+$TO 600} go build -mod=vendor -o "$(dirname "$OUT")/nself-linux" ./cmd/nself) > "$OUT/prepare.log" 2>&1 \
       || { PREP_ERR="go build failed: $(tail -n 5 "$OUT/prepare.log")"; return 0; }
-    LINUX_BIN=$OUT/nself-linux
+    LINUX_BIN=$(dirname "$OUT")/nself-linux
   fi
   ${TO:+$TO 600} docker pull -q "$IMAGE" > "$OUT/prepare.log" 2>&1 || PREP_ERR="docker pull $IMAGE failed"
   snap "$OUT/base"
@@ -149,7 +150,7 @@ execute() {
     ${TO:+$TO "$USED_LIMIT"} bash "$script" > "$logf" 2>&1 &
   else
     WDIR=$(mktemp -d "${TMPDIR:-/tmp}/importers-$s.XXXXXX")
-    chmod 755 "$WDIR"
+    [ "${CI:-}" != true ] || chmod 755 "$WDIR"
     CNAME="drill-importers-$s-$$"
     local rel; rel=$(printf %q "${script#"$ROOT"/}")
     [ -n "$TO" ] || log "no timeout command; $s runs without a time limit"
