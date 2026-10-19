@@ -61,13 +61,13 @@ ev_step() {
 
 # ev_emit: write $EV_OUT/evidence.json and print it as one compact line on stdout.
 ev_emit() {
-  local rev state digest root rid trig trust prov iso plat bound reason fin
+  local rev state digest root rid trig trust prov iso plat bound reason fin fstate freason
   rev=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)
   printf '%s' "$rev" | grep -Eq '^[0-9a-f]{40}$' || rev=${GITHUB_SHA:-}
   printf '%s' "$rev" | grep -Eq '^[0-9a-f]{40}$' || rev=0000000000000000000000000000000000000000
-  state=clean digest=null bound=bound reason=null
+  state=clean digest=null bound=bound reason=null fstate=current freason=null
   if [ -n "$(git -C "$ROOT" status --porcelain --untracked-files=no 2>/dev/null)" ]; then
-    state=dirty bound=unbound reason='"dirty"'
+    state=dirty bound=unbound reason='"dirty"' fstate=unknown freason='"binding.dirty"'
     digest="\"$(git -C "$ROOT" diff HEAD 2>/dev/null | sha256_of)\""
   fi
   root=$(git -C "$ROOT" rev-list --max-parents=0 HEAD 2>/dev/null | head -n 1)
@@ -83,7 +83,7 @@ ev_emit() {
   jq -nc --slurpfile checks "$EV_CHECKS" --argjson tools "$EV_TOOLS" \
     --arg rev "$rev" --arg rid "$rid" --arg run "$EV_LEG-$EV_T0" --arg leg "$EV_LEG" --arg trig "$trig" \
     --arg trust "$trust" --arg state "$state" --argjson digest "$digest" --arg bound "$bound" \
-    --argjson reason "$reason" --arg prov "$prov" --arg iso "$iso" --arg plat "$plat" \
+    --argjson reason "$reason" --arg fstate "$fstate" --argjson freason "$freason" --arg prov "$prov" --arg iso "$iso" --arg plat "$plat" \
     --arg start "$EV_START" --arg fin "$fin" --argjson ms "$((($(date +%s) - EV_T0) * 1000))" '
     ($checks) as $c
     | ("0" * 64) as $zero
@@ -102,7 +102,7 @@ ev_emit() {
                 fail: ([$c[] | select(.result == "fail")] | length),
                 skip: ([$c[] | select(.result == "skip")] | length),
                 error: ([$c[] | select(.result == "error")] | length), total: ($c | length)},
-       freshness: {state: "current", reason: null}, signature: {kind: "coordinator-recorded"}}' |
+       freshness: {state: $fstate, reason: $freason}, signature: {kind: "coordinator-recorded"}}' |
     tee "$EV_OUT/evidence.json"
 }
 
