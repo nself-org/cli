@@ -41234,6 +41234,11 @@
                         "default": false,
                         "description": "Print the promotion plan without remote writes",
                         "type": "boolean"
+                      },
+                      "release": {
+                        "default": "",
+                        "description": "Release directory holding release-manifest.dsse.json and evidence.json; verified before any target change",
+                        "type": "string"
                       }
                     },
                     "type": "object"
@@ -41383,6 +41388,11 @@
                         "default": false,
                         "description": "Preview changes without applying",
                         "type": "boolean"
+                      },
+                      "release": {
+                        "default": "",
+                        "description": "Release directory holding release-manifest.dsse.json and evidence.json; verified before any target change",
+                        "type": "string"
                       }
                     },
                     "type": "object"
