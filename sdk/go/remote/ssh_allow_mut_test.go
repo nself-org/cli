@@ -46,3 +46,23 @@ func TestCheckOptions_D4BlockThenLoneO(t *testing.T) {
 		t.Errorf("checkOptions(D4 + -q) refused: %v", err)
 	}
 }
+
+// The 8.7+ trailer (StdinNull, SessionType, ForkAfterAuthentication) belongs to
+// the D4 block: a full block is accepted whole, and a caller cannot re-set one
+// of its keys after it (D-1055).
+func TestSplitD4_TrailerForVersions(t *testing.T) {
+	for _, v := range []Version{{8, 4}, {8, 5}, {8, 7}, {9, 6}} {
+		d4 := append(CISSHFlags(), CIOptions("n1", "/h/known_hosts", v)...)
+		got, rest := splitD4(d4)
+		if len(got) != len(d4) || len(rest) != 0 {
+			t.Errorf("splitD4(%v block) = %d/%d of %d", v, len(got), len(rest), len(d4))
+		}
+		if err := checkOptions(d4); err != nil {
+			t.Errorf("checkOptions(%v block): %v", v, err)
+		}
+	}
+	d4 := append(CISSHFlags(), CIOptions("n1", "/h/known_hosts", Version{9, 6})...)
+	if err := checkOptions(append(append([]string(nil), d4...), "-o", "StdinNull=yes")); err == nil {
+		t.Error("caller StdinNull=yes accepted after the D4 block")
+	}
+}
