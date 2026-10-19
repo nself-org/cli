@@ -97,6 +97,7 @@ paths = [
   # Removed bash-era hook template that greps for key headers (history only)
   '''^src/templates/git/pre-commit$''',
 ]
+regexTarget = "line"
 regexes = [
   '''sk_live_FAKE_TEST_FOR_CI_GATE''',
   '''AKIA_FAKE_TEST_KEY_DO_NOT_USE''',
@@ -104,4 +105,13 @@ regexes = [
   '''nself_pro_FAKE_TEST_KEY_DO_NOT_USE''',
   # Documentation placeholder: nself_pro_ followed only by x (D-0286)
   '''nself_pro_x{32,}\b''',
+  # CI fixture: scripts/ci/live-safety-fixture.sh writes a synthetic POSTGRES_PASSWORD
+  # into a throwaway $WORK project (.env.secrets). Not a real credential, not in the
+  # vault (D-0286, re-reviewed 2026-10-19). Matched on the exact line shape, not on a
+  # line number, so it survives the line moving and shallow-clone history rewrites
+  # (the old .gitleaksignore fingerprints did not). This cannot also be pinned to the
+  # file path: the pinned gitleaks 8.21.2 has no [[allowlists]] AND-condition and 8.30+
+  # refuses [allowlist] mixed with [[allowlists]]. Any other line, or any other secret,
+  # is still caught.
+  '''(?m)^printf 'POSTGRES_PASSWORD=[^']+\\n' > "\$WORK/[a-z]+/project/\.env\.secrets"$''',
 ]
