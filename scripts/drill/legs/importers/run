@@ -1,0 +1,223 @@
+#!/usr/bin/env bash
+# Drill leg: importers (P7-ADOPT-19, EPIC D15). Reruns every importer e2e and the export round trip.
+#
+# Purpose: make "every come-home source still imports" one job of the `drills` pipeline
+#   (.nself/ci.yaml, job `drill-importers`). It runs, one fixture at a time, the six
+#   scripts/e2e/import-<source>.sh scripts and scripts/e2e/export-round-trip.sh, each the way
+#   EPIC D18 runs them (a docker:27-cli container with the Linux nself on PATH, the docker socket,
+#   and a work dir with the same path on host and container). A source that fails does not stop
+#   the next one. The leg prints one ci.evidence/v1 document (last line of stdout) with one check
+#   per source: importers/{postgres,nhost,hasura-cloud,supabase,firebase,appwrite,round-trip}.
+# Usage: run [--list]      --list prints the seven check ids and runs nothing.
+# Inputs (all optional): DRILL_SOURCES_DIR (use <dir>/<source>.sh instead of scripts/e2e, run
+#   directly with bash, no container: for tests of this leg), DRILL_OUT_ROOT (result root; default
+#   ~/.nself/drill-out, because the pipeline runs a leg in a throwaway copy of the repo; logs land
+#   in <root>/importers/<source>.log, which the nightly workflow uploads), DRILL_SOURCE_TIMEOUT
+#   (seconds per source, default 900), DRILL_BUDGET (seconds for the whole leg, default 4500),
+#   NSELF_LINUX_BIN (a static linux nself; built from this checkout when missing).
+# Outputs: progress lines on stderr; the evidence document on stdout.
+# Exit: 0 every source passed; 1 any check failed or errored; 2 bad usage.
+# Time and disk: a source that overruns its limit or the budget is an `error` check (never
+#   skipped, never green). On CI (CI=true) containers, volumes and networks that a source created
+#   and left behind are removed after it (only those named like the e2e scripts' own projects, so a
+#   leg running at the same time is never touched), and unused images pulled meanwhile are removed
+#   when the runner is low on disk; anything that existed before the source started is never touched. Off CI the
+#   leftovers are only named. Runs on GitHub-hosted ubuntu-latest (or any Linux box with
+#   Docker); never point it at a server.
+
+set -euo pipefail
+HERE=$(cd "$(dirname "$0")" && pwd)
+ROOT=$(cd "$HERE/../../../.." && pwd)
+SOURCES=(postgres nhost hasura-cloud supabase firebase appwrite round-trip)
+
+case "${1:-}" in
+  --list) for s in "${SOURCES[@]}"; do echo "importers/$s"; done; exit 0 ;;
+  "") ;;
+  *) echo "usage: run [--list]" >&2; exit 2 ;;
+esac
+
+# shellcheck source=lib-evidence.sh
+. "$HERE/lib-evidence.sh"
+
+OUT=${DRILL_OUT_ROOT:-${HOME:-$ROOT}/.nself/drill-out}/importers
+LIMIT=${DRILL_SOURCE_TIMEOUT:-900}
+BUDGET=${DRILL_BUDGET:-4500}
+IMAGE=docker:27-cli
+TO=$(command -v timeout || command -v gtimeout || true)
+mkdir -p "$OUT"
+CHECKS=$OUT/checks.ndjson
+: > "$CHECKS"
+START=$(date +%s)
+CNAME="" WDIR="" CHILD="" LINUX_BIN="" PREP_ERR="" USED_LIMIT=$LIMIT
+
+log() { echo "leg: $*" >&2; }
+
+# rm_workdir <dir>: the e2e scripts run as root in the container, so a hosted runner user may not
+# be able to delete what they made; a root container empties the dir first. Never fails the leg.
+rm_workdir() {
+  [ -n "$1" ] || return 0
+  rm -rf "$1" 2>/dev/null && return 0
+  [ -n "${DRILL_SOURCES_DIR:-}" ] || docker run --rm -v "$1":/w "$IMAGE" sh -c 'rm -rf /w/* /w/.[!.]* /w/..?*' >/dev/null 2>&1 || true
+  rm -rf "$1" 2>/dev/null || log "could not remove $1"
+  return 0
+}
+
+cleanup() {
+  [ -z "$CNAME" ] || docker rm -f "$CNAME" >/dev/null 2>&1 || true
+  rm_workdir "$WDIR"
+  return 0
+}
+on_signal() { [ -z "$CHILD" ] || kill -TERM "$CHILD" 2>/dev/null || true; exit "$1"; }
+trap cleanup EXIT
+trap 'on_signal 130' INT
+trap 'on_signal 143' TERM
+
+# script_for <source>: the e2e script this check runs.
+script_for() {
+  if [ -n "${DRILL_SOURCES_DIR:-}" ]; then echo "$DRILL_SOURCES_DIR/$1.sh"; return; fi
+  case $1 in round-trip) echo "$ROOT/scripts/e2e/export-round-trip.sh" ;; *) echo "$ROOT/scripts/e2e/import-$1.sh" ;; esac
+}
+
+# prepare: the Linux binary and the container image, once. Sets PREP_ERR on failure.
+prepare() {
+  [ -z "${DRILL_SOURCES_DIR:-}" ] || return 0
+  docker info >/dev/null 2>&1 || { PREP_ERR="docker is not available"; return 0; }
+  # The pipeline's throwaway copy of the repo may be private to its user (0600 files, 0700 dirs). The
+  # fixtures are bind-mounted into containers that run as other users (postgres uid 999), which then
+  # fail with "Permission denied"; Colima's mounts hide this. Read bits only, and only on CI, where the
+  # copy is throwaway; a developer's own checkout is left alone.
+  [ "${CI:-}" != true ] || chmod -R a+rX "$ROOT/test/fixtures" "$ROOT/scripts/e2e/fixtures" 2>/dev/null || true
+  { echo "umask $(umask) uid $(id -u)"; f=$ROOT/test/fixtures/import/postgres/seed.sql; stat -c '%a %u %n' "$f" 2>/dev/null || stat -f '%Lp %u %N' "$f" 2>/dev/null || true; } > "$OUT/env.log"
+  if [ -n "${NSELF_LINUX_BIN:-}" ] && [ -x "$NSELF_LINUX_BIN" ]; then
+    LINUX_BIN=$NSELF_LINUX_BIN
+  else
+    command -v go >/dev/null 2>&1 || { PREP_ERR="go is not on PATH and NSELF_LINUX_BIN is not set"; return 0; }
+    log "building the static linux nself into $(dirname "$OUT")/nself-linux"
+    (cd "$ROOT" && GOOS=linux CGO_ENABLED=0 ${TO:+$TO 600} go build -mod=vendor -o "$(dirname "$OUT")/nself-linux" ./cmd/nself) > "$OUT/prepare.log" 2>&1 \
+      || { PREP_ERR="go build failed: $(tail -n 5 "$OUT/prepare.log")"; return 0; }
+    LINUX_BIN=$(dirname "$OUT")/nself-linux
+  fi
+  ${TO:+$TO 600} docker pull -q "$IMAGE" > "$OUT/prepare.log" 2>&1 || PREP_ERR="docker pull $IMAGE failed"
+  snap "$OUT/base"
+}
+
+# snap <prefix>: write the ids of containers, volumes, networks and images to <prefix>.{c,v,n,i}.
+snap() {
+  docker ps -aq --no-trunc 2>/dev/null | sort > "$1.c" || true
+  docker volume ls -q 2>/dev/null | sort > "$1.v" || true
+  docker network ls -q --no-trunc 2>/dev/null | sort > "$1.n" || true
+  docker image ls -aq --no-trunc 2>/dev/null | sort -u > "$1.i" || true
+}
+
+# new_since <prefix> <kind>: ids of that kind that did not exist in the snapshot.
+new_since() {
+  local now="$OUT/now.$2"
+  case $2 in
+    c) docker ps -aq --no-trunc 2>/dev/null | sort > "$now" || true ;;
+    v) docker volume ls -q 2>/dev/null | sort > "$now" || true ;;
+    n) docker network ls -q --no-trunc 2>/dev/null | sort > "$now" || true ;;
+    i) docker image ls -aq --no-trunc 2>/dev/null | sort -u > "$now" || true ;;
+  esac
+  comm -13 "$1.$2" "$now"
+}
+
+# mine <kind> <ids>: the ids of that kind (c container, v volume, n network) whose name is one this leg's
+# e2e scripts create (compose projects a<NN>[x]-<time>-<n>, e2e-adopt-rt-*). The drills pipeline starts
+# every leg at once on one Docker daemon, so what another leg created meanwhile must never be swept.
+mine() {
+  local id name
+  for id in $2; do
+    case $1 in
+      c) name=$(docker inspect -f '{{.Name}}' "$id" 2>/dev/null) ;;
+      v) name=$id ;;
+      n) name=$(docker network inspect -f '{{.Name}}' "$id" 2>/dev/null) ;;
+    esac
+    name=${name#/}
+    case $name in a[0-9][0-9]*-* | e2e-adopt-rt-*) echo "$id" ;; esac
+  done
+}
+
+# sweep <source>: what the source left behind. Removed on CI only; elsewhere just named.
+sweep() {
+  [ -z "${DRILL_SOURCES_DIR:-}" ] || return 0
+  local c v n i free_kb
+  c=$(mine c "$(new_since "$OUT/before" c || true)"); v=$(mine v "$(new_since "$OUT/before" v || true)"); n=$(mine n "$(new_since "$OUT/before" n || true)")
+  [ -n "$c$v$n" ] || return 0
+  if [ "${CI:-}" != true ]; then log "importers/$1 left $(echo "$c" | wc -w) container(s), $(echo "$v" | wc -w) volume(s), $(echo "$n" | wc -w) network(s) behind; not removing them off CI"; return 0; fi
+  # shellcheck disable=SC2086  # id lists, one word each
+  [ -z "$c" ] || docker rm -f -v $c >/dev/null 2>&1 || true
+  [ -z "$v" ] || docker volume rm -f $v >/dev/null 2>&1 || true
+  [ -z "$n" ] || docker network rm $n >/dev/null 2>&1 || true
+  free_kb=$(df -Pk / | awk 'NR==2 {print $4}')
+  if [ "${free_kb:-0}" -lt 10485760 ]; then
+    # No -f: an image a running container (or another leg) uses stays.
+    i=$(new_since "$OUT/base" i || true)
+    log "low disk (${free_kb} KiB free): removing unused images pulled during the leg"
+    [ -z "$i" ] || docker rmi $i >/dev/null 2>&1 || true
+  fi
+}
+
+# execute <source> <logfile>: run one e2e script; returns its exit code (124 = timed out).
+execute() {
+  local s=$1 logf=$2 script rest
+  script=$(script_for "$s")
+  [ -f "$script" ] || { echo "e2e script $script is missing" > "$logf"; return 3; }
+  rest=$((BUDGET - (SECONDS_NOW - START)))
+  USED_LIMIT=$LIMIT; [ "$rest" -ge "$USED_LIMIT" ] || USED_LIMIT=$rest
+  if [ -n "${DRILL_SOURCES_DIR:-}" ]; then
+    ${TO:+$TO "$USED_LIMIT"} bash "$script" > "$logf" 2>&1 &
+  else
+    WDIR=$(mktemp -d "${TMPDIR:-/tmp}/importers-$s.XXXXXX")
+    [ "${CI:-}" != true ] || chmod 755 "$WDIR"
+    CNAME="drill-importers-$s-$$"
+    local rel; rel=$(printf %q "${script#"$ROOT"/}")
+    [ -n "$TO" ] || log "no timeout command; $s runs without a time limit"
+    ${TO:+$TO --kill-after=60 "$USED_LIMIT"} docker run --rm --init --name "$CNAME" --network host \
+      -v /var/run/docker.sock:/var/run/docker.sock -v "$ROOT":"$ROOT" -v "$WDIR":"$WDIR" \
+      -v "$LINUX_BIN":/usr/local/bin/nself:ro -w "$ROOT" -e W="$WDIR" "$IMAGE" \
+      sh -c "apk add -q bash curl jq coreutils openssl python3 postgresql16-client >/dev/null && exec bash $rel" > "$logf" 2>&1 &
+  fi
+  CHILD=$!
+  wait "$CHILD"
+  local rc=$?
+  CHILD=""
+  return "$rc"
+}
+
+# record <source> <result> <class> <exit> <log>: append the check and say it on stderr. A failure's
+# excerpt is its exit code, the last non-blank log line and the last 30 lines (the log's tail).
+record() {
+  local ex="$OUT/$1.excerpt"
+  if [ "$2" = pass ]; then : > "$ex"
+  else { echo "exit $4: $(grep -v '^[[:space:]]*$' "$5" | tail -n 1 | cut -c1-200)"; tail -n 30 "$5" | tail -c 3300; } > "$ex"; fi
+  ev_check "$1" "$2" "$3" "$4" "$ex" >> "$CHECKS"
+  log "importers/$1 $2$([ "$4" = null ] || echo " (exit $4)")"
+  if [ "$2" != pass ]; then sed 's/^/  | /' < <(tail -n 30 "$5") >&2; fi
+}
+
+prepare
+for s in "${SOURCES[@]}"; do
+  logf=$OUT/$s.log
+  SECONDS_NOW=$(date +%s)
+  if [ -n "$PREP_ERR" ]; then
+    echo "$PREP_ERR" > "$logf"; record "$s" error infra null "$logf"; continue
+  fi
+  if [ $((BUDGET - (SECONDS_NOW - START))) -le 0 ]; then
+    echo "the ${BUDGET}s budget of the leg is spent before this source started" > "$logf"
+    record "$s" error timeout null "$logf"; continue
+  fi
+  log "importers/$s start"
+  [ -n "${DRILL_SOURCES_DIR:-}" ] || snap "$OUT/before"
+  rc=0
+  execute "$s" "$logf" || rc=$?
+  cleanup; CNAME="" WDIR=""
+  sweep "$s"
+  if [ "$rc" -eq 0 ]; then record "$s" pass "" 0 "$logf"
+  elif [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+    echo "stopped at the ${USED_LIMIT}s limit" >> "$logf"; record "$s" error timeout "$rc" "$logf"
+  else record "$s" fail code "$rc" "$logf"; fi
+done
+
+END=$(date +%s)
+ev_document "$START" "$END" "$CHECKS" "$ROOT"
+jq -e -s 'all(.[]; .result == "pass")' "$CHECKS" >/dev/null

@@ -20,6 +20,7 @@ Every directory of `scripts/drill/legs/` that holds an executable file called `r
 | Drill | Directory | What it does |
 |---|---|---|
 | `drill-two-command` | `scripts/drill/legs/two-command/` | Runs the [Two-Command Drill](Two-Command-Drill) (`scripts/drill/two-command.sh --host`) once with `NSELF_V15` unset and once with `NSELF_V15=1`, and exits with that script's code. The drill, its legs and its budgets are not changed by the wrapper. |
+| `drill-importers` | `scripts/drill/legs/importers/` | Reruns the six importer e2e scripts and the export round trip, one fixture at a time, and prints one evidence check per source. See [Importers Drill](Drill-Importers). |
 | `drill-clean-host` | `scripts/drill/legs/clean-host/` | The lifecycle of a new user: install, `init`, `start`, `add` a plugin, `backup create`, `backup restore`, with row equality on a seeded table. See [Clean-host lifecycle](#clean-host-lifecycle). |
 | `drill-upgrade-continuity` | `scripts/drill/legs/upgrade-continuity/` | A stack started by the latest released cli (N) is upgraded by `nself update stack` of the build from the ref (N+1) with the seeded rows unchanged. See [Upgrade continuity](#upgrade-continuity). |
 
@@ -71,7 +72,7 @@ Each leg takes a few minutes on top of the image pulls. A run of the funnel with
 
 A directory without a `run`, a `run` that is not executable, a symlink and loose files are ignored. A directory name that breaks the rule fails the pipeline with E640 rather than being skipped.
 
-The job gets the default 10-minute timeout and only the allowlisted environment (`PATH`, `HOME`, `TMPDIR`, `CI`, the Go and Cargo variables, `LC_*`). `NSELF_BIN` and `NSELF_V15` are not passed, so a leg that needs the cli takes it from `.nself/bin/nself` (built from the checkout when missing) and sets what it needs itself, as `two-command/run` does. The nightly workflow raises the timeout to 80 minutes through `NSELF_CI_TIMEOUT`.
+The job gets the default 10-minute timeout and only the allowlisted environment (`PATH`, `HOME`, `TMPDIR`, `CI`, the Go and Cargo variables, `LC_*`). `NSELF_BIN` and `NSELF_V15` are not passed, so a leg that needs the cli takes it from `.nself/bin/nself` (built from the checkout when missing) and sets what it needs itself, as `two-command/run` does. The nightly workflow raises it to 80 minutes with `--timeout 80m` (the `NSELF_CI_TIMEOUT` variable alone does not reach discovered drill jobs); a drill can also define its own `drill-<name>` job in `.nself/ci.yaml`.
 
 A drill with several steps may print one `ci.evidence/v1` document as the last compact JSON line of its output; its failing checks are listed in the job's check.
 
