@@ -185,6 +185,10 @@ func TestValidateTarget(t *testing.T) {
 		{"http://h/café", "non-ASCII"},
 		{"http://h/\x7f", "non-ASCII"},
 		{"http://h;x", "forbidden character"},
+		{"http://h:8080/$host?x=$request_uri", "nginx variable"},
+		{"http://h/$uri", "nginx variable"},
+		{"http://h/p?a=${arg_x}", "forbidden character"},
+		{"http://$host:8080", "nginx variable"},
 		{"ftp://h", "scheme"},
 		{"http://", "host"},
 	} {

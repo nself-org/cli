@@ -223,6 +223,12 @@ func validateTarget(target string) error {
 			return fmt.Errorf("target contains forbidden character %q", c)
 		}
 	}
+	// The template sets the target through `set $up_X <target>`, so nginx
+	// expands any $variable in it; the model carries path and query as
+	// literals and cannot represent that.
+	if strings.ContainsRune(target, '$') {
+		return fmt.Errorf("target contains '$': nginx variables are not allowed in a proxy target")
+	}
 	// nginx cannot use spaces, control or non-ASCII bytes in a proxy_pass
 	// target, and the model cannot represent them.
 	for i := 0; i < len(target); i++ {
