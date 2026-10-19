@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -111,6 +113,38 @@ func runPluginTest(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// fallbackGoImage runs plugins whose go.mod has no readable go directive.
+const fallbackGoImage = "golang:1.26-alpine"
+
+// goDirective matches the `go 1.26.4` line of a go.mod.
+var goDirective = regexp.MustCompile(`(?m)^go[ \t]+(\d+\.\d+)(?:\.\d+)?[ \t]*(?://.*)?$`)
+
+// unitTestImage picks the golang image for a plugin: its go.mod go line
+// (major.minor) so the toolchain satisfies the directive, else fallbackGoImage.
+func unitTestImage(pluginPath string) string {
+	data, err := os.ReadFile(filepath.Join(pluginPath, "go.mod"))
+	if err != nil {
+		return fallbackGoImage
+	}
+	if m := goDirective.FindSubmatch(data); m != nil {
+		return "golang:" + string(m[1]) + "-alpine"
+	}
+	return fallbackGoImage
+}
+
+// unitTestDockerArgs builds the `docker run` arguments for the unit phase.
+// Official golang images set GOTOOLCHAIN=local, so a go.mod that asks for a
+// newer patch than the image carries would fail; auto lets Go fetch it.
+func unitTestDockerArgs(pluginPath string) []string {
+	return []string{"run", "--rm",
+		"-v", pluginPath + ":/workspace",
+		"-w", "/workspace",
+		"-e", "GOTOOLCHAIN=auto",
+		unitTestImage(pluginPath),
+		"sh", "-c", "go test ./... -v -count=1",
+	}
+}
+
 // runUnitTests runs go test ./... in the plugin source directory.
 func runUnitTests(pluginPath string, hostMode bool) error {
 	var testCmd *exec.Cmd
@@ -120,12 +154,7 @@ func runUnitTests(pluginPath string, hostMode bool) error {
 	} else {
 		// Inside container if available — fall back to host when Docker not running.
 		if isDockerAvailable() {
-			testCmd = exec.Command("docker", "run", "--rm",
-				"-v", pluginPath+":/workspace",
-				"-w", "/workspace",
-				"golang:1.22-alpine",
-				"sh", "-c", "go test ./... -v -count=1",
-			)
+			testCmd = exec.Command("docker", unitTestDockerArgs(pluginPath)...)
 		} else {
 			ui.Warn("Docker not available; running unit tests on host.")
 			testCmd = exec.Command("go", "test", "./...", "-v", "-count=1")
