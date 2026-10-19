@@ -120,3 +120,63 @@ func TestACMEAdoptRefusesUnsafeTarget(t *testing.T) {
 		t.Error("an unsafe target changed the tree, stored a secret or reloaded nginx")
 	}
 }
+
+// symlinkedConf points the lineage's served conf at the top-level ssl dir
+// <dir>, the way nself-web renders it on a certbot host (D-1214).
+func symlinkedConf(t *testing.T, f *acmeFix, dir string) {
+	t.Helper()
+	acmeWriteFile(t, filepath.Join(f.served, "nginx", "conf.d", dir+".conf"), []byte(fmt.Sprintf(
+		"server {\n  listen 443 ssl;\n  server_name api.task.nself.org;\n  ssl_certificate /etc/nginx/ssl/%s/fullchain.pem;\n  ssl_certificate_key /etc/nginx/ssl/%s/privkey.pem;\n}\n", dir, dir)))
+}
+
+func TestACMEAdoptThroughTopLevelSymlink(t *testing.T) {
+	f := newACMEFix(t)
+	le := adoptFix(t, f)
+	const dir = "api-task-nself-org"
+	symlinkedConf(t, f, dir)
+	top := filepath.Join(f.ssl, dir)
+	if err := os.Symlink("certificates/"+dir, top); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	cred := filepath.Join(f.root, "cloudflare.ini")
+	acmeWriteFile(t, cred, []byte("dns_cloudflare_api_token = cf-token-0123456789abcdef\n"))
+	before := acmeTree(t, f.root)
+	out, err := f.run(sslSetupCmd, "--acme", "--adopt-certbot="+le, "--dns-credential-file="+cred, "--lineage=api.task.nself.org", "--dry-run")
+	if err != nil || !strings.Contains(out, "symlink to certificates/"+dir) || !strings.Contains(out, "target:  certificates/"+dir) {
+		t.Fatalf("dry run through a symlinked cert dir: err=%v\n%s", err, out)
+	}
+	if acmeTree(t, f.root) != before || len(f.set) != 0 {
+		t.Fatal("dry run wrote something")
+	}
+	if out, err = f.run(sslSetupCmd, "--acme", "--adopt-certbot="+le, "--dns-credential-file="+cred, "--lineage=api.task.nself.org"); err != nil {
+		t.Fatalf("adopt: %v\n%s", err, out)
+	}
+	if l, _ := os.Readlink(top); l != "certificates/"+dir {
+		t.Errorf("the served top-level link was changed: %q", l)
+	}
+	if _, err := os.Stat(filepath.Join(top, "fullchain.pem")); err != nil {
+		t.Errorf("the served path no longer resolves after adoption: %v", err)
+	}
+}
+
+func TestACMEAdoptRefusesSymlinkEscape(t *testing.T) {
+	f := newACMEFix(t)
+	le := adoptFix(t, f)
+	const dir = "api-task-nself-org"
+	symlinkedConf(t, f, dir)
+	outside := filepath.Join(f.root, "outside")
+	acmeWriteFile(t, filepath.Join(outside, "fullchain.pem"), []byte("x"))
+	if err := os.Symlink(outside, filepath.Join(f.ssl, dir)); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	cred := filepath.Join(f.root, "cloudflare.ini")
+	acmeWriteFile(t, cred, []byte("dns_cloudflare_api_token = cf-token-0123456789abcdef\n"))
+	before := acmeTree(t, f.root)
+	out, err := f.run(sslSetupCmd, "--acme", "--adopt-certbot="+le, "--dns-credential-file="+cred, "--lineage=api.task.nself.org")
+	if err == nil || !strings.Contains(out, "not followed") || !strings.Contains(out, "not under /etc/nginx/ssl") || !strings.Contains(out, "refused api.task.nself.org") {
+		t.Fatalf("want the escaping link named and the lineage refused, got err=%v\n%s", err, out)
+	}
+	if acmeTree(t, f.root) != before || len(f.set) != 0 || len(f.execs) != 0 {
+		t.Error("an escaping link changed the tree, stored a secret or reloaded nginx")
+	}
+}

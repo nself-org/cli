@@ -101,6 +101,15 @@ type ProbeFunc func(host string) error
 // http-01, any failure refuses it with the remediation.
 func PlanWith(cbs []Certbot, hosts map[string]string, provider, only string, probe ProbeFunc) (adopt []Lineage, refused []string) {
 	owner := map[string]string{} // target -> lineage name
+	for _, cb := range cbs {     // lineages left out by --lineage still own their targets
+		if only != "" && cb.Name != only && cb.Err == nil {
+			for _, t := range targetsFor(cb.Domains, hosts) {
+				if _, ok := owner[t]; !ok && ValidTarget(t) {
+					owner[t] = cb.Name
+				}
+			}
+		}
+	}
 	for _, cb := range cbs {
 		if only != "" && cb.Name != only {
 			continue
