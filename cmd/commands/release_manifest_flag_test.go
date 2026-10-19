@@ -307,6 +307,29 @@ func TestCommittedRequiresReadsOriginsInventory(t *testing.T) {
 	if got, _, err := real(context.Background(), work, "prodsim", false); err != nil || !got {
 		t.Fatalf("after a working-tree edit: %v, %v; want still required", got, err)
 	}
+	// A pinned origin that is not the project's origin refuses the committed lookup.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	pinDir := filepath.Join(home, ".nself", "ci", "trust")
+	if err := os.MkdirAll(pinDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pinDir, "origin.url"), []byte("https://github.com/o/pinned.git\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := real(context.Background(), work, "prodsim", true); !codeIs(err, "E493") {
+		t.Fatalf("redirected origin under a pin: %v, want E493", err)
+	}
+	if err := os.WriteFile(filepath.Join(pinDir, "origin.url"), []byte(origin+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, avail, err := real(context.Background(), work, "prodsim", true); err != nil || !got || !avail {
+		t.Fatalf("matching pin: %v, %v, %v; want required and available", got, avail, err)
+	}
+	if err := os.Remove(filepath.Join(pinDir, "origin.url")); err != nil {
+		t.Fatal(err)
+	}
 	// No origin: nothing committed to consult, not an error.
 	git(work, "remote", "remove", "origin")
 	if got, avail, err := real(context.Background(), work, "prodsim", true); err != nil || got || avail {

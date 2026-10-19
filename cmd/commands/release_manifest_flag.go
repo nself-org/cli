@@ -167,8 +167,18 @@ var committedRequiresFn = committedRequires
 
 func committedRequires(ctx context.Context, workdir, target string, ciInstalled bool) (required, available bool, err error) {
 	g := verify.GitCLI{Root: workdir}
-	if ok, err := g.HasOrigin(ctx); err != nil || !ok {
+	ok, err := g.HasOrigin(ctx)
+	if err != nil {
 		return false, false, err
+	}
+	home, _ := os.UserHomeDir()
+	// A pinned trust origin applies to committed policy too: a redirected
+	// origin must not supply an inventory that waves the gate through.
+	if err := verify.CheckOriginPin(ctx, g, home, ok); err != nil {
+		return false, false, err
+	}
+	if !ok {
+		return false, false, nil
 	}
 	commit, err := g.PinDefault(ctx)
 	if err != nil {

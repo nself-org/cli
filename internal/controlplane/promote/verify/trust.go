@@ -151,6 +151,12 @@ func OriginPinned(home string) bool {
 	return pinned
 }
 
+// CheckOriginPin is checkOriginPin for callers outside the package: it
+// enforces the operator's origin pin (a no-op without a pin file).
+func CheckOriginPin(ctx context.Context, g Git, home string, hasOrigin bool) error {
+	return checkOriginPin(ctx, g, home, hasOrigin)
+}
+
 // checkOriginPin enforces the pin: the project must have an origin and its
 // effective URL (after url.*.insteadOf) must equal the pinned one. It runs even
 // when the project has no origin, so removing the remote cannot lift the pin.
