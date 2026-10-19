@@ -2,6 +2,7 @@ package verify
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -160,7 +161,7 @@ func TestPromoteReleaseTrustSources(t *testing.T) {
 	if _, err := Verify(context.Background(), in); codeOf(err) != "E493" {
 		t.Fatalf("working-tree-only key: %v, want E493", err)
 	}
-	if len(warned) != 1 || !strings.Contains(warned[0], "differs") {
+	if len(warned) != 1 || !strings.Contains(warned[0], "differs") || !strings.Contains(warned[0], "cccccccccccc") {
 		t.Fatalf("warnings = %v, want one differing-copy warning", warned)
 	}
 	// The same key in the operator trust directory is trusted.
@@ -175,14 +176,14 @@ func TestPromoteReleaseTrustSources(t *testing.T) {
 		t.Fatalf("operator-trusted key refused: %v", err)
 	}
 	// A failed fetch is fatal when origin exists.
-	r.git.fetchErr = errors.New("network down")
+	r.git.pinErr = errors.New("network down")
 	if _, err := Verify(context.Background(), r.input()); codeOf(err) != "E493" {
 		t.Fatalf("fetch failure: %v, want E493", err)
 	}
 	// No origin: the fetch is not attempted and operator keys still work.
-	r.git.fetchErr, r.git.noOrigin, r.git.fetched = nil, true, 0
-	if _, err := Verify(context.Background(), r.input()); err != nil || r.git.fetched != 0 {
-		t.Fatalf("no-origin repo: err %v fetched %d", err, r.git.fetched)
+	r.git.pinErr, r.git.noOrigin, r.git.pinned = nil, true, 0
+	if _, err := Verify(context.Background(), r.input()); err != nil || r.git.pinned != 0 {
+		t.Fatalf("no-origin repo: err %v pinned %d", err, r.git.pinned)
 	}
 }
 
@@ -306,5 +307,55 @@ func TestReadBoundedLimit(t *testing.T) {
 	}
 	if _, err := readBounded(over); err == nil || !strings.Contains(err.Error(), "larger") {
 		t.Fatalf("a file one byte over the limit: err %v, want a size refusal", err)
+	}
+}
+
+// TestPromoteReleaseOversizeTrustFile: an oversize file at a trust path cannot
+// exhaust the verifier.
+func TestPromoteReleaseOversizeTrustFile(t *testing.T) {
+	r := newRelease(t)
+	r.write(PayloadType, r.signer)
+	dir := filepath.Join(r.home, ".nself", "ci", "trust")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, keysName), make([]byte, trustFileLimit+1), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Verify(context.Background(), r.input()); codeOf(err) != "E493" {
+		t.Fatalf("oversize trust file: %v, want E493", err)
+	}
+}
+
+func TestPromoteReleaseTrailingPayloadContent(t *testing.T) {
+	r := newRelease(t)
+	r.write(PayloadType, r.signer)
+	payload, _ := json.Marshal(r.manifest)
+	if _, err := decodeManifest(append(payload, []byte(` {"x":1}`)...)); codeOf(err) != "E492" {
+		t.Fatalf("trailing JSON value: %v, want E492", err)
+	}
+	if _, err := decodeManifest(append(payload, []byte("garbage")...)); codeOf(err) != "E492" {
+		t.Fatalf("trailing garbage: %v, want E492", err)
+	}
+}
+
+func TestReadTrustFileLimit(t *testing.T) {
+	dir := t.TempDir()
+	at := filepath.Join(dir, "at")
+	if err := os.WriteFile(at, make([]byte, trustFileLimit), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := readTrustFile(at); err != nil || len(data) != trustFileLimit {
+		t.Fatalf("file of exactly the limit: len %d err %v", len(data), err)
+	}
+	over := filepath.Join(dir, "over")
+	if err := os.WriteFile(over, make([]byte, trustFileLimit+1), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readTrustFile(over); err == nil || !strings.Contains(err.Error(), "larger") {
+		t.Fatalf("file one byte over: %v, want a size refusal", err)
+	}
+	if _, err := readTrustFile(dir); err == nil || !strings.Contains(err.Error(), "regular") {
+		t.Fatalf("a directory: %v, want a regular-file refusal", err)
 	}
 }

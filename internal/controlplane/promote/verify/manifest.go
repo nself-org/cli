@@ -10,7 +10,6 @@ package verify
 //              ignored. Only fields promote reads are decoded.
 
 import (
-	"bytes"
 	"encoding/json"
 	"regexp"
 	"strconv"
@@ -78,8 +77,7 @@ type SigningInfo struct {
 // decodeManifest parses payload and enforces the major version and shape.
 func decodeManifest(payload []byte) (*Manifest, error) {
 	var m Manifest
-	dec := json.NewDecoder(bytes.NewReader(payload))
-	if err := dec.Decode(&m); err != nil {
+	if err := json.Unmarshal(payload, &m); err != nil {
 		return nil, errs.Wrap("E492", "release manifest payload is not valid JSON", err)
 	}
 	major, ok := schemaMajor(m.Schema)

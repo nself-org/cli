@@ -4,8 +4,10 @@ package verify
 //          the git CLI with fixed arguments.
 // Inputs:  the project root.
 // Outputs: Git for LoadTrust.
-// Constraints: no prompts (GIT_TERMINAL_PROMPT=0), each call bounded by ctx,
-//              ref names validated before they reach an argument list.
+// Constraints: no prompts (GIT_TERMINAL_PROMPT=0); every call is bounded in
+//              time and output; the trust commit is found from the remote's own
+//              answer and fetched explicitly, then addressed by its commit id so
+//              no local tag or stale ref can stand in for it.
 
 import (
 	"bytes"
@@ -18,23 +20,32 @@ import (
 	"time"
 )
 
-var refRE = regexp.MustCompile(`^origin/[A-Za-z0-9][A-Za-z0-9._/-]*$`)
+var (
+	branchRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]{0,200}$`)
+	commitRE = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
+)
 
-const fetchSeconds = 60
+const (
+	gitSeconds     = 60
+	maxGitOutput   = 4 << 20
+	trustFileLimit = 1 << 20
+)
 
 // GitCLI runs git in Root.
 type GitCLI struct{ Root string }
 
 func (g GitCLI) run(ctx context.Context, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", g.Root}, args...)...) //nolint:gosec // fixed git verbs; ref names are validated
+	ctx, cancel := context.WithTimeout(ctx, gitSeconds*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", g.Root}, args...)...) //nolint:gosec // fixed git verbs; branch and commit names are validated
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
-	if err != nil {
-		return out, fmt.Errorf("git %s: %w: %s", args[0], err, strings.TrimSpace(stderr.String()))
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &limitWriter{w: &stdout, left: maxGitOutput}
+	cmd.Stderr = &limitWriter{w: &stderr, left: 4096}
+	if err := cmd.Run(); err != nil {
+		return stdout.Bytes(), fmt.Errorf("git %s: %w: %s", args[0], err, strings.TrimSpace(stderr.String()))
 	}
-	return out, nil
+	return stdout.Bytes(), nil
 }
 
 // HasOrigin reports whether an origin remote is configured.
@@ -43,51 +54,49 @@ func (g GitCLI) HasOrigin(ctx context.Context) bool {
 	return err == nil
 }
 
-// Fetch refreshes origin.
-func (g GitCLI) Fetch(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, fetchSeconds*time.Second)
-	defer cancel()
-	_, err := g.run(ctx, "fetch", "--quiet", "origin")
-	return err
+// PinDefault asks origin which branch is its default, fetches exactly that
+// branch (whatever the configured fetch refspecs say) and returns the commit id
+// it points to. It fails when any step cannot be established.
+func (g GitCLI) PinDefault(ctx context.Context) (string, error) {
+	out, err := g.run(ctx, "ls-remote", "--symref", "origin", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	branch, ok := symrefBranch(string(out))
+	if !ok || !branchRE.MatchString(branch) || strings.Contains(branch, "..") || strings.HasSuffix(branch, ".lock") || strings.HasSuffix(branch, "/") {
+		return "", fmt.Errorf("origin did not name a usable default branch")
+	}
+	tracking := "refs/remotes/origin/" + branch
+	if _, err := g.run(ctx, "fetch", "--quiet", "--no-tags", "origin", "+refs/heads/"+branch+":"+tracking); err != nil {
+		return "", err
+	}
+	sha, err := g.run(ctx, "rev-parse", "--verify", "--quiet", tracking+"^{commit}")
+	if err != nil {
+		return "", err
+	}
+	commit := strings.TrimSpace(string(sha))
+	if !commitRE.MatchString(commit) {
+		return "", fmt.Errorf("origin's default branch did not resolve to a commit")
+	}
+	return commit, nil
 }
 
-// DefaultRef returns origin/<default branch>.
-func (g GitCLI) DefaultRef(ctx context.Context) (string, error) {
-	// The remote's own answer first: a local origin/HEAD goes stale when the
-	// default branch is renamed.
-	lsCtx, cancel := context.WithTimeout(ctx, fetchSeconds*time.Second)
-	defer cancel()
-	if out, err := g.run(lsCtx, "ls-remote", "--symref", "origin", "HEAD"); err == nil {
-		if branch, ok := symrefBranch(string(out)); ok && refRE.MatchString("origin/"+branch) {
-			return "origin/" + branch, nil
-		}
+// Show returns path as committed at the commit id.
+func (g GitCLI) Show(ctx context.Context, commit, path string) ([]byte, bool, error) {
+	if !commitRE.MatchString(commit) || strings.HasPrefix(path, "-") {
+		return nil, false, fmt.Errorf("refusing commit %q path %q", commit, path)
 	}
-	if out, err := g.run(ctx, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"); err == nil {
-		if ref := strings.TrimSpace(string(out)); refRE.MatchString(ref) {
-			return ref, nil
-		}
-	}
-	for _, ref := range []string{"origin/main", "origin/master"} {
-		if _, err := g.run(ctx, "rev-parse", "--verify", "--quiet", "refs/remotes/"+ref); err == nil {
-			return ref, nil
-		}
-	}
-	return "", fmt.Errorf("origin has no default branch ref")
-}
-
-// Show returns path as committed at ref.
-func (g GitCLI) Show(ctx context.Context, ref, path string) ([]byte, bool, error) {
-	if !refRE.MatchString(ref) || strings.HasPrefix(path, "-") {
-		return nil, false, fmt.Errorf("refusing ref %q path %q", ref, path)
-	}
-	listing, err := g.run(ctx, "ls-tree", "--name-only", ref, "--", path)
+	listing, err := g.run(ctx, "ls-tree", "--name-only", commit, "--", path)
 	if err != nil {
 		return nil, false, err
 	}
 	if len(bytes.TrimSpace(listing)) == 0 {
 		return nil, false, nil
 	}
-	data, err := g.run(ctx, "show", ref+":./"+path) // ./ makes the path relative to Root, not the repository top
+	data, err := g.run(ctx, "show", commit+":./"+path) // ./ makes the path relative to Root, not the repository top
+	if err == nil && len(data) > trustFileLimit {
+		return nil, false, fmt.Errorf("%s is larger than %d bytes", path, trustFileLimit)
+	}
 	return data, err == nil, err
 }
 

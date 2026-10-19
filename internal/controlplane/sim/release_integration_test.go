@@ -34,9 +34,10 @@ const (
 
 type relGit struct{ files map[string][]byte }
 
-func (relGit) HasOrigin(context.Context) bool             { return true }
-func (relGit) Fetch(context.Context) error                { return nil }
-func (relGit) DefaultRef(context.Context) (string, error) { return "origin/main", nil }
+func (relGit) HasOrigin(context.Context) bool { return true }
+func (relGit) PinDefault(context.Context) (string, error) {
+	return strings.Repeat("a", 40), nil
+}
 func (g relGit) Show(_ context.Context, _, p string) ([]byte, bool, error) {
 	d, ok := g.files[p]
 	return d, ok, nil

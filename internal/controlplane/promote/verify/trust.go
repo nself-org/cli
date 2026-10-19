@@ -15,6 +15,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -34,13 +35,12 @@ const (
 type Git interface {
 	// HasOrigin reports whether the repository has an origin remote.
 	HasOrigin(ctx context.Context) bool
-	// Fetch refreshes origin.
-	Fetch(ctx context.Context) error
-	// DefaultRef names the default branch ref, for example origin/main.
-	DefaultRef(ctx context.Context) (string, error)
-	// Show returns the committed content of path at ref; found is false when
-	// the path does not exist there.
-	Show(ctx context.Context, ref, path string) (data []byte, found bool, err error)
+	// PinDefault refreshes origin's default branch and returns the commit it
+	// points to. It fails when that cannot be established.
+	PinDefault(ctx context.Context) (commit string, err error)
+	// Show returns the committed content of path at the commit; found is false
+	// when the path does not exist there.
+	Show(ctx context.Context, commit, path string) (data []byte, found bool, err error)
 }
 
 // Trust is the set of trusted ci-release keys and revoked key ids.
@@ -63,7 +63,7 @@ func LoadTrust(ctx context.Context, g Git, home, repoRoot string) (Trust, error)
 		name string
 		dst  *[][]byte
 	}{{keysName, &keyDocs}, {revokedName, &revDocs}} {
-		data, err := os.ReadFile(filepath.Join(home, ".nself", "ci", "trust", f.name))
+		data, err := readTrustFile(filepath.Join(home, ".nself", "ci", "trust", f.name))
 		switch {
 		case err == nil:
 			*f.dst = append(*f.dst, data)
@@ -72,21 +72,18 @@ func LoadTrust(ctx context.Context, g Git, home, repoRoot string) (Trust, error)
 		}
 	}
 	if g != nil && g.HasOrigin(ctx) {
-		if err := g.Fetch(ctx); err != nil {
-			return t, errs.Wrap("E493", "cannot refresh origin to read the committed trust files", err).WithFix("Run git fetch origin, or place the keys in ~/.nself/ci/trust/.")
-		}
-		ref, err := g.DefaultRef(ctx)
+		commit, err := g.PinDefault(ctx)
 		if err != nil {
-			return t, errs.Wrap("E493", "cannot find the default branch of origin", err)
+			return t, errs.Wrap("E493", "cannot refresh origin's default branch to read the committed trust files", err).WithFix("Check that origin is reachable, or place the keys in ~/.nself/ci/trust/.")
 		}
 		var differing []string
 		for _, f := range []struct {
 			name string
 			dst  *[][]byte
 		}{{keysName, &keyDocs}, {revokedName, &revDocs}} {
-			data, found, err := g.Show(ctx, ref, trustRel+f.name)
+			data, found, err := g.Show(ctx, commit, trustRel+f.name)
 			if err != nil {
-				return t, errs.Wrap("E493", fmt.Sprintf("cannot read %s at %s", trustRel+f.name, ref), err)
+				return t, errs.Wrap("E493", fmt.Sprintf("cannot read %s at origin commit %.12s", trustRel+f.name, commit), err)
 			}
 			if found {
 				*f.dst = append(*f.dst, data)
@@ -96,7 +93,7 @@ func LoadTrust(ctx context.Context, g Git, home, repoRoot string) (Trust, error)
 			}
 		}
 		if len(differing) > 0 {
-			t.Warnings = append(t.Warnings, fmt.Sprintf("working-tree %s differs from %s; only the committed copy is trusted", strings.Join(differing, " and "), ref))
+			t.Warnings = append(t.Warnings, fmt.Sprintf("working-tree %s differs from origin commit %.12s; only the committed copy is trusted", strings.Join(differing, " and "), commit))
 		}
 	}
 	return parseTrust(t, keyDocs, revDocs)
@@ -104,11 +101,37 @@ func LoadTrust(ctx context.Context, g Git, home, repoRoot string) (Trust, error)
 
 // workingCopyDiffers reports a working-tree trust file that is not the committed one.
 func workingCopyDiffers(path string, committed []byte, found bool) bool {
-	local, err := os.ReadFile(path)
-	if err != nil {
+	local, err := readTrustFile(path)
+	if errors.Is(err, os.ErrNotExist) {
 		return false
 	}
-	return !found || !bytes.Equal(local, committed)
+	// A copy that cannot be read as a small regular file also differs.
+	return err != nil || !found || !bytes.Equal(local, committed)
+}
+
+// readTrustFile reads a small regular file. A FIFO, device or oversize file is
+// an error, so a hostile path can neither block nor exhaust memory.
+func readTrustFile(path string) ([]byte, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", path)
+	}
+	f, err := os.Open(path) //nolint:gosec // trust file path built from the operator home or project root
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	data, err := io.ReadAll(io.LimitReader(f, trustFileLimit+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > trustFileLimit {
+		return nil, fmt.Errorf("%s is larger than %d bytes", path, trustFileLimit)
+	}
+	return data, nil
 }
 
 func parseTrust(t Trust, keyDocs, revDocs [][]byte) (Trust, error) {

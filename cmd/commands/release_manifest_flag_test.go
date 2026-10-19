@@ -105,6 +105,22 @@ func TestReleaseVerifyRequired(t *testing.T) {
 			t.Fatalf("with release: %v, want E499 cannot be mounted", err)
 		}
 	})
+	t.Run("dry run with a release still needs a usable ci plugin", func(t *testing.T) {
+		withCIPlugin(t, false)
+		cmd, _ := releaseCmd(t, t.TempDir())
+		if err := wirePromoteRelease(cmd, dir, &cpromote.Engine{}, promoteStateFor("prodsim", controlplane.TierProd, true)); !codeIs(err, "E499") {
+			t.Fatalf("missing plugin: %v, want E499", err)
+		}
+		withCIBinary(t, "", true)
+		if err := wirePromoteRelease(cmd, dir, &cpromote.Engine{}, promoteStateFor("prodsim", controlplane.TierProd, true)); !codeIs(err, "E499") {
+			t.Fatalf("unmountable plugin: %v, want E499", err)
+		}
+		withCIPlugin(t, true)
+		eng := &cpromote.Engine{}
+		if err := wirePromoteRelease(cmd, dir, eng, promoteStateFor("prodsim", controlplane.TierProd, true)); err != nil || eng.Verify != nil {
+			t.Fatalf("usable plugin: err %v, verify set %v; a dry run verifies nothing", err, eng.Verify != nil)
+		}
+	})
 	t.Run("release given installs the hook and the digest check", func(t *testing.T) {
 		withCIPlugin(t, true)
 		cmd, _ := releaseCmd(t, t.TempDir())

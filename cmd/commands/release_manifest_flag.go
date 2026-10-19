@@ -80,12 +80,12 @@ func wirePromoteRelease(cmd *cobra.Command, workdir string, eng *cpromote.Engine
 	case release == "":
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning: promoting without --release; the release manifest and its evidence are not verified")
 		return nil
-	case st.DryRun:
-		return nil
 	case !ciInstalled:
 		return errs.New("E499", "the ci plugin is not installed, so --release cannot be verified")
 	case binary == "":
 		return errs.New("E499", "the ci plugin is installed but cannot be mounted, so --release cannot be verified")
+	case st.DryRun:
+		return nil // the plan is printed; nothing is verified or changed
 	}
 	dir, err := filepath.Abs(release)
 	if err != nil {

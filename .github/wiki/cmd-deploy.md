@@ -189,7 +189,7 @@ binding, class and quarantine have one implementation. There is no bypass flag.
 
 `--release` belongs to the environment form. `deploy promote --release <dir>`
 with no source and target is refused with `E401` instead of flipping the canary.
-`--dry-run` with `--release` prints the plan and verifies nothing. The hidden
+`--dry-run` with `--release` checks that the ci plugin is usable, prints the plan and verifies nothing. The hidden
 `nself promote` shim has no `--release`; `deploy promote-env` has it. The digest
 check covers the services that carry an image identity: a build-context service
 has none, so on a non-prod target it passes the check unproven (prod refuses such
