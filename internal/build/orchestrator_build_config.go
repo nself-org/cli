@@ -48,6 +48,12 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 	if err := st.preflightProxy(); err != nil {
 		return nil, err
 	}
+	// ── Step 1.3: API_DOCS_PATH preflight (D-1140) before any write ──
+	// routemodel.Build validates it too, but only after Step 1.5 has written
+	// .env.secrets and changed file modes; a bad value must mutate nothing.
+	if _, err := routemodel.APIDocs(st.cfg); err != nil {
+		return nil, err
+	}
 	// ── Step 1.5: Persist auto-generated secrets to .env.secrets ────
 	// Skipped entirely for --check. "--check" means "validate only" — it
 	// must be a pure read. Before this fix it ran unconditionally, so a
