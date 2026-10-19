@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# Drill leg: clean-host (P7-CI-20). The lifecycle of a new user on a clean host.
+#
+# Purpose: prove, as job `drill-clean-host` of the `drills` pipeline (.nself/ci.yaml), that
+#   install -> init -> start -> add a plugin -> backup -> restore works end to end and that the
+#   restore brings back every row of a seeded table. Each step is one check of a nested
+#   ci.evidence/v1 document; the first failed step marks the later steps skipped.
+# Steps:
+#   install     copy the cli under test into an empty bin dir on PATH; `nself version` answers
+#   init        `nself init` in an empty directory, stdin /dev/null, no prompt
+#   start       `nself start`, `nself status` exit 0, Hasura answers a GraphQL query
+#   add-plugin  `nself add $DRILL_PLUGIN` installs the plugin bytes plugins.nself.org serves
+#   seed        a migration creates public.drill_seed (50 rows); the digest is recorded
+#   backup      `nself backup create`, then `nself backup verify latest`
+#   restore     drop the table (proved gone), then `nself backup restore latest --yes`
+#   rows-equal  the restored table has the digest recorded at seed time
+# Inputs: NSELF_BIN (the cli under test; default <repo>/.nself/bin/nself, built from this
+#   checkout when missing), DRILL_OUT_ROOT (default <repo>/.nself/drill-out; results go to
+#   <root>/clean-host), DRILL_PLUGIN (default feature-flags), DRILL_INIT_TIMEOUT (120),
+#   DRILL_START_TIMEOUT (600), DRILL_HEALTH_TIMEOUT (600). The nself-ci exec funnel passes
+#   none of them, so a pipeline run uses the defaults.
+# Outputs: <out>/<step>.log, <out>/evidence.json, and the same document as the last stdout line.
+# Exit: 0 every step passed, 1 a step failed, 2 a missing tool or the cli could not be built.
+# Cleanup: `nself stop --volumes` and `docker compose down -v` run on every exit path. HOME is a
+#   throw-away directory, so plugins land there and not in the runner's real ~/.nself. The leg
+#   holds the host-wide stack lock (scripts/drill/stack-lock.sh) from before `start` to the end,
+#   because the executor starts all drill jobs at once and the stack ports are fixed.
+# Runs only on GitHub-hosted runners or a local box with Docker; never point it at a server.
+
+set -u
+HERE=$(cd "$(dirname "$0")" && pwd)
+ROOT=$(cd "$HERE/../../../.." && pwd)
+LEG=clean-host
+PROJ=drillclean
+OUT=${DRILL_OUT_ROOT:-$ROOT/.nself/drill-out}/$LEG
+PLUGIN=${DRILL_PLUGIN:-feature-flags}
+PLUGIN_T=${DRILL_PLUGIN_TIMEOUT:-300}
+# shellcheck source=/dev/null
+. "$HERE/lib.sh"
+
+need_tools || exit 2
+ref_bin || exit 2
+mkdir -p "$OUT"
+OUT=$(cd "$OUT" && pwd)
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/drill-$LEG.XXXXXX")
+PROJ_DIR=$WORK/$PROJ
+finish() {
+  cleanup_stack
+  stack_lock_release
+  rm -rf "$WORK"
+}
+ev_begin "$LEG" "$OUT"
+trap finish EXIT
+trap 'exit 143' INT TERM
+isolate_home
+stack_lock_acquire || { log "could not take the stack lock within ${DRILL_LOCK_TIMEOUT:-3600}s"; exit 1; }
+
+step_install() {
+  mkdir -p "$WORK/bin"
+  install -m 0755 "$REF_BIN" "$WORK/bin/nself" || return 1
+  PATH=$WORK/bin:$PATH
+  [ "$(command -v nself)" = "$WORK/bin/nself" ] || { echo "nself on PATH is not the installed binary"; return 1; }
+  NSELF=$WORK/bin/nself
+  VERSION=$(env -u CI "$NSELF" version | head -n 1)
+  [ -n "$VERSION" ] || { echo "nself version printed nothing"; return 1; }
+  ev_tool nself "$VERSION"
+  note "$VERSION"
+}
+
+step_init() {
+  mkdir -p "$PROJ_DIR"
+  nself_t "${DRILL_INIT_TIMEOUT:-120}" init || return 1
+  proj_init
+}
+
+step_start() {
+  nself_t "${DRILL_START_TIMEOUT:-600}" start || return 1
+  wait_healthy
+}
+
+step_add_plugin() {
+  nself_t "$PLUGIN_T" add "$PLUGIN" || return 1
+  nself_t 60 plugin list --installed | grep -Eq "^${PLUGIN}[[:space:]]+[[]installed[]]" ||
+    { echo "plugin $PLUGIN is not listed as installed"; return 1; }
+  [ -s "$HOME/.nself/plugins/$PLUGIN/plugin.json" ] || { echo "no plugin.json under the clean HOME for $PLUGIN"; return 1; }
+  note "$PLUGIN installed from the registry"
+}
+
+step_seed() {
+  seed_rows || return 1
+  SEED_DIGEST=$(row_digest) || return 1
+  case "$SEED_DIGEST" in "50 "*) ;; *) echo "unexpected seed digest: $SEED_DIGEST"; return 1 ;; esac
+  note "$SEED_DIGEST"
+}
+
+step_backup() {
+  nself_t 300 backup create --tag drill || return 1
+  nself_t 120 backup verify latest || return 1
+  nself_t 60 backup list --format json | jq -e 'length >= 1 and (.[0].tag == "drill" or any(.[]; .tag == "drill"))' >/dev/null ||
+    { echo "the drill backup is not listed"; return 1; }
+}
+
+step_restore() {
+  local gone
+  sql 'DROP TABLE public.drill_seed' || return 1
+  gone=$(sql "SELECT coalesce(to_regclass('public.drill_seed')::text, 'gone')") || return 1
+  [ "$gone" = gone ] || { echo "the table is still there after DROP"; return 1; }
+  nself_t 600 backup restore latest --yes
+}
+
+step_rows_equal() {
+  local now
+  now=$(row_digest) || return 1
+  if [ "$now" != "$SEED_DIGEST" ]; then
+    echo "row digest differs: seeded '$SEED_DIGEST', restored '$now'"
+    return 1
+  fi
+  note "$now"
+}
+
+run_steps install init start add-plugin seed backup restore rows-equal
+ev_emit
+ev_result

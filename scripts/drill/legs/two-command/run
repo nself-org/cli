@@ -15,6 +15,9 @@
 # Outputs: per-mode result directories; one `leg: <mode> <result>` line each.
 # Exit: 0 both modes passed; otherwise the first non-zero code of two-command.sh
 #   (1 drill failed, 2 bad usage or missing tool). Both modes always run.
+# Stack lock: the generated compose file publishes fixed host ports and the executor starts every
+#   drill job at once, so this leg holds the host-wide lock of scripts/drill/stack-lock.sh while it
+#   runs (P7-CI-20); the clean-host and upgrade-continuity legs take the same lock.
 # Runs only on GitHub-hosted runners or a local Linux box with Docker; never
 #   point it at a server.
 
@@ -22,6 +25,9 @@ set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../../../.." && pwd)
 DRILL="$ROOT/scripts/drill/two-command.sh"
+
+# shellcheck source=/dev/null
+. "$ROOT/scripts/drill/stack-lock.sh"
 
 NSELF_BIN=${NSELF_BIN:-$ROOT/.nself/bin/nself}
 OUT_ROOT=${DRILL_OUT_ROOT:-$ROOT/.nself/drill-out}
@@ -31,6 +37,9 @@ if [ ! -x "$NSELF_BIN" ]; then
   echo "leg: building nself from this checkout into $NSELF_BIN"
   (cd "$ROOT" && go build -mod=vendor -o "$NSELF_BIN" ./cmd/nself) || { echo "leg: go build failed" >&2; exit 2; }
 fi
+
+stack_lock_acquire || { echo "leg: could not take the stack lock within ${DRILL_LOCK_TIMEOUT:-3600}s" >&2; exit 1; }
+trap stack_lock_release EXIT
 
 rc=0
 # run_mode <mode> <v15 value>: an empty value means the variable is absent, as in the standalone matrix.

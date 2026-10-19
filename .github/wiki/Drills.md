@@ -21,6 +21,48 @@ Every directory of `scripts/drill/legs/` that holds an executable file called `r
 |---|---|---|
 | `drill-two-command` | `scripts/drill/legs/two-command/` | Runs the [Two-Command Drill](Two-Command-Drill) (`scripts/drill/two-command.sh --host`) once with `NSELF_V15` unset and once with `NSELF_V15=1`, and exits with that script's code. The drill, its legs and its budgets are not changed by the wrapper. |
 | `drill-importers` | `scripts/drill/legs/importers/` | Reruns the six importer e2e scripts and the export round trip, one fixture at a time, and prints one evidence check per source. See [Importers Drill](Drill-Importers). |
+| `drill-clean-host` | `scripts/drill/legs/clean-host/` | The lifecycle of a new user: install, `init`, `start`, `add` a plugin, `backup create`, `backup restore`, with row equality on a seeded table. See [Clean-host lifecycle](#clean-host-lifecycle). |
+| `drill-upgrade-continuity` | `scripts/drill/legs/upgrade-continuity/` | A stack started by the latest released cli (N) is upgraded by `nself update stack` of the build from the ref (N+1) with the seeded rows unchanged. See [Upgrade continuity](#upgrade-continuity). |
+
+## Clean-host lifecycle
+
+`scripts/drill/legs/clean-host/run` is the path a new user takes, on a clean directory and an empty `HOME`. It prints one `ci.evidence/v1` document (one check per step) as its last stdout line and saves it as `evidence.json`. The first failed step marks the later steps `skip`.
+
+| Step | What it proves |
+|---|---|
+| `install` | The cli under test (`NSELF_BIN`, or `.nself/bin/nself` built from the checkout) is copied into an empty bin directory that leads `PATH`, and `nself version` answers. |
+| `init` | `nself init` in an empty directory with stdin closed: no prompt. |
+| `start` | `nself start`, then `nself status` exit 0 and a GraphQL answer from Hasura. |
+| `add-plugin` | `nself add feature-flags` installs the plugin bytes that plugins.nself.org serves (the cli checks the checksum), the plugin is listed `[installed]` and its `plugin.json` is under the throw-away `HOME`. Change the plugin with `DRILL_PLUGIN`. |
+| `seed` | A Hasura-layout migration creates `public.drill_seed` with 50 rows and `nself db migrate up` applies it. The row count and an md5 of every row are recorded. |
+| `backup` | `nself backup create --tag drill`, `nself backup verify latest`, and the backup is in `nself backup list`. |
+| `restore` | The table is dropped (and checked gone), then `nself backup restore latest --yes` runs. |
+| `rows-equal` | The restored table has the count and md5 recorded at `seed`. |
+
+The plugin is installed, not started: building a plugin image is the job of the plugin checks, and this drill proves the install path and that the data survives a restore with a plugin present.
+
+## Upgrade continuity
+
+`scripts/drill/legs/upgrade-continuity/run` upgrades a running stack across versions. Version N is the latest GitHub release (downloaded from the `/releases/latest/download/checksums.txt` redirect and checked against its sha256, so it needs no API call or token; set `DRILL_PREV_BIN` to use a local binary). Version N+1 is the build from the ref. When the ref and the latest release are the same version the drill still runs and says so in the `fetch-n` excerpt.
+
+| Step | What it proves |
+|---|---|
+| `fetch-n` | The release binary for this OS and CPU is downloaded and verified. Both versions are recorded in `tool_versions`. |
+| `init-n`, `start-n` | N creates and starts a healthy project (no prompt, `status` exit 0, GraphQL answers). |
+| `seed` | As in the clean-host drill: 50 rows through a migration, count and md5 recorded. |
+| `upgrade` | N+1 runs `nself update stack --yes --json` in the project; the report status is `complete` (backup, pull, build, start, migrate, readiness and health all `ok`). |
+| `healthy` | After the upgrade `nself status` exits 0 and Hasura answers again. |
+| `rows-identical` | The seeded table has the count and md5 recorded before the upgrade. |
+
+The report of `update stack` is kept as `update-stack.json` next to the step logs. Consecutive nights of green are counted by the ship drill (P7-SHIP-03).
+
+Both drills stop the stack with `nself stop --volumes` (and `docker compose down -v`) on every exit path, and run with a throw-away `HOME`. They need Docker with the compose plugin, `jq` and `timeout`; they print the reason and exit 2 when one is missing. Results land in `.nself/drill-out/<leg>/` (`<step>.log`, `evidence.json`).
+
+### One stack at a time
+
+The stack's compose file publishes fixed host ports (5432, 8080, 4000, 80, 443) and `nself-ci` starts every drill job at once. The legs that start a stack (`two-command`, `clean-host`, `upgrade-continuity`) therefore take one host-wide lock, `scripts/drill/stack-lock.sh` (the directory `/tmp/nself-drill-stack.lock`, one path for every job; a lock whose holder process is gone is taken over). They run one after another; a waiting leg's job timeout keeps running, so the three together must finish within `NSELF_CI_TIMEOUT`; a waiting leg that reaches the cap reports a failure, not a skip (80 minutes in the nightly workflow, 120 for the job). A new leg that starts a stack sources the same file. `DRILL_LOCK_TIMEOUT` (default 3600 seconds) bounds the wait.
+
+Each leg takes a few minutes on top of the image pulls. A run of the funnel without `NSELF_CI_TIMEOUT` needs it raised to at least 20 minutes per leg.
 
 ## Add a drill
 
@@ -37,8 +79,8 @@ A drill with several steps may print one `ci.evidence/v1` document as the last c
 ## Run it
 
 ```
-nself ci --pipeline drills              # all drills, in name order
-nself ci --pipeline drills --json       # one check per drill in the evidence
+nself-ci --pipeline drills              # all drills, in name order
+nself-ci --pipeline drills --json       # one check per drill in the evidence
 nself ci evidence --pipeline drills     # overdue report (exit 10 when overdue)
 ```
 
@@ -51,7 +93,7 @@ The first two need Docker and take about as long as the Two-Command Drill (tens 
 1. builds `nself` from the ref (`.nself/bin/nself`);
 2. installs the `nself-ci` release pinned in the workflow `env` (tag and linux-amd64 sha256, checked with `sha256sum --check --strict`; the binary is never built from the checkout);
 3. runs `nself-ci --no-status --pipeline drills --json`;
-4. uploads `evidence.json` as the artifact `drills-evidence` and the leg results as `drills-two-command-results`.
+4. uploads `evidence.json` as the artifact `drills-evidence` and `.nself/drill-out/` (the results of every leg, not only two-command) as `drills-two-command-results`.
 
 The job is named `drills` and allows 120 minutes. It has no secrets and a read-only token.
 

@@ -19,8 +19,9 @@
 # Exit: 0 every source passed; 1 any check failed or errored; 2 bad usage.
 # Time and disk: a source that overruns its limit or the budget is an `error` check (never
 #   skipped, never green). On CI (CI=true) containers, volumes and networks that a source created
-#   and left behind are removed after it, and images it pulled are removed when the runner is low
-#   on disk; anything that existed before the source started is never touched. Off CI the
+#   and left behind are removed after it (only those named like the e2e scripts' own projects, so a
+#   leg running at the same time is never touched), and unused images pulled meanwhile are removed
+#   when the runner is low on disk; anything that existed before the source started is never touched. Off CI the
 #   leftovers are only named. Runs on GitHub-hosted ubuntu-latest (or any Linux box with
 #   Docker); never point it at a server.
 
@@ -120,11 +121,27 @@ new_since() {
   comm -13 "$1.$2" "$now"
 }
 
+# mine <kind> <ids>: the ids of that kind (c container, v volume, n network) whose name is one this leg's
+# e2e scripts create (compose projects a<NN>[x]-<time>-<n>, e2e-adopt-rt-*). The drills pipeline starts
+# every leg at once on one Docker daemon, so what another leg created meanwhile must never be swept.
+mine() {
+  local id name
+  for id in $2; do
+    case $1 in
+      c) name=$(docker inspect -f '{{.Name}}' "$id" 2>/dev/null) ;;
+      v) name=$id ;;
+      n) name=$(docker network inspect -f '{{.Name}}' "$id" 2>/dev/null) ;;
+    esac
+    name=${name#/}
+    case $name in a[0-9][0-9]*-* | e2e-adopt-rt-*) echo "$id" ;; esac
+  done
+}
+
 # sweep <source>: what the source left behind. Removed on CI only; elsewhere just named.
 sweep() {
   [ -z "${DRILL_SOURCES_DIR:-}" ] || return 0
   local c v n i free_kb
-  c=$(new_since "$OUT/before" c || true); v=$(new_since "$OUT/before" v || true); n=$(new_since "$OUT/before" n || true)
+  c=$(mine c "$(new_since "$OUT/before" c || true)"); v=$(mine v "$(new_since "$OUT/before" v || true)"); n=$(mine n "$(new_since "$OUT/before" n || true)")
   [ -n "$c$v$n" ] || return 0
   if [ "${CI:-}" != true ]; then log "importers/$1 left $(echo "$c" | wc -w) container(s), $(echo "$v" | wc -w) volume(s), $(echo "$n" | wc -w) network(s) behind; not removing them off CI"; return 0; fi
   # shellcheck disable=SC2086  # id lists, one word each
@@ -133,9 +150,10 @@ sweep() {
   [ -z "$n" ] || docker network rm $n >/dev/null 2>&1 || true
   free_kb=$(df -Pk / | awk 'NR==2 {print $4}')
   if [ "${free_kb:-0}" -lt 10485760 ]; then
+    # No -f: an image a running container (or another leg) uses stays.
     i=$(new_since "$OUT/base" i || true)
-    log "low disk (${free_kb} KiB free): removing images pulled during the leg"
-    [ -z "$i" ] || docker rmi -f $i >/dev/null 2>&1 || true
+    log "low disk (${free_kb} KiB free): removing unused images pulled during the leg"
+    [ -z "$i" ] || docker rmi $i >/dev/null 2>&1 || true
   fi
 }
 

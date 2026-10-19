@@ -1,17 +1,69 @@
 # nself-ci configuration for the cli repo (contract:ci.pipeline-config v1).
 #
-# Purpose: declare the pipelines `nself ci` runs for this repository. Today that
-#   is one scheduled pipeline, `drills` (P7-CI-18).
+# Purpose: declare the jobs `nself ci` plans for this repository. The default
+#   pipeline below is the gate the `nself-ci` workflow job runs on every pull
+#   request and on main (P7-CI-56). One scheduled pipeline, `drills`, sits beside
+#   it (P7-CI-18).
+# Default pipeline: declaring `jobs:` turns catalogue detection off. Detection on
+#   this tree plans flutter, node, trivy and fixture-module jobs and runs Go
+#   without `-mod=vendor`; the cli builds and tests against the committed
+#   vendor/ tree, so the Go jobs are named here with the same argv as the `ci`
+#   job of .github/workflows/ci.yml (scripts/ci/gofmt-check.sh is the single
+#   source of the format rule). The v1.5 test leg, vendor-sync check, contract
+#   gate and the multi-OS matrix stay in ci.yml until it is retired (debt row).
+# Rule: a job here may be tuned (workdir, when.paths, timeout) but never made
+#   optional to get a green run (Epic D28).
 # Drills: every directory of scripts/drill/legs that holds an executable `run`
 #   is one `kind: drill` job named `drill-<dir>`, so adding a drill needs no edit
 #   here. The first one, two-command, wraps scripts/drill/two-command.sh. See
 #   .github/wiki/Drills.md and the nightly workflow .github/workflows/drill-nightly.yml.
 # max_age: what `nself ci evidence --pipeline drills` reports as overdue (exit 10)
 #   when a drill has not passed within it.
-# No `jobs:` block on purpose: declaring jobs turns catalogue detection off, which
-#   would empty this repository's default pipeline.
 
 version: 1
+
+jobs:
+  # Format rule, shared with `make fmt-check` and the ci.yml gofmt job. No `when`:
+  # every change can unformat a file.
+  gofmt:
+    kind: static
+    run: [bash, scripts/ci/gofmt-check.sh]
+    timeout: 300s
+
+  go-vet:
+    kind: static
+    run: [go, vet, -mod=vendor, ./...]
+    env:
+      CGO_ENABLED: "0"
+    timeout: 900s
+
+  go-build:
+    kind: build
+    run: [go, build, -mod=vendor, ./...]
+    env:
+      CGO_ENABLED: "0"
+    timeout: 900s
+
+  # The unit suite, as ci.yml runs it on the Linux leg. AI_AUTO_INSTALL=false keeps
+  # `nself start` from installing anything over the network; NSELF_REQUIRE_AGE=1
+  # makes the config secrets leak gate (D-0413) fail instead of skip when `age`
+  # is missing, so the `nself-ci` workflow installs age before the gate runs.
+  go-test:
+    kind: test
+    run: [go, test, -mod=vendor, -count=1, -timeout, 10m, ./...]
+    env:
+      CGO_ENABLED: "0"
+      AI_AUTO_INSTALL: "false"
+      NSELF_REQUIRE_AGE: "1"
+    timeout: 1500s
+
+  # Secrets in the working tree, with the config the security-scan workflow uses.
+  # No `when`: a docs-only change still gets a substantive check. The history
+  # scan stays in security-scan.yml.
+  secrets-tree:
+    kind: static
+    run: [gitleaks, detect, --no-git, --source, ., --config, .github/gitleaks.toml, --redact, --log-level, warn]
+    timeout: 300s
 
 pipelines:
   drills:
