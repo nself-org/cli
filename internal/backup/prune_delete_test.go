@@ -63,6 +63,12 @@ func TestPruneDeletesPrunedFiles(t *testing.T) {
 	fresh := BackupFileName("my_proj", "full", "20261019_110000", "", ".dump")
 	write(fresh, time.Minute)
 
+	// Old files that are not backups must never be touched.
+	strays := []string{".gitkeep", "notes.txt", "restore.tmp"}
+	for _, name := range strays {
+		write(name, 500*24*time.Hour)
+	}
+
 	cfg := &config.Config{}
 	cfg.Backup.Dir = dir
 	res, err := Prune(cfg, PruneOptions{KeepDaily: 1, KeepWeekly: 1, KeepMonthly: 1})
@@ -77,7 +83,7 @@ func TestPruneDeletesPrunedFiles(t *testing.T) {
 			t.Errorf("%s was reported pruned but is still on disk (err=%v)", name, err)
 		}
 	}
-	for _, name := range []string{held, fresh} {
+	for _, name := range append([]string{held, fresh}, strays...) {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Errorf("%s must survive the prune: %v", name, err)
 		}
