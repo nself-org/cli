@@ -41,8 +41,9 @@ func checkOptions(opts []string) error {
 }
 
 // splitD4 returns the leading D4 block (optional CISSHFlags, then every
-// CIOptions pair in order, then the optional KnownHostsCommand=none) and the
-// rest. If the block is not exactly that, d4 is nil and rest is all of opts.
+// CIOptions pair in order, then the optional KnownHostsCommand=none and the
+// 8.7+ trailer) and the rest. If the block is not exactly that, d4 is nil and
+// rest is all of opts.
 func splitD4(opts []string) (d4, rest []string) {
 	i := 0
 	if len(opts) >= 3 && opts[0] == "-T" && opts[1] == "-a" && opts[2] == "-x" {
@@ -54,7 +55,10 @@ func splitD4(opts []string) (d4, rest []string) {
 		}
 		i += 2
 	}
-	if i+1 < len(opts) && opts[i] == "-o" && opts[i+1] == "KnownHostsCommand=none" {
+	for _, kv := range append([]string{"KnownHostsCommand=none"}, d4Options87...) {
+		if i+1 >= len(opts) || opts[i] != "-o" || opts[i+1] != kv {
+			break
+		}
 		i += 2
 	}
 	return opts[:i], opts[i:]

@@ -14,7 +14,7 @@ func TestCISSHFlags(t *testing.T) {
 
 func TestCIOptions_ExactD4List(t *testing.T) {
 	want := []string{
-		"BatchMode=yes", "ForwardAgent=no", "ForwardX11=no", "ClearAllForwardings=yes",
+		"BatchMode=yes", "ForwardAgent=no", "ForwardX11=no", "ClearAllForwardings=yes", "Tunnel=no",
 		"PermitLocalCommand=no", "ControlMaster=no", "ControlPath=none", "RemoteCommand=none",
 		"RequestTTY=no", "UpdateHostKeys=no", "CheckHostIP=no", "VerifyHostKeyDNS=no",
 		"StrictHostKeyChecking=yes", "UserKnownHostsFile=/pin/kh", "GlobalKnownHostsFile=/dev/null",
@@ -33,8 +33,15 @@ func TestCIOptions_ExactD4List(t *testing.T) {
 	if got := CIOptions("n1", "/pin/kh", Version{8, 5}); !reflect.DeepEqual(got, flat(append(want, "KnownHostsCommand=none"))) {
 		t.Fatalf("CIOptions(8.5) = %q", got)
 	}
-	if got := CIOptions("n1", "/pin/kh", Version{10, 0}); !hasArg(got, "KnownHostsCommand=none") {
-		t.Fatal("KnownHostsCommand=none missing for 10.0")
+	khc := append(want, "KnownHostsCommand=none")
+	if got := CIOptions("n1", "/pin/kh", Version{8, 6}); !reflect.DeepEqual(got, flat(khc)) {
+		t.Fatalf("CIOptions(8.6) = %q", got)
+	}
+	v87 := append(append([]string(nil), khc...), "StdinNull=no", "SessionType=default", "ForkAfterAuthentication=no")
+	for _, v := range []Version{{8, 7}, {9, 6}, {10, 0}} {
+		if got := CIOptions("n1", "/pin/kh", v); !reflect.DeepEqual(got, flat(v87)) {
+			t.Fatalf("CIOptions(%v) = %q", v, got)
+		}
 	}
 	for _, f := range []string{"-T", "-a", "-x"} {
 		if hasArg(CIOptions("n1", "/pin/kh", Version{9, 6}), f) {

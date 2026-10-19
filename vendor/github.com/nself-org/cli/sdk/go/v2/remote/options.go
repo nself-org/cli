@@ -66,13 +66,18 @@ type d4Option struct {
 // checkOptions recognizes it from this one table.
 var d4Options = []d4Option{
 	{"BatchMode", "yes"}, {"ForwardAgent", "no"}, {"ForwardX11", "no"},
-	{"ClearAllForwardings", "yes"}, {"PermitLocalCommand", "no"}, {"ControlMaster", "no"},
+	{"ClearAllForwardings", "yes"}, {"Tunnel", "no"}, {"PermitLocalCommand", "no"}, {"ControlMaster", "no"},
 	{"ControlPath", "none"}, {"RemoteCommand", "none"}, {"RequestTTY", "no"},
 	{"UpdateHostKeys", "no"}, {"CheckHostIP", "no"}, {"VerifyHostKeyDNS", "no"},
 	{"StrictHostKeyChecking", "yes"}, {"UserKnownHostsFile", ""},
 	{"GlobalKnownHostsFile", "/dev/null"}, {"HostKeyAlias", ""},
 	{"ConnectTimeout", "10"}, {"ServerAliveInterval", "10"}, {"ServerAliveCountMax", "3"},
 }
+
+// d4Options87 are the entries only OpenSSH 8.7 or newer knows. They pin the
+// stdio session against an operator ssh_config (StdinNull yes, SessionType
+// none, ForkAfterAuthentication yes). They follow KnownHostsCommand=none.
+var d4Options87 = []string{"StdinNull=no", "SessionType=default", "ForkAfterAuthentication=no"}
 
 // literalPath accepts a pinned known_hosts path that ssh reads as written: a
 // safeOptValue with no '%' token, no '$' (environment expansion) and no
@@ -101,9 +106,11 @@ func (e d4Option) matches(kv string) bool {
 
 // CIOptions returns the D4 `-o` option set as flat "-o", "Key=Value" pairs, in
 // the documented order. KnownHostsCommand=none is appended only for OpenSSH
-// 8.5 or newer (older clients do not have the option and cannot be bypassed
-// by it). nodeID must satisfy ValidateNodeID and pinnedFile must be the
-// pinned known_hosts file; the caller supplies both.
+// 8.5 or newer, and StdinNull=no, SessionType=default and
+// ForkAfterAuthentication=no only for 8.7 or newer (older clients do not have
+// the options and cannot be bypassed by them). nodeID must satisfy
+// ValidateNodeID and pinnedFile must be the pinned known_hosts file; the
+// caller supplies both.
 func CIOptions(nodeID, pinnedFile string, v Version) []string {
 	out := make([]string, 0, 2*len(d4Options)+2)
 	for _, e := range d4Options {
@@ -118,6 +125,11 @@ func CIOptions(nodeID, pinnedFile string, v Version) []string {
 	}
 	if v.AtLeast(8, 5) {
 		out = append(out, "-o", "KnownHostsCommand=none")
+	}
+	if v.AtLeast(8, 7) {
+		for _, kv := range d4Options87 {
+			out = append(out, "-o", kv)
+		}
 	}
 	return out
 }
