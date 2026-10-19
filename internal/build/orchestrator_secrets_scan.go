@@ -62,22 +62,46 @@ func scanEnvFiles(workdir, envName string, sink Sink) map[string]bool {
 		if err != nil {
 			continue
 		}
-		kv := make(map[string]string)
-		sc := bufio.NewScanner(bytes.NewReader(data))
-		for sc.Scan() {
-			line := strings.TrimSpace(sc.Text())
-			if line == "" || line[0] == '#' {
-				continue
-			}
-			if idx := strings.IndexByte(line, '='); idx > 0 {
-				onDisk[line[:idx]] = true
-				kv[line[:idx]] = parseEnvValue(line[idx+1:])
-			}
+		kv := parseScanLayer(name, data)
+		for k := range kv {
+			onDisk[k] = true
 		}
 		vals[name] = kv
 	}
 	warnShadowedSecrets(vals, config.EnvCascadeOrder(envName, config.LegacyOrderActive()))
 	return onDisk
+}
+
+// parseScanLayer returns the key → value map of one env layer using the
+// loader's own dotenv grammar (config.ParseEnvBytes), so `export KEY=v`,
+// `KEY =v` and `KEY: v` count as the key the loader sees (D-1150). When the
+// file does not parse the loader would reject it, but the scan must still see
+// which keys it names: fall back to a line scan that strips `export` and
+// whitespace around the key. Only key names and files reach logs, never values.
+func parseScanLayer(name string, data []byte) map[string]string {
+	if kv, err := config.ParseEnvBytes(name, data); err == nil {
+		return kv
+	}
+	kv := make(map[string]string)
+	sc := bufio.NewScanner(bytes.NewReader(data))
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || line[0] == '#' {
+			continue
+		}
+		idx := strings.IndexAny(line, "=:")
+		if idx <= 0 {
+			continue
+		}
+		key := strings.TrimSpace(line[:idx])
+		if rest, ok := strings.CutPrefix(key, "export"); ok && rest != "" && (rest[0] == ' ' || rest[0] == '\t') {
+			key = strings.TrimSpace(rest)
+		}
+		if key != "" {
+			kv[key] = parseEnvValue(line[idx+1:])
+		}
+	}
+	return kv
 }
 
 // warnShadowedSecrets logs once per owned key that .env.secrets defines with a
