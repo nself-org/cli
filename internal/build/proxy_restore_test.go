@@ -162,6 +162,33 @@ func TestProxyRestoreDanglingLinkPlanMode(t *testing.T) {
 	}
 }
 
+// D-1162: a dangling symlink must be planned (Lstat, not Stat) so the checked
+// apply that replays the plan accepts its removal.
+func TestProxyRestoreDanglingLinkPlannedAndApplied(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on windows")
+	}
+	workdir, dir := restoreProject(t, testRendererMarker)
+	link := filepath.Join(dir, "dangling")
+	// The nested unmarked dir is D-1161's case; keep this test on the link alone.
+	if err := os.RemoveAll(filepath.Join(dir, "sub")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(workdir, "gone"), link); err != nil {
+		t.Fatal(err)
+	}
+	plan := newMemSink(workdir, "")
+	if err := cleanupProviderOutput(plan, workdir, ProviderNginx); err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if !plan.removed[plan.key(link)] {
+		t.Fatal("the plan does not record the dangling link's removal")
+	}
+	if err := cleanupProviderOutput(newExpectSink(workdir, plan.snapshot()), workdir, ProviderNginx); err != nil {
+		t.Fatalf("checked replay rejected the planned cleanup: %v", err)
+	}
+}
+
 func TestProxyRestoreRootOwnedWarnsAndKeeps(t *testing.T) {
 	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
 		t.Skip("needs unix permissions and a non-root user")

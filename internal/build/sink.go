@@ -153,12 +153,14 @@ func (m *memSink) WriteAtomic(p string, data []byte, perm fs.FileMode) error {
 	return nil
 }
 
+// Remove records a removal. It uses Lstat like os.Remove: a symlink, dangling
+// or not, is the entry that is removed (D-1162), never what it points at.
 func (m *memSink) Remove(p string) error {
 	k := m.key(p)
 	if _, planned := m.files[k]; planned {
 		delete(m.files, k)
 		// Removing a planned file also hides an older on-disk copy, if any.
-		if _, err := os.Stat(m.abs(p)); err == nil {
+		if _, err := os.Lstat(m.abs(p)); err == nil {
 			m.removed[k] = true
 		}
 		return nil
@@ -166,7 +168,7 @@ func (m *memSink) Remove(p string) error {
 	if m.removed[k] {
 		return &fs.PathError{Op: "remove", Path: p, Err: fs.ErrNotExist}
 	}
-	if _, err := os.Stat(m.abs(p)); err != nil {
+	if _, err := os.Lstat(m.abs(p)); err != nil {
 		return err
 	}
 	m.removed[k] = true
