@@ -1,6 +1,7 @@
 {"releases": {
   "ci": {"version": "1.2.10", "release_signature": {"key_id": "plugins-0123456789abcdef", "alg": "ed25519", "sig": "AAAA"}},
   "minio": {"version": "v1.2.9-rc.1", "release_signature": {"key_id": "plugins-0123456789abcdef", "alg": "ed25519", "sig": "AAAA"}},
+  "rcs": {"version": "1.0.0-rc.10", "release_signature": {"key_id": "plugins-0123456789abcdef", "alg": "ed25519", "sig": "AAAA"}},
   "tokens": {"version": "1.2.9", "release_signature": {"key_id": "plugins-0123456789abcdef", "alg": "ed25519", "sig": "AAAA"}},
   "unsigned-only": {"version": "1.2.9", "release_signature": null}
 }}

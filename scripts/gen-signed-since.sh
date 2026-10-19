@@ -46,14 +46,17 @@ FROM_FILES="${FROM_FILES:-}"
 
 # floor_of FILE...: stdin none; prints {floor: {slug: lowest signed version}, presigning: {slug: [{version, sha256}]}} for the release-data files given.
 # presigning lists the UNSIGNED rows of each file's optional "history" array ([{slug, version, sha256, release_signature}]): the real pre-signing releases (D-0841).
-# Version order: numeric MAJOR.MINOR.PATCH, a pre-release below its release, build metadata ignored.
+# Version order: numeric MAJOR.MINOR.PATCH, a pre-release below its release, build metadata ignored. Pre-release identifiers follow
+# SemVer 2.0.0 section 11: split on ".", numeric identifiers compare as numbers and rank below alphanumeric ones, and a longer
+# identifier list outranks its own prefix (so rc.2 < rc.10 and rc.2 < rc.2.1).
 floor_of() {
   if [ $# -eq 0 ]; then echo '{"floor":{},"presigning":{}}'; return; fi
   jq -s '
     def key: (. // "" | sub("^v"; "") | sub("\\+.*$"; "")) as $v
       | ($v | split("-")) as $p
       | ($p[0] | split(".") | map(tonumber? // 0)) as $n
-      | [($n[0] // 0), ($n[1] // 0), ($n[2] // 0), (if ($p | length) > 1 then 0 else 1 end), ($p[1:] | join("-"))];
+      | ($p[1:] | join("-") | split(".") | map(if test("^[0-9]+$") then [0, tonumber, ""] else [1, 0, .] end)) as $pre
+      | [($n[0] // 0), ($n[1] // 0), ($n[2] // 0), (if ($p | length) > 1 then 0 else 1 end), $pre];
     ([ .[] | (.releases // {}) | to_entries[]
       | select(.value.release_signature != null and (.value.version // "") != "")
       | {slug: .key, version: .value.version} ]

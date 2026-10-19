@@ -22,6 +22,14 @@
   },
   "tokens": {
    "version": "1.2.6"
+  },
+  "rcs": {
+   "version": "1.0.0-rc.2",
+   "release_signature": {
+    "key_id": "plugins-0123456789abcdef",
+    "alg": "ed25519",
+    "sig": "AAAA"
+   }
   }
  },
  "history": [
