@@ -42,8 +42,8 @@ internal/migration/testdata/v0.9-fixture/.env
 /monitoring/
 services/
 # Local nSelf state. .nself/ci.yaml is the committed CI pipeline config (P7-CI-18).
-.nself/*
-!.nself/ci.yaml
+**/.nself/*
+!/.nself/ci.yaml
 backups/
 
 # IDE

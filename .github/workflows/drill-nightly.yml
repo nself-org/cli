@@ -43,7 +43,7 @@ env:
   CI_VERSION: "1.2.12"
   CI_RELEASE_URL: "https://github.com/nself-org/plugins/releases/download/v1.2.12/ci-1.2.12-linux-amd64.tar.gz"
   CI_RELEASE_SHA256: "12c1836702fa54f5fa52ae72eb2585be6b978614cfd72b27371165b466641d40"
-  NSELF_V15: "1"          # the plugin binary does not follow the cli flip; kept until v1.6
+  NSELF_V15: "1"          # for the nself-ci process only (the plugin binary does not follow the cli flip; kept until v1.6); the legs set their own
   NSELF_CI_TIMEOUT: 80m   # the two-command leg runs both compat modes in one job (default 10m)
 
 jobs:
