@@ -17,6 +17,7 @@ func TestUnitTestImageFollowsGoDirective(t *testing.T) {
 		{"minor only", "module x\n\ngo 1.23\n", "golang:1.23-alpine"},
 		{"older", "module x\n\ngo 1.21.0\n\ntoolchain go1.22.1\n", "golang:1.21-alpine"},
 		{"trailing comment", "module x\ngo 1.25.0 // pinned\n", "golang:1.25-alpine"},
+		{"crlf", "module x\r\ngo 1.23.4\r\n", "golang:1.23-alpine"},
 		{"no go line", "module x\n", fallbackGoImage},
 		{"toolchain line only", "module x\ntoolchain go1.24.0\n", fallbackGoImage},
 	}

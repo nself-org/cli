@@ -117,7 +117,7 @@ func runPluginTest(cmd *cobra.Command, args []string) error {
 const fallbackGoImage = "golang:1.26-alpine"
 
 // goDirective matches the `go 1.26.4` line of a go.mod.
-var goDirective = regexp.MustCompile(`(?m)^go[ \t]+(\d+\.\d+)(?:\.\d+)?[ \t]*(?://.*)?$`)
+var goDirective = regexp.MustCompile(`(?m)^go[ \t]+(\d+\.\d+)(?:\.\d+)?[ \t\r]*(?://.*)?$`)
 
 // unitTestImage picks the golang image for a plugin: its go.mod go line
 // (major.minor) so the toolchain satisfies the directive, else fallbackGoImage.
