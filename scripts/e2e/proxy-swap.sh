@@ -354,13 +354,18 @@ if [[ $MODE != add && $MODE != renew ]]; then
   [[ -f $W/a/.nself/generated/traefik/.nself-generated ]] || { echo 'FAIL: the swap left no renderer marker to clean' >&2; exit 1; }
   nself "$W/a" remove traefik --yes
   if [[ $MODE == round-trip ]]; then
-    # traefik-config runs as root and Docker creates its bind directories root-owned (D-0782): an
-    # unprivileged build must warn, keep them and still succeed. Then hand them over and build again.
+    # Since D-0782 the traefik services run as the build user (NSELF_HOST_UID/GID), so the rendered
+    # directories are normally user-owned and the cleanup removes them without a word. A host where
+    # Docker still created them root-owned (an older plugin pin) must warn, keep them and still
+    # succeed; then hand them over and build again. Either way the end state is checked below.
     nself "$W/a" build --remove-orphans --yes 2>&1 | tee "$W/evidence/remove-root-owned.log"
     if [[ $(uname -s) == Linux ]]; then
-      grep -q 'owned by root' "$W/evidence/remove-root-owned.log" || { echo 'FAIL: expected the root-owned warning' >&2; exit 1; }
-      [[ -f $W/a/.nself/generated/traefik/.nself-generated ]] || { echo 'FAIL: the marker must stay for the retry' >&2; exit 1; }
-      sudo -n chown -R "$(id -u):$(id -g)" "$W/a/.nself/generated" || { echo 'FAIL: could not chown the rendered output' >&2; exit 1; }
+      if grep -q 'owned by root' "$W/evidence/remove-root-owned.log"; then
+        [[ -f $W/a/.nself/generated/traefik/.nself-generated ]] || { echo 'FAIL: the marker must stay for the retry' >&2; exit 1; }
+        sudo -n chown -R "$(id -u):$(id -g)" "$W/a/.nself/generated" || { echo 'FAIL: could not chown the rendered output' >&2; exit 1; }
+      else
+        [[ ! -e $W/a/.nself/generated/traefik ]] || { echo 'FAIL: no root-owned warning, yet the rendered output survived the build' >&2; exit 1; }
+      fi
     fi
     nself "$W/a" build --remove-orphans --yes
     finish_restore
