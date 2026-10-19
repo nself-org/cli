@@ -93,7 +93,7 @@ func relocateBreakout(cmdName string, args []string) (handled bool, err error) {
 	if err != nil {
 		return true, err
 	}
-	bin, err := autoAddPlugin(row.Plugin, version)
+	bin, err := autoAddPluginIsolated(row.Plugin, version)
 	if err != nil {
 		return true, breakoutRefused(old, row.Plugin, err)
 	}
@@ -105,6 +105,24 @@ func relocateBreakout(cmdName string, args []string) (handled bool, err error) {
 		return true, reportProxyFailure(os.Stderr, err)
 	}
 	return true, nil
+}
+
+// autoAddPluginIsolated runs the install seam and puts the process environment
+// back as it was. The installer loads the project config, which exports the
+// whole .env cascade (secrets included) over the shell's values; the plugin
+// that runs next must see the same environment as one that was already mounted
+// (D-0905).
+func autoAddPluginIsolated(slug, version string) (string, error) {
+	before := os.Environ()
+	defer func() {
+		os.Clearenv()
+		for _, entry := range before {
+			if k, v, ok := strings.Cut(entry, "="); ok && k != "" {
+				_ = os.Setenv(k, v)
+			}
+		}
+	}()
+	return autoAddPlugin(slug, version)
 }
 
 // proxyBinaryName turns the path the installer published into the bare name
