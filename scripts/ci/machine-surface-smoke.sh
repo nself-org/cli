@@ -35,11 +35,13 @@ fail() {
   FAILED=$((FAILED + 1))
   if [ -n "${2:-}" ]; then printf '  %s\n' "$2" >&2; fi
 }
+# skip <name>: a leg that cannot run here and is not required; visible, counted as neither.
+skip() { printf 'SKIP %s\n' "$1"; }
 # check <name> <command...>: PASS when the command exits 0.
 check() {
   local name="$1"
   shift
-  if "$@" >/dev/null 2>&1; then pass "$name"; else fail "$name" "$(printf 'check failed: %.200s' "$*")"; fi
+  if "$@" >/dev/null 2>&1; then pass "$name"; else fail "$name" "$(printf 'check failed: %.200s' "$*" | sed -E 's/[A-Za-z0-9_-]{32,}/<redacted>/g')"; fi
 }
 
 # The plugin leg needs a recorded ref; refuse before doing any work without it.
@@ -51,6 +53,9 @@ if [ -z "$PLUGINS_REF" ]; then
   echo 'NSELF_PLUGINS_REF is required: the full sha of plugins origin/main the plugin leg builds' >&2
   exit 1
 fi
+case "$PLUGINS_REF" in
+  *[!0-9a-f]* | "") printf 'FAIL plugins-ref-not-a-sha\n'; echo 'NSELF_PLUGINS_REF must be a full lowercase hex commit sha' >&2; exit 1 ;;
+esac
 for tool in go jq curl git; do
   command -v "$tool" >/dev/null 2>&1 || { printf 'FAIL tool-%s-missing\n' "$tool"; exit 1; }
 done
@@ -65,8 +70,13 @@ TMP="$(mktemp -d "${TMPDIR:-/tmp}/machine-surface-smoke.XXXXXX")"
 PIDS=""
 cleanup() {
   local p
+  local n
   for p in $PIDS; do kill "$p" 2>/dev/null || true; done
-  wait 2>/dev/null || true
+  for n in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    for p in $PIDS; do if kill -0 "$p" 2>/dev/null; then sleep 0.2; continue 2; fi; done
+    break
+  done
+  for p in $PIDS; do kill -9 "$p" 2>/dev/null || true; done
   rm -rf "$TMP"
 }
 trap cleanup EXIT
@@ -103,6 +113,9 @@ reset_proj() {
   rm -rf "${PROJ:?}"/* "${PROJ:?}"/.[!.]* 2>/dev/null
   printf 'PROJECT_NAME=fixture\nENV=%s\nMINIO_ENABLED=false\nBASE_DOMAIN=fake.example\n' "${1:-dev}" > "$PROJ/.env"
   chmod 600 "$PROJ/.env"
+  # Generated files, so a `reset` that runs is observable in the snapshot.
+  printf 'services: {}\n' > "$PROJ/docker-compose.yml"
+  mkdir -p "$PROJ/nginx/sites" && printf '# generated\n' > "$PROJ/nginx/sites/default.conf"
 }
 snapshot() { printf '%s | %s' "$(ls -A "$PROJ" | sort | tr '\n' ',')" "$(tr '\n' ';' < "$PROJ/.env" 2>/dev/null)"; }
 install_fx_plugin() {
@@ -123,7 +136,7 @@ EOF
 free_port() {
   local p
   while :; do
-    p=$((20000 + RANDOM % 30000))
+    p=$((20000 + RANDOM % 20000))
     (exec 3<>"/dev/tcp/127.0.0.1/$p") 2>/dev/null || { echo "$p"; return; }
   done
 }
@@ -179,7 +192,6 @@ http_post() {
   HTTP_CODE="$(curl -s -o "$TMP/h.body" -D "$TMP/h.hdr" -w '%{http_code}' -X POST \
     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' "$@" -d "$body" "$BASE$route")"
 }
-hdr() { tr -d '\r' < "$TMP/h.hdr" | awk -F': ' -v k="$1" 'tolower($1)==k{print $2}'; }
 mcp_rpc() { # <json> [sid]: raw response body in $TMP/m.body (SSE data lines unwrapped)
   curl -s -D "$TMP/m.hdr" -o "$TMP/m.raw" -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
     -H 'Accept: application/json, text/event-stream' ${MCP_SID:+-H "Mcp-Session-Id: $MCP_SID"} -d "$1" "$MCP_URL"
@@ -216,12 +228,16 @@ check "a1 help --json: every runnable document canon command declares json=envel
 
 # ---- servers: S1 has no plugins (goldens), S2 mounts the fixture plugin (samples) ----
 V15=1
+S1_HTTP=""; S1_MCP=""; S2_HTTP=""; S2_MCP=""
 new_home s1; H1="$H"; reset_proj
-start_srv s1-http admin serve && { S1_HTTP_PID=$SRV_PID; S1_HTTP="http://127.0.0.1:$SRV_PORT"; } || fail "s1 admin serve starts" "$(head -c 300 "$TMP/s1-http.err")"
+start_srv s1-http admin serve && { S1_HTTP="http://127.0.0.1:$SRV_PORT"; } || fail "s1 admin serve starts" "$(head -c 300 "$TMP/s1-http.err")"
 start_srv s1-mcp mcp --transport http && { S1_MCP="http://127.0.0.1:$SRV_PORT/mcp"; } || fail "s1 mcp starts" "$(head -c 300 "$TMP/s1-mcp.err")"
 new_home s2; H2="$H"; install_fx_plugin; reset_proj
 start_srv s2-http admin serve && { S2_HTTP="http://127.0.0.1:$SRV_PORT"; } || fail "s2 admin serve starts" "$(head -c 300 "$TMP/s2-http.err")"
 start_srv s2-mcp mcp --transport http && { S2_MCP="http://127.0.0.1:$SRV_PORT/mcp"; } || fail "s2 mcp starts" "$(head -c 300 "$TMP/s2-mcp.err")"
+for u in "$S1_HTTP" "$S1_MCP" "$S2_HTTP" "$S2_MCP"; do
+  [ -n "$u" ] || { echo 'a server did not start; nothing else can be asserted' >&2; exit 1; }
+done
 select_srv() { # 1|2
   if [ "$1" = 1 ]; then H="$H1"; BASE="$S1_HTTP"; MCP_URL="$S1_MCP"; else H="$H2"; BASE="$S2_HTTP"; MCP_URL="$S2_MCP"; fi
   read_token; V15=1
@@ -236,11 +252,16 @@ check "a3 served /openapi.json equals .github/openapi.json byte for byte" cmp "$
 check "a3 openapi.json is OpenAPI 3.1" test "$(jq -r .openapi .github/openapi.json | cut -c1-3)" = 3.1
 CGO_ENABLED=0 go test -mod=vendor -count=1 ./internal/repoqa -run 'TestOpenAPIValidatesOAS31|TestOpenAPIIsCurrent' >"$TMP/oas.out" 2>&1
 check "a3 openapi.json validates against the OAS 3.1 schema (repoqa)" test $? -eq 0
-if [ -n "$SMOKE_TS" ]; then
+# The @nself/cli-api contract test needs node and pnpm. NSELF_SMOKE_TS=1 makes a missing tool a FAIL,
+# =0 skips it on purpose; unset runs it when pnpm is present and prints a SKIP line when not.
+if [ "$SMOKE_TS" != 0 ] && { [ -n "$SMOKE_TS" ] || command -v pnpm >/dev/null 2>&1; }; then
   command -v pnpm >/dev/null 2>&1 || { printf 'FAIL tool-pnpm-missing\n'; exit 1; }
   (cd sdk/ts-cli-api && pnpm install --frozen-lockfile >"$TMP/ts-install.out" 2>&1 && NSELF_BIN="$BIN" pnpm test >"$TMP/ts-test.out" 2>&1)
   check "a3 @nself/cli-api contract test passes against a live nself admin serve" test $? -eq 0
-  [ -f "$TMP/ts-test.out" ] && grep -qE 'Tests:.*passed' "$TMP/ts-test.out" && ! grep -qE 'Tests:.*skipped' "$TMP/ts-test.out" || fail "a3 @nself/cli-api contract test ran (not skipped)" "$(tail -5 "$TMP/ts-test.out" 2>/dev/null)"
+  if [ -f "$TMP/ts-test.out" ] && grep -qE 'Tests:.*passed' "$TMP/ts-test.out" && ! grep -qE 'Tests:.*skipped' "$TMP/ts-test.out"; then pass "a3 @nself/cli-api contract test ran (not skipped)"
+  else fail "a3 @nself/cli-api contract test ran (not skipped)" "$(tail -5 "$TMP/ts-test.out" 2>/dev/null)"; fi
+else
+  skip "a3 @nself/cli-api contract test (no pnpm; set NSELF_SMOKE_TS=1 to require it)"
 fi
 
 # ---- acceptance 4: MCP tool list, aliases, capabilities ----
@@ -276,13 +297,19 @@ check "a4 help capabilities answers all 8 recorded queries (incl. the k8s plugin
 
 # ---- acceptance 2: 10 sample commands, CLI = HTTP = MCP ----
 select_srv 2; mcp_open
-NSAMPLES=0
+NSAMPLES=0; N_READ=0; N_WRITE=0; N_CONF=0; N_PLUGIN=0
 # sample <name> <route> <tool> <request json> <mode> <digits> <cli args...>
 #   mode: plain | fail (error envelope expected) | confirm (nonce round trip) | plan (staging plan form)
 sample() {
   local name="$1" route="$2" tool="$3" req="$4" mode="$5" digits="$6" rc cli_snap
   shift 6
   NSAMPLES=$((NSAMPLES + 1))
+  case "$mode:$name" in
+    confirm:config*) N_WRITE=$((N_WRITE + 1)); N_CONF=$((N_CONF + 1)) ;;
+    confirm:*|plan:*) N_CONF=$((N_CONF + 1)) ;;
+    *:fx*) N_PLUGIN=$((N_PLUGIN + 1)) ;;
+    plain:*) N_READ=$((N_READ + 1)) ;;
+  esac
   local envname=dev; [ "$mode" = plan ] && envname=staging
   reset_proj "$envname"
   (cd "$PROJ" && ns "$@" --json) >"$TMP/cli.out" 2>/dev/null; rc=$?
@@ -337,48 +364,59 @@ sample "config set (confirm)" /v1/commands/config/set nself_config_set '{"args":
 sample "reset (confirm)" /v1/commands/reset nself_reset '{}' confirm false reset --yes=true
 sample "fx status (mounted plugin)" /v1/commands/fx/status nself_fx_status '{}' plain false fx status
 sample "logs (fails without containers)" /v1/commands/logs nself_logs '{}' fail false logs
-check "a2 the sample is 10 commands (>=3 read, >=2 write, >=2 confirmation, 1 mounted plugin)" test "$NSAMPLES" -eq 10
+check "a2 the sample is 10 commands: >=3 read, >=2 write or plan, >=2 confirmation round trips, 1 mounted plugin (stub binary, real mount)" \
+  test "$NSAMPLES" -eq 10 -a "$N_READ" -ge 3 -a "$((N_WRITE + 1))" -ge 2 -a "$N_CONF" -ge 2 -a "$N_PLUGIN" -eq 1
 
 # ---- acceptance 8: confirmation round trip (HTTP then MCP) ----
 select_srv 2; mcp_open
 SECRET="smoke-arg-value-7f3a91"
+AUDIT="$H2/.nself/logs/machine-audit.jsonl"
 conf_req() { jq -nc --arg v "$1" '{args: ["PROJECT_DESCRIPTION", $v]}'; }
+with_confirm() { jq -c --arg c "$1" '. + {confirm: $c}'; }
 nonce() { jq -r '.data.confirm' "$TMP/h.body"; }
-reset_proj; before="$(snapshot)"
+# audit_runs <transport>: how many config set calls the server actually ran on that transport.
+audit_runs() { jq -s --arg t "$1" '[.[] | select(.command == "config set" and .transport == $t and .decision == "run")] | length' "$AUDIT"; }
+mcp_code() { jq -r '.result.structuredContent.error.code // (.result.content[0].text | fromjson? | .error.code) // empty' "$TMP/m.body"; }
+ZERO=0000000000000000000000000000000000000000000000000000000000000000
+reset_proj; before="$(snapshot)"; h0="$(audit_runs http)"; m0="$(audit_runs mcp-http)"
 http_post /v1/commands/config/set "$(conf_req "$SECRET")"
 check "a8 HTTP: a destructive command without confirm returns 428 and writes nothing" test "$HTTP_CODE" = 428 -a "$(snapshot)" = "$before"
 N="$(nonce)"
-http_post /v1/commands/config/set "$(conf_req "other-$SECRET" | jq -c --arg c "$N" '. + {confirm: $c}')"
+http_post /v1/commands/config/set "$(conf_req "other-$SECRET" | with_confirm "$N")"
 check "a8 HTTP: a confirm issued for a different request is refused (E424) and writes nothing" \
   test "$HTTP_CODE" = 409 -a "$(jq -r .error.code "$TMP/h.body")" = E424 -a "$(snapshot)" = "$before"
-http_post /v1/commands/config/set "$(conf_req "$SECRET" | jq -c '. + {confirm: "0000000000000000000000000000000000000000000000000000000000000000"}')"
+http_post /v1/commands/config/set "$(conf_req "$SECRET" | with_confirm "$ZERO")"
 check "a8 HTTP: a locally computed confirm is refused (E424) and writes nothing" \
   test "$HTTP_CODE" = 409 -a "$(jq -r .error.code "$TMP/h.body")" = E424 -a "$(snapshot)" = "$before"
 http_post /v1/commands/config/set "$(conf_req "$SECRET")"; N="$(nonce)"
-http_post /v1/commands/config/set "$(conf_req "$SECRET" | jq -c --arg c "$N" '. + {confirm: $c}')"
-check "a8 HTTP: the issued confirm runs the command once" test "$HTTP_CODE" = 200 -a "$(grep -c "^PROJECT_DESCRIPTION=$SECRET$" "$PROJ/.env")" = 1
+http_post /v1/commands/config/set "$(conf_req "$SECRET" | with_confirm "$N")"
+check "a8 HTTP: the issued confirm runs the command exactly once" \
+  test "$HTTP_CODE" = 200 -a "$(grep -c "^PROJECT_DESCRIPTION=$SECRET$" "$PROJ/.env")" = 1 -a "$(audit_runs http)" = "$((h0 + 1))"
 reset_proj; before="$(snapshot)"
-http_post /v1/commands/config/set "$(conf_req "$SECRET" | jq -c --arg c "$N" '. + {confirm: $c}')"
-check "a8 HTTP: a reused confirm is refused (E424) and writes nothing" \
-  test "$HTTP_CODE" = 409 -a "$(jq -r .error.code "$TMP/h.body")" = E424 -a "$(snapshot)" = "$before"
+http_post /v1/commands/config/set "$(conf_req "$SECRET" | with_confirm "$N")"
+check "a8 HTTP: a reused confirm is refused (E424), writes nothing and runs nothing" \
+  test "$HTTP_CODE" = 409 -a "$(jq -r .error.code "$TMP/h.body")" = E424 -a "$(snapshot)" = "$before" -a "$(audit_runs http)" = "$((h0 + 1))"
+reset_proj; before="$(snapshot)"
 mcp_tool nself_config_set "$(conf_req "$SECRET")"
 M="$(jq -r '.result.structuredContent.confirm' "$TMP/m.body")"
 check "a8 MCP: a destructive command without confirm returns a confirmation and writes nothing" \
   test "$(jq -r '.result.structuredContent.confirmation_required' "$TMP/m.body")" = true -a "$(snapshot)" = "$before"
-mcp_tool nself_config_set "$(conf_req "other-$SECRET" | jq -c --arg c "$M" '. + {confirm: $c}')"
-check "a8 MCP: a confirm issued for a different request is refused (E424)" \
-  test "$(jq -r '.result.isError' "$TMP/m.body")" = true -a "$(jq -r '.result.structuredContent.error.code // .result.content[0].text' "$TMP/m.body" | grep -c E424)" -ge 1
+mcp_tool nself_config_set "$(conf_req "other-$SECRET" | with_confirm "$M")"
+check "a8 MCP: a confirm issued for a different request is refused (E424) and writes nothing" \
+  test "$(jq -r '.result.isError' "$TMP/m.body")" = true -a "$(mcp_code)" = E424 -a "$(snapshot)" = "$before"
+mcp_tool nself_config_set "$(conf_req "$SECRET" | with_confirm "$ZERO")"
+check "a8 MCP: a locally computed confirm is refused (E424) and writes nothing" \
+  test "$(jq -r '.result.isError' "$TMP/m.body")" = true -a "$(mcp_code)" = E424 -a "$(snapshot)" = "$before"
 mcp_tool nself_config_set "$(conf_req "$SECRET")"; M="$(jq -r '.result.structuredContent.confirm' "$TMP/m.body")"
-mcp_tool nself_config_set "$(conf_req "$SECRET" | jq -c --arg c "$M" '. + {confirm: $c}')"
-check "a8 MCP: the issued confirm runs the command once" \
-  test "$(jq -r '.result.isError' "$TMP/m.body")" != true -a "$(grep -c "^PROJECT_DESCRIPTION=$SECRET$" "$PROJ/.env")" = 1
-reset_proj
-mcp_tool nself_config_set "$(conf_req "$SECRET" | jq -c --arg c "$M" '. + {confirm: $c}')"
-check "a8 MCP: a reused confirm is refused (E424)" \
-  test "$(jq -r '.result.isError' "$TMP/m.body")" = true -a "$(jq -r '.result.content[0].text' "$TMP/m.body" | grep -c E424)" -ge 1
-AUDIT="$H2/.nself/logs/machine-audit.jsonl"
+mcp_tool nself_config_set "$(conf_req "$SECRET" | with_confirm "$M")"
+check "a8 MCP: the issued confirm runs the command exactly once" \
+  test "$(jq -r '.result.isError' "$TMP/m.body")" != true -a "$(grep -c "^PROJECT_DESCRIPTION=$SECRET$" "$PROJ/.env")" = 1 -a "$(audit_runs mcp-http)" = "$((m0 + 1))"
+reset_proj; before="$(snapshot)"
+mcp_tool nself_config_set "$(conf_req "$SECRET" | with_confirm "$M")"
+check "a8 MCP: a reused confirm is refused (E424), writes nothing and runs nothing" \
+  test "$(jq -r '.result.isError' "$TMP/m.body")" = true -a "$(mcp_code)" = E424 -a "$(snapshot)" = "$before" -a "$(audit_runs mcp-http)" = "$((m0 + 1))"
 check "a8 the audit log records both transports and the refusals" \
-  test "$(jq -sr '[.[].transport] | unique | join(",")' "$AUDIT")" = "http,mcp-http" -a "$(grep -c E424 "$AUDIT")" -ge 3
+  test "$(jq -sr '[.[].transport] | unique | join(",")' "$AUDIT")" = "http,mcp-http" -a "$(grep -c E424 "$AUDIT")" -ge 6
 check "a8 the audit log holds no secret arg value" test "$(grep -c "$SECRET" "$AUDIT")" = 0
 
 # ---- acceptance 5: token and bind policy ----
@@ -418,9 +456,14 @@ for mode in 14 15; do
   check "a5 the refusal prints no token value (mcp)" test "$(cat "$TMP/ref.out" "$TMP/ref.err" | grep -cF "$FAKETOK")" = 0
 done
 V15=1
-tok1="$(cat "$H1/.nself/mcp-token" 2>/dev/null)"; tok2="$(cat "$H2/.nself/mcp-token" 2>/dev/null)"
-check "a5 no token value in any server stream or the audit log" \
-  test -n "$tok1" -a -n "$tok2" -a "$(cat "$TMP"/s1-*.out "$TMP"/s1-*.err "$TMP"/s2-*.out "$TMP"/s2-*.err "$H1"/.nself/logs/* "$H2"/.nself/logs/* 2>/dev/null | grep -cF -e "$tok1" -e "$tok2")" = 0
+# No ephemeral bearer token may appear in any server stream, refusal output or audit log of any home.
+leaks=0; tokens=0
+for tf in "$TMP"/home-*/.nself/mcp-token; do
+  [ -s "$tf" ] || continue
+  tokens=$((tokens + 1)); t="$(cat "$tf")"
+  if cat "$TMP"/*.out "$TMP"/*.err "$TMP"/home-*/.nself/logs/* 2>/dev/null | grep -qF -e "$t"; then leaks=$((leaks + 1)); fi
+done
+check "a5 no token value in any server stream, refusal output or audit log ($tokens tokens scanned)" test "$tokens" -ge 4 -a "$leaks" -eq 0
 
 # ---- acceptance 6: config explain and the bindings gate ----
 new_home a6; V15=1; reset_proj
@@ -443,11 +486,12 @@ for app in nclaw nchat ntask nsentry; do
   done
   check "a7 $app (v1.4): exits 0 with warnings" test "$(cat "$TMP/val.$app.14.rc")" = 0 -a "$(grep -c 'warning:' "$TMP/val.$app.14.err")" -ge 1
 done
-check "a7 nclaw (v1.5): fails (E436) naming project and plugins.pro[0]" \
-  test "$(cat "$TMP/val.nclaw.15.rc")" = 1 -a "$(jq '[.data.manifest_findings[] | select(contains("project:") or contains("plugins.pro[0]"))] | length' "$TMP/val.nclaw.15.json")" -ge 2
+check "a7 nclaw (v1.5): exits 1 with E436 naming project and E435 naming plugins.pro[0]" \
+  jq -e '[.data.manifest_findings[] | select(contains("project:") and contains("[E436]"))] != [] and [.data.manifest_findings[] | select(contains("plugins.pro[0]") and contains("[E435]"))] != []' "$TMP/val.nclaw.15.json"
+check "a7 nclaw (v1.5): exit status is 1" test "$(cat "$TMP/val.nclaw.15.rc")" = 1
 check "a7 nclaw (v1.4): warns on project and plugins.pro[0]" \
   grep -q 'plugins\.pro\[0\]' "$TMP/val.nclaw.14.err"
-check "a7 nchat (v1.5): names the nested plugins.required" jq -e '[.data.manifest_findings[] | select(contains("plugins.required"))] | length >= 1' "$TMP/val.nchat.15.json"
+check "a7 nchat (v1.5): names the nested plugins.required (E436)" jq -e '[.data.manifest_findings[] | select(contains("plugins.required") and contains("[E436]"))] | length >= 1' "$TMP/val.nchat.15.json"
 check "a7 nchat (v1.4): names the nested plugins.required as a warning" grep -q 'plugins\.required' "$TMP/val.nchat.14.err"
 for app in ntask nsentry; do
   check "a7 $app (v1.5): unknown keys are errors, count matches the findings" \
@@ -467,19 +511,21 @@ if clone_plugins 2>"$TMP/clone.err" && git -C "$PL" checkout -q --detach "$PLUGI
 else
   fail "a9 plugins checkout at $PLUGINS_REF" "$(head -c 300 "$TMP/clone.err")"
 fi
+A9_BUILT=0; A9_CASES=0
 if [ -d "$PL/free/infra" ]; then
   for spec in infra:cmd functions:cmd plugin-dev:cmd sentry-cli:cmd/sentry; do
     p="${spec%%:*}"; main="${spec#*:}"; bn="$(jq -r .binaryName "$PL/free/$p/plugin.json")"; pn="$(jq -r .name "$PL/free/$p/plugin.json")"
     mkdir -p "$H/plugins/$pn" "$H/plugins/bin"
     cp "$PL/free/$p/plugin.json" "$H/plugins/$pn/plugin.json"
     if (cd "$PL/free/$p" && CGO_ENABLED=0 go build -mod=vendor -buildvcs=false -o "$H/plugins/bin/$bn" "./$main") 2>"$TMP/pbuild.$p.err"; then
-      pass "a9 built plugin $p ($bn)"
+      pass "a9 built plugin $p ($bn)"; A9_BUILT=$((A9_BUILT + 1))
     else fail "a9 build plugin $p" "$(head -c 400 "$TMP/pbuild.$p.err")"; fi
   done
   # plugin_case <label> <expected: data|<error code>|any> <nself args...> (run through nself, v1.5)
   plugin_case() {
     local label="$1" want="$2" rc=0
     shift 2
+    A9_CASES=$((A9_CASES + 1))
     (cd "$PROJ" && ns "$@" --json) >"$TMP/pl.out" 2>"$TMP/pl.err" || rc=$?
     check "a9 [$label] one v1 envelope that validates against envelope.v1.schema.json" one_valid_envelope "$TMP/pl.out"
     check "a9 [$label] command field and exit code agree with the envelope" \
@@ -490,16 +536,23 @@ if [ -d "$PL/free/infra" ]; then
       *) check "a9 [$label] answers with $want" jq -e --arg w "$want" '.error.code == $w' "$TMP/pl.out" ;;
     esac
   }
-  plugin_case "infra validate" any infra validate
+  # No tofu or terraform on PATH: the answer is fixed (E740) on every host.
+  PATH_SAVED="$PATH"; PATH="/usr/bin:/bin"
+  plugin_case "infra validate" E740 infra validate
+  PATH="$PATH_SAVED"
   plugin_case "infra server list" E742 infra server list
   plugin_case "functions list" data functions list
   plugin_case "plugin-dev init" data plugin-dev init smokeplug --no-interactive --out "$TMP/scaffold"
   plugin_case "sentry monitors list" E782 sentry monitors list --api-url http://127.0.0.1:9
   plugin_case "sentry status" E783 sentry status --url http://127.0.0.1:9
+  check "a9 the plugin leg ran 4 builds and 6 cases" test "$A9_BUILT" -eq 4 -a "$A9_CASES" -eq 6
+else
+  fail "a9 plugins checkout has free/infra (layout changed? the plugin leg cannot run)"
 fi
 
 # ---- servers still healthy at the end ----
-for p in $S1_HTTP_PID; do check "s1 admin serve survived the run" kill -0 "$p"; done
+select_srv 1
+check "s1 admin serve survived the run" test "$(curl_code -H "Authorization: Bearer $TOKEN" "$BASE/openapi.json")" = 200
 
 if [ "$FAILED" -gt 0 ] || [ "$PASSED" -eq 0 ]; then exit 1; fi
 exit 0
