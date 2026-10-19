@@ -10,12 +10,14 @@
 #          with stub binaries, and an unsigned and a tampered release catalogue.
 # Outputs: one "ok" line per assertion on stdout; failures on stderr.
 #          Exit 0 only when every assertion held; 1 on a failed assertion; 2 on a
-#          usage error or a missing tool.
-# Constraints: bash 3.2 compatible; needs jq and python3; touches no network beyond
+#          usage error or a missing tool; also 1 when the fixture server never answers.
+# Constraints: bash 3.2 compatible; needs jq, python3 and curl; touches no network beyond
 #          127.0.0.1 (the fixture catalogue server) and never a production key;
 #          every process gets a clean HOME and project directory under $TMPDIR,
-#          removed on exit. The CLI pins no release key in this build, so the
-#          unsigned and tampered catalogues are both refused before any download.
+#          removed on exit. Each E404 case also asserts its cause text, so a dead
+#          fixture server cannot pass as an unsigned or tampered refusal. The CLI
+#          pins no release key in this build, so the tampered catalogue is refused
+#          as unverifiable before any download.
 set -euo pipefail
 
 die() { echo "breakout-smoke: $*" >&2; exit 2; }
@@ -29,6 +31,7 @@ BASE_BIN="${NSELF_BASE_BIN:-}"
 [ -x "$BASE_BIN" ] || die "NSELF_BASE_BIN must name an executable"
 command -v jq >/dev/null 2>&1 || die "needs jq"
 command -v python3 >/dev/null 2>&1 || die "needs python3"
+command -v curl >/dev/null 2>&1 || die "needs curl"
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 FIX="$ROOT/scripts/ci/testdata/breakout"
@@ -114,23 +117,29 @@ for kind in unsigned tampered; do
 done
 (cd "$WORK/served" && exec python3 -m http.server "$PORT" --bind 127.0.0.1 >/dev/null 2>&1) &
 SERVER_PID=$!
+READY=0
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-  curl -fsS -o /dev/null "$BASE_URL/unsigned/registry.json" 2>/dev/null && break
+  if curl -fsS -o /dev/null "$BASE_URL/unsigned/registry.json" 2>/dev/null && curl -fsS -o /dev/null "$BASE_URL/tampered/registry.json" 2>/dev/null; then READY=1; break; fi
+  kill -0 "$SERVER_PID" 2>/dev/null || break
   sleep 0.25
 done
+if [ "$READY" != 1 ]; then
+  echo "FAIL: the fixture catalogue server on $BASE_URL never became ready; the unsigned and tampered cases cannot run" >&2
+  exit 1
+fi
 
-expect_e404() { # <label> <env assignment or ""> <args...>
-  local label="$1" assign="$2"; shift 2
+expect_e404() { # <label> <cause regex for stderr> <env assignment or ""> <args...>
+  local label="$1" cause="$2" assign="$3"; shift 3
   local home; home="$(fresh_home)"
   # shellcheck disable=SC2086 # $assign is one NAME=value pair or empty
   RC=0
   (cd "$WORK/proj" && env -u NSELF_PLUGIN_DIR -u NSELF_PLUGIN_REGISTRY -u NSELF_NO_AUTO_ADD $assign \
     HOME="$home" USERPROFILE="$home" NSELF_V15=1 NO_COLOR=1 "$HEAD_BIN" "$@") >"$WORK/out" 2>"$WORK/err" </dev/null || RC=$?
   OUT="$(cat "$WORK/out")"; ERR="$(cat "$WORK/err")"
-  if [ "$RC" = 1 ] && printf '%s' "$ERR" | grep -q '\[E404\]'; then
-    ok "v1.5 $label: exit 1 with [E404] on stderr"
+  if [ "$RC" = 1 ] && printf '%s' "$ERR" | grep -q '\[E404\]' && printf '%s' "$ERR" | grep -Eq "$cause"; then
+    ok "v1.5 $label: exit 1 with [E404] on stderr, cause matches '$cause'"
   else
-    fail "v1.5 $label: exit $RC, stderr '$ERR'"
+    fail "v1.5 $label: exit $RC, want [E404] and cause '$cause', stderr '$ERR'"
   fi
   if [ -e "$home/.nself/plugins/bin/nself-ci" ]; then fail "v1.5 $label: a binary was published"; fi
   # The same refusal as a machine document.
@@ -144,10 +153,10 @@ expect_e404() { # <label> <env assignment or ""> <args...>
     fail "v1.5 $label --json: exit $RC, stdout '$OUT'"
   fi
 }
-expect_e404 "NSELF_NO_AUTO_ADD=1" "NSELF_NO_AUTO_ADD=1" ci --check
-expect_e404 "offline registry" "NSELF_PLUGIN_REGISTRY=http://127.0.0.1:9" ci --check
-expect_e404 "unsigned release" "NSELF_PLUGIN_REGISTRY=$BASE_URL/unsigned" ci --check
-expect_e404 "tampered release (refused before download: no key pinned; the in-process test proves the checksum and signature)" "NSELF_PLUGIN_REGISTRY=$BASE_URL/tampered" runner verify x
+expect_e404 "NSELF_NO_AUTO_ADD=1" 'automatic install is switched off' "NSELF_NO_AUTO_ADD=1" ci --check
+expect_e404 "offline registry" 'registry fetch failed' "NSELF_PLUGIN_REGISTRY=http://127.0.0.1:9" ci --check
+expect_e404 "unsigned release" '\[E107\].*has no release signature' "NSELF_PLUGIN_REGISTRY=$BASE_URL/unsigned/registry.json" ci --check
+expect_e404 "tampered release (refused before download: no key pinned; the in-process test proves the checksum and signature)" '\[E107\]' "NSELF_PLUGIN_REGISTRY=$BASE_URL/tampered/registry.json" runner verify x
 
 # 4. v1.5: the marketplace is gone.
 for c in "plugin marketplace" "plugin submit"; do

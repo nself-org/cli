@@ -1,0 +1,70 @@
+name: Breakout relocation
+
+# D-0909: the P7-CANON-13 regression tests ran in no gate. This workflow runs
+# the two-binary smoke (v1.4 byte-identity, E404 refusals with their cause) and
+# TestBreakoutAutoAddFixturePorts (the real ci, functions, infra and plugin-dev
+# ports, signed with a throwaway key) on every change that can move either.
+# HEAD^1 is the base: on a pull request the merge commit's first parent is the
+# base tip, on a push to main it is the previous main commit.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: &paths
+      - '**.go'
+      - go.mod
+      - go.sum
+      - internal/canon/**
+      - scripts/ci/breakout-smoke.sh
+      - scripts/ci/ports-fixture-registry.sh
+      - scripts/ci/testdata/breakout/**
+      - .github/workflows/breakout.yml
+  pull_request:
+    paths: *paths
+
+permissions:
+  contents: read
+
+concurrency:
+  group: breakout-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  breakout:
+    name: Breakout smoke and ports
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CGO_ENABLED: '0'
+    steps:
+      - name: Checkout CLI
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      - name: Checkout plugins
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: nself-org/plugins
+          path: .breakout-plugins
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Build head and base binaries
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/breakout"
+          go build -mod=vendor -o "$RUNNER_TEMP/breakout/nself-head" ./cmd/nself
+          git worktree add --detach "$RUNNER_TEMP/breakout/base" HEAD^1
+          (cd "$RUNNER_TEMP/breakout/base" && go build -mod=vendor -o "$RUNNER_TEMP/breakout/nself-base" ./cmd/nself)
+      - name: Breakout smoke (two binaries)
+        run: |
+          NSELF_BIN="$RUNNER_TEMP/breakout/nself-head" NSELF_BASE_BIN="$RUNNER_TEMP/breakout/nself-base" \
+            bash scripts/ci/breakout-smoke.sh
+      - name: Real ports through the v1.5 auto-add
+        run: |
+          set -euo pipefail
+          bash scripts/ci/ports-fixture-registry.sh "$GITHUB_WORKSPACE/.breakout-plugins" "$RUNNER_TEMP/breakout/ports"
+          NSELF_CANON_PORTS_REGISTRY="$RUNNER_TEMP/breakout/ports" \
+            go test -mod=vendor -count=1 -run '^TestBreakoutAutoAddFixturePorts$' ./cmd/commands
