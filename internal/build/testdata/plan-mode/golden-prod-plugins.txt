@@ -38,7 +38,7 @@ f 0644 plugins/nself-beta/plugin.json 9798fa69911849fa72e0c69ff7d208dd50b38af74c
 f 0644 project/.nself/backups/nginx-sites-<TS>/hand-written.conf db823e7687a059dc5161877380f7824a115321a9908bf9d1458a002b50db5b7c
 f 0644 project/.nself/backups/nginx-sites-<TS>/stale.conf 018e9e30e6ff93f0874816beee42a63c0d593e4ee9bb08d22fa8eb9e4a2b4feb
 f 0644 project/.nself/build-profile a172cedcae47474b615c54d510a5d84a8dea3032e958587430b413538be3f333
-f 0644 project/.nself/build-version 5b761e4d62032b8f9c28aee75ba0a1d3ed0e59d0cf32cf641e31cadb7e95a9d5
+f 0644 project/.nself/build-version 8ceaa7b1b997a4743b4d5e74b2a46af8c5ebe7765abb07eca372441aa3cbf51e
 f 0644 project/.nself/compose-env-files.txt 7d3e777d4d376c34edad2c78f512e08ec2d1819efdea2a89bbf91cb62e675a92
 f 0644 project/.nself/compose-files.txt 86b9d80f893e07016f22508dc13a5f61c70fc373d29e925d4fe23812c20c8afc
 f 0644 project/.nself/dist/openapi.json dd0fe1e385e794d0d382290a08f71b0056a87564a4616e28f5fc66eb94f82479
