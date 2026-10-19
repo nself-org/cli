@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/nginxtopo"
+	"github.com/nself-org/cli/internal/sharedproxy"
 	"github.com/nself-org/cli/internal/ssl"
 )
 
@@ -42,6 +44,14 @@ import (
 //   - any other mode ("letsencrypt", "custom", ...) checks the filesystem:
 //     these modes never generate certs themselves, so presence on disk is
 //     the only trustworthy signal that nginx can safely reference them.
+//   - a fronted project (NGINX_FRONTED_BY) is served by the fronting stack's
+//     nginx, which mounts its own ssl/ (D-0572): for every mode but "none" the
+//     pair must be present there, so neither site confs nor plugin snippets
+//     name a certificate the serving nginx cannot load. The project's own
+//     ssl/ (written by this build) and assumed plan-mode pairs do not count.
+//     Exception: under a shared proxy (NGINX_MODE=shared owner) the build
+//     copies the project's pair into the owner's ssl/ itself
+//     (internal/build/shared_proxy_certs.go), so the rules below apply.
 //   - assumed lists domains whose certificate pair a plan-mode build would
 //     create but has not (WithAssumedCerts): a pair for cfg.BaseDomain among
 //     them counts as present, so a plan keeps the TLS blocks apply produces.
@@ -49,6 +59,11 @@ func sslShouldEmit(cfg *config.Config, workdir, mode string, assumed []string) b
 	switch mode {
 	case "none":
 		return false
+	}
+	if cfg.Nginx.FrontedBy != "" && !sharedProxyFronted(cfg, workdir) {
+		return servedCertsPresent(cfg, workdir)
+	}
+	switch mode {
 	case "local":
 		return true
 	default:
@@ -87,7 +102,33 @@ func sslDirName(domain string) string {
 }
 
 func sslCertsPresent(cfg *config.Config, workdir string) bool {
-	certDir := filepath.Join(workdir, "ssl", "certificates", sslDirName(cfg.BaseDomain))
+	return certPairPresent(filepath.Join(workdir, "ssl"), cfg.BaseDomain)
+}
+
+// servedCertsPresent is sslCertsPresent against the ssl dir the fronting
+// stack's nginx mounts (nginxtopo.ServedSSLDir). An unconfirmed fronting
+// layout reads as absent: the build refuses it anyway (resolveNginxSitesDir).
+func servedCertsPresent(cfg *config.Config, workdir string) bool {
+	dir, err := nginxtopo.ServedSSLDir(workdir, cfg.Nginx.FrontedBy)
+	return err == nil && certPairPresent(dir, cfg.BaseDomain)
+}
+
+// sharedProxyFronted reports whether the fronting stack is a shared-proxy
+// owner, whose registration makes the build copy this project's pair into the
+// owner's ssl/.
+func sharedProxyFronted(cfg *config.Config, workdir string) bool {
+	root, err := nginxtopo.ServedRoot(workdir, cfg.Nginx.FrontedBy)
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(filepath.Join(sharedproxy.DirOf(root), sharedproxy.OwnerFile))
+	return err == nil
+}
+
+// certPairPresent reports whether fullchain.pem and privkey.pem exist under
+// <sslDir>/certificates/<dir of domain>.
+func certPairPresent(sslDir, domain string) bool {
+	certDir := filepath.Join(sslDir, "certificates", sslDirName(domain))
 	if _, err := os.Stat(filepath.Join(certDir, "fullchain.pem")); err != nil {
 		return false
 	}

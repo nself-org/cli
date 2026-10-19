@@ -201,6 +201,8 @@ NGINX_FRONTED_BY=nself-web
 
 With this set, `nself build` omits the Nginx service from the generated `docker-compose.yml` entirely, and `nself status` stops counting an Nginx container for this project. Leaving it unset is the default and changes nothing for a normal single-project stack.
 
+The fronting stack's Nginx reads certificates from its own `ssl/` directory. A fronted project therefore gets HTTPS server blocks (and plugin snippets that reference a certificate) only when `ssl/certificates/<domain>/fullchain.pem` and `privkey.pem` exist in the fronting stack's `ssl/`, whatever `SSL_MODE` is (`none` still turns TLS off). Without the pair there, the build writes HTTP-only confs and skips TLS plugin snippets with a warning, instead of generating a conf that Nginx cannot load. Under `NGINX_MODE=shared` the build copies the project's pair into the owner's `ssl/` itself, so that rule does not apply.
+
 Without it, a fronted project still generates an Nginx that can never start: `nself start` fails its port check with 80/443 held by the fronting stack's `docker-proxy`, and `nself status` reports one permanently unhealthy service that nothing can clear.
 
 **This flag removes the container that cannot run. It does not wire the two projects' networks together.** The fronting Nginx resolves upstreams through Docker's embedded DNS at `127.0.0.11`, which only answers for container names on a network that Nginx is attached to. Routing `auth.task.example.com` to this project's `auth` container still requires the two projects to share a Docker network — declared as `external` in both compose files, or attached by hand. Automatically rewriting a project's network topology from a single flag is a larger change and is deliberately not part of this one.
