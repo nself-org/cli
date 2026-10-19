@@ -20,7 +20,7 @@ Each guide below ends with the failure and reset path for that source.
 
 | Source | Guide | Command | Passwords | Fixture |
 |---|---|---|---|---|
-| PostgreSQL | [Come-Home-Postgres](Come-Home-Postgres) | `nself db import postgres --from-env SRC_URL` | No users imported. A source with hasura-auth `auth.users` should use the nhost path | `test/fixtures/import/postgres` |
+| PostgreSQL | [Come-Home-Postgres](Come-Home-Postgres) | `nself db import postgres --from-env SRC_URL` | No platform users. App tables only. When the source holds hasura-auth `auth.users`, the plan notes it looks like nhost; use the nhost command then | `test/fixtures/import/postgres` |
 | nhost | [Come-Home-nhost](Come-Home-nhost) | `nself db import nhost --db-url-env SRC_URL --hasura-url <url> --admin-secret-env SRC_ADMIN_SECRET` | Preserved (bcrypt). A hash in another format is listed for reset | `test/fixtures/import/nhost` |
 | Hasura Cloud | [Come-Home-Hasura-Cloud](Come-Home-Hasura-Cloud) | `nself db import hasura-cloud --db-url-env SRC_URL --hasura-url <url> --admin-secret-env SRC_ADMIN_SECRET` | Not applicable (no platform auth). Users tables are ordinary tables | `test/fixtures/import/hasura-cloud` |
 | Supabase | [Come-Home-Supabase](Come-Home-Supabase) | `nself db import supabase --db-url-env SUPA_DB --project-ref <ref> --service-key-env SUPA_KEY` | Preserved (bcrypt `encrypted_password`). A non-bcrypt hash is listed for reset | `test/fixtures/import/supabase` |
@@ -44,6 +44,13 @@ nself db import appwrite --endpoint <url> --project <id> --api-key-env APPWRITE_
 nself db export --out <dir>
 nself db import nself <dir> --plan
 ```
+
+## Bringing a bundle back
+
+[Leaving-nSelf](Leaving-nSelf) covers the export and the restore into plain PostgreSQL.
+To load the same bundle into a fresh nSelf project, run `nself db import nself <dir>`.
+It checks the whole bundle first and ends with the same verify report. In v1.4 mode the
+command is `nself migrate nself <dir>`.
 
 ## Password resets
 
