@@ -476,3 +476,32 @@ func TestOriginPinned(t *testing.T) {
 		t.Fatal("a non-absolute home must never read as pinned")
 	}
 }
+
+func TestCheckDigestsMatchesServiceNames(t *testing.T) {
+	r := newRelease(t)
+	other := "sha256:" + strings.Repeat("9", 64)
+	r.manifest["artifacts"] = []any{
+		map[string]any{"name": "image/web", "kind": "image", "sha256": strings.Repeat("ab", 32),
+			"image": map[string]any{"index_digest": imgIndex, "manifests": []any{map[string]any{"platform": "linux/amd64", "digest": imgAMD64}}}},
+		map[string]any{"name": "image/worker", "kind": "image", "sha256": strings.Repeat("cd", 32),
+			"image": map[string]any{"index_digest": other, "manifests": []any{map[string]any{"platform": "linux/amd64", "digest": imgARM64}}}},
+	}
+	r.write(PayloadType, r.signer)
+	m, err := Verify(context.Background(), r.input())
+	if err != nil {
+		t.Fatal(err)
+	}
+	good := []promote.DigestRow{{Service: "web", Target: imgAMD64}, {Service: "worker", Target: imgARM64}}
+	if err := CheckDigests(m, good); err != nil {
+		t.Fatalf("each service on its own signed image: %v", err)
+	}
+	swapped := []promote.DigestRow{{Service: "web", Target: imgARM64}}
+	err = CheckDigests(m, swapped)
+	if got := codeOf(err); got != "E495" || !strings.Contains(err.Error(), "web") {
+		t.Fatalf("a signed image of another service must be refused for web: %v", err)
+	}
+	unnamed := []promote.DigestRow{{Service: "cache", Target: imgAMD64}}
+	if err := CheckDigests(m, unnamed); err != nil {
+		t.Fatalf("a service the manifest does not name keeps the flat check: %v", err)
+	}
+}

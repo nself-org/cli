@@ -7,7 +7,8 @@ package verify
 // Outputs: nil, or E495 naming the first unlisted service.
 // Constraints: pure. Rows without a target digest (build-context services,
 //              already refused on prod by the engine) carry no identity and
-//              are skipped; the engine owns that decision.
+//              are skipped; the engine owns that decision. A service with an
+//              image artifact of its own name must use that artifact's digests.
 
 import (
 	"sort"
@@ -40,7 +41,31 @@ func (m *Manifest) Listed() map[string]bool {
 	return set
 }
 
-// CheckDigests fails with E495 when a compared digest is not in the manifest.
+// serviceDigests returns the digests of the image artifacts named for service
+// (the artifact is "<service>" or "image/<service>"), and whether any exists.
+func (m *Manifest) serviceDigests(service string) (map[string]bool, bool) {
+	set := map[string]bool{}
+	found := false
+	for _, a := range m.Artifacts {
+		if a.Image == nil || (a.Name != service && a.Name != "image/"+service) {
+			continue
+		}
+		found = true
+		if digestRE.MatchString(a.Image.IndexDigest) {
+			set[a.Image.IndexDigest] = true
+		}
+		for _, im := range a.Image.Manifests {
+			if digestRE.MatchString(im.Digest) {
+				set[im.Digest] = true
+			}
+		}
+	}
+	return set, found
+}
+
+// CheckDigests fails with E495 when a compared digest is not in the manifest,
+// or, for a service the manifest has an image artifact for, not one of that
+// artifact's digests.
 func CheckDigests(m *Manifest, rows []promote.DigestRow) error {
 	if m == nil {
 		return errs.New("E499", "no verified release manifest to check digests against")
@@ -51,7 +76,10 @@ func CheckDigests(m *Manifest, rows []promote.DigestRow) error {
 		if row.Target == "" {
 			continue
 		}
-		if !listed[row.Target] {
+		// A service the manifest names must run that service's own signed
+		// image; a service it does not name falls back to the flat set.
+		own, named := m.serviceDigests(row.Service)
+		if (named && !own[row.Target]) || !listed[row.Target] {
 			missing = append(missing, row.Service+" "+row.Target)
 		}
 	}

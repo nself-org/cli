@@ -1,0 +1,100 @@
+{
+  "schema_version": "1",
+  "command": "ci evidence verify",
+  "data": {
+    "revision": "6e29d126a9e55a9fd580f5991b7f6511e739c0d1",
+    "result": "pass",
+    "class": "release",
+    "binding": {
+      "state": "bound",
+      "reason": null
+    },
+    "freshness": {
+      "state": "unknown",
+      "reason": "current inputs were not supplied"
+    },
+    "quarantined": false,
+    "evidence": {
+      "schema": "ci.evidence/v1",
+      "revision": "6e29d126a9e55a9fd580f5991b7f6511e739c0d1",
+      "repo_id": "local:b200e6fe54a70bc904d4a17177df8b06028c680dd38496e7962b6b39dec907f9",
+      "run_id": "r20261019T165348-70802e06",
+      "pipeline": {
+        "id": "default",
+        "name": "default",
+        "kind": "default"
+      },
+      "trigger": "local",
+      "source_trust": "owner",
+      "policy_digest": "1c9ccefb3f2a2e28dcee8f9621ecb56948f1ab0681e50e85dc816ab3ffc49853",
+      "input_digests": {
+        "config": "deff15ba0161e426ec78f6cfff80703423223fd34c7e32dd56ace6b8b03fa10b",
+        "lockfiles": [],
+        "generated": []
+      },
+      "worktree_state": "clean",
+      "tracked_changes_digest": null,
+      "binding": {
+        "state": "bound",
+        "reason": null
+      },
+      "runner": {
+        "id": "local",
+        "provider": "local",
+        "platform": "darwin/arm64",
+        "isolation": "process"
+      },
+      "producer": {
+        "kind": "coordinator-recorded",
+        "version": "1"
+      },
+      "timings": {
+        "queued_at": "2026-10-19T16:53:48Z",
+        "started_at": "2026-10-19T16:53:48Z",
+        "finished_at": "2026-10-19T16:53:48Z",
+        "duration_ms": 267
+      },
+      "tool_versions": {
+        "git": "2.56.0"
+      },
+      "checks": [
+        {
+          "id": "unit",
+          "job_id": "unit",
+          "kind": "release",
+          "tool": "",
+          "tool_version": null,
+          "required": true,
+          "substantive": true,
+          "result": "pass",
+          "findings": 0,
+          "excerpt": "",
+          "log_ref": null
+        }
+      ],
+      "artifacts": [],
+      "retries": [],
+      "selection": {
+        "mode": "full",
+        "reason": "selection.no_base",
+        "digest": "247589de6d9f5793deeafb412aad0162a418d4caf0c5d0d38881e1af2e3cb82b"
+      },
+      "placement_ref": "sched:decision/r20261019T165348-70802e06.unit-385cfdbc.a1",
+      "result": "pass",
+      "counts": {
+        "pass": 1,
+        "fail": 0,
+        "skip": 0,
+        "error": 0,
+        "total": 1
+      },
+      "freshness": {
+        "state": "unknown",
+        "reason": "current inputs were not supplied"
+      },
+      "signature": {
+        "kind": "coordinator-recorded"
+      }
+    }
+  }
+}
