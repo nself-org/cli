@@ -43,7 +43,7 @@ func unsignedAllowed(local bool) bool {
 // unpinned tier, into a skip. It never skips a present signature on a pinned
 // tier: that is the trust root, and a flag named for licences must not open it.
 //
-// A binary package is refused on a pinned tier in both modes: D7 signs the
+// A binary package is refused on a pinned tier in both modes, before the bypass can return: D7 signs the
 // source tarball only, and the registry fields that choose a binary download
 // (pluginType, binaryName, repository, platform checksums) are unsigned, so a
 // verified source signature would vouch for bytes it never covered. Until
@@ -52,11 +52,11 @@ func unsignedAllowed(local bool) bool {
 func verifyReleaseSignature(manifest *PluginManifest, paid, local bool, artifactKind string, bypass bool) error {
 	tier := releaseTier(paid)
 	pinned := signature.Pinned(tier)
-	if bypass && (!pinned || manifest.ReleaseSignature == nil) {
-		return nil
-	}
 	if pinned && artifactKind != "" && artifactKind != ArtifactKindSource {
 		return errs.Newf("E121", "plugin %q: the %s binary package is not covered by a release signature", manifest.Name, artifactKind)
+	}
+	if bypass && (!pinned || manifest.ReleaseSignature == nil) {
+		return nil
 	}
 	// compat.V15(P7-PLUG-23): a plugin with no verifiable release signature installs with a warning -> refused with E107
 	v15 := compat.V15()

@@ -517,3 +517,29 @@ func TestDevBypassNeverSkipsPresentSignature(t *testing.T) {
 		}
 	})
 }
+
+// TestDevBypassNeverSkipsBinaryPackageRefusal is the D-1109 regression: the
+// dev bypass returned before the pinned-tier binary refusal, so an unsigned
+// platform binary passed. The refusal must hold with the bypass on, with or
+// without a source signature; an unpinned tier still skips.
+func TestDevBypassNeverSkipsBinaryPackageRefusal(t *testing.T) {
+	compattest.Both(t, func(t *testing.T) {
+		key, signer := signaturetest.NewKey(t, signature.TierFree)
+		signaturetest.UseKeys(t, []signature.Key{key}, nil)
+		signaturetest.UseFloor(t, map[string]map[string]string{})
+		sum := sha256Hex([]byte("source"))
+		m := &PluginManifest{Name: sigPlugin, Version: "1.0.0", Checksum: sum}
+		if codeOf(verifyReleaseSignature(m, false, false, "linux-amd64", true)) != "E121" {
+			t.Fatal("bypass must not skip the binary refusal for an unsigned binary on a pinned tier")
+		}
+		m.ReleaseSignature = signaturetest.Sign(t, signer, sigPlugin, "1.0.0", sum)
+		if codeOf(verifyReleaseSignature(m, false, false, "linux-amd64", true)) != "E121" {
+			t.Fatal("bypass must not skip the binary refusal for a signed binary on a pinned tier")
+		}
+		m.ReleaseSignature = nil
+		signaturetest.UseKeys(t, nil, nil)
+		if err := verifyReleaseSignature(m, false, false, "linux-amd64", true); err != nil {
+			t.Fatalf("unpinned tier under bypass must skip: %v", err)
+		}
+	})
+}
