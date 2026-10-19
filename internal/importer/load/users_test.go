@@ -45,3 +45,20 @@ func TestUserRowKeepsNullEmail(t *testing.T) {
 		t.Fatalf("empty email changed to %#v", row[1])
 	}
 }
+
+// TestUserRowDefaultRole: the loader keeps the bundle's default role and falls
+// back to user only when the record has none (D-0725).
+func TestUserRowDefaultRole(t *testing.T) {
+	cases := map[string]struct{ in, want string }{
+		"carried":  {"editor", "editor"},
+		"fallback": {"", "user"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			row := userRow(pgtype.UUID{}, time.Unix(1, 0).UTC(), nil, verify.User{DefaultRole: c.in}, map[string]bool{})
+			if row[13] != c.want {
+				t.Fatalf("default_role = %#v, want %q", row[13], c.want)
+			}
+		})
+	}
+}

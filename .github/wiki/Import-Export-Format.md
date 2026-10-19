@@ -53,6 +53,10 @@ The bundle directory is mode 0700 and its files 0600. A bundle never holds a sec
 
 The manifest is deterministic: keys are sorted (Go marshals maps in key order), arrays are sorted by their natural id (`db.tables` by schema and name, `files` by path, and so on; a table's `pk` keeps the key's column order), two-space indent, one trailing newline. Two runs over the same input write the same bytes. Only `created_at` changes with time.
 
+## auth/users.jsonl
+
+One JSON object per user: `id`, `email`, `email_verified`, `phone`, `display_name`, `created_at`, `disabled`, `password_hash`, `hash_algorithm`, `metadata`, `roles` and `default_role`. `default_role` is optional and additive inside contract v1 (`schema_version` stays `"1"`): a record without it, from an older bundle or a source with no such notion, loads as `user`. The loader registers the role in `auth.roles` before it loads the user. The verifier reads the target back and reports a `user` mismatch when a user's default role, `email_verified`, `disabled` or role set differs from the record (a target may add its own default role to the set).
+
 ## Table hash
 
 `rows` is `count(*)`. `hash` is, as a decimal string:

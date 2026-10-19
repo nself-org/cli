@@ -28,6 +28,21 @@ type User struct {
 	HashAlgorithm string         `json:"hash_algorithm"`
 	Metadata      map[string]any `json:"metadata"`
 	Roles         []string       `json:"roles"`
+	// DefaultRole is the user's default Hasura role. Bundles written before this
+	// field existed, and sources with no such notion, leave it empty: the loader
+	// and the verifier both read empty as DefaultRoleFallback.
+	DefaultRole string `json:"default_role,omitempty"`
+}
+
+// DefaultRoleFallback is the default role of a user whose bundle record carries none.
+const DefaultRoleFallback = "user"
+
+// UserAuth is the auth state the verifier reads back from a target user.
+type UserAuth struct {
+	DefaultRole   string
+	EmailVerified bool
+	Disabled      bool
+	Roles         []string
 }
 type Metadata map[string]map[string]any
 type State struct {
@@ -38,6 +53,9 @@ type State struct {
 	Counts   map[string]int64
 	// UserIdent holds Identity() of each target user; nil skips the identity check.
 	UserIdent map[string]string
+	// UserAuth holds the default role, email_verified, disabled and roles of each
+	// target user; nil skips the check.
+	UserAuth map[string]UserAuth
 }
 type Target interface {
 	Snapshot(context.Context, portable.Manifest) (State, error)
@@ -92,6 +110,8 @@ func CompareState(state State, m portable.Manifest, users []User, metadata Metad
 			add("user_hash_algorithm", u.ID, "password hash algorithm differs", "user")
 		} else if got, have := state.UserIdent[u.ID]; state.UserIdent != nil && (!have || got != Identity(u.Email, u.Phone, u.DisplayName)) {
 			add("user", u.ID, "user identity fields differ", "user")
+		} else if got, have := state.UserAuth[u.ID]; state.UserAuth != nil && (!have || !authMatches(u, got)) {
+			add("user", u.ID, "user role or status fields differ", "user")
 		}
 	}
 	for _, o := range m.Storage.Objects {
