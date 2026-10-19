@@ -35,6 +35,7 @@ const (
 type relGit struct{ files map[string][]byte }
 
 func (relGit) HasOrigin(context.Context) (bool, error) { return true, nil }
+func (relGit) OriginURL(context.Context) (string, error) { return "https://example.invalid/o/r.git", nil }
 func (relGit) PinDefault(context.Context) (string, error) {
 	return strings.Repeat("a", 40), nil
 }
