@@ -427,12 +427,16 @@ func TestPromoteReleaseOriginPin(t *testing.T) {
 		{"redirected origin", "https://github.com/o/r.git\n", "https://evil.example/o/r.git", "E493"},
 		{"only comments", "# nothing\n", "https://github.com/o/r.git", "E493"},
 		{"empty file", "\n", "https://github.com/o/r.git", "E493"},
+		{"pinned but the project has no origin", "https://github.com/o/r.git\n", "NOORIGIN", "E493"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRelease(t)
 			r.write(PayloadType, r.signer)
 			r.git.originURL = tc.url
+			if tc.url == "NOORIGIN" {
+				r.git.noOrigin = true
+			}
 			if tc.pin != "" {
 				dir := filepath.Join(r.home, ".nself", "ci", "trust")
 				if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -450,5 +454,25 @@ func TestPromoteReleaseOriginPin(t *testing.T) {
 				t.Fatalf("trust was read (pinned %d) or evidence ran (%v) despite the origin mismatch", r.git.pinned, r.runs)
 			}
 		})
+	}
+}
+
+func TestOriginPinned(t *testing.T) {
+	home := t.TempDir()
+	if OriginPinned(home) {
+		t.Fatal("pinned without a file")
+	}
+	dir := filepath.Join(home, ".nself", "ci", "trust")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, originPinName), []byte("# only a comment\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !OriginPinned(home) {
+		t.Fatal("a pin file, even a broken one, must read as pinned (strict)")
+	}
+	if OriginPinned("") || OriginPinned("relative") {
+		t.Fatal("a non-absolute home must never read as pinned")
 	}
 }

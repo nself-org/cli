@@ -211,8 +211,11 @@ objects; anyone who can edit the project's `.git/config` can already run code as
 the operator, so by default the project's own `origin` is trusted. To pin it,
 put the expected URL in `~/.nself/ci/trust/origin.url` (first non-comment line):
 a different effective origin (local config or `insteadOf`) then refuses with
-`E493` before any trust file is read. A project with no `origin`, or with no
-committed `.nself/control-plane.yaml`, has no committed policy to consult.
+`E493` before any trust file is read, and so does a project whose `origin` was
+removed. A project with no `origin`, or with no committed
+`.nself/control-plane.yaml`, has no committed policy to consult and promotes
+without `--release` unless the origin is pinned: then, with the ci plugin
+installed, it refuses with `E499`.
 Without `--release` and without the requirement, `promote` prints one
 warning and proceeds. With the field true and no `--release`, even `--dry-run`
 refuses with `E499`.

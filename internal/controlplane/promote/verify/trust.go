@@ -83,13 +83,13 @@ func LoadTrust(ctx context.Context, g Git, home, repoRoot string) (Trust, error)
 			return t, errs.Wrap("E493", "cannot tell whether the project has an origin remote", err)
 		}
 	}
+	if err := checkOriginPin(ctx, g, home, hasOrigin); err != nil {
+		return t, err
+	}
 	if !hasOrigin {
 		t.Warnings = append(t.Warnings, "the project has no origin remote: committed revocations were not consulted")
 	}
 	if hasOrigin {
-		if err := checkOriginPin(ctx, g, home); err != nil {
-			return t, err
-		}
 		commit, err := g.PinDefault(ctx)
 		if err != nil {
 			return t, errs.Wrap("E493", "cannot refresh origin's default branch to read the committed trust files", err).WithFix("Check that origin is reachable, or place the keys in ~/.nself/ci/trust/.")
@@ -121,27 +121,49 @@ func LoadTrust(ctx context.Context, g Git, home, repoRoot string) (Trust, error)
 // originPinName is the optional operator file that pins where trust comes from.
 const originPinName = "origin.url"
 
-// checkOriginPin refuses when the operator pinned an origin URL in
-// ~/.nself/ci/trust/origin.url and the project's effective origin differs, so a
-// redirected remote (local config, insteadOf) cannot supply trust keys. The file
-// is optional: absent means the project's own origin is trusted.
-func checkOriginPin(ctx context.Context, g Git, home string) error {
+// loadOriginPin reads ~/.nself/ci/trust/origin.url: the first non-comment line.
+// pinned is false when the file does not exist. An empty or unreadable file is
+// an error, never "no pin".
+func loadOriginPin(home string) (want string, pinned bool, err error) {
 	raw, err := readTrustFile(filepath.Join(home, ".nself", "ci", "trust", originPinName))
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return "", false, nil
 	}
 	if err != nil {
-		return errs.Wrap("E493", "cannot read the pinned origin URL", err)
+		return "", true, errs.Wrap("E493", "cannot read the pinned origin URL", err)
 	}
-	want := ""
 	for _, line := range strings.Split(string(raw), "\n") {
 		if line = strings.TrimSpace(line); line != "" && !strings.HasPrefix(line, "#") {
-			want = line
-			break
+			return line, true, nil
 		}
 	}
-	if want == "" {
-		return errs.New("E493", "the pinned origin URL file is empty")
+	return "", true, errs.New("E493", "the pinned origin URL file is empty")
+}
+
+// OriginPinned reports whether the operator pinned a trust origin. The command
+// layer uses it as the opt-in to strict behaviour when committed policy cannot
+// be found.
+func OriginPinned(home string) bool {
+	if !filepath.IsAbs(home) {
+		return false
+	}
+	_, pinned, _ := loadOriginPin(home)
+	return pinned
+}
+
+// checkOriginPin enforces the pin: the project must have an origin and its
+// effective URL (after url.*.insteadOf) must equal the pinned one. It runs even
+// when the project has no origin, so removing the remote cannot lift the pin.
+func checkOriginPin(ctx context.Context, g Git, home string, hasOrigin bool) error {
+	want, pinned, err := loadOriginPin(home)
+	if err != nil {
+		return err
+	}
+	if !pinned {
+		return nil
+	}
+	if !hasOrigin || g == nil {
+		return errs.New("E493", "an origin URL is pinned in ~/.nself/ci/trust/"+originPinName+", but the project has no origin remote")
 	}
 	got, err := g.OriginURL(ctx)
 	if err != nil {

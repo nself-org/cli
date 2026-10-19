@@ -23,13 +23,17 @@ import (
 // nor on git or the network.
 func init() {
 	ciPluginBinaryFn = func() (string, bool) { return "", false }
-	committedRequiresFn = func(context.Context, string, string, bool) (bool, error) { return false, nil }
+	committedRequiresFn = func(context.Context, string, string, bool) (bool, bool, error) { return false, true, nil }
 }
 
 func withCommitted(t *testing.T, required bool, err error) {
+	withCommittedAvail(t, required, true, err)
+}
+
+func withCommittedAvail(t *testing.T, required, available bool, err error) {
 	t.Helper()
 	old := committedRequiresFn
-	committedRequiresFn = func(context.Context, string, string, bool) (bool, error) { return required, err }
+	committedRequiresFn = func(context.Context, string, string, bool) (bool, bool, error) { return required, available, err }
 	t.Cleanup(func() { committedRequiresFn = old })
 }
 
@@ -287,26 +291,26 @@ func TestCommittedRequiresReadsOriginsInventory(t *testing.T) {
 	git(work, "remote", "add", "origin", origin)
 	git(work, "push", "origin", "HEAD:refs/heads/main")
 	real := committedRequires
-	if got, err := real(context.Background(), work, "prodsim", false); err != nil || !got {
-		t.Fatalf("prodsim: %v, %v; want required", got, err)
+	if got, avail, err := real(context.Background(), work, "prodsim", false); err != nil || !got || !avail {
+		t.Fatalf("prodsim: %v, %v, %v; want required and available", got, avail, err)
 	}
-	if got, err := real(context.Background(), work, "ls", false); err != nil || got {
-		t.Fatalf("ls without ci: %v, %v; want not required", got, err)
+	if got, avail, err := real(context.Background(), work, "ls", false); err != nil || got || !avail {
+		t.Fatalf("ls without ci: %v, %v, %v; want not required, available", got, avail, err)
 	}
-	if got, err := real(context.Background(), work, "absent", true); err != nil || got {
-		t.Fatalf("unknown env: %v, %v; want not required", got, err)
+	if got, avail, err := real(context.Background(), work, "absent", true); err != nil || got || !avail {
+		t.Fatalf("unknown env: %v, %v, %v; want not required, available", got, avail, err)
 	}
 	// A working-tree edit does not change the committed answer.
 	if err := os.WriteFile(filepath.Join(work, ".nself", "control-plane.yaml"), []byte("schema_version: 2\nproject: p\nenvironments: {}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := real(context.Background(), work, "prodsim", false); err != nil || !got {
+	if got, _, err := real(context.Background(), work, "prodsim", false); err != nil || !got {
 		t.Fatalf("after a working-tree edit: %v, %v; want still required", got, err)
 	}
 	// No origin: nothing committed to consult, not an error.
 	git(work, "remote", "remove", "origin")
-	if got, err := real(context.Background(), work, "prodsim", true); err != nil || got {
-		t.Fatalf("no origin: %v, %v; want false, nil", got, err)
+	if got, avail, err := real(context.Background(), work, "prodsim", true); err != nil || got || avail {
+		t.Fatalf("no origin: %v, %v, %v; want not required, unavailable, no error", got, avail, err)
 	}
 }
 
@@ -324,5 +328,36 @@ func TestReleaseFlagRefusedOnLegacyPromote(t *testing.T) {
 	cmd, _ = releaseCmd(t, t.TempDir())
 	if err := promoteCmd.PreRunE(cmd, nil); err != nil {
 		t.Fatalf("v1.5: %v", err)
+	}
+}
+
+// TestStrictWhenTheTrustOriginIsPinned: an operator who pinned the trust origin
+// gets a refusal, not a pass, when no committed inventory can be consulted.
+func TestStrictWhenTheTrustOriginIsPinned(t *testing.T) {
+	dir := promoteFixture(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	withCommittedAvail(t, false, false, nil)
+	run := func(ci bool) error {
+		withCIPlugin(t, ci)
+		cmd, _ := releaseCmd(t, "")
+		return wirePromoteRelease(cmd, dir, &cpromote.Engine{}, promoteStateFor("ls", controlplane.TierLocalServers, false))
+	}
+	if err := run(true); err != nil {
+		t.Fatalf("not pinned, nothing committed: %v, want a pass", err)
+	}
+	pin := filepath.Join(home, ".nself", "ci", "trust")
+	if err := os.MkdirAll(pin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pin, "origin.url"), []byte("https://github.com/o/r.git\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(true); !codeIs(err, "E499") {
+		t.Fatalf("pinned, nothing committed, ci installed: %v, want E499", err)
+	}
+	if err := run(false); err != nil {
+		t.Fatalf("pinned, nothing committed, no ci plugin: %v, want a pass (nothing could be required)", err)
 	}
 }

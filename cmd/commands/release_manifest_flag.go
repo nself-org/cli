@@ -160,28 +160,29 @@ func wrapCompareWithDigestCheck(eng *cpromote.Engine) {
 }
 
 // committedRequiresFn reads whether the inventory committed on origin's default
-// branch makes a verified release mandatory for target. A variable so tests can
-// avoid git.
+// branch makes a verified release mandatory for target. available is false when
+// there is nothing committed to consult (no origin, or no committed inventory).
+// A variable so tests can avoid git.
 var committedRequiresFn = committedRequires
 
-func committedRequires(ctx context.Context, workdir, target string, ciInstalled bool) (bool, error) {
+func committedRequires(ctx context.Context, workdir, target string, ciInstalled bool) (required, available bool, err error) {
 	g := verify.GitCLI{Root: workdir}
 	if ok, err := g.HasOrigin(ctx); err != nil || !ok {
-		return false, err
+		return false, false, err
 	}
 	commit, err := g.PinDefault(ctx)
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 	data, found, err := g.Show(ctx, commit, ".nself/control-plane.yaml")
 	if err != nil || !found {
-		return false, err
+		return false, false, err
 	}
 	var inv controlplane.Inventory
 	if err := yaml.Unmarshal(data, &inv); err != nil {
-		return false, err
+		return false, false, err
 	}
-	return verifiedReleaseRequired(inv.Environments[target], ciInstalled), nil
+	return verifiedReleaseRequired(inv.Environments[target], ciInstalled), true, nil
 }
 
 // committedGate runs when the working-tree inventory did not require a
@@ -189,12 +190,16 @@ func committedRequires(ctx context.Context, workdir, target string, ciInstalled 
 // the stricter of the two copies: an edit of require_verified_release or the
 // tier in the working tree cannot switch the gate off. Where the committed copy
 // cannot be read the promotion is refused only if the ci plugin is installed,
-// because only then could the default requirement have applied.
+// because only then could the default requirement have applied. Nothing
+// committed to consult (no origin, no committed inventory) is allowed, except
+// for an operator who pinned the trust origin (~/.nself/ci/trust/origin.url):
+// that operator asked for strictness, so with the ci plugin installed it refuses.
 func committedGate(ctx context.Context, workdir, target string, ciInstalled bool) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	required, err := committedRequiresFn(ctx, workdir, target, ciInstalled)
+	required, available, err := committedRequiresFn(ctx, workdir, target, ciInstalled)
+	home, _ := os.UserHomeDir()
 	switch {
 	case err != nil && ciInstalled:
 		return errs.Wrap("E499", "cannot read the inventory committed on origin to confirm no verified release is required", err).WithFix("Check that origin is reachable, or pass --release <dir>.")
@@ -202,6 +207,8 @@ func committedGate(ctx context.Context, workdir, target string, ciInstalled bool
 		return nil
 	case required:
 		return errs.Newf("E499", "the inventory committed on origin requires a verified release for %s; the working copy says otherwise", target)
+	case !available && ciInstalled && verify.OriginPinned(home):
+		return errs.Newf("E499", "no inventory is committed on origin to confirm %s needs no verified release, and the trust origin is pinned: pass --release <dir>", target)
 	}
 	return nil
 }
