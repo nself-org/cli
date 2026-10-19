@@ -65,6 +65,13 @@ After `nself migrate run` completes, the output includes a plugin re-install blo
 
 The plugin list is generated from `PLUGIN_<NAME>=true` entries in your v0.9 `.env`. Plugin names are mapped from v0.9 naming to v1 bundle naming automatically.
 
+## Moving from another platform
+
+`nself migrate supabase` and `nself migrate firebase` (and the other source spellings) move to
+`nself db import <source>` in v1.5, and the old spelling is removed in v1.6.0. In v1.5 mode the
+command runs the importer pipeline with a verify report; in v1.4 mode the two keep writing
+migration artifacts. [[Come-Home]] lists every source with its guide, command and password result.
+
 ## CI fixture
 
 A v0.9 test fixture lives at `internal/migration/testdata/v0.9-fixture/`. The GitHub Actions workflow `.github/workflows/migration-fixture.yml` runs migration regression tests on every push to main and nightly. To run locally:
