@@ -75,6 +75,7 @@ func init() {
 	// never reads a release: accepting the flag there would claim a
 	// verification that did not happen.
 	promoteCmd.PreRunE = func(cmd *cobra.Command, _ []string) error {
+		// compat.V15(P7-DEPL-19): v1.4 promote never verifies a release -> --release is refused unless the v1.5 engine runs
 		if release, _ := cmd.Flags().GetString("release"); release != "" && !compat.V15() {
 			return errs.New("E401", "--release needs the v1.5 promote engine (set NSELF_V15=1): this form does not verify a release")
 		}
