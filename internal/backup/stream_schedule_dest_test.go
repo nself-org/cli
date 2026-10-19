@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/nself-org/cli/internal/compat/compattest"
 )
 
 // Purpose: tests for D-0467 and the schedule half of D-0257: backup schedule
@@ -78,6 +80,41 @@ func TestScheduleStreamRefusesHostileRemote(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestScheduleStreamRefusesHostileRemotesQuietly: every hostile --to and
+// --heartbeat-to is refused in both modes, with no rendered unit, no written
+// file, and no credential in the error, the output or the stderr notice (D-1157).
+func TestScheduleStreamRefusesHostileRemotesQuietly(t *testing.T) {
+	skipUnitTestOnWindows(t)
+	t.Chdir(t.TempDir())
+	compattest.Both(t, func(t *testing.T) {
+		notice := captureBareNotice(t)
+		for _, v := range hostileRemotes() {
+			for _, field := range []string{"to", "heartbeat-to"} {
+				for _, dry := range []bool{true, false} {
+					var out bytes.Buffer
+					opts := scheduleOpts(t, dry, &out)
+					if field == "to" {
+						opts.To = v
+					} else {
+						opts.HeartbeatTo = v
+					}
+					err := ScheduleStream(minimalConfig(), opts)
+					if err == nil {
+						t.Errorf("%s=%q dry=%v: accepted", field, v, dry)
+						continue
+					}
+					assertNoLeak(t, field+" error", err.Error())
+					assertNoLeak(t, field+" output", out.String())
+					if out.Len() != 0 || dirEntries(t, opts.UnitDir) != 0 {
+						t.Errorf("%s=%q dry=%v: something was rendered or written", field, v, dry)
+					}
+				}
+			}
+		}
+		assertNoLeak(t, "stderr notice", notice.String())
+	})
 }
 
 // TestScheduleStreamAcceptsNativeDestinations: path:// and name:path pass.

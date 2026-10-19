@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/nself-org/cli/internal/compat/compattest"
 )
 
 // Purpose: tests for D-0257. backup stream, the heartbeat and (in
@@ -43,6 +45,19 @@ func hostileRemotes() []string {
 		"s3://user@bucket",
 		"S3://k:" + fakeSecret + "@b",
 		" s3://k:" + fakeSecret + "@b",
+		// No ":" at all: rclone read these as local paths, but they carry a
+		// credential assignment and must not be mapped or echoed (D-1156, D-1157).
+		"myr,pass=fake/secret-not-real",
+		"myr,pass=" + fakeSecret,
+		"s3,secret_access_key=fake/secret-not-real",
+	}
+}
+
+// assertNoLeak fails when s carries a fake credential.
+func assertNoLeak(t *testing.T, what, s string) {
+	t.Helper()
+	if strings.Contains(s, "secret-not-real") || strings.Contains(s, fakeKeyID) {
+		t.Errorf("%s leaks the value: %q", what, s)
 	}
 }
 
@@ -114,46 +129,52 @@ func TestStreamHeartbeatToPath(t *testing.T) {
 // run up front, dry-run included: no pg_dump, no rclone, nothing stored, and
 // the error never echoes the value.
 func TestStreamRefusesHostileRemotes(t *testing.T) {
-	store, log := fakeTools(t)
-	for _, v := range hostileRemotes() {
-		for _, dry := range []bool{false, true} {
-			for _, field := range []string{"to", "heartbeat-to"} {
-				opts := streamOpts()
-				opts.DryRun = dry
-				if field == "to" {
-					opts.To = v
-				} else {
-					opts.HeartbeatTo = v
-				}
-				res, err := Stream(context.Background(), minimalConfig(), opts)
-				if err == nil || res != nil {
-					t.Errorf("%s=%q dry=%v: Stream = %v, %v; want an error", field, v, dry, res, err)
-					continue
-				}
-				if strings.Contains(err.Error(), "secret-not-real") || strings.Contains(err.Error(), fakeKeyID) {
-					t.Errorf("%s=%q: the error echoes the value: %v", field, v, err)
+	t.Chdir(t.TempDir())
+	compattest.Both(t, func(t *testing.T) {
+		store, log := fakeTools(t)
+		notice := captureBareNotice(t)
+		for _, v := range hostileRemotes() {
+			for _, dry := range []bool{false, true} {
+				for _, field := range []string{"to", "heartbeat-to"} {
+					opts := streamOpts()
+					opts.DryRun = dry
+					if field == "to" {
+						opts.To = v
+					} else {
+						opts.HeartbeatTo = v
+					}
+					res, err := Stream(context.Background(), minimalConfig(), opts)
+					if err == nil || res != nil {
+						t.Errorf("%s=%q dry=%v: Stream = %v, %v; want an error", field, v, dry, res, err)
+						continue
+					}
+					assertNoLeak(t, field+" error", err.Error())
 				}
 			}
 		}
-	}
-	assertNoProcessRan(t, store, log)
+		assertNoLeak(t, "stderr notice", notice.String())
+		assertNoProcessRan(t, store, log)
+	})
 }
 
 // TestWriteHeartbeatRefusesHostileRemotes: WriteHeartbeat parses its remote
 // with the same grammar.
 func TestWriteHeartbeatRefusesHostileRemotes(t *testing.T) {
-	store, log := fakeTools(t)
-	for _, v := range hostileRemotes() {
-		err := WriteHeartbeat(context.Background(), v, Heartbeat{Project: "p"})
-		if err == nil {
-			t.Errorf("%q: accepted", v)
-			continue
+	t.Chdir(t.TempDir())
+	compattest.Both(t, func(t *testing.T) {
+		store, log := fakeTools(t)
+		notice := captureBareNotice(t)
+		for _, v := range hostileRemotes() {
+			err := WriteHeartbeat(context.Background(), v, Heartbeat{Project: "p"})
+			if err == nil {
+				t.Errorf("%q: accepted", v)
+				continue
+			}
+			assertNoLeak(t, "error", err.Error())
 		}
-		if strings.Contains(err.Error(), "secret-not-real") || strings.Contains(err.Error(), fakeKeyID) {
-			t.Errorf("%q: the error echoes the value: %v", v, err)
-		}
-	}
-	assertNoProcessRan(t, store, log)
+		assertNoLeak(t, "stderr notice", notice.String())
+		assertNoProcessRan(t, store, log)
+	})
 }
 
 // TestStreamFailedPipelineToPathLeavesNothing: a failing pg_dump with a path://
@@ -175,18 +196,21 @@ func TestStreamFailedPipelineToPathLeavesNothing(t *testing.T) {
 // TestStreamRefusesHostileConfigRemote: a hostile cfg.Backup.Remote (opts.To
 // empty) is refused before any process runs.
 func TestStreamRefusesHostileConfigRemote(t *testing.T) {
-	store, log := fakeTools(t)
-	for _, v := range hostileRemotes() {
-		cfg := minimalConfig()
-		cfg.Backup.Remote = v
-		res, err := Stream(context.Background(), cfg, StreamOptions{AllowUnencrypted: true})
-		if err == nil || res != nil {
-			t.Errorf("config remote %q: Stream = %v, %v; want an error", v, res, err)
-			continue
+	t.Chdir(t.TempDir())
+	compattest.Both(t, func(t *testing.T) {
+		store, log := fakeTools(t)
+		notice := captureBareNotice(t)
+		for _, v := range hostileRemotes() {
+			cfg := minimalConfig()
+			cfg.Backup.Remote = v
+			res, err := Stream(context.Background(), cfg, StreamOptions{AllowUnencrypted: true})
+			if err == nil || res != nil {
+				t.Errorf("config remote %q: Stream = %v, %v; want an error", v, res, err)
+				continue
+			}
+			assertNoLeak(t, "error", err.Error())
 		}
-		if strings.Contains(err.Error(), "secret-not-real") || strings.Contains(err.Error(), fakeKeyID) {
-			t.Errorf("config remote %q: the error echoes the value: %v", v, err)
-		}
-	}
-	assertNoProcessRan(t, store, log)
+		assertNoLeak(t, "stderr notice", notice.String())
+		assertNoProcessRan(t, store, log)
+	})
 }
