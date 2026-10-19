@@ -22,7 +22,7 @@ go 1.26.9
 require (
 	github.com/bytecodealliance/wasmtime-go/v25 v25.0.0
 	github.com/cenkalti/backoff/v5 v5.0.3
-	github.com/go-chi/chi/v5 v5.4.0
+	github.com/go-chi/chi/v5 v5.5.0
 	github.com/google/jsonschema-go v0.4.3
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.11.0
