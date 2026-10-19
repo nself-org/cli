@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Drill leg: two-command (P7-CI-18). Wraps the P7-CANON-16 drill unchanged.
+#
+# Purpose: make `nself init && nself start` on a clean host one job of the `drills`
+#   pipeline (.nself/ci.yaml, job `drill-two-command`). It runs
+#   scripts/drill/two-command.sh --host once per compat mode, the same two runs
+#   as .github/workflows/two-command-drill.yml (v14: NSELF_V15 unset, v15: 1),
+#   and exits with that script's code. The script, its legs and its budgets
+#   (timeouts, time to healthy never gating) are not changed here.
+# Inputs: NSELF_BIN (the cli binary; default <repo>/.nself/bin/nself, built from
+#   this checkout with `go build -mod=vendor` when it is missing), DRILL_OUT_ROOT
+#   (result root; default <repo>/.nself/drill-out, holds <mode>/drill.json and
+#   the leg logs). The nself-ci exec funnel passes neither: it hands a job only an
+#   allowlist of variables, so the defaults are what a pipeline run uses.
+# Outputs: per-mode result directories; one `leg: <mode> <result>` line each.
+# Exit: 0 both modes passed; otherwise the first non-zero code of two-command.sh
+#   (1 drill failed, 2 bad usage or missing tool). Both modes always run.
+# Runs only on GitHub-hosted runners or a local Linux box with Docker; never
+#   point it at a server.
+
+set -u
+HERE=$(cd "$(dirname "$0")" && pwd)
+ROOT=$(cd "$HERE/../../../.." && pwd)
+DRILL="$ROOT/scripts/drill/two-command.sh"
+
+NSELF_BIN=${NSELF_BIN:-$ROOT/.nself/bin/nself}
+OUT_ROOT=${DRILL_OUT_ROOT:-$ROOT/.nself/drill-out}
+
+if [ ! -x "$NSELF_BIN" ]; then
+  command -v go >/dev/null 2>&1 || { echo "leg: NSELF_BIN $NSELF_BIN is missing and go is not on PATH" >&2; exit 2; }
+  echo "leg: building nself from this checkout into $NSELF_BIN"
+  (cd "$ROOT" && go build -mod=vendor -o "$NSELF_BIN" ./cmd/nself) || { echo "leg: go build failed" >&2; exit 2; }
+fi
+
+rc=0
+# run_mode <mode> <v15 value>: an empty value means the variable is absent, as in the standalone matrix.
+run_mode() {
+  local mode=$1 v15=$2 code=0
+  echo "leg: two-command $mode start"
+  if [ -n "$v15" ]; then
+    NSELF_V15=$v15 NSELF_BIN=$NSELF_BIN DRILL_OUT=$OUT_ROOT/$mode bash "$DRILL" --host || code=$?
+  else
+    env -u NSELF_V15 NSELF_BIN="$NSELF_BIN" DRILL_OUT="$OUT_ROOT/$mode" bash "$DRILL" --host || code=$?
+  fi
+  if [ "$code" -eq 0 ]; then echo "leg: two-command $mode pass"; else echo "leg: two-command $mode FAIL ($code)" >&2; fi
+  if [ "$rc" -eq 0 ]; then rc=$code; fi
+}
+
+run_mode v14 ""
+run_mode v15 1
+exit "$rc"

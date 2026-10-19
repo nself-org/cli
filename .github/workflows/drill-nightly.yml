@@ -1,0 +1,127 @@
+# Nightly drills pipeline of the cli repo (P7-CI-18), instantiated from
+# free/ci/templates/scheduled-pipeline.yml in nself-org/plugins.
+#
+# Purpose: run the `drills` pipeline of .nself/ci.yaml every night with the
+#   version-pinned, checksum-verified nself-ci release, and keep the pipeline
+#   evidence as the artifact `drills-evidence` (file evidence.json). Its jobs are
+#   the directories of scripts/drill/legs; the first is two-command, which wraps
+#   scripts/drill/two-command.sh (P7-CANON-16). A new drill is a new directory with an
+#   executable `run`; this file does not change. See .github/wiki/Drills.md.
+# Differences from the template: the cli is built from the ref (the drills run
+#   the cli under test) and handed to the legs as .nself/bin/nself, and the
+#   pull_request trigger runs the pipeline for changes to the drills themselves, because
+#   workflow_dispatch cannot start a workflow that is not on the default branch.
+# The pin: CI_VERSION, CI_RELEASE_URL and CI_RELEASE_SHA256 take the `ci-release`
+#   handoff of P7-PLUG-69, linux-amd64. To move the pin, change the three values
+#   in one commit.
+# Red is the alert: a throwaway runner keeps no run store, so a schedule that stops
+#   firing shows as a missing run here, not as an `overdue` report. A runner
+#   availability failure is re-run, never counted green (Constitution 14.2).
+# Constraints: actions pinned by commit sha, read-only token, no secrets, `--no-status`.
+
+name: drill-nightly
+
+on:
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'scripts/drill/legs/**'
+      - '.nself/ci.yaml'
+      - '.github/workflows/drill-nightly.yml'
+
+concurrency:
+  group: drill-nightly-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  PIPELINE: drills        # the pipeline name in .nself/ci.yaml
+  CI_VERSION: "1.2.12"
+  CI_RELEASE_URL: "https://github.com/nself-org/plugins/releases/download/v1.2.12/ci-1.2.12-linux-amd64.tar.gz"
+  CI_RELEASE_SHA256: "12c1836702fa54f5fa52ae72eb2585be6b978614cfd72b27371165b466641d40"
+  NSELF_V15: "1"          # the plugin binary does not follow the cli flip; kept until v1.6
+  NSELF_CI_TIMEOUT: 80m   # the two-command leg runs both compat modes in one job (default 10m)
+
+jobs:
+  drills:
+    name: drills
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check the pin
+        run: |
+          for v in PIPELINE CI_VERSION CI_RELEASE_URL CI_RELEASE_SHA256; do
+            if [ -z "${!v}" ]; then
+              echo "::error::$v is not set in this workflow's env block"
+              exit 1
+            fi
+          done
+          case "$CI_RELEASE_URL" in https://*) ;; *) echo "::error::CI_RELEASE_URL must be an https URL"; exit 1 ;; esac
+
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build nself from this ref
+        run: |
+          mkdir -p .nself/bin
+          go build -mod=vendor -o .nself/bin/nself ./cmd/nself
+
+      - name: Install the pinned nself-ci
+        run: |
+          set -euo pipefail
+          tarball="$RUNNER_TEMP/nself-ci.tar.gz"
+          curl --fail --silent --show-error --location --proto '=https' --output "$tarball" "$CI_RELEASE_URL"
+          echo "$CI_RELEASE_SHA256  $tarball" | sha256sum --check --strict -
+          mkdir -p "$RUNNER_TEMP/nself-ci"
+          tar -xzf "$tarball" -C "$RUNNER_TEMP/nself-ci"
+          bin="$(find "$RUNNER_TEMP/nself-ci" -type f -name nself-ci | head -n 1)"
+          if [ -z "$bin" ]; then
+            echo "::error::the release tarball holds no nself-ci binary"
+            exit 1
+          fi
+          chmod +x "$bin"
+          echo "NSELF_CI_BIN=$bin" >> "$GITHUB_ENV"
+
+      - name: Run the pipeline
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/evidence"
+          status=0
+          "$NSELF_CI_BIN" --no-status --pipeline "$PIPELINE" --json > "$RUNNER_TEMP/evidence/evidence.json" || status=$?
+          {
+            echo "### $PIPELINE (nself-ci $CI_VERSION)"
+            echo "exit code: $status"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - name: Keep the evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: drills-evidence
+          path: ${{ runner.temp }}/evidence/evidence.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Keep the drill results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: drills-two-command-results
+          path: .nself/drill-out/
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 30
