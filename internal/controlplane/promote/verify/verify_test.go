@@ -248,6 +248,7 @@ func TestPromoteReleaseTrustFileFailures(t *testing.T) {
 			}
 		}},
 		{"git show fails", func(r *release) { r.git.showErr = errors.New("object missing") }},
+		{"git cannot tell about origin", func(r *release) { r.git.originErr = errors.New("git missing") }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -357,5 +358,33 @@ func TestReadTrustFileLimit(t *testing.T) {
 	}
 	if _, err := readTrustFile(dir); err == nil || !strings.Contains(err.Error(), "regular") {
 		t.Fatalf("a directory: %v, want a regular-file refusal", err)
+	}
+}
+
+func TestSameRegularFile(t *testing.T) {
+	dir := t.TempDir()
+	a, b := filepath.Join(dir, "a"), filepath.Join(dir, "b")
+	for _, p := range []string{a, b} {
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	infoA, err := os.Lstat(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fa, _ := os.Open(a)
+	fb, _ := os.Open(b)
+	fd, _ := os.Open(dir)
+	defer func() { _ = fa.Close(); _ = fb.Close(); _ = fd.Close() }()
+	if err := sameRegularFile(infoA, fa); err != nil {
+		t.Fatalf("the same file: %v", err)
+	}
+	if err := sameRegularFile(infoA, fb); err == nil {
+		t.Fatal("a different file passed as the same file")
+	}
+	infoD, _ := os.Lstat(dir)
+	if err := sameRegularFile(infoD, fd); err == nil {
+		t.Fatal("a directory passed as a regular file")
 	}
 }

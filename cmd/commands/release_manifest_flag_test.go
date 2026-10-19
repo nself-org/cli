@@ -11,6 +11,7 @@ import (
 	cpromote "github.com/nself-org/cli/internal/controlplane/promote"
 	"github.com/nself-org/cli/internal/controlplane/promote/verify"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/plugin/mount"
 	"github.com/spf13/cobra"
 )
 
@@ -169,5 +170,32 @@ func TestReleaseFlagRefusedOnTheCanaryForm(t *testing.T) {
 	cmd, _ := releaseCmd(t, t.TempDir())
 	if err := runDeployPromoteBody(cmd, nil); !codeIs(err, "E401") {
 		t.Fatalf("err = %v, want E401", err)
+	}
+}
+
+func TestSelectCIPlugin(t *testing.T) {
+	ok := mount.Spec{Slug: "ci", Command: "ci", BinaryPath: "/p/nself-ci"}
+	cases := []struct {
+		name     string
+		specs    []mount.Spec
+		problems []mount.Problem
+		binary   string
+		inst     bool
+	}{
+		{"healthy", []mount.Spec{ok}, nil, "/p/nself-ci", true},
+		{"no plugin", nil, nil, "", false},
+		{"other plugin only", []mount.Spec{{Slug: "x", Command: "x", BinaryPath: "/p/x"}}, []mount.Problem{{Slug: "y"}}, "", false},
+		{"bad manifest", nil, []mount.Problem{{Slug: "ci", Code: "E113"}}, "", true},
+		{"verb collision names both", nil, []mount.Problem{{Slug: "ci,other", Code: "E405"}}, "", true},
+		{"collision with spaces", nil, []mount.Problem{{Slug: "other, ci"}}, "", true},
+		{"similar slug is not ci", nil, []mount.Problem{{Slug: "ci-extra,cix"}}, "", false},
+		{"ci mounted under another command", []mount.Spec{{Slug: "ci", Command: "pipeline", BinaryPath: "/p/nself-ci"}}, nil, "", true},
+		{"healthy beats a stale problem", []mount.Spec{ok}, []mount.Problem{{Slug: "ci"}}, "/p/nself-ci", true},
+	}
+	for _, tc := range cases {
+		binary, inst := selectCIPlugin(tc.specs, tc.problems)
+		if binary != tc.binary || inst != tc.inst {
+			t.Errorf("%s: got %q, %v; want %q, %v", tc.name, binary, inst, tc.binary, tc.inst)
+		}
 	}
 }

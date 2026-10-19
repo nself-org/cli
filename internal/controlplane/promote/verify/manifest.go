@@ -93,7 +93,33 @@ func decodeManifest(payload []byte) (*Manifest, error) {
 	if m.Evidence.Path != EvidenceFile || !sha256RE.MatchString(m.Evidence.SHA256) {
 		return nil, errs.Newf("E492", "release manifest must pin %s with a sha256", EvidenceFile)
 	}
+	if err := checkArtifacts(m.Artifacts); err != nil {
+		return nil, err
+	}
 	return &m, nil
+}
+
+// checkArtifacts refuses artifact entries whose digests or platforms are not in
+// the v1 shape, so a malformed entry cannot hide beside a valid one. Additive
+// fields stay accepted.
+func checkArtifacts(list []Artifact) error {
+	for i, a := range list {
+		if !sha256RE.MatchString(a.SHA256) {
+			return errs.Newf("E492", "release manifest artifact %d has no valid sha256", i)
+		}
+		if a.Image == nil {
+			continue
+		}
+		if !digestRE.MatchString(a.Image.IndexDigest) {
+			return errs.Newf("E492", "release manifest artifact %d has no valid image index digest", i)
+		}
+		for j, im := range a.Image.Manifests {
+			if im.Platform == "" || !digestRE.MatchString(im.Digest) {
+				return errs.Newf("E492", "release manifest artifact %d image manifest %d needs a platform and a sha256 digest", i, j)
+			}
+		}
+	}
+	return nil
 }
 
 func schemaMajor(schema string) (int, bool) {

@@ -4,7 +4,7 @@ package verify
 //          the git CLI with fixed arguments.
 // Inputs:  the project root.
 // Outputs: Git for LoadTrust.
-// Constraints: no prompts (GIT_TERMINAL_PROMPT=0); every call is bounded in
+// Constraints: no prompts (GIT_TERMINAL_PROMPT=0), no replacement objects; every call is bounded in
 //              time and output; the trust commit is found from the remote's own
 //              answer and fetched explicitly, then addressed by its commit id so
 //              no local tag or stale ref can stand in for it.
@@ -12,6 +12,7 @@ package verify
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -37,21 +38,31 @@ type GitCLI struct{ Root string }
 func (g GitCLI) run(ctx context.Context, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, gitSeconds*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", g.Root}, args...)...) //nolint:gosec // fixed git verbs; branch and commit names are validated
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	cmd := exec.CommandContext(ctx, "git", append([]string{"--no-replace-objects", "-C", g.Root}, args...)...) //nolint:gosec // fixed git verbs; branch and commit names are validated
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_NO_REPLACE_OBJECTS=1")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &limitWriter{w: &stdout, left: maxGitOutput}
 	cmd.Stderr = &limitWriter{w: &stderr, left: 4096}
+	cmd.WaitDelay = subprocessWaitDelay
 	if err := cmd.Run(); err != nil {
 		return stdout.Bytes(), fmt.Errorf("git %s: %w: %s", args[0], err, strings.TrimSpace(stderr.String()))
 	}
 	return stdout.Bytes(), nil
 }
 
-// HasOrigin reports whether an origin remote is configured.
-func (g GitCLI) HasOrigin(ctx context.Context) bool {
-	_, err := g.run(ctx, "remote", "get-url", "origin")
-	return err == nil
+// HasOrigin reports whether Root is inside a git work tree with an origin
+// remote. Git answering "no" is false; git failing to run at all is an error.
+func (g GitCLI) HasOrigin(ctx context.Context) (bool, error) {
+	for _, args := range [][]string{{"rev-parse", "--git-dir"}, {"remote", "get-url", "origin"}} {
+		if _, err := g.run(ctx, args...); err != nil {
+			var exit *exec.ExitError
+			if errors.As(err, &exit) {
+				return false, nil
+			}
+			return false, err
+		}
+	}
+	return true, nil
 }
 
 // PinDefault asks origin which branch is its default, fetches exactly that

@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/nself-org/cli/internal/controlplane"
 	cpromote "github.com/nself-org/cli/internal/controlplane/promote"
@@ -33,14 +34,28 @@ const releaseManifestKey = "release_manifest"
 // optional. A variable so tests can supply a fake plugin.
 var ciPluginBinaryFn = func() (binary string, installed bool) {
 	specs, problems := mount.Discover(resolvePluginDir(), canonTable.Verbs)
+	return selectCIPlugin(specs, problems)
+}
+
+// selectCIPlugin picks the ci plugin out of a discovery result. A problem that
+// names ci, alone or inside a collision list ("ci,other"), and a ci plugin that
+// would not mount as `ci`, count as installed but unusable.
+func selectCIPlugin(specs []mount.Spec, problems []mount.Problem) (binary string, installed bool) {
 	for _, s := range specs {
 		if s.Slug == "ci" && s.Command == "ci" {
 			return s.BinaryPath, true
 		}
 	}
-	for _, p := range problems {
-		if p.Slug == "ci" {
+	for _, s := range specs {
+		if s.Slug == "ci" {
 			return "", true
+		}
+	}
+	for _, p := range problems {
+		for _, slug := range strings.Split(p.Slug, ",") {
+			if strings.TrimSpace(slug) == "ci" {
+				return "", true
+			}
 		}
 	}
 	return "", false

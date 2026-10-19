@@ -27,14 +27,15 @@ const (
 
 // fakeGit serves committed trust files from memory.
 type fakeGit struct {
-	noOrigin bool
-	pinErr   error
-	showErr  error
-	files    map[string][]byte
-	pinned   int
+	noOrigin  bool
+	originErr error
+	pinErr    error
+	showErr   error
+	files     map[string][]byte
+	pinned    int
 }
 
-func (g *fakeGit) HasOrigin(context.Context) bool { return !g.noOrigin }
+func (g *fakeGit) HasOrigin(context.Context) (bool, error) { return !g.noOrigin, g.originErr }
 func (g *fakeGit) PinDefault(context.Context) (string, error) {
 	g.pinned++
 	return strings.Repeat("c", 40), g.pinErr

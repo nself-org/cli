@@ -25,6 +25,9 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 )
 
+// subprocessWaitDelay bounds how long Run waits for a killed child's pipes.
+const subprocessWaitDelay = 5 * time.Second
+
 const (
 	maxEvidenceOutput = 4 << 20
 	evidenceSeconds   = 300
@@ -91,6 +94,7 @@ func ExecEvidence(binary, pluginDir, repoRoot string) EvidenceRunner {
 		cmd.Env = os.Environ()
 		var stdout bytes.Buffer
 		cmd.Stdout = &limitWriter{w: &stdout, left: maxEvidenceOutput}
+		cmd.WaitDelay = subprocessWaitDelay
 		runErr := cmd.Run()
 		if runErr == nil {
 			return stdout.Bytes(), 0, nil

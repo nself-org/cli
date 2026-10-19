@@ -47,8 +47,8 @@ func TestGitCLIShowsCommittedTrustFiles(t *testing.T) {
 	work := gitRepo(t, "# committed\n")
 	g := GitCLI{Root: work}
 	ctx := context.Background()
-	if !g.HasOrigin(ctx) {
-		t.Fatal("HasOrigin = false for a repo with origin")
+	if ok, err := g.HasOrigin(ctx); !ok || err != nil {
+		t.Fatalf("HasOrigin = %v, %v for a repo with origin", ok, err)
 	}
 	commit, err := g.PinDefault(ctx)
 	if err != nil || !commitRE.MatchString(commit) {
@@ -111,8 +111,15 @@ func TestGitCLINoOriginAndBrokenRemote(t *testing.T) {
 		t.Fatal("PinDefault against a missing remote succeeded")
 	}
 	gitIn(t, work, "remote", "remove", "origin")
-	if g.HasOrigin(context.Background()) {
-		t.Fatal("HasOrigin = true without a remote")
+	if ok, err := g.HasOrigin(context.Background()); ok || err != nil {
+		t.Fatalf("HasOrigin = %v, %v without a remote; git answering no is not an error", ok, err)
+	}
+	if ok, err := (GitCLI{Root: t.TempDir()}).HasOrigin(context.Background()); ok || err != nil {
+		t.Fatalf("HasOrigin outside a repository = %v, %v; want false, nil", ok, err)
+	}
+	t.Setenv("PATH", t.TempDir())
+	if ok, err := g.HasOrigin(context.Background()); ok || err == nil {
+		t.Fatalf("HasOrigin with no git binary = %v, %v; want an error", ok, err)
 	}
 	if _, err := g.PinDefault(context.Background()); err == nil {
 		t.Fatal("PinDefault succeeded without origin")
@@ -207,5 +214,30 @@ func TestGitCLIShowBoundsTheFileSize(t *testing.T) {
 	}
 	if _, found, err := g.Show(context.Background(), commit, trustRel+revokedName); err == nil || found {
 		t.Fatalf("file one byte over the limit: found %v err %v, want a refusal", found, err)
+	}
+}
+
+// TestGitCLIIgnoresReplacementObjects: a local refs/replace entry for the
+// pinned commit must not change what Show returns.
+func TestGitCLIIgnoresReplacementObjects(t *testing.T) {
+	work := gitRepo(t, "# real\n")
+	g := GitCLI{Root: work}
+	ctx := context.Background()
+	commit, err := g.PinDefault(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(work, ".nself", "trust", keysName), []byte("# attacker\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, work, "commit", "-am", "attacker")
+	gitIn(t, work, "replace", "-f", commit, "HEAD")
+	data, found, err := g.Show(ctx, commit, trustRel+keysName)
+	if err != nil || !found || string(data) != "# real\n" {
+		t.Fatalf("Show under a replacement = %q found=%v err=%v, want the original commit's content", data, found, err)
+	}
+	again, err := g.PinDefault(ctx)
+	if err != nil || again != commit {
+		t.Fatalf("PinDefault under a replacement = %q, %v; want %q", again, err, commit)
 	}
 }

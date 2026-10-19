@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/sdk/go/v2/signing"
@@ -33,8 +34,10 @@ const (
 
 // Git is the read-only view of the project repository the trust loader needs.
 type Git interface {
-	// HasOrigin reports whether the repository has an origin remote.
-	HasOrigin(ctx context.Context) bool
+	// HasOrigin reports whether the project is a git repository with an origin
+	// remote. The error is for git itself failing to run: that must not read as
+	// "no origin", because it would skip the committed revocations.
+	HasOrigin(ctx context.Context) (bool, error)
 	// PinDefault refreshes origin's default branch and returns the commit it
 	// points to. It fails when that cannot be established.
 	PinDefault(ctx context.Context) (commit string, err error)
@@ -71,7 +74,14 @@ func LoadTrust(ctx context.Context, g Git, home, repoRoot string) (Trust, error)
 			return t, errs.Wrap("E493", "cannot read operator trust file "+f.name, err)
 		}
 	}
-	if g != nil && g.HasOrigin(ctx) {
+	hasOrigin := false
+	if g != nil {
+		var err error
+		if hasOrigin, err = g.HasOrigin(ctx); err != nil {
+			return t, errs.Wrap("E493", "cannot tell whether the project has an origin remote", err)
+		}
+	}
+	if hasOrigin {
 		commit, err := g.PinDefault(ctx)
 		if err != nil {
 			return t, errs.Wrap("E493", "cannot refresh origin's default branch to read the committed trust files", err).WithFix("Check that origin is reachable, or place the keys in ~/.nself/ci/trust/.")
@@ -109,21 +119,26 @@ func workingCopyDiffers(path string, committed []byte, found bool) bool {
 	return err != nil || !found || !bytes.Equal(local, committed)
 }
 
-// readTrustFile reads a small regular file. A FIFO, device or oversize file is
-// an error, so a hostile path can neither block nor exhaust memory.
+// readTrustFile reads a small regular file. A FIFO, device, symlink swap or
+// oversize file is an error, so a hostile path can neither block nor exhaust
+// memory: the file is opened without blocking and the open descriptor is
+// checked against the earlier Lstat before anything is read.
 func readTrustFile(path string) ([]byte, error) {
-	info, err := os.Lstat(path)
+	before, err := os.Lstat(path)
 	if err != nil {
 		return nil, err
 	}
-	if !info.Mode().IsRegular() {
+	if !before.Mode().IsRegular() {
 		return nil, fmt.Errorf("%s is not a regular file", path)
 	}
-	f, err := os.Open(path) //nolint:gosec // trust file path built from the operator home or project root
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0) //nolint:gosec // trust file path built from the operator home or project root
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = f.Close() }()
+	if err := sameRegularFile(before, f); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
 	data, err := io.ReadAll(io.LimitReader(f, trustFileLimit+1))
 	if err != nil {
 		return nil, err
@@ -132,6 +147,18 @@ func readTrustFile(path string) ([]byte, error) {
 		return nil, fmt.Errorf("%s is larger than %d bytes", path, trustFileLimit)
 	}
 	return data, nil
+}
+
+// sameRegularFile proves the open file is the regular file Lstat saw.
+func sameRegularFile(before os.FileInfo, f *os.File) error {
+	after, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	if !after.Mode().IsRegular() || !os.SameFile(before, after) {
+		return fmt.Errorf("the path changed while it was being opened")
+	}
+	return nil
 }
 
 func parseTrust(t Trust, keyDocs, revDocs [][]byte) (Trust, error) {

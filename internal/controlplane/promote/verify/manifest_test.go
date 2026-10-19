@@ -45,3 +45,28 @@ func TestClip(t *testing.T) {
 		t.Errorf("clip(41 bytes) = %q", got)
 	}
 }
+
+// TestDecodeManifestArtifactShapes: a malformed artifact entry beside a valid
+// one still refuses with E492.
+func TestDecodeManifestArtifactShapes(t *testing.T) {
+	ev := `"evidence":{"path":"evidence.json","sha256":"` + strings.Repeat("a", 64) + `"}`
+	good := `{"name":"a","sha256":"` + strings.Repeat("b", 64) + `","image":{"index_digest":"` + imgIndex + `","manifests":[{"platform":"linux/amd64","digest":"` + imgAMD64 + `"}]}}`
+	build := func(art string) []byte {
+		return []byte(`{"schema":"ci.release-manifest/v1","revision":"` + testRev + `",` + ev + `,"future":1,"artifacts":[` + good + `,` + art + `]}`)
+	}
+	if _, err := decodeManifest(build(good)); err != nil {
+		t.Fatalf("valid artifacts refused: %v", err)
+	}
+	bad := map[string]string{
+		"bad artifact sha":          `{"name":"b","sha256":"not-a-digest"}`,
+		"uppercase sha":             `{"name":"b","sha256":"` + strings.Repeat("B", 64) + `"}`,
+		"bad index digest":          `{"name":"b","sha256":"` + strings.Repeat("c", 64) + `","image":{"index_digest":"sha256:zz","manifests":[]}}`,
+		"manifest without platform": `{"name":"b","sha256":"` + strings.Repeat("c", 64) + `","image":{"index_digest":"` + imgIndex + `","manifests":[{"digest":"` + imgAMD64 + `"}]}}`,
+		"manifest bad digest":       `{"name":"b","sha256":"` + strings.Repeat("c", 64) + `","image":{"index_digest":"` + imgIndex + `","manifests":[{"platform":"linux/arm64","digest":"x"}]}}`,
+	}
+	for name, art := range bad {
+		if _, err := decodeManifest(build(art)); codeOf(err) != "E492" {
+			t.Errorf("%s: %v, want E492", name, err)
+		}
+	}
+}
