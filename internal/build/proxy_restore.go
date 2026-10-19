@@ -176,8 +176,13 @@ func removeTree(sink Sink, dir string) error {
 			return err
 		}
 	}
-	if err := sink.Remove(filepath.Join(dir, proxyGeneratedMarker)); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return err
+	// Only a marker that is there is removed: a nested directory the renderer
+	// did not mark has none, and an unplanned removal fails the checked apply.
+	marker := filepath.Join(dir, proxyGeneratedMarker)
+	if _, err := os.Lstat(marker); err == nil {
+		if err := sink.Remove(marker); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
 	}
 	return sink.Remove(dir)
 }

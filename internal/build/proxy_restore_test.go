@@ -197,3 +197,20 @@ func TestProxyRestoreRootOwnedPlansNoRemoval(t *testing.T) {
 		t.Fatalf("plan recorded removals for a directory apply cannot clean: %v", sink.removed)
 	}
 }
+
+// D-1161: an ordinary subdirectory without its own marker must not make the
+// checked apply remove a marker the plan never listed.
+func TestProxyRestoreNestedDirWithoutMarkerPlanApplyAgree(t *testing.T) {
+	workdir, dir := restoreProject(t, testRendererMarker)
+	plan := newMemSink(workdir, "")
+	if err := cleanupProviderOutput(plan, workdir, ProviderNginx); err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if plan.removed[plan.key(filepath.Join(dir, "sub", proxyGeneratedMarker))] {
+		t.Fatal("plan lists a nested marker that does not exist")
+	}
+	apply := newExpectSink(workdir, plan.snapshot())
+	if err := cleanupProviderOutput(apply, workdir, ProviderNginx); err != nil {
+		t.Fatalf("checked apply: %v", err)
+	}
+}
