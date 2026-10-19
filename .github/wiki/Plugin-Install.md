@@ -20,9 +20,9 @@ To persist your free key across sessions:
 nself license set nself_free_<uuid>
 ```
 
-After installing 3 free plugins, the CLI displays a one-line prompt about ɳSelf+.
+After installing a few free plugins, the CLI displays a one-line prompt about ɳSelf+.
 
-For pro plugins, set your license key first, see [[Plugin-Licensing]].
+For licensed plugins, set your license key first, see [[Plugin-Licensing]].
 
 Plugins marked `beta` install with a warning printed to stderr. Plugins marked `planned` are not yet available, the install command returns an error with a link to the release timeline. See [[Plugin-Status-Badges]] for details.
 
@@ -137,6 +137,6 @@ nself plugin install {name}
 ## Related Pages
 
 - [[Plugin-Overview]], What plugins are and pricing tiers
-- [[Plugin-Licensing]], License keys for pro plugins
+- [[Plugin-Licensing]], License keys for licensed plugins
 - [[Plugin-Status-Badges]], stable, beta, and planned behavior at install time
 - [[Plugin-Dev-Guide]], Build your own plugin

@@ -70,7 +70,7 @@ grep "nself-linux-amd64" checksums.txt | sha256sum --check
 
 ```bash
 nself version
-# nself v1.0.9 (linux/amd64)
+# nself vX.Y.Z (linux/amd64)
 
 nself doctor
 ```

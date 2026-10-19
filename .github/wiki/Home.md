@@ -2,7 +2,7 @@
 
 > **Self-hosted backend in five minutes.** Postgres, GraphQL, Auth, Nginx. No cloud required.
 
-ɳSelf is an open-source CLI that spins up a production-grade backend stack on any server or local machine. PostgreSQL, Hasura GraphQL, Auth, and Nginx reverse-proxy out of the box. MIT licensed, no vendor lock-in, no cloud dependency. 29 free plugins included, 109 Pro plugins available (138 total) starting at $0.99/mo.
+ɳSelf is an open-source CLI that spins up a production-grade backend stack on any server or local machine. PostgreSQL, Hasura GraphQL, Auth, and Nginx reverse-proxy out of the box. MIT licensed, no vendor lock-in, no cloud dependency. Free plugins are included; licensed plugins are available through Bundles or ɳSelf+.
 
 ```bash
 brew install nself-org/nself/nself   # or: curl -sSL https://install.nself.org | bash
@@ -81,7 +81,7 @@ Optional services (enable per project): **Redis** | **MinIO** (S3 storage) | **S
 
 ## Commands
 
-ɳSelf provides **25 top-level commands** with **295+ subcommands**. Full reference:
+ɳSelf provides a small set of top-level commands with subcommands under each. Full reference:
 
 | Category | Commands | Description |
 |----------|----------|-------------|
@@ -119,7 +119,7 @@ Optional services (enable per project): **Redis** | **MinIO** (S3 storage) | **S
 
 ## Plugins
 
-87 plugins extend your stack. 25 are free (MIT), 62 require a Pro license key.
+Plugins extend your stack. The free ones are MIT licensed; the licensed ones require a license key.
 
 | Page | Covers |
 |------|--------|
@@ -131,7 +131,7 @@ Optional services (enable per project): **Redis** | **MinIO** (S3 storage) | **S
 | [[Plugin-Migrations-Contract]] | How a plugin applies its own SQL migrations at boot (sdk/go/migrate) |
 
 <details>
-<summary><strong>Free Plugins (25)</strong>, MIT licensed, no key required</summary>
+<summary><strong>Free Plugins</strong>, MIT licensed, no key required</summary>
 
 | Plugin | What it does |
 |--------|-------------|
@@ -164,7 +164,7 @@ Optional services (enable per project): **Redis** | **MinIO** (S3 storage) | **S
 </details>
 
 <details>
-<summary><strong>Pro Plugins (62)</strong>, License key required, starting at $0.99/mo</summary>
+<summary><strong>Licensed Plugins</strong>, License key required, starting at $0.99/mo</summary>
 
 **AI and Automation:** `plugin-nself-ai-gateway` · `plugin-nself-ai-mcp` · `plugin-nself-ai-mcp` · [[plugin-claw]] · [[plugin-claw-web]] · [[plugin-claw-budget]] · [[plugin-mux]] · [[plugin-voice]] · [[plugin-browser]] · [[plugin-bots]] · [[plugin-workflows]]
 

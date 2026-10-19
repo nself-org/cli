@@ -26,10 +26,10 @@
     <description>
 ɳSelf is a self-hosted backend infrastructure CLI. Spin up Postgres,
 Hasura GraphQL, Auth, Storage, and Nginx in five minutes, with
-multi-tenancy, billing, and 87 paid plugins.
+multi-tenancy, billing, and licensed plugins.
 
 The Windows binary supports configuration commands (init, build,
-plugin) and ships from nself v1.0.12. Trust subsystem (DNS, mkcert,
+plugin) and ships since release v1.0.12. Trust subsystem (DNS, mkcert,
 port forwarding) is WSL2-only. For local dev, install via Linuxbrew
 inside WSL2 — see https://github.com/nself-org/cli/wiki/windows-wsl2.
     </description>

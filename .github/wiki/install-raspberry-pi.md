@@ -49,7 +49,7 @@ sudo chmod +x /usr/local/bin/nself
 
 ```bash
 nself version
-# nself v1.1.1
+# nself vX.Y.Z
 
 nself doctor
 ```

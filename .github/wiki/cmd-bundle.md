@@ -77,7 +77,7 @@ nself bundle info <name> [--json]
 
 | Argument | Description |
 |----------|-------------|
-| `name` | Bundle slug (nclaw, nchat, ntv, nfamily, clawde, nsentry, ntask, nself-plus) |
+| `name` | Bundle slug (nclaw, nchat, nfamily, clawde, nsentry, ntask, nself-plus) |
 
 ### Flags
 
@@ -183,7 +183,7 @@ nself bundle remove <name> [--dry-run] [--keep-data]
 
 ```bash
 nself bundle remove nclaw
-nself bundle remove ntv --keep-data
+nself bundle remove nfamily --keep-data
 nself bundle remove nchat --dry-run
 ```
 
@@ -195,7 +195,6 @@ nself bundle remove nchat --dry-run
 |------|-------------|-------|--------|
 | `nclaw` | ɳClaw | $0.99/mo or $9.99/yr | active |
 | `nchat` | ɳChat | $0.99/mo or $9.99/yr | active |
-| `ntv` | ɳTV | $0.99/mo or $9.99/yr | active |
 | `nfamily` | ɳFamily | $0.99/mo or $9.99/yr | planned v1.1.0 |
 | `clawde` | ClawDE | $0.99/mo or $9.99/yr | planned v1.1.0 |
 | `nsentry` | ɳSentry | $0.99/mo or $9.99/yr | planned v1.1.0 |
@@ -223,7 +222,7 @@ nself bundle info nclaw
 nself bundle install nclaw
 
 # Preview a bundle removal without changing anything
-nself bundle remove ntv --dry-run
+nself bundle remove nfamily --dry-run
 ```
 <!-- END PROSE:examples -->
 

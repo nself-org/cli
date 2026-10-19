@@ -65,6 +65,13 @@ jobs:
     run: [gitleaks, detect, --no-git, --source, ., --config, .github/gitleaks.toml, --redact, --log-level, warn]
     timeout: 300s
 
+# Per-check configuration (P7-TRUTH-08). `truth.rules` lists the rule files of the truth check:
+# .github/truth.yaml includes the vendored org and claims rules (scripts/truth/vendor-rules.sh in
+# nself-org/plugins keeps the copies in step). The check reads files only.
+checks:
+  truth:
+    rules: [.github/truth.yaml]
+
 pipelines:
   drills:
     triggers: [schedule, manual]

@@ -23,7 +23,7 @@ See [[Migration-Signals-v1.0.9]] for the complete signal table.
 
 Quick summary:
 
-- Non-breaking. All 47 commands stable.
+- Non-breaking. All commands stable.
 - Bundle renamed: `nMedia` → `nTV`. Re-install: `nself plugin install nTV`.
 - Plugin SDK Go module path changed. Plugin authors update `go.mod`.
 - Hasura `nself_sessions.user_agent` column deprecated (EOL 2027-04-17).

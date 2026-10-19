@@ -69,7 +69,7 @@ chmod +x /usr/local/bin/nself
 
 ```bash
 nself version
-# nself v1.0.9 (darwin/arm64)
+# nself vX.Y.Z (darwin/arm64)
 
 nself doctor
 # All checks should show green

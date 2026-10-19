@@ -6,7 +6,7 @@ This page covers the full ɳSelf licensing model: the free core, per-product plu
 
 ## The Free Core
 
-The ɳSelf CLI and 29 free plugins are MIT licensed. Free forever, including commercial use. No license key needed.
+The ɳSelf CLI and the free plugins are MIT licensed. Free forever, including commercial use. No license key needed.
 
 Free plugins include: backup, content-acquisition, content-progress, cron, donorbox, feature-flags, github, github-runner, invitations, jobs, link-preview, mdns, mlflow, monitoring, notifications, notify, paypal, search, shopify, stripe, subtitle-manager, tokens, torrent-manager, vpn, webhooks.
 
@@ -14,17 +14,17 @@ You can run a full production stack (Postgres, Hasura, Auth, Nginx, monitoring, 
 
 ---
 
-## Pro Plugins (62 total)
+## Licensed Plugins
 
-Pro plugins are source-available Rust binaries distributed through the ɳSelf plugin system. They require a valid license key.
+Licensed plugins are source-available Rust binaries distributed through the ɳSelf plugin system. They require a valid license key.
 
 ### Per-Bundle Pricing
 
 | Option | Monthly | Annual | What You Get |
 |--------|---------|--------|-------------|
-| **Free** | $0 | $0 | Core CLI + 29 free plugins |
-| **Any single bundle** | $0.99/mo | $9.99/yr | All plugins in that bundle (ɳClaw, ɳChat, ɳTV, ɳFamily, or ClawDE) |
-| **ɳSelf+** | $3.99/mo | $39.99/yr | All 5 bundles + all apps + support |
+| **Free** | $0 | $0 | Core CLI + free plugins |
+| **Any single bundle** | $0.99/mo | $9.99/yr | All plugins in that bundle (ɳClaw, ɳChat, ɳFamily, or ClawDE) |
+| **ɳSelf+** | $3.99/mo | $39.99/yr | Every bundle + all apps + support |
 
 Annual gives roughly 16% savings versus monthly (about 2 months free).
 
@@ -50,12 +50,6 @@ AI personal assistant. Requires Pro tier (includes AI suite).
 | notify | Telegram and webhook notifications |
 | cron | Scheduled tasks |
 | post | Social media publishing |
-
-### ɳTV Bundle
-Media server and player. Available at $0.99/mo or $9.99/yr.
-
-**Free plugins (4):** torrent-manager, content-acquisition, content-progress, subtitle-manager
-**Pro plugins (8):** media-processing, file-processing, streaming, stream-gateway, epg, tmdb, recording, transcoder
 
 ### ɳChat Bundle
 Messaging. Available at Basic tier.
@@ -189,7 +183,7 @@ Stripe handles proration automatically. You pay the difference for the remainder
 ### Cancellation
 1. Cancel via the Stripe portal.
 2. Free plugins continue working indefinitely.
-3. Pro plugins stop working at next revalidation.
+3. Licensed plugins stop working at next revalidation.
 4. Your data is never deleted. You still have full access to your database and files.
 
 ---
@@ -211,7 +205,6 @@ All payment processing goes through Stripe:
 - [[Plugin-Overview]] -- full plugin catalog
 - [[Plugin-Install]] -- how to install plugins
 - [[Feature-nClaw]] -- ɳClaw plugin bundle details
-- [[Feature-nTV]] -- nMedia plugin bundle details
 - [[Feature-nCloud]] -- managed hosting (separate from plugin licenses)
 
 ---

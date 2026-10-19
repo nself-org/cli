@@ -34,7 +34,7 @@ file $(which nself)
 # nself: Mach-O 64-bit executable x86_64
 
 nself version
-# nself v1.0.9 (darwin/amd64)
+# nself vX.Y.Z (darwin/amd64)
 ```
 
 ## Install via curl
@@ -57,7 +57,7 @@ chmod +x /usr/local/bin/nself
 
 ```bash
 nself version
-# nself v1.0.9 (darwin/amd64)
+# nself vX.Y.Z (darwin/amd64)
 
 nself doctor
 ```

@@ -39,7 +39,6 @@
 - [[Feature-Plugins]]
 - [[Feature-nClaw]], AI Assistant
 - [[Feature-nChat]], Messaging
-- [[Feature-nTV]], Media Player
 - [[Feature-nFamily]], Family Social
 - [[Feature-nCloud]], Managed Hosting
 - [[Feature-Memory-Rooms]], Knowledge Organization

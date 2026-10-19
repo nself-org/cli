@@ -22,7 +22,7 @@ The scaffold includes a `plugin.json` manifest, Docker artifacts, a CI workflow,
 |------|---------|-------------|
 | `--template` | `go` | Plugin language: `go`, `rust`, `node`, `static` |
 | `--tier` | `free` | Plugin tier: `free` or `pro` |
-| `--bundle` | `""` | Bundle display name (pro plugins only, e.g. `nClaw`) |
+| `--bundle` | `""` | Bundle display name (licensed plugins only, e.g. `nClaw`) |
 | `--description` | auto | Short description of the plugin |
 | `--author` | `""` | Plugin author name |
 | `--category` | `custom` | Plugin category |

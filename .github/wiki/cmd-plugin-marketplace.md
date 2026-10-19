@@ -12,7 +12,7 @@ nself plugin marketplace <subcommand> [flags]
 
 `nself plugin marketplace` queries the ɳSelf plugin registry at `plugins.nself.org` and lets you browse, search, and inspect plugins before installing them. Use it to explore what is available, filter by tier or bundle, and copy install commands.
 
-Free plugins install without a license key. Pro plugins require a valid key set with `nself license set`.
+Free plugins install without a license key. Licensed plugins require a valid key set with `nself license set`.
 
 ## Subcommands
 
@@ -89,7 +89,7 @@ After finding a plugin, install it with:
 nself plugin install <name>
 ```
 
-Pro plugins require a valid license key. Set one first:
+Licensed plugins require a valid license key. Set one first:
 
 ```bash
 nself license set nself_pro_xxxxx...
@@ -100,6 +100,6 @@ nself plugin install ai
 
 - [[cmd-plugin]], full plugin management reference
 - [[Plugin-Licensing]], license tiers and key format
-- [[Plugin-Catalog]], full catalog of all 138 plugins
+- [[Plugin-Catalog]], full catalog of all plugins
 
 ← [[Commands]] | [[Home]] →

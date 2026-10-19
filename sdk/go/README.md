@@ -186,7 +186,7 @@ The `testing` package provides:
 ## Requirements
 
 - Go 1.23 or later
-- nSelf CLI v1.0.9 or later (for plugin runtime)
+- A recent nSelf CLI (for plugin runtime; see COMPATIBILITY.md)
 
 ## License
 

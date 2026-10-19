@@ -1,0 +1,58 @@
+# VENDORED FROM nself-org/plugins@461494fa8d912585acbc713d7a943485be83bf33 — DO NOT HAND EDIT
+# nself-org truth rules (P7-CI-08, Epic CI D21). Read by the `truth` check of nself-ci.
+#
+# Purpose: keep three kinds of falsehood out of every nself-org repository:
+#   banned-literal  a string that must never appear (case-sensitive)
+#   retired-term    a name the product no longer uses (case-insensitive, whole term)
+#   dead-host       an address or host name that now belongs to someone else
+# Used by: the plugins default pipeline (.nself/ci.yaml, job `truth`) and the
+#   `truth-sweep` drill (scripts/drill/truth-sweep), which runs these rules against
+#   a shallow clone of every public nself-org repository.
+# Format:  version 1. `rules` each have id, kind, message (what to write instead).
+#   Dead hosts hold only the sha256 of the lower-cased literal, so this file
+#   never contains the address it forbids (compute one with
+#   `printf '%s\n' "$LITERAL" | go run -mod=vendor ./internal/gates/truth/run.go hash`
+#   from free/ci). `allow` entries need a rule, paths and a reason.
+# This file is data, not engine code: it never ships in the ci plugin tarball.
+version: 1
+
+rules:
+  # Dead hosts: the ex-staging server and the ex-CamClaw server were destroyed
+  # and their addresses reassigned to third parties (ADR 0014); the staging host name
+  # no longer resolves to anything of ours. Nothing may connect to or document them as ours.
+  - id: dead-host-ex-staging-ip
+    kind: dead-host
+    sha256: [f1801f5e449defe92794a50ac9dfabce2735e73f4392f4a99db24a1d4cd6b4c5]
+    message: the ex-staging server address belongs to a third party now; there is no staging server (ADR 0014)
+  - id: dead-host-ex-camclaw-ip
+    kind: dead-host
+    sha256: [24b2c810f53a4d7c2e0ebf02fff14d3332b0fa20f0555a135f03b76efbcba9b1]
+    message: the ex-CamClaw server address belongs to a third party now; never reference it
+  - id: dead-host-staging-name
+    kind: dead-host
+    sha256: [5a9a10ddb29dc81cf07604e89086c33da8e515e06505f19bd1a59547cb51e1aa]
+    message: the staging host name is gone; local stacks stand in for staging (ADR 0014)
+
+  # Retired terms.
+  - id: retired-plugins-pro
+    kind: retired-term
+    term: Plugins Pro
+    message: say "Bundles"; licensed plugins are sold only through Bundles or nSelf+
+  - id: retired-ntv
+    kind: retired-term
+    term: ɳTV
+    message: the ɳTV product is cancelled
+  - id: retired-flutter-sdk
+    kind: retired-term
+    term: flutter sdk
+    message: Flutter is eliminated for new surfaces (React Native + Expo, Tauri 2)
+  - id: retired-ci-verdict
+    kind: retired-term
+    term: ci.verdict
+    message: the evidence field is `result` (contract:ci.evidence v1)
+
+allow:
+  # Release notes name the products as they were when the release shipped.
+  - rule: "retired-*"
+    paths: ["CHANGELOG*", "Changelog*", "changelog*"]
+    reason: historic release notes keep the names that were true when they shipped

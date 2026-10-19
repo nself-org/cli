@@ -1,0 +1,18 @@
+# cli truth rules (Epic TRUTH D17; P7-TRUTH-08). Read by the `truth` check of nself-ci (checks.truth.rules in .nself/ci.yaml).
+# Includes the vendored org and claim rules (scripts/truth/vendor-rules.sh, refresh with it) and exempts, with a reason,
+# only history and code. Every other path is held to the rules; fix the file, do not add an exemption.
+version: 1
+include: [.github/truth/org.yaml, .github/truth/claims.yaml]
+allow:
+  - rule: "*"
+    paths: ["**/CHANGELOG*", "**/Changelog*", ".github/wiki/Migration-Signals-v1.0.9.md", "**/deprecation-registry*"]
+    reason: "Changelog and migration history keeps the facts of its day"
+  - rule: "dead-host-*"
+    paths: ["cmd/commands/ssl_install_test.go", "cmd/commands/ssl_setup_paths_test.go", "internal/build/plugin_nginx_server_name_test.go", "internal/nginx/dynamic_resolve_test.go", "internal/nginx/routes_test.go"]
+    reason: "code, fixture or script, not prose: retired terms and dead hosts in code are debt D-1213, outside the prose sweep"
+  - rule: "retired-*"
+    paths: [".github/workflows/hygiene.yml", ".github/workflows/sdk-coherence-check.yml", ".github/workflows/sdk-reverse-dep-check.yml", ".github/workflows/sdk-version-sync.yml", ".github/workflows/version-lockstep.yml", "cmd/commands/bundle_test.go", "cmd/commands/license_bundles_test.go", "cmd/commands/plugin_search_test.go", "internal/bundle/bundles_test.go", "internal/doctor/sdk_version.go", "internal/doctor/sdk_version_test.go", "internal/featureflags/registry.yaml", "scripts/bump-version.sh", "scripts/check-version-lockstep.sh"]
+    reason: "code, fixture or script, not prose: retired terms and dead hosts in code are debt D-1213, outside the prose sweep"
+  - rule: "claims.current-version"
+    paths: [".github/wiki/Guide-Migration-from-v1.md", ".github/wiki/Upgrade-From-v0.9.md", ".github/wiki/Upgrading-from-v1.md", ".github/wiki/Upgrading-v1.0.12.md", ".github/wiki/migration/v099-to-v1x.md"]
+    reason: "dated upgrade and migration guides name the versions they migrate between; those versions are history, not the current version (Epic TRUTH D17)"

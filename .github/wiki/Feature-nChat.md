@@ -22,7 +22,7 @@
 - **Production auth.** Nhost authentication with OAuth providers, email/password, and MFA.
 - **Web platform.** Next.js 15 application with responsive design.
 
-### With Pro Plugin Bundle
+### With Licensed Plugin Bundle
 
 The ɳChat plugin bundle adds:
 
@@ -73,7 +73,7 @@ nself init
 nself build && nself start
 # nChat web app connects to Hasura directly
 
-# With Pro plugins
+# With Licensed plugins
 nself license set nself_pro_xxxxx...
 nself plugin install chat livekit recording moderation bots realtime auth
 nself build && nself start

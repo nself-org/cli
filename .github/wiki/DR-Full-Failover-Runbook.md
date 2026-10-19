@@ -26,7 +26,7 @@ The monthly drill already exercises provision + restore + smoke. The annual adds
 
 1. Confirm the latest monthly drill passed (`dr_drill_report` WHERE `result = 'pass'` within the last 35 days).
 2. Confirm explicit user authorization to proceed. Paste the authorization quote into the drill log.
-3. Verify `HETZNER_CAMARATA_TOKEN` and `CLOUDFLARE_API_KEY` are in the operator's shell via `source ~/.claude/vault.env`.
+3. Verify `HETZNER_CAMARATA_TOKEN` and `CLOUDFLARE_API_KEY` are available from the operator's secret store.
 
 ### Step 2, Run a fresh monthly drill (T-45m)
 

@@ -1,8 +1,8 @@
 # Plugin Catalog
 
-ɳSelf ships with **138 plugins** total: 25 free (MIT) and 62 pro (license-gated). Each plugin adds a self-contained backend capability to the stack.
+ɳSelf ships free (MIT) and licensed (license-gated) plugins. Each plugin adds a self-contained backend capability to the stack.
 
-Free plugins install with no license. Pro plugins require a valid `nself_pro_*` key set via [[cmd-license]].
+Free plugins install with no license. Licensed plugins require a valid `nself_pro_*` key set via [[cmd-license]].
 
 - **Install:** `nself plugin install <name>`
 - **List installed:** `nself plugin list`
@@ -11,7 +11,7 @@ Free plugins install with no license. Pro plugins require a valid `nself_pro_*` 
 
 ---
 
-## Free plugins (25)
+## Free plugins
 
 MIT licensed. No license key required. Source: `plugins/free/` in the `plugins` repo.
 
@@ -45,7 +45,7 @@ MIT licensed. No license key required. Source: `plugins/free/` in the `plugins` 
 
 ---
 
-## Pro plugins (62)
+## Licensed plugins
 
 License-gated. Install with a valid `nself_pro_*` key. Source: `bundles/paid/` in the `plugins-pro` repo.
 
@@ -88,7 +88,7 @@ License-gated. Install with a valid `nself_pro_*` key. Source: `bundles/paid/` i
 | [[plugin-photos]] | Photo library |
 | [[plugin-social]] | Private social feed |
 
-### ɳTV bundle ($0.99/mo)
+### Media plugins
 
 | Plugin | Description |
 |--------|-------------|

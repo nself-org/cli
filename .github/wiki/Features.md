@@ -9,7 +9,7 @@
 - [Security](#security)
 - [Feature Details](#feature-details)
 
-ɳSelf v1.1.0 ships a complete self-hosted backend stack with 46 CLI commands, 4 core services, 6 optional services, and a plugin ecosystem with 25 free and 109 Pro plugins.
+ɳSelf ships a complete self-hosted backend stack with a full CLI, core services, optional services, and a plugin ecosystem of free and licensed plugins.
 
 ## Core Stack
 
@@ -35,7 +35,7 @@
 
 | Feature | Status | Description |
 |---------|--------|-------------|
-| 25 top-level commands | ✅ | Full lifecycle management |
+| Top-level commands | ✅ | Full lifecycle management |
 | Smart auto-build | ✅ | `nself start` builds if no compose file |
 | Config management | ✅ | show / get / set / list / validate / export / import |
 | Service toggles | ✅ | `nself service enable/disable` |
@@ -48,8 +48,8 @@
 
 | Feature | Status | Description |
 |---------|--------|-------------|
-| Free plugins (25) | ✅ | MIT licensed, no key required |
-| Pro plugins (62) | ✅ | Tier-gated, license key required |
+| Free plugins | ✅ | MIT licensed, no key required |
+| Licensed plugins | ✅ | Tier-gated, license key required |
 | Compose overlay | ✅ | Plugins inject Docker services |
 | Nginx injection | ✅ | Plugins add location blocks |
 | Plugin config templating | ✅ | Env vars declared in manifest |

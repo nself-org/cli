@@ -1,6 +1,6 @@
 # Plugin Architecture
 
-ɳSelf's plugin system extends the base stack with additional services, communication tools, AI engines, media pipelines, commerce systems, and more. Free plugins are MIT licensed and install without any key. Pro plugins require a valid license key, but otherwise follow exactly the same architecture. The install pipeline, schema isolation, compose overlay, and Nginx route injection work identically for both tiers; the only difference is a license check gate before the download proceeds.
+ɳSelf's plugin system extends the base stack with additional services, communication tools, AI engines, media pipelines, commerce systems, and more. Free plugins are MIT licensed and install without any key. Licensed plugins require a valid license key, but otherwise follow exactly the same architecture. The install pipeline, schema isolation, compose overlay, and Nginx route injection work identically for both tiers; the only difference is a license check gate before the download proceeds.
 
 ---
 
@@ -121,7 +121,7 @@ This means plugin configuration is always traceable: every value either came fro
 
 ## License Validation Flow
 
-For Pro plugins, the CLI runs a license check before any download occurs. The flow is:
+For Licensed plugins, the CLI runs a license check before any download occurs. The flow is:
 
 ```
 nself plugin install ai

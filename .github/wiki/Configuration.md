@@ -170,7 +170,7 @@ nself start
 
 ## Plugin Environment Variables (v1.0.3+)
 
-Pro plugins introduce additional environment variables. These are set in `.env.secrets` (for sensitive values) or `.env.dev` (for non-sensitive defaults).
+Licensed plugins introduce additional environment variables. These are set in `.env.secrets` (for sensitive values) or `.env.dev` (for non-sensitive defaults).
 
 ### Inter-Plugin Authentication
 
@@ -247,7 +247,7 @@ Allowed range: `1s` to `120s`. Values outside this range are clamped. Invalid va
 
 ### Auto-Generated Internal URLs
 
-When pro plugins are installed, `nself build` auto-generates `PLUGIN_{NAME}_INTERNAL_URL` variables for inter-plugin communication. See [[API-Reference]] for the full mapping.
+When licensed plugins are installed, `nself build` auto-generates `PLUGIN_{NAME}_INTERNAL_URL` variables for inter-plugin communication. See [[API-Reference]] for the full mapping.
 
 ---
 

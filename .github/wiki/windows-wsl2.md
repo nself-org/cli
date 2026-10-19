@@ -74,7 +74,7 @@ nself version
 Expected output:
 
 ```
-nself v1.0.9 (linux/amd64)
+nself vX.Y.Z (linux/amd64)
 ```
 
 ## Step 6: End-to-End Smoke Test

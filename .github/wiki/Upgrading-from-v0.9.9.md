@@ -1,12 +1,12 @@
 # Upgrading from v0.9.9 (Bash Era)
 
-Migration guide for operators still running ɳSelf v0.9.9, the Bash-based predecessor to the current Go CLI.
+Migration guide for operators still running v0.9.9, the Bash-based predecessor to the current Go CLI.
 
 ---
 
 ## Background
 
-ɳSelf v0.9.9 was the last release of the Bash-era CLI. It used shell scripts, a `.nself/config.sh` variable file, and a hand-maintained `docker-compose.yml`. The v1.0.0 release (2026-03-29) replaced all of this with a single Go binary, the `.env` cascade, and a generated compose file.
+The v0.9.9 release was the last release of the Bash-era CLI. It used shell scripts, a `.nself/config.sh` variable file, and a hand-maintained `docker-compose.yml`. The v1.0.0 release (2026-03-29) replaced all of this with a single Go binary, the `.env` cascade, and a generated compose file.
 
 The migration path is linear: v0.9.9 → current. There is no intermediate stop.
 
@@ -150,7 +150,7 @@ If you used plugins in v0.9.9, reinstall them using the current plugin manager:
 
 ```bash
 nself plugin install <name>
-# For pro plugins (requires license key):
+# For licensed plugins (requires license key):
 nself license set nself_pro_xxxx...
 nself plugin install ai
 ```

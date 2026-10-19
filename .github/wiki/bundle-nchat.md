@@ -17,7 +17,7 @@
 
 ## Plugins Included
 
-7 pro plugins, all `tier: pro` (Basic tier or higher).
+Licensed plugins, all `tier: pro` (Basic tier or higher).
 
 | Plugin | Tier | Language | What It Does |
 |--------|------|----------|-------------|

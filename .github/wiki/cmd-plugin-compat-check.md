@@ -45,7 +45,7 @@ nself plugin compat-check || { echo "Incompatible plugins found — resolve befo
 Example output when all plugins are compatible:
 
 ```
-All 12 installed plugins are compatible with nself v1.1.1.
+All 12 installed plugins are compatible with nself vX.Y.Z.
 ```
 
 Example output when an incompatibility is found:
