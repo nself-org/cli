@@ -156,6 +156,43 @@ implementation. In v1.5, `promote <source> <target>` and
 `deploy promote-env <source> <target>` delegate to the environment promotion
 runner with one deprecation warning per process.
 
+### Verified releases (`--release`)
+
+`nself deploy promote <source> <target> --release <dir>` verifies a release
+before any snapshot or remote change. `<dir>` holds `release-manifest.dsse.json`
+(a DSSE envelope) and `evidence.json`. The checks run in this order and each
+refusal has its own code:
+
+| Step | Refusal |
+| --- | --- |
+| Wrong `payloadType`, unknown key id, key of another purpose, bad signature, unreadable trust files | `E493` (exit 3) |
+| Signing key listed in `ci-release.revoked` | `E494` (exit 3) |
+| Unreadable manifest, or a schema major other than v1 | `E492` |
+| Evidence missing, not the file the manifest pins, or the plugin rejects it (stale, unbound, invalid, failing, not release-class) | `E497` |
+| Manifest revision differs from the evidence revision | `E496` |
+| Release quarantined | `E498` |
+| An image digest promote would deploy is not listed in the manifest (checked after the compare step, still before the snapshot) | `E495` |
+| Verification required but `--release` or the ci plugin is missing | `E499` |
+
+Signatures use `sdk/go/signing` pinned to purpose `ci-release`. Trust roots are
+per project and are never read from the working tree: keys and revocations come
+from `~/.nself/ci/trust/ci-release.{keys,revoked}` and from
+`.nself/trust/ci-release.{keys,revoked}` as committed on the default branch of
+`origin` (cli runs `git fetch origin` first; a failed fetch refuses with
+`E493`). A working-tree copy that differs prints one warning and is ignored.
+Each keys line is `<key-id> <base64 public key>`; each revoked line is a key id;
+`#` starts a comment line.
+
+The evidence is judged by the ci plugin (`nself ci evidence verify --file
+<dir>/evidence.json --at-revision <manifest revision> --json`), so freshness,
+binding, class and quarantine have one implementation. There is no bypass flag.
+
+The inventory field `require_verified_release` on an environment makes
+`--release` mandatory. It defaults to true for tier `prod` when the ci plugin is
+installed. Without `--release` and without the requirement, `promote` prints one
+warning and proceeds. With the field true and no `--release`, even `--dry-run`
+refuses with `E499`.
+
 ## Progress stream (`--stream`)
 
 `nself deploy <env> --json --stream` and `nself deploy promote <source> <target> --json --stream` print one JSON envelope per line (NDJSON) while the run goes on. An agent can follow a long deploy without parsing text.

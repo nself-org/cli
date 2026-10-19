@@ -211,6 +211,9 @@ func runPromoteEnvironments(cmd *cobra.Command, source, target string) error {
 		return err
 	}
 	eng.Observer = promoteObserver(ctx, st.Target)
+	if err := wirePromoteRelease(cmd, workdir, &eng, st); err != nil {
+		return err
+	}
 	var result cpromote.Result
 	if dryRun {
 		result = cpromote.Result{Status: "ok", Source: st.Source, Target: st.Target, Steps: eng.Plan(), DryRun: true}
