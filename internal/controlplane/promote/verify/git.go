@@ -99,7 +99,10 @@ func symrefBranch(out string) (string, bool) {
 			continue
 		}
 		branch, _, found := strings.Cut(rest, "\t")
-		return branch, found && branch != ""
+		if !found || branch == "" {
+			return "", false
+		}
+		return branch, true
 	}
 	return "", false
 }
