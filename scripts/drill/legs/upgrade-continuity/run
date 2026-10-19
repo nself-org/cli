@@ -25,7 +25,9 @@
 #   (the steps are version independent) and the step excerpt says so.
 # Exit: 0 every step passed, 1 a step failed, 2 a missing tool or the cli could not be built.
 # Cleanup: `nself stop --volumes` and `docker compose down -v` run on every exit path. HOME is a
-#   throw-away directory.
+#   throw-away directory. The leg holds the host-wide stack lock (scripts/drill/stack-lock.sh) from
+#   before `init` to the end, because the executor starts all drill jobs at once and the stack
+#   ports are fixed.
 # Runs only on GitHub-hosted runners or a local box with Docker; never point it at a server.
 
 # NSELF, PROJ_DIR and the *_BIN names are read by the sourced helpers.
@@ -49,11 +51,14 @@ WORK=$(mktemp -d "${TMPDIR:-/tmp}/drill-$LEG.XXXXXX")
 PROJ_DIR=$WORK/$PROJ
 finish() {
   cleanup_stack
+  stack_lock_release
   rm -rf "$WORK"
 }
 ev_begin "$LEG" "$OUT"
 trap finish EXIT
 trap 'exit 143' INT TERM
+isolate_home
+stack_lock_acquire || { log "could not take the stack lock within ${DRILL_LOCK_TIMEOUT:-3600}s"; exit 1; }
 
 # fetch_release: download N for this host into $WORK/prev/nself. The latest tag comes from the
 # checksums.txt of the /latest/download redirect; the tarball is then fetched by that exact tag.
@@ -63,14 +68,14 @@ fetch_release() {
   case "$(uname -m)" in x86_64) arch=amd64 ;; aarch64 | arm64) arch=arm64 ;; *) echo "no release for $(uname -m)"; return 1 ;; esac
   mkdir -p "$WORK/prev"
   sums=$WORK/prev/checksums.txt
-  curl --fail --silent --show-error --location --proto '=https' --max-time 120 -o "$sums" "$RELEASE_BASE/latest/download/checksums.txt" || return 1
+  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 120 -o "$sums" "$RELEASE_BASE/latest/download/checksums.txt" || return 1
   line=$(grep -E "  nself-[0-9][0-9.]*-$os-$arch\.tar\.gz\$" "$sums" | head -n 1)
   sha=${line%% *}
   name=${line##* }
   [ -n "$sha" ] && [ -n "$name" ] || { echo "checksums.txt has no nself-<version>-$os-$arch.tar.gz"; return 1; }
   ver=${name#nself-}
   ver=${ver%%-"$os"-*}
-  curl --fail --silent --show-error --location --proto '=https' --max-time 300 -o "$WORK/prev/$name" "$RELEASE_BASE/download/v$ver/$name" || return 1
+  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 300 -o "$WORK/prev/$name" "$RELEASE_BASE/download/v$ver/$name" || return 1
   [ "$(sha256_of <"$WORK/prev/$name")" = "$sha" ] || { echo "sha256 of $name does not match checksums.txt"; return 1; }
   tar -xzf "$WORK/prev/$name" -C "$WORK/prev" || return 1
   PREV_BIN=$(find "$WORK/prev" -type f -name nself -perm -u+x | head -n 1)

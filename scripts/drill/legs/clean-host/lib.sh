@@ -16,6 +16,8 @@
 
 # shellcheck source=/dev/null disable=SC2153
 . "$ROOT/scripts/drill/lib.sh" # TIMEOUT_BIN, graphql_probe, drill_env
+# shellcheck source=/dev/null
+. "$ROOT/scripts/drill/stack-lock.sh" # stack_lock_acquire, stack_lock_release
 
 log() { printf 'drill: %s\n' "$*" >&2; }
 
@@ -178,10 +180,10 @@ nself_t() {
 wait_healthy() {
   local end=$(($(date +%s) + ${DRILL_HEALTH_TIMEOUT:-600})) i=0
   while [ "$(date +%s)" -lt "$end" ]; do
-    in_proj "$NSELF" status >/dev/null 2>&1 && break
+    in_proj "$TIMEOUT_BIN" -k 5 60 "$NSELF" status >/dev/null 2>&1 && break
     sleep 5
   done
-  in_proj "$NSELF" status >/dev/null 2>&1 || { echo "nself status did not reach exit 0"; return 1; }
+  in_proj "$TIMEOUT_BIN" -k 5 60 "$NSELF" status >/dev/null 2>&1 || { echo "nself status did not reach exit 0"; return 1; }
   while [ "$i" -lt 12 ]; do
     graphql_probe "$PROJ_DIR/.env" "${DRILL_GRAPHQL_URL:-http://localhost:8080/v1/graphql}" && return 0
     sleep 5
@@ -205,9 +207,19 @@ SQL
   nself_t 120 db migrate up || return 1
 }
 
-# row_digest: "<count> <md5 of every row in id order>" of the seeded table.
+# row_digest: "<count> <md5 of every row in id order>" of the seeded table. Postgres may still be
+# restarting after a restore, so a failed query is retried for a minute.
 row_digest() {
-  sql "SELECT count(*) || ' ' || coalesce(md5(string_agg(t::text, '|' ORDER BY id)), 'none') FROM public.drill_seed AS t" | tail -n 1
+  local i=0 out
+  while [ "$i" -lt 12 ]; do
+    if out=$(sql "SELECT count(*) || ' ' || coalesce(md5(string_agg(t::text, '|' ORDER BY id)), 'none') FROM public.drill_seed AS t"); then
+      printf '%s\n' "$out" | tail -n 1
+      return 0
+    fi
+    sleep 5
+    i=$((i + 1))
+  done
+  return 1
 }
 
 # cleanup_stack: stop the stack and drop its volumes; safe to call twice.

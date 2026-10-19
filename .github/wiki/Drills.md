@@ -55,7 +55,13 @@ The plugin is installed, not started: building a plugin image is the job of the 
 
 The report of `update stack` is kept as `update-stack.json` next to the step logs. Consecutive nights of green are counted by the ship drill (P7-SHIP-03).
 
-Both drills stop the stack with `nself stop --volumes` (and `docker compose down -v`) on every exit path. They need Docker with the compose plugin, `jq`, and `timeout`; they print the result and exit 2 when one is missing. Results land in `.nself/drill-out/<leg>/` (`<step>.log`, `evidence.json`). Each takes a few minutes on top of the image pulls; the nightly workflow's 80-minute job limit covers all three drills, and a run of the funnel without `NSELF_CI_TIMEOUT` should raise it to at least 20 minutes.
+Both drills stop the stack with `nself stop --volumes` (and `docker compose down -v`) on every exit path, and run with a throw-away `HOME`. They need Docker with the compose plugin, `jq` and `timeout`; they print the reason and exit 2 when one is missing. Results land in `.nself/drill-out/<leg>/` (`<step>.log`, `evidence.json`).
+
+### One stack at a time
+
+The stack's compose file publishes fixed host ports (5432, 8080, 4000, 80, 443) and `nself-ci` starts every drill job at once. The legs that start a stack (`two-command`, `clean-host`, `upgrade-continuity`) therefore take one host-wide lock, `scripts/drill/stack-lock.sh` (a directory under `.nself/`; a lock whose holder process is gone is taken over). They run one after another; a waiting leg's job timeout keeps running, so the three together need less than `NSELF_CI_TIMEOUT` (80 minutes in the nightly workflow, 120 for the job). A new leg that starts a stack sources the same file. `DRILL_LOCK_TIMEOUT` (default 3600 seconds) bounds the wait.
+
+Each leg takes a few minutes on top of the image pulls. A run of the funnel without `NSELF_CI_TIMEOUT` needs it raised to at least 20 minutes per leg.
 
 ## Add a drill
 
@@ -86,7 +92,7 @@ The first two need Docker and take about as long as the Two-Command Drill (tens 
 1. builds `nself` from the ref (`.nself/bin/nself`);
 2. installs the `nself-ci` release pinned in the workflow `env` (tag and linux-amd64 sha256, checked with `sha256sum --check --strict`; the binary is never built from the checkout);
 3. runs `nself-ci --no-status --pipeline drills --json`;
-4. uploads `evidence.json` as the artifact `drills-evidence` and the leg results as `drills-two-command-results`.
+4. uploads `evidence.json` as the artifact `drills-evidence` and `.nself/drill-out/` (the results of every leg, not only two-command) as `drills-two-command-results`.
 
 The job is named `drills` and allows 120 minutes. It has no secrets and a read-only token.
 

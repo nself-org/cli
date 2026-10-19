@@ -22,7 +22,9 @@
 # Outputs: <out>/<step>.log, <out>/evidence.json, and the same document as the last stdout line.
 # Exit: 0 every step passed, 1 a step failed, 2 a missing tool or the cli could not be built.
 # Cleanup: `nself stop --volumes` and `docker compose down -v` run on every exit path. HOME is a
-#   throw-away directory, so plugins land there and not in the runner's real ~/.nself.
+#   throw-away directory, so plugins land there and not in the runner's real ~/.nself. The leg
+#   holds the host-wide stack lock (scripts/drill/stack-lock.sh) from before `start` to the end,
+#   because the executor starts all drill jobs at once and the stack ports are fixed.
 # Runs only on GitHub-hosted runners or a local box with Docker; never point it at a server.
 
 set -u
@@ -44,11 +46,14 @@ WORK=$(mktemp -d "${TMPDIR:-/tmp}/drill-$LEG.XXXXXX")
 PROJ_DIR=$WORK/$PROJ
 finish() {
   cleanup_stack
+  stack_lock_release
   rm -rf "$WORK"
 }
 ev_begin "$LEG" "$OUT"
 trap finish EXIT
 trap 'exit 143' INT TERM
+isolate_home
+stack_lock_acquire || { log "could not take the stack lock within ${DRILL_LOCK_TIMEOUT:-3600}s"; exit 1; }
 
 step_install() {
   mkdir -p "$WORK/bin"
@@ -96,8 +101,10 @@ step_backup() {
 }
 
 step_restore() {
+  local gone
   sql 'DROP TABLE public.drill_seed' || return 1
-  [ -z "$(sql "SELECT to_regclass('public.drill_seed')")" ] || { echo "the table is still there after DROP"; return 1; }
+  gone=$(sql "SELECT coalesce(to_regclass('public.drill_seed')::text, 'gone')") || return 1
+  [ "$gone" = gone ] || { echo "the table is still there after DROP"; return 1; }
   nself_t 600 backup restore latest --yes
 }
 
