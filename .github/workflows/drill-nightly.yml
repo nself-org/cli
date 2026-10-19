@@ -107,17 +107,6 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
 
-      - name: DEBUG drill logs (temporary, P7-CI-20)
-        if: always()
-        run: |
-          docker ps -a || true
-          docker network ls || true
-          for d in $(find / -type d -path "*logs/r2026*" -not -path "/proc/*" 2>/dev/null | head -3); do ls "$d"; done
-          for f in $(find / -type f -path "*logs/r2026*drill-clean-host*" -not -path "/proc/*" 2>/dev/null | head -3); do echo "== $f"; tail -40 "$f"; done
-          find / -type d -name 'drill-out' -not -path '/proc/*' 2>/dev/null | head
-          for f in $(find / -type f \( -name 'a-start.log' -o -name 'a-init.log' \) -not -path '/proc/*' 2>/dev/null | head -6); do echo "== $f"; tail -25 "$f"; done
-          for f in $(find / -type f -name 'start.log' -path '*drill*' -not -path '/proc/*' 2>/dev/null | head -4); do echo "== $f"; tail -25 "$f"; done
-
       - name: Keep the evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
