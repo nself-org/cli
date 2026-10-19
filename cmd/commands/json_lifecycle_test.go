@@ -24,6 +24,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nself-org/cli/internal/canon"
 	"github.com/nself-org/cli/internal/config"
@@ -284,11 +285,14 @@ func TestLifecycleJSON(t *testing.T) {
 
 	t.Run("restart reports what compose restarted, not what is configured", func(t *testing.T) {
 		if testing.Short() {
-			t.Skip("restart waits 5s for the stack to settle")
+			t.Skip("restart runs the stub stack five times")
 		}
 		// The stub lists two containers but three configured services: redis
 		// was enabled after the stack came up and has no container.
 		dir := lifecycleProject(t)
+		prevSettle, prevDown := restartSettleWait, restartDownWait
+		restartSettleWait, restartDownWait = 0, 0
+		t.Cleanup(func() { restartSettleWait, restartDownWait = prevSettle, prevDown })
 		cases := []struct {
 			flags []string
 			want  []string
@@ -302,6 +306,12 @@ func TestLifecycleJSON(t *testing.T) {
 			// --all wins over named services: the whole stack is cycled
 			{[]string{"--json", "--all", "--skip-build", "hasura"}, []string{"postgres", "hasura", "redis"}, "all"},
 		}
+		start := time.Now()
+		t.Cleanup(func() { // D-0736: the unshortened pauses made these five cases take 29 s
+			if d := time.Since(start); d > 15*time.Second {
+				t.Errorf("five restart cases took %v: a real pause crept back in", d)
+			}
+		})
 		for _, tc := range cases {
 			out, err := lifecycleRun(t, "restart", dir, tc.flags...)
 			if err != nil {
