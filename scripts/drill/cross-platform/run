@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+# Cross-platform binary smoke (P7-CI-22): the cli binary on macOS and Windows.
+#
+# Purpose: prove that the nself binary built for the runner's own OS starts and answers, with no Docker
+#   and no prompt. Three steps, each one line of output and one entry of results.json:
+#   version   `nself version` prints the build version; `nself version --json` agrees and names the
+#             runner's OS in `platform`
+#   help-json `nself help --json` parses as JSON and lists the verbs, among them init and start
+#   init      `nself init` in an empty temp directory, stdin /dev/null, under a timeout, writes .env
+#             (a prompt would hit EOF or the timeout, so it fails here)
+# This is not a `drills_dir` leg: the Linux drills pipeline (scripts/drill/legs, run by nself-ci on
+#   ubuntu) cannot place a macOS or a Windows job, so .github/workflows/drill-cross-platform.yml runs
+#   this file directly on those runners. Windows = WSL2 for Docker (owner answer 6c): the Linux drills
+#   cover it; this leg covers the native binary only. See .github/wiki/Drills.md.
+# Inputs: NSELF_BIN (the binary under test; default <repo>/.nself/bin/nself[.exe]),
+#   NSELF_EXPECT_VERSION (when set, `version` must equal it; else any x.y.z), NSELF_EXPECT_GOOS (when set,
+#   `platform` must start with it/; else the OS this shell runs on), DRILL_OUT_ROOT (default
+#   <repo>/.nself/drill-out; results go to <root>/cross-platform), DRILL_INIT_TIMEOUT (120),
+#   DRILL_STEP_TIMEOUT (60).
+# Outputs: <out>/<step>.log per step, <out>/results.json (cross-platform-smoke/v1).
+# Exit: 0 every step passed, 1 a step failed, 2 a missing tool or no binary.
+# Constraints: bash 3.2 compatible (macOS) and Git Bash (Windows); needs jq. Needs no Docker, no
+#   network, no secret. HOME, USERPROFILE, APPDATA and LOCALAPPDATA point at a throw-away directory, so nothing is read from or
+#   written to the runner's real home. Never point it at a server.
+
+set -u
+HERE=$(cd "$(dirname "$0")" && pwd)
+ROOT=$(cd "$HERE/../../.." && pwd)
+OUT=${DRILL_OUT_ROOT:-$ROOT/.nself/drill-out}/cross-platform
+INIT_T=${DRILL_INIT_TIMEOUT:-120}
+STEP_T=${DRILL_STEP_TIMEOUT:-60}
+
+log() { printf 'cross-platform: %s\n' "$*" >&2; }
+
+command -v jq >/dev/null 2>&1 || { log "jq is required"; exit 2; }
+
+# The binary under test.
+case "$(uname -s)" in
+  MINGW* | MSYS* | CYGWIN*) EXE=.exe DEFAULT_GOOS=windows ;;
+  Darwin) EXE="" DEFAULT_GOOS=darwin ;;
+  *) EXE="" DEFAULT_GOOS=linux ;;
+esac
+GOOS_WANT=${NSELF_EXPECT_GOOS:-$DEFAULT_GOOS}
+BIN=${NSELF_BIN:-$ROOT/.nself/bin/nself$EXE}
+[ -f "$BIN" ] || { log "no binary at $BIN (build it first: go build -mod=vendor -o $BIN ./cmd/nself)"; exit 2; }
+BIN=$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN")
+
+mkdir -p "$OUT"
+OUT=$(cd "$OUT" && pwd)
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/cross-platform.XXXXXX") || { log "mktemp failed"; exit 2; }
+trap 'rm -rf "$WORK"' EXIT
+trap 'exit 143' INT TERM
+
+# A clean host has no ~/.nself. Go reads HOME on macOS and USERPROFILE on Windows.
+mkdir -p "$WORK/home"
+export HOME=$WORK/home
+if command -v cygpath >/dev/null 2>&1; then USERPROFILE=$(cygpath -w "$WORK/home"); else USERPROFILE=$WORK/home; fi
+export USERPROFILE
+mkdir -p "$WORK/appdata" "$WORK/localappdata"
+export APPDATA=$WORK/appdata LOCALAPPDATA=$WORK/localappdata
+
+# Only GNU coreutils timeout takes `-k 5 N cmd`: Git Bash can find Windows' own timeout.exe first.
+TIMEOUT_BIN=""
+for t in timeout gtimeout; do
+  p=$(command -v "$t" 2>/dev/null) || continue
+  if "$p" --version 2>&1 | grep -q GNU; then TIMEOUT_BIN=$p; break; fi
+done
+
+# run_t <seconds> <logfile> <cmd...>: stdin /dev/null (so a prompt hits EOF), no TTY, the variables that
+# would switch the cli into non-interactive mode removed, output to the log. Exit 124 on timeout.
+# The watchdog covers a runner without timeout(1).
+run_t() {
+  local secs=$1 log=$2 pid wd rc
+  shift 2
+  if [ -n "$TIMEOUT_BIN" ]; then
+    env -u CI -u GITHUB_ACTIONS -u NSELF_NONINTERACTIVE "$TIMEOUT_BIN" -k 5 "$secs" "$@" </dev/null >"$log" 2>&1
+    return $?
+  fi
+  env -u CI -u GITHUB_ACTIONS -u NSELF_NONINTERACTIVE "$@" </dev/null >"$log" 2>&1 &
+  pid=$!
+  (sleep "$secs"; kill -9 "$pid" 2>/dev/null) >/dev/null 2>&1 &
+  wd=$!
+  wait "$pid"
+  rc=$?
+  kill "$wd" 2>/dev/null
+  wait "$wd" 2>/dev/null
+  [ "$rc" -eq 137 ] && rc=124
+  return "$rc"
+}
+
+# jqr <jq args>: jq -r with any CR removed (jq.exe may write CRLF).
+jqr() { jq -r "$@" | tr -d '\r'; }
+
+# why <rc> <what> <logfile>: the failure text for a command that exited rc.
+why() {
+  if [ "$1" -eq 124 ]; then echo "$2 timed out (a prompt?): $(last_lines "$3")"; else echo "$2 exited $1: $(last_lines "$3")"; fi
+}
+
+# last_lines <file>: the last five lines, CR and ANSI stripped, cut to 400 characters.
+last_lines() { tail -n 5 "$1" 2>/dev/null | tr -d '\r' | sed "s/$(printf '\033')\[[0-9;]*m//g" | tr '\n' ' ' | cut -c1-400; }
+
+RESULTS=$WORK/results.ndjson
+: >"$RESULTS"
+FAILED=0
+
+# record <id> <pass|fail> <note>
+record() {
+  jq -nc --arg id "$1" --arg r "$2" --arg n "$3" '{id: $id, result: $r, note: $n}' >>"$RESULTS"
+  printf '%-10s %s  %s\n' "$1" "$2" "$3"
+  [ "$2" = pass ] || FAILED=1
+}
+
+# step <id> <function>: the function prints its pass note on stdout, or its reason on stdout and returns 1.
+step() {
+  local id=$1 note
+  if note=$("$2"); then record "$id" pass "$note"; else record "$id" fail "$note"; fi
+}
+
+step_version() {
+  local text json ver plat rc
+  run_t "$STEP_T" "$OUT/version.log" "$BIN" version
+  rc=$?
+  [ "$rc" -eq 0 ] || { why "$rc" "nself version" "$OUT/version.log"; return 1; }
+  text=$(head -n 1 "$OUT/version.log" | tr -d '\r')
+  run_t "$STEP_T" "$OUT/version-json.log" "$BIN" version --json
+  rc=$?
+  [ "$rc" -eq 0 ] || { why "$rc" "nself version --json" "$OUT/version-json.log"; return 1; }
+  json=$(tr -d '\r' <"$OUT/version-json.log")
+  ver=$(printf '%s' "$json" | jqr '.version // empty') || { echo "version --json did not parse"; return 1; }
+  [ -n "$ver" ] || { echo "version --json has no version"; return 1; }
+  if [ -n "${NSELF_EXPECT_VERSION:-}" ]; then
+    [ "$ver" = "$NSELF_EXPECT_VERSION" ] || { echo "version is $ver, built as $NSELF_EXPECT_VERSION"; return 1; }
+  else
+    printf '%s' "$ver" | grep -Eq '^[0-9]+[.][0-9]+[.][0-9]+' || { echo "version $ver is not x.y.z"; return 1; }
+  fi
+  case "$text" in *"$ver"*) ;; *) echo "text output '$text' does not name $ver"; return 1 ;; esac
+  plat=$(printf '%s' "$json" | jqr '.platform')
+  case "$plat" in "$GOOS_WANT"/*) ;; *) echo "platform is $plat, expected $GOOS_WANT/*"; return 1 ;; esac
+  echo "$ver on $plat"
+}
+
+step_help_json() {
+  local doc rc
+  run_t "$STEP_T" "$OUT/help-json.log" "$BIN" help --json
+  rc=$?
+  [ "$rc" -eq 0 ] || { why "$rc" "nself help --json" "$OUT/help-json.log"; return 1; }
+  doc=$(tr -d '\r' <"$OUT/help-json.log")
+  printf '%s' "$doc" | jq -e . >/dev/null 2>&1 || { echo "help --json is not JSON: $(last_lines "$OUT/help-json.log")"; return 1; }
+  printf '%s' "$doc" | jq -e '.command == "help" and (.data.verbs | index("init")) != null and (.data.verbs | index("start")) != null' >/dev/null ||
+    { echo "help --json lacks the help envelope or the init and start verbs"; return 1; }
+  echo "$(printf '%s' "$doc" | jqr '.data.verbs | length') verbs"
+}
+
+step_init() {
+  local dir=$WORK/proj rc name
+  mkdir -p "$dir"
+  (cd "$dir" && run_t "$INIT_T" "$OUT/init.log" "$BIN" init)
+  rc=$?
+  [ "$rc" -eq 0 ] || { why "$rc" "nself init" "$OUT/init.log"; return 1; }
+  [ -s "$dir/.env" ] || { echo "init wrote no .env"; return 1; }
+  name=$(tr -d '\r' <"$dir/.env" | sed -n 's/^PROJECT_NAME=//p' | head -n 1)
+  [ -n "$name" ] || { echo "init wrote no PROJECT_NAME"; return 1; }
+  echo ".env written, project $name, no prompt"
+}
+
+step version step_version
+step help-json step_help_json
+step init step_init
+
+jq -sc --arg os "$GOOS_WANT" --arg host "$(uname -s)" \
+  '{schema: "cross-platform-smoke/v1", goos: $os, host: $host, result: (if any(.[]; .result != "pass") then "fail" else "pass" end), steps: .}' \
+  "$RESULTS" >"$OUT/results.json"
+log "results in $OUT/results.json"
+exit "$FAILED"
