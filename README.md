@@ -529,7 +529,7 @@ Tests live in `internal/` alongside the packages they test. Coverage target: 70%
 
 MIT, free for personal and commercial use. See [LICENSE](LICENSE).
 
-Licensed plugins (count generated from the plugins-pro registry, not hand-typed here) are [source-available](https://nself.org/legal/bundle-license) under the nSelf Bundle License. Compiled binaries are distributed through `ping.nself.org` after license validation.
+Licensed plugins (count generated from the bundles registry, not hand-typed here) are [source-available](https://nself.org/legal/bundle-license) under the nSelf Bundle License. Compiled binaries are distributed through `ping.nself.org` after license validation.
 
 ---
 
