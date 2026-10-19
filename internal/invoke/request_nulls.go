@@ -23,6 +23,7 @@ func checkNoNullItems(raw []byte, member string) error {
 		return nil
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()    // a number stays text, so an overlong one is not echoed in an error
 	_, _ = dec.Token() // the opening bracket
 	depth := 0
 	for dec.More() || depth > 0 {
