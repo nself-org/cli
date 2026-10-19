@@ -19,7 +19,7 @@ Every plugin declares itself in a 12-field YAML manifest. The schema is defined 
 | `name` | slug | Lowercase, hyphenated. Must be unique in the registry |
 | `version` | semver | `MAJOR.MINOR.PATCH` |
 | `tier` | enum | `free`, `basic`, or `pro` |
-| `bundle` | enum | `nChat`, `nClaw`, `nFamily`, `nTV`, `ClawDE`, `ɳSelf+`, or `none` |
+| `bundle` | enum | `nChat`, `nClaw`, `nFamily`, `ClawDE`, `ɳSelf+`, or `none` |
 | `language` | enum | `go`, `rust`, `ts`, `py`, or `flutter` |
 | `services` | array | Each entry: `{name, port, healthcheck, image}` |
 | `tables` | array | `np_*`-prefixed Postgres table schemas |

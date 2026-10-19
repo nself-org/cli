@@ -25,7 +25,7 @@ Lists all available plugins from the marketplace.
 | Flag | Description |
 |------|-------------|
 | `--tier free\|pro` | Filter by tier |
-| `--bundle <slug>` | Filter by bundle slug: `nclaw`, `clawde`, `nmedia`, `nfamily`, `nchat` |
+| `--bundle <slug>` | Filter by bundle slug: `nclaw`, `clawde`, `nfamily`, `nchat` |
 | `--category <name>` | Filter by category (e.g. `ai`, `media`, `messaging`) |
 | `--json` | Output raw JSON |
 

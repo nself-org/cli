@@ -17,7 +17,7 @@
 
 ## Plugins Included
 
-Licensed plugins. Most are `tier: max` (require Pro tier or higher); a few are `tier: pro` (Basic tier or higher).
+The bundle's licensed plugins are mostly `tier: max` (require Pro tier or higher); a few are `tier: pro` (Basic tier or higher).
 
 | Plugin | Tier | Language | What It Does |
 |--------|------|----------|-------------|

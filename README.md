@@ -374,7 +374,7 @@ nself plugin install ai
 
 ## Plugins
 
-### Free plugins (29 — MIT, no key required)
+### Free plugins (MIT, no key required)
 
 Install any free plugin with `nself plugin install <name>`:
 

@@ -2,7 +2,7 @@
 # nself license
 
 <!-- BEGIN PROSE:summary -->
-> Manage your ɳSelf Pro membership license key.
+> Manage your ɳSelf membership license key.
 <!-- END PROSE:summary -->
 
 ## Synopsis
@@ -17,9 +17,9 @@ nself license <subcommand> [flags]
 ## Description
 
 <!-- BEGIN PROSE:description -->
-`nself license` manages the Pro membership license key used to install paid plugins. The key is stored locally at `~/.nself/license/key` with permissions `0600` (readable only by the current user).
+`nself license` manages the membership license key used to install licensed plugins. The key is stored locally at `~/.nself/license/key` with permissions `0600` (readable only by the current user).
 
-Set your key once with `nself license set` and all subsequent `nself plugin install` commands for Pro plugins will use it automatically. The key is validated server-side against `ping.nself.org`, the CLI does not decode or verify the key locally.
+Set your key once with `nself license set` and all subsequent `nself plugin install` commands for licensed plugins will use it automatically. The key is validated server-side against `ping.nself.org`, the CLI does not decode or verify the key locally.
 
 **Key format:** One of four accepted prefixes followed by 32 or more characters:
 - `nself_pro_*`, Pro tier

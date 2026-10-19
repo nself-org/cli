@@ -17,7 +17,7 @@ nself upgrade [flags]
 
 Use `--check` to inspect current version, install method, and channel without installing. Use `--channel` to switch between `stable` and `canary`; the choice is persisted in `~/.config/nself/channel.json`. Use `--version 1.2.3` to pin a specific release. Use `--rollback` to restore the previously installed binary from `~/.nself/bin/nself.prev`.
 
-Before swapping the binary, the command warns about installed Licensed plugins that may be incompatible with the new version. After a successful upgrade, the previous binary is preserved for one-shot rollback.
+Before swapping the binary, the command warns about installed licensed plugins that may be incompatible with the new version. After a successful upgrade, the previous binary is preserved for one-shot rollback.
 
 ### --binary-url: install from a specific URL
 

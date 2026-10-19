@@ -164,10 +164,10 @@ nself plugin install notify
 # Install multiple plugins in one command
 nself plugin install ai claw mux
 
-# Install a pro plugin (uses saved license key)
+# Install a licensed plugin (uses saved license key)
 nself plugin install ai
 
-# Install a pro plugin with an inline key
+# Install a licensed plugin with an inline key
 nself plugin install livekit --key nself_pro_xxxxx...
 
 # Install a specific version

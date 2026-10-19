@@ -29,7 +29,7 @@ Yes. The core CLI and the free plugins are MIT licensed and free forever, includ
 
 ## What is the difference between free and Licensed plugins?
 
-Free plugins (25) handle foundational use cases: monitoring, backup, cron, search, notifications, and more. Licensed plugins (52) add advanced capabilities: AI, live video (LiveKit), commerce, CMS, SSO/SAML, media transcoding, DRM, WAF, and more. Licensed plugins require a license key from [nself.org](https://nself.org).
+Free plugins handle foundational use cases: monitoring, backup, cron, search, notifications, and more. Licensed plugins add advanced capabilities: AI, live video (LiveKit), commerce, CMS, SSO/SAML, media transcoding, DRM, WAF, and more. Licensed plugins require a license key from [nself.org](https://nself.org).
 
 ## Can I run multiple ɳSelf projects on one server?
 

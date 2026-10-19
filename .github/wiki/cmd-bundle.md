@@ -16,7 +16,7 @@ See [[cmd-config]] for the current command. [[Command-Canon]] lists every move.
 <!-- BEGIN PROSE:description -->
 **Inspect and manage nSelf plugin bundles.**
 
-Bundles group related pro plugins into a single purchase. Each paid bundle costs
+Bundles group related licensed plugins into a single purchase. Each paid bundle costs
 $0.99/mo or $9.99/yr. ɳSelf+ ($3.99/mo or $39.99/yr) includes all six paid bundles.
 
 Activate a bundle by setting a license key:

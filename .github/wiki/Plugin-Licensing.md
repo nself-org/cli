@@ -94,7 +94,7 @@ NSELF_LICENSE_SKIP_VERIFY=1 nself license import cache.json --force
 | Tier | Monthly | Annual | Plugin Access |
 |------|---------|--------|--------------|
 | Free | $0 | $0 | Free plugins only |
-| Basic | $0.99 | $9.99 | The licensed plugins in the Basic tier |
+| Basic | $0.99 | $9.99 | Licensed plugins outside the Pro-tier AI suite |
 | Pro | $1.99 | $19.99 | Basic + full AI suite |
 | Elite | $4.99 | $49.99 | Pro + email support |
 | Business | $9.99 | $99.99 | Elite + 24h support |
