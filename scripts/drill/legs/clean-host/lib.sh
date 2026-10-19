@@ -102,9 +102,9 @@ ev_emit() {
        result: (if any($c[]; .result == "fail" or .result == "error") then "fail" else "pass" end),
        counts: {pass: ([$c[] | select(.result == "pass")] | length),
                 fail: ([$c[] | select(.result == "fail")] | length),
-                skip: ([$c[] | select(.result == "skip")] | length),
-               error: ([$c[] | select(.result == "error")] | length), total: ($c | length)},
-       freshness: {state: $fstate, reason: $freason}, signature: {kind: "coordinator-recorded"}}' |
+               skip: ([$c[] | select(.result == "skip")] | length),
+                error: ([$c[] | select(.result == "error")] | length), total: ($c | length)},
+      freshness: {state: $fstate, reason: $freason}, signature: {kind: "coordinator-recorded"}}' |
     tee "$EV_OUT/evidence.json"
 }
 
