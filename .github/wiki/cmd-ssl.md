@@ -119,6 +119,15 @@ certificate. An optional argument selects a lineage by name. With `--force`,
 renew regardless of expiry. In v1.4 certbot mode, renew reloads nginx; a domain
 argument also requests certbot renewal when certbot is installed.
 
+Adoption follows a served conf that names a top-level symlink of the ssl dir
+(for example `/etc/nginx/ssl/api-task-nself-org/` linking to
+`certificates/api-task-nself-org`). The link is followed one hop and only when
+it lands on `certificates/<name>` inside the ssl dir; the run prints a note
+naming the link. A link that is absolute outside the ssl dir, climbs out with
+`..`, chains through another link, or resolves outside `certificates/` is not
+followed, the note says why, and the lineage is refused as before. Nothing in
+the ssl dir is rewritten by this step.
+
 | Flag | Applies to | Description |
 |------|-----------|-------------|
 | `--acme` | setup, renew | Use the CLI's ACME client instead of certbot (the default in v1.5 mode). In v1.4 mode every flag below needs it. |

@@ -189,6 +189,7 @@ func (r *acmeRun) probeHosts(l acme.Lineage) (out []string) {
 	var hosts map[string]string
 	if r.provider != build.ProviderTraefik {
 		hosts, _ = ssl.ServedHosts(r.res.NginxDir)
+		hosts, _ = acme.ResolveServedLinks(r.res.SSLDir, hosts)
 	}
 	for _, t := range l.Targets {
 		pick := ""
