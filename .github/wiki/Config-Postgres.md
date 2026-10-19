@@ -164,13 +164,13 @@ Additional hardening applied to every Postgres container:
 
 `nself build` resolves `POSTGRES_PASSWORD` in this order, first match wins:
 
-1. A value in any env file of the active cascade, or exported in the process environment. Nothing is generated or written.
+1. A value in any of the project's env files (`.env`, `.env.dev`, `.env.staging`, `.env.prod`, `.env.secrets`, `.env.local` and custom `.env.<name>` files, whichever `ENV` is active), or exported in the process environment. Nothing is generated or written. A key in an env file for another environment also stops generation, so keep per-environment passwords in the matching file.
 2. A project built by an earlier version keeps its running database password only in `.nself/compose.env`. The build reuses that value for the render and logs a warning naming the key. It does not write it, so a later rotated export is not shadowed. Pin it by adding `POSTGRES_PASSWORD` to `.env.secrets`.
 3. Otherwise the build generates a random password and appends it to `.env.secrets`.
 
-`HASURA_GRAPHQL_ADMIN_SECRET` follows the same rule. `.env.secrets` loads after `.env.<env>`, so a value there overrides the same key in an earlier file; the build warns (key name only) when that happens.
+`HASURA_GRAPHQL_ADMIN_SECRET` follows the same rule. `.env.secrets` loads after `.env.<env>`, so a value there overrides the same key in an earlier file. For the keys the build persists (these two, the JWT secret and the plugin internal secrets) it warns, naming the key and file but never the value, when `.env.secrets` holds a different value from an earlier file.
 
-**Upgrading a project that was built before the password was persisted.** Earlier versions generated a new password on every load and never saved it, so a rebuild could render a password that no longer matched the existing database volume. After upgrading, run `nself build`: the build adopts the live password from `.nself/compose.env`. Then add `POSTGRES_PASSWORD` (and `HASURA_GRAPHQL_ADMIN_SECRET`) to `.env.secrets` so the value is pinned.
+**Upgrading a project that was built before the password was persisted.** Earlier versions generated a new password on every load and never saved it, so a rebuild could render a password that no longer matched the existing database volume. After upgrading, run `nself build`: the build adopts the live password from `.nself/compose.env`. Then copy `POSTGRES_PASSWORD` (and `HASURA_GRAPHQL_ADMIN_SECRET`) from `.nself/compose.env` into `.env.secrets` so the value is pinned.
 
 **Never commit `POSTGRES_PASSWORD` to git.** `.env.secrets` and `.env.local` are gitignored by default.
 
