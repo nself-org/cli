@@ -21,14 +21,18 @@ var (
 	fuzzOnce sync.Once
 	fuzzSrv  *Server
 	fuzzInv  *advInvoker
+	fuzzLog  *lockedBuf
 )
 
-// fuzzServer builds the shared server on first use. HOME is set only while New
-// runs, because New reads it for the audit path and nothing else does.
+// fuzzServer builds the shared server on first use and clears what earlier
+// inputs recorded, so memory and the per-input history stay constant however
+// long the fuzz process runs. Inputs run one at a time per process.
 func fuzzServer(t *testing.T) (*Server, *advInvoker) {
 	fuzzOnce.Do(func() {
-		fuzzSrv, fuzzInv, _ = newAdv(t, func(o *Options) { o.AllowedHosts = []string{"fake.example"} })
+		fuzzSrv, fuzzInv, fuzzLog = newAdv(t, func(o *Options) { o.AllowedHosts = []string{"fake.example"} })
 	})
+	fuzzInv.reset()
+	fuzzLog.reset()
 	return fuzzSrv, fuzzInv
 }
 
@@ -53,30 +57,32 @@ func FuzzRoutePath(f *testing.F) {
 	} {
 		f.Add(seed)
 	}
-	f.Fuzz(func(t *testing.T, p string) {
-		s, inv := fuzzServer(t)
-		u, err := url.ParseRequestURI(p)
-		if err != nil || !strings.HasPrefix(p, "/") {
-			return
+	f.Fuzz(checkRoutePath)
+}
+
+// checkRoutePath is the FuzzRoutePath body.
+func checkRoutePath(t *testing.T, p string) {
+	s, inv := fuzzServer(t)
+	u, err := url.ParseRequestURI(p)
+	if err != nil || !strings.HasPrefix(p, "/") {
+		return
+	}
+	r := &http.Request{Method: "POST", URL: u, RequestURI: p, Proto: "HTTP/1.1", ProtoMajor: 1, ProtoMinor: 1, Host: "localhost:3857",
+		Header: http.Header{"Authorization": {"Bearer " + advToken}, "Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader("{}")), ContentLength: 2}
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	ran := inv.seen()
+	if len(ran) == 0 {
+		return
+	}
+	if hasDotSegment(u.Path) {
+		t.Fatalf("dot-segment path %q reached %v", p, ran)
+	}
+	for _, cmd := range ran {
+		if cmdregistry.RoutePath("nself "+cmd) != u.Path {
+			t.Fatalf("path %q (decoded %q) ran command %q", p, u.Path, cmd)
 		}
-		r := &http.Request{Method: "POST", URL: u, RequestURI: p, Proto: "HTTP/1.1", ProtoMajor: 1, ProtoMinor: 1, Host: "localhost:3857",
-			Header: http.Header{"Authorization": {"Bearer " + advToken}, "Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader("{}")), ContentLength: 2}
-		before := inv.count()
-		w := httptest.NewRecorder()
-		s.Handler().ServeHTTP(w, r)
-		ran := inv.seen()[before:]
-		if len(ran) == 0 {
-			return
-		}
-		if hasDotSegment(u.Path) {
-			t.Fatalf("dot-segment path %q reached %v", p, ran)
-		}
-		for _, cmd := range ran {
-			if cmdregistry.RoutePath("nself "+cmd) != u.Path {
-				t.Fatalf("path %q (decoded %q) ran command %q", p, u.Path, cmd)
-			}
-		}
-	})
+	}
 }
 
 // FuzzHostHeader fuzzes the Host check: no panic, an accepted Host is exactly
@@ -90,27 +96,32 @@ func FuzzHostHeader(f *testing.F) {
 	} {
 		f.Add(seed)
 	}
-	allowed := map[string]bool{"localhost:3857": true, "127.0.0.1:3857": true, "[::1]:3857": true, "fake.example:3857": true}
-	f.Fuzz(func(t *testing.T, host string) {
-		s, inv := fuzzServer(t)
-		before := inv.count()
-		r := httptest.NewRequest("POST", "http://localhost:3857/v1/commands/config/get", strings.NewReader("{}"))
-		r.Host = host
-		r.Header.Set("Authorization", "Bearer "+advToken)
-		r.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
-		s.Handler().ServeHTTP(w, r)
-		accepted := inv.count() > before
-		if accepted && w.Code != 200 {
-			t.Fatalf("host %q invoked but answered %d", host, w.Code)
-		}
-		if want := allowed[asciiLower(host)]; accepted != want {
-			t.Fatalf("host %q: accepted=%v, on allowed list after ASCII lowercase=%v (status %d)", host, accepted, want, w.Code)
-		}
-		if !accepted && w.Code != 421 {
-			t.Fatalf("host %q refused with %d, want 421", host, w.Code)
-		}
-	})
+	f.Fuzz(checkHostHeader)
+}
+
+// fuzzAllowedHosts are the Host values the fuzz server must accept.
+var fuzzAllowedHosts = map[string]bool{"localhost:3857": true, "127.0.0.1:3857": true, "[::1]:3857": true, "fake.example:3857": true}
+
+// checkHostHeader is the FuzzHostHeader body.
+func checkHostHeader(t *testing.T, host string) {
+	s, inv := fuzzServer(t)
+	before := inv.count()
+	r := httptest.NewRequest("POST", "http://localhost:3857/v1/commands/config/get", strings.NewReader("{}"))
+	r.Host = host
+	r.Header.Set("Authorization", "Bearer "+advToken)
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	accepted := inv.count() > before
+	if accepted && w.Code != 200 {
+		t.Fatalf("host %q invoked but answered %d", host, w.Code)
+	}
+	if want := fuzzAllowedHosts[asciiLower(host)]; accepted != want {
+		t.Fatalf("host %q: accepted=%v, on allowed list after ASCII lowercase=%v (status %d)", host, accepted, want, w.Code)
+	}
+	if !accepted && w.Code != 421 {
+		t.Fatalf("host %q refused with %d, want 421", host, w.Code)
+	}
 }
 
 // asciiLower lowercases A-Z only, the normalisation the allowlist promises.

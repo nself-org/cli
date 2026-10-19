@@ -72,6 +72,14 @@ func (a *advInvoker) seen() []string {
 	return append([]string(nil), a.paths...)
 }
 
+// reset forgets the recorded invocations. The fuzz harness calls it per input
+// so a long-lived shared server does not grow without bound.
+func (a *advInvoker) reset() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.paths = nil
+}
+
 // lockedBuf is a goroutine-safe log sink.
 type lockedBuf struct {
 	mu sync.Mutex
@@ -82,6 +90,13 @@ func (l *lockedBuf) Write(p []byte) (int, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.b.Write(p)
+}
+
+// reset empties the buffer and releases its backing array.
+func (l *lockedBuf) reset() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.b = bytes.Buffer{}
 }
 
 func (l *lockedBuf) String() string {
