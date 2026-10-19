@@ -33,6 +33,7 @@ func ApplyUsers(ctx context.Context, db *pgx.Conn, users []verify.User) error {
 	defer func() { _ = tx.Rollback(ctx) }()
 	values := make([][]any, 0, len(users))
 	roles := [][]any{}
+	registered := map[string]bool{}
 	for _, u := range users {
 		var id pgtype.UUID
 		if err = id.Scan(u.ID); err != nil {
@@ -48,8 +49,11 @@ func ApplyUsers(ctx context.Context, db *pgx.Conn, users []verify.User) error {
 		}
 		values = append(values, userRow(id, created, hash, u, nullable))
 		// auth.users.default_role references auth.roles: register it before the COPY.
-		if _, err = tx.Exec(ctx, `INSERT INTO auth.roles(role) VALUES($1) ON CONFLICT DO NOTHING`, defaultRoleOf(u)); err != nil {
-			return errors.New("auth role registration failed")
+		if dr := defaultRoleOf(u); !registered[dr] {
+			if _, err = tx.Exec(ctx, `INSERT INTO auth.roles(role) VALUES($1) ON CONFLICT DO NOTHING`, dr); err != nil {
+				return errors.New("auth role registration failed")
+			}
+			registered[dr] = true
 		}
 		for _, role := range u.Roles {
 			if _, err = tx.Exec(ctx, `INSERT INTO auth.roles(role) VALUES($1) ON CONFLICT DO NOTHING`, role); err != nil {
