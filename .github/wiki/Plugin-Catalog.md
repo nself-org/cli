@@ -47,7 +47,7 @@ MIT licensed. No license key required. Source: `plugins/free/` in the `plugins` 
 
 ## Licensed plugins
 
-License-gated. Install with a valid `nself_pro_*` key. Source: `bundles/paid/` in the `plugins-pro` repo.
+License-gated. Install with a valid `nself_pro_*` key. Source: the `bundles` repo.
 
 ### ɳClaw bundle ($0.99/mo)
 

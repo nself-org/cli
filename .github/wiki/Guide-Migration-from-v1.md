@@ -42,7 +42,7 @@ Docker resource names also changed:
 
 ```bash
 brew upgrade nself-org/nself/nself
-nself version    # should show v1.0.x
+nself version    # should show the latest release
 ```
 
 ### 2. Run the migration command

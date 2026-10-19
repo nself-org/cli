@@ -256,11 +256,8 @@ nself build && nself restart
 
 Current surface:
 
-<!-- BEGIN GENERATED:readme-top-level -->
-<!-- BEGIN GENERATED:facts:top-level -->
-20 top-level commands in v1.5 mode, `NSELF_V15=1`
-<!-- END GENERATED:facts:top-level -->
-<!-- END GENERATED:readme-top-level -->
+<!-- truth: exempt tools/facts renders this count from the command registry -->
+<!-- BEGIN GENERATED:facts:top-level -->20 top-level commands in v1.5 mode, `NSELF_V15=1`<!-- END GENERATED:facts:top-level -->
 
 Full reference: [nself.org/docs/cli](https://nself.org/docs/cli).
 
@@ -359,7 +356,7 @@ The nself CLI and the free MIT plugins are fully FOSS. Free forever, including c
 | Tier | Monthly | Annual | What's included |
 |------|---------|--------|-----------------|
 | Free | $0 | $0 | Core CLI + free MIT plugins |
-| Bundle | $0.99/mo | $9.99/yr | Every licensed plugin in one bundle (ɳTask, ɳChat, ɳClaw, ɳFamily, ɳSentry, or ClawDE) |
+| Bundle | $0.99/mo | $9.99/yr | All licensed plugins of one Bundle (ɳChat, ɳClaw, ɳFamily, ɳSentry, or ClawDE); the Task Bundle is free |
 | ɳSelf+ | $3.99/mo | $39.99/yr | Every bundle + all apps + priority support |
 | ɳCloud | custom | custom | Managed hosting + ɳSelf+ license + cloud-exclusive features |
 
