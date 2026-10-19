@@ -76,32 +76,39 @@ func TestPlatformSignaturesProjected(t *testing.T) {
 	}
 
 	// the generated schemas describe the key
+	out2 := filepath.Join(root, "releases.json")
+	if err := os.WriteFile(out2, readFile(t, filepath.Join(signedTree(t, want), "releases.json")), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	for _, c := range []struct{ schema, doc string }{
 		{"catalog.v1.schema.json", filepath.Join(out, "catalog.json")},
+		{"releases.v1.schema.json", out2},
 	} {
-		var sch jsonschema.Schema
-		if err := sch.UnmarshalJSON(readFile(t, filepath.Join("..", "..", "schemas", c.schema))); err != nil {
-			t.Fatal(err)
-		}
-		res, err := sch.Resolve(nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := res.Validate(decodeMap(t, readFile(t, c.doc))); err != nil {
+		if err := validateAgainst(t, c.schema, decodeMap(t, readFile(t, c.doc))); err != nil {
 			t.Errorf("%s does not validate against %s: %v", c.doc, c.schema, err)
 		}
 	}
+
+	// the schema pins alg to ed25519 for a platform signature
+	rel := decodeMap(t, readFile(t, out2))
+	rel["releases"].(map[string]any)["ai-cli"].(map[string]any)["platform_signatures"].(map[string]any)["darwin-arm64"].(map[string]any)["alg"] = "rsa"
+	if validateAgainst(t, "releases.v1.schema.json", rel) == nil {
+		t.Error("releases schema accepted platform_signatures alg rsa")
+	}
+}
+
+// validateAgainst validates doc against the committed schema file.
+func validateAgainst(t *testing.T, schema string, doc map[string]any) error {
+	t.Helper()
 	var sch jsonschema.Schema
-	if err := sch.UnmarshalJSON(readFile(t, filepath.Join("..", "..", "schemas", "releases.v1.schema.json"))); err != nil {
+	if err := sch.UnmarshalJSON(readFile(t, filepath.Join("..", "..", "schemas", schema))); err != nil {
 		t.Fatal(err)
 	}
 	res, err := sch.Resolve(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := res.Validate(decodeMap(t, readFile(t, filepath.Join(signedTree(t, want), "releases.json")))); err != nil {
-		t.Errorf("releases.json with platform_signatures does not validate: %v", err)
-	}
+	return res.Validate(doc)
 }
 
 func TestPlatformSignaturesRefused(t *testing.T) {
