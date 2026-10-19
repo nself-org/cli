@@ -61,6 +61,7 @@ func (m *memberRun) run(ctx context.Context) error {
 			if cmp == 0 {
 				// Same version: skip silently.
 				_, _ = fmt.Fprintf(out, "  ✓ %s@%s (already installed, same version)\n", name, targetVer)
+				m.noteKeptFree(ctx, name)
 				continue
 			}
 			if cmp > 0 {
@@ -72,6 +73,7 @@ func (m *memberRun) run(ctx context.Context) error {
 				}
 				// Default: skip with warning, no silent downgrade.
 				_, _ = fmt.Fprintf(out, "  ⚠ %s: installed at %s (higher than bundle pin %s) — skipping to avoid downgrade\n", name, existingVer, targetVer)
+				m.noteKeptFree(ctx, name)
 				continue
 			}
 			// cmp < 0: existing is lower → upgrade, fall through to install.
