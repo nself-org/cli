@@ -182,8 +182,14 @@ func TestPromoteReleaseTrustSources(t *testing.T) {
 	}
 	// No origin: the fetch is not attempted and operator keys still work.
 	r.git.pinErr, r.git.noOrigin, r.git.pinned = nil, true, 0
-	if _, err := Verify(context.Background(), r.input()); err != nil || r.git.pinned != 0 {
+	var noOriginWarns []string
+	in2 := r.input()
+	in2.Warn = func(s string) { noOriginWarns = append(noOriginWarns, s) }
+	if _, err := Verify(context.Background(), in2); err != nil || r.git.pinned != 0 {
 		t.Fatalf("no-origin repo: err %v pinned %d", err, r.git.pinned)
+	}
+	if len(noOriginWarns) != 1 || !strings.Contains(noOriginWarns[0], "no origin") {
+		t.Fatalf("no-origin warnings = %v, want one saying revocations were not consulted", noOriginWarns)
 	}
 }
 
@@ -386,5 +392,22 @@ func TestSameRegularFile(t *testing.T) {
 	infoD, _ := os.Lstat(dir)
 	if err := sameRegularFile(infoD, fd); err == nil {
 		t.Fatal("a directory passed as a regular file")
+	}
+}
+
+// TestPromoteReleaseDirectoryFIFOIsRefused: a FIFO or symlink planted as a
+// release file cannot hang or redirect the verifier (posix tests cover FIFO).
+func TestPromoteReleaseDirectorySymlinkIsRefused(t *testing.T) {
+	r := newRelease(t)
+	r.write(PayloadType, r.signer)
+	real := filepath.Join(r.dir, "real.json")
+	if err := os.Rename(filepath.Join(r.dir, ManifestFile), real); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, filepath.Join(r.dir, ManifestFile)); err != nil {
+		t.Skipf("no symlink support: %v", err)
+	}
+	if _, err := Verify(context.Background(), r.input()); codeOf(err) != "E492" {
+		t.Fatalf("symlinked manifest: %v, want E492", err)
 	}
 }

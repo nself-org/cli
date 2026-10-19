@@ -81,6 +81,9 @@ func LoadTrust(ctx context.Context, g Git, home, repoRoot string) (Trust, error)
 			return t, errs.Wrap("E493", "cannot tell whether the project has an origin remote", err)
 		}
 	}
+	if !hasOrigin {
+		t.Warnings = append(t.Warnings, "the project has no origin remote: committed revocations were not consulted")
+	}
 	if hasOrigin {
 		commit, err := g.PinDefault(ctx)
 		if err != nil {
@@ -119,11 +122,13 @@ func workingCopyDiffers(path string, committed []byte, found bool) bool {
 	return err != nil || !found || !bytes.Equal(local, committed)
 }
 
-// readTrustFile reads a small regular file. A FIFO, device, symlink swap or
-// oversize file is an error, so a hostile path can neither block nor exhaust
-// memory: the file is opened without blocking and the open descriptor is
-// checked against the earlier Lstat before anything is read.
-func readTrustFile(path string) ([]byte, error) {
+func readTrustFile(path string) ([]byte, error) { return readRegularFile(path, trustFileLimit) }
+
+// readRegularFile reads a regular file of at most limit bytes. A FIFO, device,
+// symlink swap or oversize file is an error, so a hostile path can neither
+// block nor exhaust memory: the file is opened without blocking and the open
+// descriptor is checked against the earlier Lstat before anything is read.
+func readRegularFile(path string, limit int) ([]byte, error) {
 	before, err := os.Lstat(path)
 	if err != nil {
 		return nil, err
@@ -139,12 +144,12 @@ func readTrustFile(path string) ([]byte, error) {
 	if err := sameRegularFile(before, f); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
-	data, err := io.ReadAll(io.LimitReader(f, trustFileLimit+1))
+	data, err := io.ReadAll(io.LimitReader(f, int64(limit)+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(data) > trustFileLimit {
-		return nil, fmt.Errorf("%s is larger than %d bytes", path, trustFileLimit)
+	if len(data) > limit {
+		return nil, fmt.Errorf("%s is larger than %d bytes", path, limit)
 	}
 	return data, nil
 }

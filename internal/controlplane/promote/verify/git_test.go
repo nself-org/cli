@@ -241,3 +241,38 @@ func TestGitCLIIgnoresReplacementObjects(t *testing.T) {
 		t.Fatalf("PinDefault under a replacement = %q, %v; want %q", again, err, commit)
 	}
 }
+
+func TestScrubGitEnv(t *testing.T) {
+	in := []string{"PATH=/bin", "HOME=/h", "GIT_DIR=/evil", "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=remote.origin.url", "GIT_OBJECT_DIRECTORY=/x",
+		"GIT_SSH_COMMAND=ssh -i k", "GIT_SSH=/usr/bin/ssh", "GIT_ASKPASS=/a", "GIT_HTTP_PROXY_AUTHMETHOD=basic", "GIT_SSL_CAINFO=/ca", "GIT_CURL_VERBOSE=1", "GIT_WORK_TREE=/w", "NOTGIT_X=1"}
+	got := strings.Join(scrubGitEnv(in), " ")
+	for _, want := range []string{"PATH=/bin", "HOME=/h", "GIT_SSH_COMMAND=", "GIT_SSH=/usr", "GIT_ASKPASS=", "GIT_HTTP_PROXY", "GIT_SSL_CAINFO", "GIT_CURL_VERBOSE", "NOTGIT_X=1"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("scrubbed env lost %q: %s", want, got)
+		}
+	}
+	for _, bad := range []string{"GIT_DIR", "GIT_CONFIG", "GIT_OBJECT_DIRECTORY", "GIT_WORK_TREE"} {
+		if strings.Contains(got, bad) {
+			t.Errorf("scrubbed env kept %q: %s", bad, got)
+		}
+	}
+}
+
+// TestGitCLIIgnoresRedirectingEnvironment: GIT_DIR and GIT_CONFIG_* in the
+// caller's environment must not send git to another repository or remote.
+func TestGitCLIIgnoresRedirectingEnvironment(t *testing.T) {
+	work := gitRepo(t, "# real\n")
+	evil := gitRepo(t, "# evil\n")
+	t.Setenv("GIT_DIR", filepath.Join(evil, ".git"))
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "remote.origin.url")
+	t.Setenv("GIT_CONFIG_VALUE_0", filepath.Join(filepath.Dir(evil), "origin.git"))
+	g := GitCLI{Root: work}
+	commit, err := g.PinDefault(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data, found, err := g.Show(context.Background(), commit, trustRel+keysName); err != nil || !found || string(data) != "# real\n" {
+		t.Fatalf("Show under a hostile environment = %q found=%v err=%v, want the project's own origin", data, found, err)
+	}
+}

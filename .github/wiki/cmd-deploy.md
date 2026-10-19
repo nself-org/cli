@@ -195,9 +195,21 @@ check covers the services that carry an image identity: a build-context service
 has none, so on a non-prod target it passes the check unproven (prod refuses such
 a service earlier, in the compare step).
 
+The digest set is flat: a digest listed anywhere in the manifest passes for any
+service, so the manifest proves "this image came from the release", not "this
+image belongs to this service". `--release` with the legacy `nself promote`
+form needs `NSELF_V15=1` and is refused with `E401` otherwise.
+
 The inventory field `require_verified_release` on an environment makes
 `--release` mandatory. It defaults to true for tier `prod` when the ci plugin is
-installed. Without `--release` and without the requirement, `promote` prints one
+installed. The working copy is not a trust root, so the requirement is the stricter of
+the working-tree inventory and the inventory committed on the default branch of
+`origin`: editing the field or the tier locally cannot turn the gate off. If the
+committed copy cannot be read and the ci plugin is installed, the promotion
+refuses with `E499`. Git runs without `GIT_DIR`/`GIT_CONFIG_*` and replacement
+objects; anyone who can edit the project's `.git/config` can already run code as
+the operator, so a redirected `origin` is outside this check's threat model.
+Without `--release` and without the requirement, `promote` prints one
 warning and proceeds. With the field true and no `--release`, even `--dry-run`
 refuses with `E499`.
 

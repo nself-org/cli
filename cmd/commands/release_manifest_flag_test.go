@@ -4,6 +4,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -15,8 +19,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// The suite must not depend on a ci plugin installed on the machine running it.
-func init() { ciPluginBinaryFn = func() (string, bool) { return "", false } }
+// The suite must not depend on a ci plugin installed on the machine running it,
+// nor on git or the network.
+func init() {
+	ciPluginBinaryFn = func() (string, bool) { return "", false }
+	committedRequiresFn = func(context.Context, string, string, bool) (bool, error) { return false, nil }
+}
+
+func withCommitted(t *testing.T, required bool, err error) {
+	t.Helper()
+	old := committedRequiresFn
+	committedRequiresFn = func(context.Context, string, string, bool) (bool, error) { return required, err }
+	t.Cleanup(func() { committedRequiresFn = old })
+}
 
 func withCIPlugin(t *testing.T, installed bool) { withCIBinary(t, "/nonexistent/nself-ci", installed) }
 
@@ -197,5 +212,117 @@ func TestSelectCIPlugin(t *testing.T) {
 		if binary != tc.binary || inst != tc.inst {
 			t.Errorf("%s: got %q, %v; want %q, %v", tc.name, binary, inst, tc.binary, tc.inst)
 		}
+	}
+}
+
+// TestCommittedInventoryCannotBeWeakenedByTheWorkingTree: the stricter of the
+// working copy and origin's committed inventory decides.
+func TestCommittedInventoryCannotBeWeakenedByTheWorkingTree(t *testing.T) {
+	dir := promoteFixture(t)
+	t.Run("committed requires, working tree does not", func(t *testing.T) {
+		withCIPlugin(t, true)
+		withCommitted(t, true, nil)
+		cmd, _ := releaseCmd(t, "")
+		// ls is local-servers: the working tree does not require a release.
+		err := wirePromoteRelease(cmd, dir, &cpromote.Engine{}, promoteStateFor("ls", controlplane.TierLocalServers, false))
+		if !codeIs(err, "E499") || !strings.Contains(err.Error(), "committed on origin") {
+			t.Fatalf("err = %v, want E499 naming the committed inventory", err)
+		}
+	})
+	t.Run("committed copy unreadable with the ci plugin installed refuses", func(t *testing.T) {
+		withCIPlugin(t, true)
+		withCommitted(t, false, errors.New("origin unreachable"))
+		cmd, _ := releaseCmd(t, "")
+		if err := wirePromoteRelease(cmd, dir, &cpromote.Engine{}, promoteStateFor("ls", controlplane.TierLocalServers, false)); !codeIs(err, "E499") {
+			t.Fatalf("err = %v, want E499", err)
+		}
+	})
+	t.Run("committed copy unreadable without the ci plugin warns and proceeds", func(t *testing.T) {
+		withCIPlugin(t, false)
+		withCommitted(t, false, errors.New("origin unreachable"))
+		cmd, stderr := releaseCmd(t, "")
+		if err := wirePromoteRelease(cmd, dir, &cpromote.Engine{}, promoteStateFor("ls", controlplane.TierLocalServers, false)); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Count(stderr.String(), "without --release") != 1 {
+			t.Fatalf("stderr = %q", stderr.String())
+		}
+	})
+	t.Run("committed does not require", func(t *testing.T) {
+		withCIPlugin(t, true)
+		withCommitted(t, false, nil)
+		cmd, _ := releaseCmd(t, "")
+		if err := wirePromoteRelease(cmd, dir, &cpromote.Engine{}, promoteStateFor("ls", controlplane.TierLocalServers, false)); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+// TestCommittedRequiresReadsOriginsInventory exercises the real git path.
+func TestCommittedRequiresReadsOriginsInventory(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a local git remote")
+	}
+	root := t.TempDir()
+	origin, work := filepath.Join(root, "origin.git"), filepath.Join(root, "work")
+	git := func(dir string, args ...string) {
+		t.Helper()
+		c := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "init.defaultBranch=main", "-C", dir}, args...)...)
+		c.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	git(root, "init", "--bare", origin)
+	git(root, "init", work)
+	if err := os.MkdirAll(filepath.Join(work, ".nself"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	yamlText := "schema_version: 2\nproject: p\nenvironments:\n  prodsim:\n    name: prodsim\n    kind: remote\n    tier: prod\n    require_verified_release: true\n    servers: []\n  ls:\n    name: ls\n    kind: remote\n    tier: local-servers\n    servers: []\n"
+	if err := os.WriteFile(filepath.Join(work, ".nself", "control-plane.yaml"), []byte(yamlText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	git(work, "add", ".")
+	git(work, "commit", "-m", "inventory")
+	git(work, "remote", "add", "origin", origin)
+	git(work, "push", "origin", "HEAD:refs/heads/main")
+	real := committedRequires
+	if got, err := real(context.Background(), work, "prodsim", false); err != nil || !got {
+		t.Fatalf("prodsim: %v, %v; want required", got, err)
+	}
+	if got, err := real(context.Background(), work, "ls", false); err != nil || got {
+		t.Fatalf("ls without ci: %v, %v; want not required", got, err)
+	}
+	if got, err := real(context.Background(), work, "absent", true); err != nil || got {
+		t.Fatalf("unknown env: %v, %v; want not required", got, err)
+	}
+	// A working-tree edit does not change the committed answer.
+	if err := os.WriteFile(filepath.Join(work, ".nself", "control-plane.yaml"), []byte("schema_version: 2\nproject: p\nenvironments: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := real(context.Background(), work, "prodsim", false); err != nil || !got {
+		t.Fatalf("after a working-tree edit: %v, %v; want still required", got, err)
+	}
+	// No origin: nothing committed to consult, not an error.
+	git(work, "remote", "remove", "origin")
+	if got, err := real(context.Background(), work, "prodsim", true); err != nil || got {
+		t.Fatalf("no origin: %v, %v; want false, nil", got, err)
+	}
+}
+
+func TestReleaseFlagRefusedOnLegacyPromote(t *testing.T) {
+	t.Setenv("NSELF_V15", "")
+	cmd, _ := releaseCmd(t, t.TempDir())
+	if err := promoteCmd.PreRunE(cmd, nil); !codeIs(err, "E401") {
+		t.Fatalf("v1.4: %v, want E401", err)
+	}
+	cmd, _ = releaseCmd(t, "")
+	if err := promoteCmd.PreRunE(cmd, nil); err != nil {
+		t.Fatalf("no flag: %v", err)
+	}
+	t.Setenv("NSELF_V15", "1")
+	cmd, _ = releaseCmd(t, t.TempDir())
+	if err := promoteCmd.PreRunE(cmd, nil); err != nil {
+		t.Fatalf("v1.5: %v", err)
 	}
 }

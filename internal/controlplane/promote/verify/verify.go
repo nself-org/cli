@@ -15,7 +15,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 
@@ -129,21 +128,7 @@ func checkEvidencePin(file string, m *Manifest) ([]byte, error) {
 	return doc, nil
 }
 
-func readBounded(path string) ([]byte, error) {
-	f, err := os.Open(path) //nolint:gosec // operator-supplied release directory
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = f.Close() }()
-	data, err := io.ReadAll(io.LimitReader(f, maxFile+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(data) > maxFile {
-		return nil, errors.New("file is larger than the 16 MiB limit")
-	}
-	return data, nil
-}
+func readBounded(path string) ([]byte, error) { return readRegularFile(path, maxFile) }
 
 func contains(list []string, s string) bool {
 	for _, x := range list {

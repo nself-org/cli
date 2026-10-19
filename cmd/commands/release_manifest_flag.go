@@ -17,12 +17,14 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/controlplane"
 	cpromote "github.com/nself-org/cli/internal/controlplane/promote"
 	"github.com/nself-org/cli/internal/controlplane/promote/verify"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/plugin/mount"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 const releaseManifestKey = "release_manifest"
@@ -69,6 +71,15 @@ func init() {
 	for _, c := range []*cobra.Command{deployPromoteCmd, promoteCmd} {
 		c.Flags().String("release", "", usage)
 	}
+	// Without NSELF_V15 the legacy promote runs its own v1.4 engine, which
+	// never reads a release: accepting the flag there would claim a
+	// verification that did not happen.
+	promoteCmd.PreRunE = func(cmd *cobra.Command, _ []string) error {
+		if release, _ := cmd.Flags().GetString("release"); release != "" && !compat.V15() {
+			return errs.New("E401", "--release needs the v1.5 promote engine (set NSELF_V15=1): this form does not verify a release")
+		}
+		return nil
+	}
 }
 
 // verifiedReleaseRequired applies the inventory field; the default is true for
@@ -93,6 +104,9 @@ func wirePromoteRelease(cmd *cobra.Command, workdir string, eng *cpromote.Engine
 	case release == "" && required:
 		return errs.Newf("E499", "target %s requires a verified release: pass --release <dir>", st.Target)
 	case release == "":
+		if err := committedGate(cmd.Context(), workdir, st.Target, ciInstalled); err != nil {
+			return err
+		}
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning: promoting without --release; the release manifest and its evidence are not verified")
 		return nil
 	case !ciInstalled:
@@ -143,4 +157,51 @@ func wrapCompareWithDigestCheck(eng *cpromote.Engine) {
 			return verify.CheckDigests(m, st.Digests)
 		}
 	}
+}
+
+// committedRequiresFn reads whether the inventory committed on origin's default
+// branch makes a verified release mandatory for target. A variable so tests can
+// avoid git.
+var committedRequiresFn = committedRequires
+
+func committedRequires(ctx context.Context, workdir, target string, ciInstalled bool) (bool, error) {
+	g := verify.GitCLI{Root: workdir}
+	if ok, err := g.HasOrigin(ctx); err != nil || !ok {
+		return false, err
+	}
+	commit, err := g.PinDefault(ctx)
+	if err != nil {
+		return false, err
+	}
+	data, found, err := g.Show(ctx, commit, ".nself/control-plane.yaml")
+	if err != nil || !found {
+		return false, err
+	}
+	var inv controlplane.Inventory
+	if err := yaml.Unmarshal(data, &inv); err != nil {
+		return false, err
+	}
+	return verifiedReleaseRequired(inv.Environments[target], ciInstalled), nil
+}
+
+// committedGate runs when the working-tree inventory did not require a
+// verified release. The working tree is not a trust root, so the requirement is
+// the stricter of the two copies: an edit of require_verified_release or the
+// tier in the working tree cannot switch the gate off. Where the committed copy
+// cannot be read the promotion is refused only if the ci plugin is installed,
+// because only then could the default requirement have applied.
+func committedGate(ctx context.Context, workdir, target string, ciInstalled bool) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	required, err := committedRequiresFn(ctx, workdir, target, ciInstalled)
+	switch {
+	case err != nil && ciInstalled:
+		return errs.Wrap("E499", "cannot read the inventory committed on origin to confirm no verified release is required", err).WithFix("Check that origin is reachable, or pass --release <dir>.")
+	case err != nil:
+		return nil
+	case required:
+		return errs.Newf("E499", "the inventory committed on origin requires a verified release for %s; the working copy says otherwise", target)
+	}
+	return nil
 }

@@ -38,8 +38,8 @@ type GitCLI struct{ Root string }
 func (g GitCLI) run(ctx context.Context, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, gitSeconds*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", append([]string{"--no-replace-objects", "-C", g.Root}, args...)...) //nolint:gosec // fixed git verbs; branch and commit names are validated
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_NO_REPLACE_OBJECTS=1")
+	cmd := exec.CommandContext(ctx, "git", append([]string{"--no-replace-objects", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "protocol.ext.allow=never", "-C", g.Root}, args...)...) //nolint:gosec // fixed git verbs; branch and commit names are validated
+	cmd.Env = append(scrubGitEnv(os.Environ()), "GIT_TERMINAL_PROMPT=0", "GIT_NO_REPLACE_OBJECTS=1")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &limitWriter{w: &stdout, left: maxGitOutput}
 	cmd.Stderr = &limitWriter{w: &stderr, left: 4096}
@@ -125,4 +125,27 @@ func symrefBranch(out string) (string, bool) {
 		return branch, true
 	}
 	return "", false
+}
+
+// gitEnvKept are the GIT_ variables that only carry transport settings. Every
+// other GIT_ variable (GIT_DIR, GIT_CONFIG_*, GIT_OBJECT_DIRECTORY, ...) could
+// point git at a repository or configuration the operator did not choose.
+var gitEnvKept = []string{"GIT_SSH=", "GIT_SSH_COMMAND=", "GIT_SSH_VARIANT=", "GIT_ASKPASS=", "GIT_HTTP_", "GIT_SSL_", "GIT_CURL_", "GIT_PROXY_SSL_"}
+
+// scrubGitEnv drops the GIT_ variables that can redirect git.
+func scrubGitEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		if !strings.HasPrefix(kv, "GIT_") {
+			out = append(out, kv)
+			continue
+		}
+		for _, keep := range gitEnvKept {
+			if strings.HasPrefix(kv, keep) {
+				out = append(out, kv)
+				break
+			}
+		}
+	}
+	return out
 }
