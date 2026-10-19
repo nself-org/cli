@@ -104,13 +104,16 @@ func (st *buildState) noticeUnpinnedHasura() {
 	if st.cfg == nil || compose.HasuraEntry() == "hasura-v14" {
 		return
 	}
-	vol := st.cfg.ProjectName + "_postgres_data"
+	vol := strings.TrimSpace(st.cfg.Postgres.DataVolume)
+	if vol == "" {
+		vol = st.cfg.ProjectName + "_postgres_data"
+	}
 	if !projectPostgresVolumeExists(vol) {
 		return
 	}
 	from, _ := compose.LockedRef("hasura-v14")
 	to, _ := compose.LockedRef("hasura")
-	st.warnOnce("no "+lock.FileName+" and no docker-compose.yml, but this project's database exists: hasura takes the v1.5 default graphql-engine "+to.Version+" (v1.4 ran "+from.Version+"); run `nself backup create` first, or set HASURA_VERSION in .env to keep the old version", "volume", vol)
+	st.warnOnce("no "+lock.FileName+" and no docker-compose.yml, but this project's database exists: hasura takes the v1.5 default graphql-engine "+to.Version+" (v1.4 ran "+from.Version+"); run `nself backup create` first (going back is restore-then-pin-back, see the Image-Lock wiki page, Roll back)", "volume", vol)
 }
 
 // bootstrapPins takes the first lock's pins from the project's existing

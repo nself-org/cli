@@ -746,6 +746,30 @@ func TestLockUnverifiableWarnsOnce(t *testing.T) {
 // the backup step; a new project (no postgres volume), a v1.4 build and a project
 // whose compose file supplies the pin stay silent (D-0719).
 func TestBootstrapNoPinSourceNotice(t *testing.T) {
+	t.Run("custom data volume is the one asked about", func(t *testing.T) {
+		f := newPlanFixture(t, "dev-minimal")
+		compattest.Set(t, true)
+		raw, _ := os.ReadFile(filepath.Join(f.workdir, ".env"))
+		writeFixtureFile(t, filepath.Join(f.workdir, ".env"), "POSTGRES_DATA_VOLUME=moved_pg\n"+string(raw), 0o600)
+		prev := projectPostgresVolumeExists
+		var asked string
+		projectPostgresVolumeExists = func(name string) bool { asked = name; return true }
+		t.Cleanup(func() { projectPostgresVolumeExists = prev })
+		st := newBuildState(f.workdir, BuildOptions{})
+		cfg, err := config.LoadWithOptions(f.workdir, config.LoadOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		st.cfg = cfg
+		log := captureSlog(t)
+		if _, err := st.bootstrapPins(); err != nil {
+			t.Fatal(err)
+		}
+		if asked != "moved_pg" || !strings.Contains(log.String(), "moved_pg") {
+			t.Fatalf("asked about %q; log:\n%s", asked, log.String())
+		}
+	})
+
 	const notice = "hasura takes the v1.5 default graphql-engine"
 	cases := []struct {
 		name       string
@@ -785,7 +809,7 @@ func TestBootstrapNoPinSourceNotice(t *testing.T) {
 				t.Fatalf("notice printed = %v, want %v:\n%s", got, c.wantNotice, log.String())
 			}
 			if c.wantNotice {
-				for _, w := range []string{"nself backup create", "HASURA_VERSION", cfg.ProjectName + "_postgres_data"} {
+				for _, w := range []string{"nself backup create", "Roll back", cfg.ProjectName + "_postgres_data"} {
 					if !strings.Contains(log.String(), w) {
 						t.Errorf("notice lacks %q:\n%s", w, log.String())
 					}
