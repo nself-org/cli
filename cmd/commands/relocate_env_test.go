@@ -86,3 +86,49 @@ func TestRelocateAutoAddKeepsProjectEnvOut(t *testing.T) {
 		})
 	}
 }
+
+func TestEnvMapKeepsWindowsHiddenVariables(t *testing.T) {
+	for _, tc := range []struct {
+		entry, key, val string
+		ok              bool
+	}{
+		{"A=b", "A", "b", true},
+		{"A=b=c", "A", "b=c", true},
+		{"A=", "A", "", true},
+		{"=C:=C:\\work", "=C:", "C:\\work", true},
+		{"=ExitCode=00000000", "=ExitCode", "00000000", true},
+		{"NOEQUALS", "", "", false},
+		{"", "", "", false},
+	} {
+		got := envMap([]string{tc.entry})
+		v, ok := got[tc.key]
+		if tc.ok != (len(got) == 1) || (tc.ok && (!ok || v != tc.val)) {
+			t.Errorf("envMap(%q) = %v, want %q=%q (%v)", tc.entry, got, tc.key, tc.val, tc.ok)
+		}
+	}
+}
+
+func TestAutoAddPluginIsolatedRestoresEveryChange(t *testing.T) {
+	t.Setenv("KEEP_ME", "same")
+	t.Setenv("OVERRIDDEN", "shell")
+	t.Setenv("REMOVED", "gone-soon")
+	prev := autoAddPlugin
+	t.Cleanup(func() { autoAddPlugin = prev })
+	autoAddPlugin = func(string, string) (string, error) {
+		_ = os.Setenv("OVERRIDDEN", "dotenv")
+		_ = os.Setenv("ADDED", "secret")
+		_ = os.Unsetenv("REMOVED")
+		return "bin", nil
+	}
+	if bin, err := autoAddPluginIsolated("ci", ""); bin != "bin" || err != nil {
+		t.Fatalf("bin=%q err=%v", bin, err)
+	}
+	for k, want := range map[string]string{"KEEP_ME": "same", "OVERRIDDEN": "shell", "REMOVED": "gone-soon"} {
+		if got := os.Getenv(k); got != want {
+			t.Errorf("%s = %q, want %q", k, got, want)
+		}
+	}
+	if _, ok := os.LookupEnv("ADDED"); ok {
+		t.Error("ADDED survived the restore")
+	}
+}

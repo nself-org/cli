@@ -113,16 +113,38 @@ func relocateBreakout(cmdName string, args []string) (handled bool, err error) {
 // that runs next must see the same environment as one that was already mounted
 // (D-0905).
 func autoAddPluginIsolated(slug, version string) (string, error) {
-	before := os.Environ()
+	before := envMap(os.Environ())
 	defer func() {
-		os.Clearenv()
-		for _, entry := range before {
-			if k, v, ok := strings.Cut(entry, "="); ok && k != "" {
+		now := envMap(os.Environ())
+		for k := range now {
+			if _, kept := before[k]; !kept {
+				_ = os.Unsetenv(k)
+			}
+		}
+		for k, v := range before {
+			if now[k] != v || !hasKey(now, k) {
 				_ = os.Setenv(k, v)
 			}
 		}
 	}()
 	return autoAddPlugin(slug, version)
+}
+
+func hasKey(m map[string]string, k string) bool { _, ok := m[k]; return ok }
+
+// envMap splits KEY=value entries. A Windows entry such as "=C:=C:\work"
+// starts with "=" and keeps it in the key.
+func envMap(entries []string) map[string]string {
+	m := make(map[string]string, len(entries))
+	for _, e := range entries {
+		i := strings.Index(e[min(1, len(e)):], "=")
+		if i < 0 {
+			continue
+		}
+		i += min(1, len(e))
+		m[e[:i]] = e[i+1:]
+	}
+	return m
 }
 
 // proxyBinaryName turns the path the installer published into the bare name
