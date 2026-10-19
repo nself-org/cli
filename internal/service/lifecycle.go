@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/docker"
 	"gopkg.in/yaml.v3"
@@ -104,6 +105,26 @@ func projectDir() (string, error) {
 	return dir, nil
 }
 
+// composeFor builds the Compose for the project in dir the way `nself start`
+// and `nself restart` do: every file in .nself/compose-files.txt as -f (plugin
+// fragments included) and build.ComposeEnvFiles as --env-file, so ${VAR}
+// references resolve from the project's env files (D-0703). A project built
+// before the manifest existed gets docker-compose.yml alone.
+func composeFor(dir string) (*docker.Compose, error) {
+	files, err := build.ReadComposeManifest(dir)
+	if err != nil {
+		return nil, fmt.Errorf("reading compose manifest: %w", err)
+	}
+	for i, f := range files {
+		if !filepath.IsAbs(f) {
+			files[i] = filepath.Join(dir, f)
+		}
+	}
+	c := docker.NewCompose(files...)
+	c.EnvFiles = build.ComposeEnvFiles(dir)
+	return c, nil
+}
+
 // Start starts a named nSelf service via `docker compose up -d --no-deps <service>`.
 // The service must be configured in the stack (docker-compose.yml must exist).
 func Start(ctx context.Context, serviceName string) error {
@@ -115,7 +136,10 @@ func Start(ctx context.Context, serviceName string) error {
 	if err != nil {
 		return err
 	}
-	c := docker.NewCompose(filepath.Join(dir, "docker-compose.yml"))
+	c, err := composeFor(dir)
+	if err != nil {
+		return err
+	}
 	return c.ComposeUp(ctx, dir, canon)
 }
 
@@ -130,7 +154,10 @@ func Stop(ctx context.Context, serviceName string) error {
 	if err != nil {
 		return err
 	}
-	c := docker.NewCompose(filepath.Join(dir, "docker-compose.yml"))
+	c, err := composeFor(dir)
+	if err != nil {
+		return err
+	}
 	return c.ComposeStop(ctx, dir, canon)
 }
 
@@ -144,7 +171,10 @@ func Restart(ctx context.Context, serviceName string) error {
 	if err != nil {
 		return err
 	}
-	c := docker.NewCompose(filepath.Join(dir, "docker-compose.yml"))
+	c, err := composeFor(dir)
+	if err != nil {
+		return err
+	}
 	return c.ComposeRestart(ctx, dir, canon)
 }
 
@@ -164,7 +194,10 @@ func PS(ctx context.Context) ([]PSEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := docker.NewCompose(filepath.Join(dir, "docker-compose.yml"))
+	c, err := composeFor(dir)
+	if err != nil {
+		return nil, err
+	}
 	containers, err := c.ComposePs(ctx, dir)
 	if err != nil {
 		return nil, fmt.Errorf("service ps: %w", err)
@@ -195,8 +228,10 @@ func Update(ctx context.Context, serviceName string) error {
 	if err != nil {
 		return err
 	}
-	composePath := filepath.Join(dir, "docker-compose.yml")
-	c := docker.NewCompose(composePath)
+	c, err := composeFor(dir)
+	if err != nil {
+		return err
+	}
 
 	// Pull the latest image for the specific service.
 	pullCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
@@ -224,7 +259,10 @@ func Scale(ctx context.Context, serviceName string, replicas int) error {
 	if err != nil {
 		return err
 	}
-	c := docker.NewCompose(filepath.Join(dir, "docker-compose.yml"))
+	c, err := composeFor(dir)
+	if err != nil {
+		return err
+	}
 	return c.ComposeScale(ctx, dir, canon, replicas)
 }
 
