@@ -5,6 +5,8 @@ import (
 	"os"
 	"regexp"
 	"testing"
+
+	"github.com/nself-org/cli/internal/errs"
 )
 
 // TestLiveSafetyFixtureSwapRendersInProdPlugins (D-1018): the same-shape case of
@@ -43,5 +45,34 @@ func TestLiveSafetyFixtureSwapRendersInProdPlugins(t *testing.T) {
 				t.Fatalf("swapping %s changes no artifact: the fixture's old plan id would still be current", key)
 			}
 		})
+	}
+}
+
+// TestStalePlanIDAfterRenderedSecretSwap mirrors the fixture's two-step
+// same-shape case on prod-plugins: plan after swapping a rendered secret, swap
+// it again to another value of the same length, and the first id is refused.
+func TestStalePlanIDAfterRenderedSecretSwap(t *testing.T) {
+	f := loadFixture(t, "prod-plugins")
+	req := Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, Seed: []byte("fixture-seed")}
+	if _, err := Apply(context.Background(), req, ApplyOptions{Yes: true}); err != nil {
+		t.Fatal(err)
+	}
+	setEnvValue(t, f, "POSTGRES_PASSWORD", "swapped-pass-aaaa")
+	first := planOf(t, f, nil)
+	setEnvValue(t, f, "POSTGRES_PASSWORD", "swapped-pass-bbbb")
+	second := planOf(t, f, nil)
+	if first.Empty || len(first.Artifacts) != len(second.Artifacts) {
+		t.Fatalf("want the same non-empty shape, got %d and %d artifacts", len(first.Artifacts), len(second.Artifacts))
+	}
+	if first.PlanID == second.PlanID {
+		t.Fatal("a same-shape content change did not change the plan id")
+	}
+	before := treeHash(t, f.root)
+	_, err := Apply(context.Background(), req, ApplyOptions{PlanID: first.PlanID})
+	if d := errs.Describe(err); d == nil || d.Code != "E450" {
+		t.Fatalf("want E450, got %v", err)
+	}
+	if treeHash(t, f.root) != before {
+		t.Fatal("E450 apply wrote")
 	}
 }
