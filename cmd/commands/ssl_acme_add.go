@@ -132,14 +132,14 @@ func installFailed(err error) error { return fmt.Errorf("%w%.0w", err, acme.ErrI
 // the target), reloads nginx and checks the fingerprint it serves.
 func writeAndVerifyAdd(ctx context.Context, r *acmeRun, l acme.Lineage, cert []byte, reload acme.NginxReloader) error {
 	hosts, _ := ssl.ServedHosts(r.res.NginxDir)
-	undoConf := func() error { return nil } // nothing was written when a served conf already uses the target
+	undoConf, undone := func() error { return nil }, "" // nothing was written when a served conf already uses the target
 	if !strings.Contains(hosts[l.Domains[0]], "/"+l.Name+"/") {
 		upstream, _ := r.cmd.Flags().GetString("upstream")
 		snap, err := snapshotCustomDomainConf(r.workdir, r.cfg.Nginx.FrontedBy, l.Domains[0])
 		if err != nil {
 			return e151(installFailed(acmeRefuse("the certificate is installed; fix the conf directory and re-run", "reading nginx conf: %v", err)))
 		}
-		undoConf = snap.restore
+		undoConf, undone = snap.restore, snap.outcome()
 		if err := writeCustomDomainConfServed(r.workdir, r.cfg.Nginx.FrontedBy, l.Domains[0], upstream); err != nil {
 			return e151(installFailed(acmeRefuse("the certificate is installed; fix the conf directory and re-run", "writing nginx conf: %v", err)))
 		}
@@ -148,9 +148,9 @@ func writeAndVerifyAdd(ctx context.Context, r *acmeRun, l acme.Lineage, cert []b
 		// nginx rejected the new conf: take it out so the next restart still starts.
 		note := "the certificate is installed"
 		if rerr := undoConf(); rerr != nil {
-			note += "; removing the new conf failed (" + rerr.Error() + "), delete it by hand"
+			note += "; restoring the conf failed (" + rerr.Error() + "), fix it by hand"
 		} else {
-			note += "; the new conf was removed"
+			note += "; " + undone
 		}
 		return e151(installFailed(acmeRefuse("fix the nginx error above; "+note, "%v", err)))
 	}

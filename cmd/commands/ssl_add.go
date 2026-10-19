@@ -141,7 +141,7 @@ func runSSLAdd(cmd *cobra.Command, args []string) error {
 		if rerr := snap.restore(); rerr != nil {
 			return fmt.Errorf("nginx config test failed: %w (restoring %s also failed: %v)", testErr, snap.path, rerr)
 		}
-		return fmt.Errorf("nginx config test failed, the new conf was removed: %w", testErr)
+		return fmt.Errorf("nginx config test failed, %s: %w", snap.outcome(), testErr)
 	}
 
 	if err := nginxCompose(cmd.Context(), servedRoot, "-s", "reload"); err != nil {

@@ -42,6 +42,9 @@ func TestConfSnapshotRestore(t *testing.T) {
 			if err := snap.restore(); err != nil {
 				t.Fatal(err)
 			}
+			if want := map[bool]string{false: "removed", true: "restored"}[snap.existed]; !strings.Contains(snap.outcome(), want) {
+				t.Errorf("outcome = %q, want it to say %q", snap.outcome(), want)
+			}
 			got, rerr := os.ReadFile(path)
 			switch {
 			case tc.before == nil && !errors.Is(rerr, os.ErrNotExist):

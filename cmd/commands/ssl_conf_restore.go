@@ -37,6 +37,14 @@ func snapshotCustomDomainConf(workdir, frontedBy, domain string) (confSnapshot, 
 	return s, nil
 }
 
+// outcome names what restore does, for the error text shown to the operator.
+func (s confSnapshot) outcome() string {
+	if s.existed {
+		return "the previous conf was restored"
+	}
+	return "the new conf was removed"
+}
+
 // restore puts the conf back as snapshotted, so the next nginx test or restart
 // does not trip over the rejected one.
 func (s confSnapshot) restore() error {
