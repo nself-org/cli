@@ -205,7 +205,11 @@ func FuzzArgvBuilders(f *testing.F) {
 			switch c.tool {
 			case "ssh", "scp":
 				if i < sshN {
-					checkSSHArgv(t, c, opts)
+					prefix := opts
+					if c.tool == "scp" {
+						prefix = withoutSessionType(opts)
+					}
+					checkSSHArgv(t, c, prefix)
 				}
 			case "rsync":
 				dst := scpOperand(dest, remote)

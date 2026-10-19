@@ -49,6 +49,19 @@ func simulateScp(args []string) (end int, operands []string, eaten []int, unknow
 	return i, nil, eaten, unknown
 }
 
+// withoutSessionType returns opts without the "-o SessionType=default" pair.
+func withoutSessionType(opts []string) []string {
+	out := make([]string, 0, len(opts))
+	for i := 0; i < len(opts); i++ {
+		if opts[i] == "-o" && i+1 < len(opts) && opts[i+1] == "SessionType=default" {
+			i++
+			continue
+		}
+		out = append(out, opts[i])
+	}
+	return out
+}
+
 // checkScpArgv asserts the scp invariants for one captured exec: scp's own
 // parser reaches the sdk's "--" at the expected index, no caller element was
 // swallowed as the "--" or an operand, the operands are exactly [src dst], no
@@ -56,6 +69,8 @@ func simulateScp(args []string) (end int, operands []string, eaten []int, unknow
 func checkScpArgv(t testing.TB, c captured, d4 []string, src, dst string) {
 	t.Helper()
 	n := len(c.args)
+	// scp's sftp mode passes ssh -s, which ssh refuses with SessionType set.
+	d4 = withoutSessionType(d4)
 	if n < len(d4)+3 || c.args[n-3] != "--" || c.args[n-2] != src || c.args[n-1] != dst {
 		t.Fatalf("scp argv %q: tail is not -- src dst", c.args)
 	}

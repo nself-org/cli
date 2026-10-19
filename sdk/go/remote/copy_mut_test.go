@@ -36,6 +36,29 @@ func TestScpOptions_ExactMapping(t *testing.T) {
 	}
 }
 
+// OpenSSH 9+ scp runs ssh with -s (sftp subsystem); ssh refuses -s together
+// with SessionType ("Cannot specify -s with -N/SessionType"), so scp must never
+// be handed the D4 SessionType pin (D-1262).
+func TestScpOptions_DropsSessionType(t *testing.T) {
+	tests := []struct {
+		name string
+		in   []string
+		want []string
+	}{
+		{"pair", []string{"-o", "SessionType=default"}, []string{}},
+		{"attached", []string{"-oSessionType=default"}, []string{}},
+		{"neighbours kept", []string{"-o", "StdinNull=no", "-o", "SessionType=default", "-o", "ForkAfterAuthentication=no"},
+			[]string{"-o", "StdinNull=no", "-o", "ForkAfterAuthentication=no"}},
+		{"other SessionType values kept for the allowlist", []string{"-o", "SessionType=none"}, []string{"-o", "SessionType=none"}},
+	}
+	for _, tc := range tests {
+		got, err := scpOptions(tc.in)
+		if err != nil || !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("%s: scpOptions(%q) = %q, %v; want %q", tc.name, tc.in, got, err, tc.want)
+		}
+	}
+}
+
 func TestScpOptions_RefusesUnknownAndValueless(t *testing.T) {
 	for _, in := range [][]string{
 		{"-Z"}, {"-Z", "x"}, {"-Z", "Port=22"}, {"-Z", "/k"}, {"-Z", "22"},

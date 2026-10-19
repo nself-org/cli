@@ -53,7 +53,11 @@ func CopyTo(ctx context.Context, t Target, local, remote string) error {
 // own -p means "preserve times" and would leave N as a local operand that ends
 // option parsing. -4, -6, -q, -v, -i X, -o V and -oV mean the same in scp. Any
 // other element is refused, so scp only ever sees an option scp defines, with
-// its value attached or directly after it.
+// its value attached or directly after it. The D4 pin SessionType=default is
+// dropped too: OpenSSH 9+ scp starts ssh with -s (sftp subsystem), and ssh
+// refuses -s together with SessionType ("Cannot specify -s with
+// -N/SessionType"). The -s flag fixes the session type on the command line, so
+// an operator ssh_config cannot change it.
 func scpOptions(opts []string) ([]string, error) {
 	out := make([]string, 0, len(opts))
 	for i := 0; i < len(opts); i++ {
@@ -62,6 +66,11 @@ func scpOptions(opts []string) ([]string, error) {
 		// colon, so mutation testing cannot measure a case expression.
 		if a == "-T" || a == "-a" || a == "-x" {
 			// ssh-only: drop.
+		} else if isSessionTypePin(opts, i) {
+			// The -o SessionType=default pair (or its attached form): drop.
+			if a == "-o" {
+				i++
+			}
 		} else if a == "-4" || a == "-6" || a == "-q" || a == "-v" {
 			out = append(out, a)
 		} else if a == "-o" || a == "-i" || a == "-p" {
@@ -80,6 +89,13 @@ func scpOptions(opts []string) ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// isSessionTypePin reports whether opts[i] starts the D4 SessionType=default
+// option, as `-o` followed by the pair or as the attached `-oSessionType=...`.
+func isSessionTypePin(opts []string, i int) bool {
+	const kv = "SessionType=default"
+	return (opts[i] == "-o" && i+1 < len(opts) && opts[i+1] == kv) || opts[i] == "-o"+kv
 }
 
 // checkLocalOperand refuses a local path scp or rsync would read as a remote
