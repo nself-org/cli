@@ -61,7 +61,10 @@ func TestParseBackupTagRealNames(t *testing.T) {
 // come from the real naming function, with a "_" in the project name.
 func TestPruneKeepsKeepPrefixTag(t *testing.T) {
 	dir := t.TempDir()
-	now := time.Now()
+	// Noon today: the ages below (up to 3 h) then stay on one calendar day, so the daily
+	// bucket does not depend on the wall-clock hour the test runs at (it failed 00:00-03:00 UTC).
+	n := time.Now()
+	now := time.Date(n.Year(), n.Month(), n.Day(), 12, 0, 0, 0, n.Location())
 	write := func(name string, age time.Duration) string {
 		p := filepath.Join(dir, name)
 		if err := os.WriteFile(p, []byte("PGDMP"), 0o600); err != nil {
