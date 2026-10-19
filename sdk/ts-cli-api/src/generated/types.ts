@@ -5177,6 +5177,8 @@ export type DeployPromoteEnvFlags = {
   confirm?: string;
   /** Preview changes without applying */
   "dry-run"?: boolean;
+  /** Release directory holding release-manifest.dsse.json and evidence.json; verified before any target change */
+  release?: string;
 };
 
 /** Promote one environment to another (e.g. staging to prod) */
@@ -5209,6 +5211,8 @@ export interface DeployPromoteEnvRollbackRequest {
 export type DeployPromoteFlags = {
   /** Print the promotion plan without remote writes */
   "dry-run"?: boolean;
+  /** Release directory holding release-manifest.dsse.json and evidence.json; verified before any target change */
+  release?: string;
 };
 
 /** Promote a canary or an environment */

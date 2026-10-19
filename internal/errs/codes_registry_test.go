@@ -135,6 +135,8 @@ func TestRegistryExitTable(t *testing.T) {
 			return 2
 		case n == 470 || n == 471: // P7-LIVE-22: ACME issue and install failures keep E151's infra class
 			return 2
+		case n == 493 || n == 494: // P7-DEPL-19: release signature/key rejected and key revoked are auth (EPIC DEPL D20)
+			return 3
 		case n == 488 || n == 489: // P7-DEPL-15: promote rolled back / rollback failed are infra (EPIC DEPL D16)
 			return 2
 		case n == 403, n == 424: // P7-SURF-25: E424 confirmation mismatch is destructive_blocked (EPIC SURF D14)

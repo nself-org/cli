@@ -178,6 +178,9 @@ func init() {
 func runDeployPromoteBody(cmd *cobra.Command, args []string) error {
 	// compat.V15(P7-DEPL-15): deploy promote ignored args as a canary flip -> two args promote environments
 	if !compat.V15() || len(args) == 0 {
+		if release, _ := cmd.Flags().GetString("release"); release != "" {
+			return errs.New("E401", "--release verifies an environment promotion: use deploy promote <source> <target> --release <dir>")
+		}
 		if streaming(cmd.Context()) {
 			return errStreamNeedsEnvs()
 		}
@@ -211,6 +214,9 @@ func runPromoteEnvironments(cmd *cobra.Command, source, target string) error {
 		return err
 	}
 	eng.Observer = promoteObserver(ctx, st.Target)
+	if err := wirePromoteRelease(cmd, workdir, &eng, st); err != nil {
+		return err
+	}
 	var result cpromote.Result
 	if dryRun {
 		result = cpromote.Result{Status: "ok", Source: st.Source, Target: st.Target, Steps: eng.Plan(), DryRun: true}
