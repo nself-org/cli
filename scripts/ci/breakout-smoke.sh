@@ -156,7 +156,7 @@ expect_e404() { # <label> <cause regex for stderr> <env assignment or ""> <args.
 expect_e404 "NSELF_NO_AUTO_ADD=1" 'automatic install is switched off' "NSELF_NO_AUTO_ADD=1" ci --check
 expect_e404 "offline registry" 'registry fetch failed' "NSELF_PLUGIN_REGISTRY=http://127.0.0.1:9" ci --check
 expect_e404 "unsigned release" '\[E107\].*has no release signature' "NSELF_PLUGIN_REGISTRY=$BASE_URL/unsigned/registry.json" ci --check
-expect_e404 "tampered release (refused before download: no key pinned; the in-process test proves the checksum and signature)" '\[E107\]' "NSELF_PLUGIN_REGISTRY=$BASE_URL/tampered/registry.json" runner verify x
+expect_e404 "tampered release (refused before download: no key pinned; the in-process test proves the checksum and signature)" '\[E107\].*(cannot be verified|does not verify)' "NSELF_PLUGIN_REGISTRY=$BASE_URL/tampered/registry.json" runner verify x
 
 # 4. v1.5: the marketplace is gone.
 for c in "plugin marketplace" "plugin submit"; do

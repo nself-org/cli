@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: &paths
+    paths:
       - '**.go'
       - go.mod
       - go.sum
@@ -20,8 +20,18 @@ on:
       - scripts/ci/ports-fixture-registry.sh
       - scripts/ci/testdata/breakout/**
       - .github/workflows/breakout.yml
+      - vendor/**
   pull_request:
-    paths: *paths
+    paths:
+      - '**.go'
+      - go.mod
+      - go.sum
+      - internal/canon/**
+      - scripts/ci/breakout-smoke.sh
+      - scripts/ci/ports-fixture-registry.sh
+      - scripts/ci/testdata/breakout/**
+      - .github/workflows/breakout.yml
+      - vendor/**
 
 permissions:
   contents: read
