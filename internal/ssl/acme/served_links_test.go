@@ -71,6 +71,13 @@ func TestACMEResolveServedLinks(t *testing.T) {
 			}
 			link(t, "api-task.gen-3", filepath.Join(gens, "api-task"))
 		}, servedSSL + "api-task/fullchain.pem", servedSSL + "certificates/api-task/fullchain.pem", "adopting"},
+		{"escape: certificates/<name> is a link to certificates itself", func(t *testing.T, ssl, _ string) {
+			link(t, "certificates/api-task", filepath.Join(ssl, "api-task"))
+			if err := os.Remove(filepath.Join(ssl, "certificates", "api-task")); err != nil {
+				t.Fatal(err)
+			}
+			link(t, ".", filepath.Join(ssl, "certificates", "api-task"))
+		}, servedSSL + "api-task/fullchain.pem", "", "resolves outside certificates/"},
 		{"plain directory is left alone", func(t *testing.T, ssl, _ string) {
 			if err := os.Mkdir(filepath.Join(ssl, "api-task"), 0o755); err != nil {
 				t.Fatal(err)

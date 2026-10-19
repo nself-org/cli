@@ -101,7 +101,7 @@ func linkedLineageDir(sslDir, top string) (name, why string) {
 		return "", fmt.Sprintf("%s does not exist", dest)
 	}
 	base, err := filepath.EvalSymlinks(certs)
-	if rel, e := filepath.Rel(base, real); err != nil || e != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	if rel, e := filepath.Rel(base, real); err != nil || e != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", fmt.Sprintf("%s resolves outside certificates/", dest)
 	}
 	if !container { // the kernel's answer for the link must be the directory named, whatever the text says
