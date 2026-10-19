@@ -15,6 +15,7 @@ import (
 	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/license"
+	"github.com/nself-org/cli/internal/license/licensetest"
 )
 
 func entitlementFixture(t *testing.T, axis string) (string, []byte) {
@@ -90,8 +91,7 @@ func TestMountIgnoresOverride(t *testing.T) {
 
 func TestMountEmptyFileE125(t *testing.T) {
 	compattest.Set(t, true)
-	t.Setenv("LICENSE_CACHE_PATH", filepath.Join(t.TempDir(), "missing"))
-	t.Setenv("LICENSE_PUBLIC_KEY_OVERRIDE", "")
+	licensetest.Isolate(t) // D-1256: hide the host licence key and cache
 	dir, in := entitlementFixture(t, "licensed")
 	path := filepath.Join(dir, "fixture", pluginComposeFilename)
 	if err := os.WriteFile(path, in, 0644); err != nil {

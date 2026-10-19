@@ -21,6 +21,7 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/license"
 	"github.com/nself-org/cli/internal/license/entitlement"
+	"github.com/nself-org/cli/internal/license/licensetest"
 )
 
 func seedVerifiedCache(t *testing.T) *license.CacheEntry {
@@ -103,7 +104,7 @@ func TestEntitlementRefreshWrites(t *testing.T) {
 
 func TestBuildE125UnderV15(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
-		t.Setenv("LICENSE_CACHE_PATH", filepath.Join(t.TempDir(), "missing.json"))
+		licensetest.Isolate(t) // D-1256: hide the host licence key and cache
 		dir, plugins := t.TempDir(), t.TempDir()
 		installed := filepath.Join(plugins, "fixture-licensed")
 		if err := os.MkdirAll(installed, 0700); err != nil {
