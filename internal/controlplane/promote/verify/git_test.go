@@ -276,3 +276,31 @@ func TestGitCLIIgnoresRedirectingEnvironment(t *testing.T) {
 		t.Fatalf("Show under a hostile environment = %q found=%v err=%v, want the project's own origin", data, found, err)
 	}
 }
+
+// TestGitCLIOriginURLFollowsInsteadOf: the effective URL is what the pin
+// compares, so an insteadOf redirection is visible to the check.
+func TestGitCLIOriginURLFollowsInsteadOf(t *testing.T) {
+	work := gitRepo(t, "# k\n")
+	g := GitCLI{Root: work}
+	real, err := g.OriginURL(context.Background())
+	if err != nil || real == "" {
+		t.Fatalf("OriginURL = %q, %v", real, err)
+	}
+	gitIn(t, work, "config", "url.https://evil.example/.insteadOf", real)
+	got, err := g.OriginURL(context.Background())
+	if err != nil || got == real || !strings.HasPrefix(got, "https://evil.example/") {
+		t.Fatalf("OriginURL after insteadOf = %q (was %q), %v; want the redirected URL", got, real, err)
+	}
+	// A pin on the real URL now refuses.
+	home := t.TempDir()
+	dir := filepath.Join(home, ".nself", "ci", "trust")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, originPinName), []byte(real+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadTrust(context.Background(), g, home, work); codeOf(err) != "E493" {
+		t.Fatalf("redirected origin under a pin: %v, want E493", err)
+	}
+}

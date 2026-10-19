@@ -411,3 +411,44 @@ func TestPromoteReleaseDirectorySymlinkIsRefused(t *testing.T) {
 		t.Fatalf("symlinked manifest: %v, want E492", err)
 	}
 }
+
+// TestPromoteReleaseOriginPin: an operator-pinned origin URL must match the
+// project's effective origin; absent, empty or unreadable pins behave as set.
+func TestPromoteReleaseOriginPin(t *testing.T) {
+	cases := []struct {
+		name string
+		pin  string // "" means no file
+		url  string
+		want string
+	}{
+		{"no pin file", "", "https://evil.example/x.git", ""},
+		{"match", "https://github.com/o/r.git\n", "https://github.com/o/r.git", ""},
+		{"match with comment and padding", "# where trust lives\n\n  https://github.com/o/r.git  \n", " https://github.com/o/r.git\n", ""},
+		{"redirected origin", "https://github.com/o/r.git\n", "https://evil.example/o/r.git", "E493"},
+		{"only comments", "# nothing\n", "https://github.com/o/r.git", "E493"},
+		{"empty file", "\n", "https://github.com/o/r.git", "E493"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRelease(t)
+			r.write(PayloadType, r.signer)
+			r.git.originURL = tc.url
+			if tc.pin != "" {
+				dir := filepath.Join(r.home, ".nself", "ci", "trust")
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, originPinName), []byte(tc.pin), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, err := Verify(context.Background(), r.input())
+			if codeOf(err) != tc.want {
+				t.Fatalf("err = %v, want %q", err, tc.want)
+			}
+			if tc.want != "" && (r.git.pinned != 0 || len(r.runs) != 0) {
+				t.Fatalf("trust was read (pinned %d) or evidence ran (%v) despite the origin mismatch", r.git.pinned, r.runs)
+			}
+		})
+	}
+}

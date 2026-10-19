@@ -29,13 +29,15 @@ const (
 type fakeGit struct {
 	noOrigin  bool
 	originErr error
+	originURL string
 	pinErr    error
 	showErr   error
 	files     map[string][]byte
 	pinned    int
 }
 
-func (g *fakeGit) HasOrigin(context.Context) (bool, error) { return !g.noOrigin, g.originErr }
+func (g *fakeGit) HasOrigin(context.Context) (bool, error)   { return !g.noOrigin, g.originErr }
+func (g *fakeGit) OriginURL(context.Context) (string, error) { return g.originURL, nil }
 func (g *fakeGit) PinDefault(context.Context) (string, error) {
 	g.pinned++
 	return strings.Repeat("c", 40), g.pinErr

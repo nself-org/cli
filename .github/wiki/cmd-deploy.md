@@ -208,7 +208,11 @@ the working-tree inventory and the inventory committed on the default branch of
 committed copy cannot be read and the ci plugin is installed, the promotion
 refuses with `E499`. Git runs without `GIT_DIR`/`GIT_CONFIG_*` and replacement
 objects; anyone who can edit the project's `.git/config` can already run code as
-the operator, so a redirected `origin` is outside this check's threat model.
+the operator, so by default the project's own `origin` is trusted. To pin it,
+put the expected URL in `~/.nself/ci/trust/origin.url` (first non-comment line):
+a different effective origin (local config or `insteadOf`) then refuses with
+`E493` before any trust file is read. A project with no `origin`, or with no
+committed `.nself/control-plane.yaml`, has no committed policy to consult.
 Without `--release` and without the requirement, `promote` prints one
 warning and proceeds. With the field true and no `--release`, even `--dry-run`
 refuses with `E499`.

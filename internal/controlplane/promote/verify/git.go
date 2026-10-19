@@ -65,6 +65,12 @@ func (g GitCLI) HasOrigin(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
+// OriginURL returns the effective URL of origin, with url.*.insteadOf applied.
+func (g GitCLI) OriginURL(ctx context.Context) (string, error) {
+	out, err := g.run(ctx, "remote", "get-url", "origin")
+	return strings.TrimSpace(string(out)), err
+}
+
 // PinDefault asks origin which branch is its default, fetches exactly that
 // branch (whatever the configured fetch refspecs say) and returns the commit id
 // it points to. It fails when any step cannot be established.
