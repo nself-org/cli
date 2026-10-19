@@ -77,6 +77,12 @@ func TestSettleBarePath(t *testing.T) {
 		{"old,2026", "path:///srv/proj/old,2026", true},
 		{"myr,pass=fake/secret-not-real:p", "myr,pass=fake/secret-not-real:p", false},
 		{"s3,secret_access_key=fake/secret-not-real:b", "s3,secret_access_key=fake/secret-not-real:b", false},
+		// No ":" at all: rclone read these as local paths, but the value is a
+		// credential assignment and must never be echoed or mapped (D-1156).
+		{"myr,pass=fake/secret-not-real", "myr,pass=fake/secret-not-real", false},
+		{"myr,pass=fake-secret-not-real", "myr,pass=fake-secret-not-real", false},
+		{"s3,secret_access_key=fake/secret-not-real", "s3,secret_access_key=fake/secret-not-real", false},
+		{"old,2026=a/b", "old,2026=a/b", false},
 		{"-x", "-x", false},
 		{" /mnt/backups", " /mnt/backups", false},
 		{"/mnt/a\nb", "/mnt/a\nb", false},
@@ -270,4 +276,30 @@ func TestWriteHeartbeatBarePath(t *testing.T) {
 			t.Errorf("v15=%v: heartbeat object stat = %v", v15, serr)
 		}
 	})
+}
+
+// TestStreamColonlessCredentialNeverEchoed (D-1156): a credential-shaped value
+// with no ":" is refused by Stream, and neither the error nor the stderr
+// notice carries it. Run in a temp working dir: a regression would map the
+// value to a directory below it.
+func TestStreamColonlessCredentialNeverEchoed(t *testing.T) {
+	skipBarePathOnWindows(t)
+	store, log := fakeTools(t)
+	t.Chdir(t.TempDir())
+	for _, v := range []string{"myr,pass=fake/secret-not-real", "myr,pass=fake-secret-not-real"} {
+		compattest.Both(t, func(t *testing.T) {
+			buf := captureBareNotice(t)
+			res, err := Stream(context.Background(), minimalConfig(), StreamOptions{To: v, AllowUnencrypted: true})
+			if err == nil || res != nil {
+				t.Fatalf("%q: Stream = %v, %v; want an error", v, res, err)
+			}
+			if strings.Contains(err.Error(), "secret-not-real") {
+				t.Errorf("%q: the error echoes the value: %v", v, err)
+			}
+			if strings.Contains(buf.String(), "secret-not-real") || buf.Len() != 0 {
+				t.Errorf("%q: stderr notice = %q; want none", v, buf)
+			}
+		})
+	}
+	assertNoProcessRan(t, store, log)
 }
