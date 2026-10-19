@@ -127,9 +127,19 @@ func silentBreakout(s mount.Spec) bool {
 	return breakoutOwner(s.Command) == s.Slug
 }
 
+// breakoutOwner names the plugin the break-out table gives command name to.
+// A row for the command itself (`ci`) wins over a row for one of its
+// subcommands (`ci eval`): the table lists the subcommand row first, and the
+// first-word match alone made the ci plugin lose its own command to the
+// eval-gate plugin (E405, so `nself ci` never mounted).
 func breakoutOwner(name string) string {
 	for _, row := range canonTable.Breakouts {
-		if len(row.From) > 0 && row.From[0] == name {
+		if len(row.From) == 1 && row.From[0] == name {
+			return row.Plugin
+		}
+	}
+	for _, row := range canonTable.Breakouts {
+		if len(row.From) > 1 && row.From[0] == name {
 			return row.Plugin
 		}
 	}
