@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/nself-org/cli/internal/sharedproxy"
+	"github.com/nself-org/cli/internal/nginxtopo"
 )
 
 // ssl_detect_fronted_test.go — D-0572: a fronted project (NGINX_FRONTED_BY) is
@@ -60,11 +60,11 @@ func TestSSLShouldEmitFronted(t *testing.T) {
 				writeCertPair(t, stack, cfg.BaseDomain)
 			}
 			if c.sharedOwner {
-				dir := sharedproxy.DirOf(stack)
+				dir := filepath.Join(stack, "nginx", nginxtopo.SharedDir)
 				if err := os.MkdirAll(dir, 0o755); err != nil {
 					t.Fatal(err)
 				}
-				if err := os.WriteFile(filepath.Join(dir, sharedproxy.OwnerFile), []byte("{}"), 0o644); err != nil {
+				if err := os.WriteFile(filepath.Join(dir, nginxtopo.SharedOwnerFile), []byte("{}"), 0o644); err != nil {
 					t.Fatal(err)
 				}
 			}

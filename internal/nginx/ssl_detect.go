@@ -6,7 +6,6 @@ import (
 
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/nginxtopo"
-	"github.com/nself-org/cli/internal/sharedproxy"
 	"github.com/nself-org/cli/internal/ssl"
 )
 
@@ -121,8 +120,7 @@ func sharedProxyFronted(cfg *config.Config, workdir string) bool {
 	if err != nil {
 		return false
 	}
-	_, err = os.Stat(filepath.Join(sharedproxy.DirOf(root), sharedproxy.OwnerFile))
-	return err == nil
+	return nginxtopo.SharedOwnerRegistered(root)
 }
 
 // certPairPresent reports whether fullchain.pem and privkey.pem exist under

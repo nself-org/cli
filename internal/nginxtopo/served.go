@@ -22,6 +22,7 @@ package nginxtopo
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 )
 
@@ -72,4 +73,21 @@ func ServedSSLDir(projectDir, frontedBy string) (string, error) {
 		return "", err
 	}
 	return filepath.Join(root, "ssl"), nil
+}
+
+// SharedDir and SharedOwnerFile name the shared-proxy registration directory
+// (<served root>/nginx/shared) and the file that marks a stack as a shared-proxy
+// owner. internal/sharedproxy re-exports them; they live here so lower layers
+// can ask the question without importing it.
+const (
+	SharedDir       = "shared"
+	SharedOwnerFile = "_owner.json"
+)
+
+// SharedOwnerRegistered reports whether the stack rooted at servedRoot is a
+// shared-proxy owner: its nginx/shared/_owner.json exists.
+func SharedOwnerRegistered(servedRoot string) bool {
+	nginxDir, _ := ServedNginxDir(servedRoot, "") // cannot fail with an empty frontedBy
+	_, err := os.Stat(filepath.Join(nginxDir, SharedDir, SharedOwnerFile))
+	return err == nil
 }
