@@ -19,6 +19,7 @@ import (
 
 var (
 	fuzzOnce sync.Once
+	fuzzMu   sync.Mutex
 	fuzzSrv  *Server
 	fuzzInv  *advInvoker
 )
@@ -26,9 +27,17 @@ var (
 // fuzzServer builds the shared server on first use. HOME is set only while New
 // runs, because New reads it for the audit path and nothing else does.
 func fuzzServer(t *testing.T) (*Server, *advInvoker) {
+	fuzzMu.Lock()
+	t.Cleanup(fuzzMu.Unlock)
 	fuzzOnce.Do(func() {
-		fuzzSrv, fuzzInv, _ = newAdv(t, func(o *Options) { o.AllowedHosts = []string{"fake.example"} })
+		fuzzSrv, fuzzInv, _ = newAdv(t, func(o *Options) {
+			o.AllowedHosts = []string{"fake.example"}
+			o.Log = io.Discard
+		})
 	})
+	fuzzInv.mu.Lock()
+	fuzzInv.paths = fuzzInv.paths[:0]
+	fuzzInv.mu.Unlock()
 	return fuzzSrv, fuzzInv
 }
 
