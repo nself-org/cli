@@ -90,6 +90,12 @@ func TestMountIgnoresOverride(t *testing.T) {
 }
 
 func TestMountEmptyFileE125(t *testing.T) {
+	// Missing-token behavior must not renew a license configured on the test host.
+	t.Setenv("NSELF_PING_API_URL", "http://127.0.0.1:1")
+	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "synthetic-license-key")
+	for i := 1; i <= 10; i++ {
+		t.Setenv("NSELF_LICENSE_KEY_"+strconv.Itoa(i), "")
+	}
 	compattest.Set(t, true)
 	// No licence key from the host: a stored or env key would renew a real JWT online.
 	t.Setenv("HOME", t.TempDir())

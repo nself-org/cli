@@ -776,7 +776,7 @@ func TestCanonEnginePrepare(t *testing.T) {
 		t.Helper()
 		compattest.Set(t, v15)
 		savedArgs, savedMount := os.Args, mountInstalledPlugins
-		defer func() { os.Args, mountInstalledPlugins = savedArgs, savedMount }()
+		t.Cleanup(func() { os.Args, mountInstalledPlugins = savedArgs, savedMount })
 		mountInstalledPlugins = func(*cobra.Command) {}
 		if mount {
 			mountInstalledPlugins = func(r *cobra.Command) {
