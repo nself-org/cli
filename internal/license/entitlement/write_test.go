@@ -104,6 +104,13 @@ func TestEntitlementRefreshWrites(t *testing.T) {
 func TestBuildE125UnderV15(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
 		t.Setenv("LICENSE_CACHE_PATH", filepath.Join(t.TempDir(), "missing.json"))
+		// Missing-token tests must not renew a licence configured on the CI host.
+		t.Setenv("HOME", t.TempDir())
+		t.Setenv("USERPROFILE", t.TempDir())
+		t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "")
+		for i := 1; i <= 10; i++ {
+			t.Setenv("NSELF_LICENSE_KEY_"+strconv.Itoa(i), "")
+		}
 		dir, plugins := t.TempDir(), t.TempDir()
 		installed := filepath.Join(plugins, "fixture-licensed")
 		if err := os.MkdirAll(installed, 0700); err != nil {
