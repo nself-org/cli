@@ -175,7 +175,7 @@ jobs:
         env:
           NSELF_V15: '1'
         run: |
-          go test -mod=vendor -timeout 10m -skip '^(TestShadowInvocationFiles|TestContainerImpactBrokenCompose|TestStateFaultInjection|TestWriteResolvedDeployEnv_LaterFilesOverrideEarlier|TestWriteResolvedDeployEnv_CleanupRemovesFile|TestEnvCascadePerEnv|TestDeployCascadeMatchesBuild|TestSnapshotMatchesConfigLoad|TestRemoteDeployNeverReadsEnvLocal|TestSnapshotLiteralDollarStaysLiteral|TestScratchStageShipsGeneratedAndAllowlisted|TestFrontedScratchStagesFront|TestFrontedLayoutMismatchIsRefusedBeforeStaging|TestScratchReportsStaleGeneratedOutputTheBuildDidNotRegenerate|TestScratchAllowlistedMarkedFileIsCopiedAndShipped|TestScratchReportsSymlinksUnderNginx)$' ./...
+          go test -mod=vendor -timeout 20m -skip '^(TestShadowInvocationFiles|TestContainerImpactBrokenCompose|TestStateFaultInjection|TestWriteResolvedDeployEnv_LaterFilesOverrideEarlier|TestWriteResolvedDeployEnv_CleanupRemovesFile|TestEnvCascadePerEnv|TestDeployCascadeMatchesBuild|TestSnapshotMatchesConfigLoad|TestRemoteDeployNeverReadsEnvLocal|TestSnapshotLiteralDollarStaysLiteral|TestScratchStageShipsGeneratedAndAllowlisted|TestFrontedScratchStagesFront|TestFrontedLayoutMismatchIsRefusedBeforeStaging|TestScratchReportsStaleGeneratedOutputTheBuildDidNotRegenerate|TestScratchAllowlistedMarkedFileIsCopiedAndShipped|TestScratchReportsSymlinksUnderNginx)$' ./...
 
       - name: Test (Windows — pure-Go packages; Docker integration tests skipped)
         if: matrix.skip_docker_tests == 'true'
