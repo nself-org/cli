@@ -56,14 +56,16 @@ func (l *Live) Snapshot(ctx context.Context, m portable.Manifest) (State, error)
 	}
 	if l.HasAuth || len(l.Users) > 0 {
 		s.UserIdent = map[string]string{}
-		rows, e := tx.Query(ctx, `SELECT id::text, password_hash, email::text, phone_number, display_name FROM auth.users`)
+		s.UserAuth = map[string]UserAuth{}
+		rows, e := tx.Query(ctx, `SELECT id::text, password_hash, email::text, phone_number, display_name, default_role, email_verified, disabled FROM auth.users`)
 		if e != nil {
 			return s, errors.New("target users unavailable")
 		}
 		for rows.Next() {
 			var id string
 			var hash, email, phone, display *string
-			if rows.Scan(&id, &hash, &email, &phone, &display) != nil {
+			var ua UserAuth
+			if rows.Scan(&id, &hash, &email, &phone, &display, &ua.DefaultRole, &ua.EmailVerified, &ua.Disabled) != nil {
 				rows.Close()
 				return s, errors.New("target user read failed")
 			}
@@ -73,11 +75,15 @@ func (l *Live) Snapshot(ctx context.Context, m portable.Manifest) (State, error)
 			}
 			s.Users[id] = algo
 			s.UserIdent[id] = Identity(email, phone, display)
+			s.UserAuth[id] = ua
 		}
 		e = rows.Err()
 		rows.Close()
 		if e != nil {
 			return s, errors.New("target user read failed")
+		}
+		if e = readUserRoles(ctx, tx, s.UserAuth); e != nil {
+			return s, e
 		}
 	}
 	s.Counts["users\x00"] = int64(len(s.Users))
@@ -128,4 +134,27 @@ func (l *Live) Snapshot(ctx context.Context, m portable.Manifest) (State, error)
 	}
 	l.Observed = s
 	return s, nil
+}
+
+// readUserRoles fills the Roles of each user in into from auth.user_roles.
+func readUserRoles(ctx context.Context, tx pgx.Tx, into map[string]UserAuth) error {
+	rows, err := tx.Query(ctx, `SELECT user_id::text, role FROM auth.user_roles ORDER BY user_id, role`)
+	if err != nil {
+		return errors.New("target user roles unavailable")
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, role string
+		if rows.Scan(&id, &role) != nil {
+			return errors.New("target user role read failed")
+		}
+		if ua, ok := into[id]; ok {
+			ua.Roles = append(ua.Roles, role)
+			into[id] = ua
+		}
+	}
+	if rows.Err() != nil {
+		return errors.New("target user role read failed")
+	}
+	return nil
 }

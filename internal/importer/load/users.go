@@ -33,6 +33,7 @@ func ApplyUsers(ctx context.Context, db *pgx.Conn, users []verify.User) error {
 	defer func() { _ = tx.Rollback(ctx) }()
 	values := make([][]any, 0, len(users))
 	roles := [][]any{}
+	registered := map[string]bool{}
 	for _, u := range users {
 		var id pgtype.UUID
 		if err = id.Scan(u.ID); err != nil {
@@ -47,6 +48,13 @@ func ApplyUsers(ctx context.Context, db *pgx.Conn, users []verify.User) error {
 			hash = u.PasswordHash
 		}
 		values = append(values, userRow(id, created, hash, u, nullable))
+		// auth.users.default_role references auth.roles: register it before the COPY.
+		if dr := defaultRoleOf(u); !registered[dr] {
+			if _, err = tx.Exec(ctx, `INSERT INTO auth.roles(role) VALUES($1) ON CONFLICT DO NOTHING`, dr); err != nil {
+				return errors.New("auth role registration failed")
+			}
+			registered[dr] = true
+		}
 		for _, role := range u.Roles {
 			if _, err = tx.Exec(ctx, `INSERT INTO auth.roles(role) VALUES($1) ON CONFLICT DO NOTHING`, role); err != nil {
 				return errors.New("auth role registration failed")
@@ -122,6 +130,15 @@ func nullableAuthColumns(ctx context.Context, db *pgx.Conn) (map[string]bool, er
 	return out, nil
 }
 
+// defaultRoleOf returns the user's default role from the bundle, or the fallback
+// for a record that carries none.
+func defaultRoleOf(u verify.User) string {
+	if u.DefaultRole != "" {
+		return u.DefaultRole
+	}
+	return verify.DefaultRoleFallback
+}
+
 // userRow builds one auth.users COPY row. NULL stays NULL wherever the target column allows
 // it; hasura-auth keeps email unique, so mapping a NULL email to "" would make the second
 // phone-only user collide.
@@ -130,5 +147,5 @@ func userRow(id pgtype.UUID, created time.Time, hash *string, u verify.User, nul
 	if u.Metadata == nil {
 		meta = nullOr(nullable["metadata"], map[string]any{})
 	}
-	return []any{id, nullOrString(nullable["email"], u.Email), u.EmailVerified, nullOrString(nullable["phone_number"], u.Phone), nullOrString(nullable["display_name"], u.DisplayName), created, u.Disabled, hash, meta, created, "", "en", false, "user", false, time.Unix(0, 0).UTC(), time.Unix(0, 0).UTC()}
+	return []any{id, nullOrString(nullable["email"], u.Email), u.EmailVerified, nullOrString(nullable["phone_number"], u.Phone), nullOrString(nullable["display_name"], u.DisplayName), created, u.Disabled, hash, meta, created, "", "en", false, defaultRoleOf(u), false, time.Unix(0, 0).UTC(), time.Unix(0, 0).UTC()}
 }
