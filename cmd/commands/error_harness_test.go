@@ -388,6 +388,13 @@ func runErrorHarnessCmd(t *testing.T, args []string) error {
 	// context-deadline duration.
 	t.Chdir(t.TempDir())
 
+	// `ci` resolves its gate through the verified plugin installer, which writes
+	// under HOME and reads the plugin registry; keep both off the real machine.
+	if len(args) > 0 && args[0] == "ci" {
+		setHome(t)
+		t.Setenv("NSELF_PLUGIN_REGISTRY", "http://127.0.0.1:1")
+	}
+
 	// Clone root so parallel subtests don't race on global state.
 	root := &cobra.Command{
 		Use:           RootCmd.Use,

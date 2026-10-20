@@ -238,6 +238,21 @@ func TestCIBootstrapOrderLegacyAndLinks(t *testing.T) {
 		}
 	})
 
+	t.Run("no home directory: nothing is trusted or installed", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("USERPROFILE semantics differ")
+		}
+		cbEnv(t)
+		log := cbStubs(t)
+		t.Setenv("HOME", "")
+		t.Setenv("USERPROFILE", "")
+		got, err := ensureCIBinary(false)
+		if err == nil || !strings.Contains(err.Error(), "nself add ci") {
+			t.Fatalf("got %q, %v; want a refusal naming `nself add ci`", got, err)
+		}
+		cbAssertNoStubRan(t, log)
+	})
+
 	t.Run("a symlink at the published path is not trusted", func(t *testing.T) {
 		if runtime.GOOS == "windows" {
 			t.Skip("symlinks")

@@ -54,7 +54,7 @@ Two limits to know: the tier of an entry comes from the registry, so while a tie
 
 1. The published plugin binary, `~/.nself/plugins/bin/nself-ci` (a regular file).
 2. A dev build from an adjacent plugins checkout (`../plugins/free/ci`), as before.
-3. The verified install seam: the CLI installs the signed `ci` plugin from the configured registry (`NSELF_PLUGIN_REGISTRY` or the default). It needs a release signature, a checksum and a platform signature for the CLI's own platform, all checked against the keys compiled into the CLI. A release that fails any of these is refused (E107, E121 to E124) and the error names `nself add ci`.
+3. The verified install seam: the CLI installs the signed `ci` plugin from the configured registry (`NSELF_PLUGIN_REGISTRY` or the default). It needs a release signature and a checksum, and the platform package it downloads must carry a platform signature for the CLI's own platform, all checked against the keys compiled into the CLI. If the platform package cannot be downloaded, the installer falls back to the signed source package and publishes a binary only if that package contains one (tracked in `quality/debt.yaml`). A release that fails any of these is refused (E107, E121 to E124) and the error names `nself add ci`.
 
 `PATH` is never searched, and a Go toolchain is never used to fetch the gate: the old `go install ...@latest` fallback was unpinned and unverified. `nself ci serve` resolves the gate the same way.
 

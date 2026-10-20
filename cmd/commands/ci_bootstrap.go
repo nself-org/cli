@@ -46,6 +46,12 @@ var (
 func ensureCIBinary(verbose bool) (string, error) {
 	retireLegacyCICache()
 
+	// Without a home directory the plugin bin dir falls back to a shared /tmp
+	// path that any local user can pre-create: never trust or install there.
+	if _, err := os.UserHomeDir(); err != nil {
+		return "", fmt.Errorf("cannot locate the home directory for the nself-ci gate: %w\n(install it by hand: nself add ci)", err)
+	}
+
 	if p := plugin.PublishedBinaryPath("nself-ci"); isRegularFile(p) {
 		return p, nil
 	}

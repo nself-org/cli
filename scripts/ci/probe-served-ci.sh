@@ -110,6 +110,8 @@ check_catalogue() {
   # (internal/plugin/download.go), so the probe fetches the same release assets.
   CI_REPO="$(printf '%s' "${entry}" | jq -r '(.repository | select(. != null and . != "")) // "https://github.com/nself-org/plugins"')"
   CI_REPO="${CI_REPO%.git}"; CI_ENTRY="${entry}"; v="${CI_VERSION}"
+  # The catalogue is untrusted input: only an http(s) URL may reach curl, never an option-like value.
+  case "${CI_REPO}" in http://*|https://*) ;; *) fail "the ci entry repository is not an http(s) URL"; bad=1; CI_REPO="" ;; esac
   if [ -z "${v}" ] || ! ver_ge "${v}" "${min}"; then fail "ci version '${v}' is below --min-version ${min}"; bad=1; fi
   if ! printf '%s' "${entry}" | jq -e '.release_signature | type == "object" and ((.key_id // "") != "") and ((.alg // "") != "") and ((.sig // "") != "")' >/dev/null 2>&1; then fail "the ci entry has no complete release_signature (key_id, alg, sig)"; bad=1; fi
   if ! printf '%s' "${entry}" | jq -e '(.checksum // "") | test("^[0-9a-f]{64}$")' >/dev/null 2>&1; then fail "the ci entry has no 64-hex checksum"; bad=1; fi
