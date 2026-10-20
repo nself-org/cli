@@ -133,7 +133,10 @@ func linkCLIBinary(destDir, name string, m *PluginManifest) error {
 		return err
 	}
 
-	binDir := pluginBinDir()
+	binDir, err := requirePluginBinDir()
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		return fmt.Errorf("creating plugin bin dir: %w", err)
 	}
@@ -168,7 +171,11 @@ func linkCLIBinary(destDir, name string, m *PluginManifest) error {
 // unlinkCLIBinary removes a plugin's published binary. A missing file is not an
 // error — the plugin may never have shipped one.
 func unlinkCLIBinary(name string, m *PluginManifest) error {
-	return unlinkCLIBinaryIn(filepath.Dir(pluginBinDir()), name, m)
+	binDir, err := requirePluginBinDir()
+	if err != nil {
+		return err
+	}
+	return unlinkCLIBinaryIn(filepath.Dir(binDir), name, m)
 }
 
 // unlinkCLIBinaryIn is unlinkCLIBinary with the plugin directory whose installed

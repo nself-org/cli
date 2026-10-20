@@ -31,14 +31,29 @@ func (e *ExitCodeError) ExitCode() int { return e.Code }
 // inherited stdout/stderr and has already reported the failure itself.
 func (e *ExitCodeError) Silent() bool { return true }
 
-// pluginBinDir returns the directory where plugin binaries are installed.
-// This is ~/.nself/plugins/bin/ (or /tmp/.nself/plugins/bin/ as fallback).
+// pluginBinDir returns the directory where plugin binaries are installed:
+// ~/.nself/plugins/bin/. It returns "" when there is no home directory (HOME
+// unset, e.g. under cron or a scrubbed child environment). There is no
+// fallback: the old /tmp/.nself/plugins/bin was a directory any local user
+// could create, and the router would exec what it found there (D-1396).
+// Callers that publish, resolve or exec through the directory must call
+// requirePluginBinDir (or check for "") first.
 func pluginBinDir() string {
 	home, err := os.UserHomeDir()
-	if err != nil {
-		return filepath.Join("/tmp", ".nself", "plugins", "bin")
+	if err != nil || home == "" {
+		return ""
 	}
 	return filepath.Join(home, ".nself", "plugins", "bin")
+}
+
+// requirePluginBinDir is pluginBinDir with an actionable error for the empty case.
+func requirePluginBinDir() (string, error) {
+	dir := pluginBinDir()
+	if dir == "" {
+		return "", errs.Newf("E406", "cannot locate the plugin directory: HOME is not set").
+			WithFix("set HOME to the account's home directory before running nself")
+	}
+	return dir, nil
 }
 
 // ProxyCommand checks if a plugin binary exists and executes it.
@@ -68,7 +83,10 @@ func ProxyCommandWithHint(cmdName string, args []string, installHint string) err
 	pluginBinary := fmt.Sprintf("nself-%s", cmdName)
 
 	// S-002: Only look in the plugin bin directory, never the full PATH.
-	binDir := pluginBinDir()
+	binDir, err := requirePluginBinDir()
+	if err != nil {
+		return err
+	}
 	candidate := filepath.Join(binDir, pluginBinary)
 	if runtime.GOOS == "windows" {
 		candidate += ".exe"
@@ -118,7 +136,10 @@ func ProxyCommandWithHint(cmdName string, args []string, installHint string) err
 // The mount validates the binary at discovery time (mount.Discover, E406);
 // a binary that vanishes between discovery and exec fails with E406 here.
 func ProxyBinary(binName, slug string, args []string) error {
-	binDir := pluginBinDir()
+	binDir, err := requirePluginBinDir()
+	if err != nil {
+		return err
+	}
 	if !safeBinaryName(binName) {
 		return errs.Newf("E406", "plugin %q binary %q has an invalid name", slug, binName)
 	}
@@ -148,6 +169,13 @@ func ProxyBinaryAt(candidate, rootDir, slug string, args []string) error {
 	info, err := os.Stat(resolved)
 	if err != nil || !info.Mode().IsRegular() || (runtime.GOOS != "windows" && info.Mode().Perm()&0111 == 0) {
 		return errs.Newf("E406", "plugin %q binary is not executable", slug)
+	}
+	// The binary runs with this process's environment: it and the directories
+	// down to the plugins root must belong to this user (or root) and not be
+	// writable by anyone else (D-1396).
+	if problem := execTrustProblem(resolved, resolvedRoot, os.Geteuid()); problem != "" {
+		return errs.Newf("E406", "plugin %q binary is not trusted: %s", slug, problem).
+			WithFix("fix the owner and permissions: chmod go-w on the binary and its directories, owned by the current user")
 	}
 	return execPluginBinary(candidate, slug, args)
 }
@@ -213,7 +241,11 @@ func pluginEnvForCommand(cmdName string) []string {
 	}
 	// Installed plugins sit alongside the bin directory the proxy reads, so
 	// deriving the path from pluginBinDir keeps the two from drifting apart.
-	installed := filepath.Join(filepath.Dir(pluginBinDir()), cmdName)
+	binDir := pluginBinDir()
+	if binDir == "" {
+		return nil // no home directory: nothing is installed to read
+	}
+	installed := filepath.Join(filepath.Dir(binDir), cmdName)
 	m := readPluginManifest(installed)
 	if m == nil {
 		return nil
