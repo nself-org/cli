@@ -39,9 +39,8 @@ const autoInstallTierEnv = "NSELF_PLUGIN_INSTALL_TIER"
 // autoInstallPlugin installs the free command plugin slug (at version, when
 // given) and returns the path of its published binary.
 func autoInstallPlugin(slug, version string) (string, error) {
-	// Load the project config first: it exports the project's .env into the
-	// process, and must not be able to overwrite the policy set below.
-	cfg, err := loadConfig()
+	// Keep bootstrap locations under the caller's control while loading project settings.
+	cfg, err := loadAutoInstallConfig()
 	if err != nil {
 		cfg = &config.Config{} // no project here: a bootstrap runs anywhere
 	}
