@@ -18,6 +18,7 @@ package commands
 
 import (
 	"fmt"
+	"github.com/spf13/cobra"
 	"os"
 	"path/filepath"
 	"strings"
@@ -127,4 +128,23 @@ func isRepoScopedCommand(name string) bool {
 	return map[string]bool{
 		"ci": true,
 	}[name]
+}
+
+// isRepoScopedInvocation preserves relative project paths for secret-envelope
+// commands, including subcommands of recipients, without exempting other
+// commands that happen to share a leaf name.
+func isRepoScopedInvocation(cmd *cobra.Command) bool {
+	if isRepoScopedCommand(cmd.Name()) {
+		return true
+	}
+	for c := cmd; c != nil; c = c.Parent() {
+		if c.Name() != "resolve" && c.Name() != "recipients" {
+			continue
+		}
+		parent := c.Parent()
+		if parent != nil && parent.Name() == "secrets" && parent.Parent() != nil && parent.Parent().Name() == "config" {
+			return true
+		}
+	}
+	return false
 }

@@ -161,7 +161,7 @@ func init() {
 		// before RunE makes a relative [repo-root] argument resolve against
 		// backend/ instead of the directory the user typed it in.
 		noMonorepo, _ := cmd.Flags().GetBool("no-monorepo")
-		if !noMonorepo && !isSourceSafeCommand(cmd.Name()) && !isRepoScopedCommand(cmd.Name()) {
+		if !noMonorepo && !isSourceSafeCommand(cmd.Name()) && !isRepoScopedInvocation(cmd) {
 			if cwd, err := os.Getwd(); err == nil {
 				if backendRoot := config.DetectMonorepoRoot(cwd); backendRoot != "" {
 					// In JSON mode stdout carries exactly one document, so the

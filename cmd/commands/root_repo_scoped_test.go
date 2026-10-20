@@ -17,7 +17,10 @@ package commands
 // while the repo root has package.json and pnpm-workspace.yaml. It overrode an
 // explicitly passed path, which is what made it a correctness bug.
 
-import "testing"
+import (
+	"github.com/spf13/cobra"
+	"testing"
+)
 
 // TestRepoScopedCommands_ExemptFromRedirect pins which commands skip the
 // monorepo chdir. Adding a name here is a deliberate act: it means the command
@@ -65,5 +68,32 @@ func TestRepoScopedImpliesSourceSafe(t *testing.T) {
 		if isSourceSafeCommand(name) {
 			t.Errorf("%q must NOT be source-safe — it would run against the nself checkout", name)
 		}
+	}
+}
+
+func TestRepoScopedInvocation(t *testing.T) {
+	for _, tc := range []struct {
+		path []string
+		want bool
+	}{
+		{[]string{"nself", "ci"}, true},
+		{[]string{"nself", "config", "secrets", "resolve"}, true},
+		{[]string{"nself", "config", "secrets", "recipients"}, true},
+		{[]string{"nself", "config", "secrets", "recipients", "list"}, true},
+		{[]string{"nself", "config", "secrets", "get"}, false},
+		{[]string{"nself", "plugin", "resolve"}, false},
+		{[]string{"nself", "start"}, false},
+	} {
+		t.Run(tc.path[len(tc.path)-1], func(t *testing.T) {
+			cmd := &cobra.Command{Use: tc.path[0]}
+			for _, name := range tc.path[1:] {
+				child := &cobra.Command{Use: name}
+				cmd.AddCommand(child)
+				cmd = child
+			}
+			if got := isRepoScopedInvocation(cmd); got != tc.want {
+				t.Errorf("%v: got %v, want %v", tc.path, got, tc.want)
+			}
+		})
 	}
 }
