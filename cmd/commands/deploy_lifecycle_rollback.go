@@ -106,6 +106,8 @@ func rollbackRemoteV15(cmd *cobra.Command, workdir, target string) (bool, error)
 	if !manualDB {
 		st.BackupID = ""
 	}
-	_ = deploy.SaveDeployState(workdir, st)
+	if err := deploy.SaveDeployState(workdir, st); err != nil {
+		return true, fmt.Errorf("deploy rollback: hosts were rolled back but the record was not saved: %w", err)
+	}
 	return true, nil
 }
