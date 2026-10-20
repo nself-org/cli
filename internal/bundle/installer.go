@@ -74,6 +74,10 @@ type InstallOpts struct {
 	// leaves this nil and the installer uses license.BundleEntitled.
 	bundleEntitledChecker func(ctx context.Context, key, bundleSlug string) (bool, error)
 
+	// licensedPair is an internal hook for tests: whether the registry also
+	// serves a Licensed build of a plugin. Production code leaves it nil.
+	licensedPair func(ctx context.Context, name string) bool
+
 	// installer/remover are internal hooks for tests. Production code leaves
 	// these nil and the installer uses plugin.Install / plugin.Remove.
 	installer func(ctx context.Context, cfg *config.Config, name, pluginDir string) error
