@@ -12,6 +12,7 @@ package commands
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/nself-org/cli/internal/compose"
@@ -29,7 +30,7 @@ func hasuraCandidate(pin string) plan.Candidate {
 	cmp, known := hasuraPinOrder(pin, r, v14, cur)
 	switch {
 	case !known:
-		return plan.Candidate{Reason: "the Hasura pin names a digest the CLI image lock does not know, so update cannot tell which release it is; it is left as is"}
+		return plan.Candidate{Reason: "the Hasura pin names a repository, tag, or digest the CLI image lock does not know; update requires the official hasura/graphql-engine repository with a plain vX.Y.Z tag or a known digest, so it is left as is"}
 	case cmp > 0:
 		return plan.Candidate{Reason: fmt.Sprintf("the pinned Hasura is newer than the %s this mode offers; the pin-back is treated as one way, so going back needs the pre-upgrade backup restored (Image-Lock wiki, Roll back)", r.Version)}
 	case cmp < 0 && r.IndexDigest == cur.IndexDigest:
@@ -44,10 +45,15 @@ func hasuraCandidate(pin string) plan.Candidate {
 // A digest-only pin of an entry orders as that entry's release.
 func hasuraPinOrder(pin string, cand, v14, cur compose.Ref) (order int, known bool) {
 	base, digest, _ := strings.Cut(pin, "@")
+	repo := base
 	if i := strings.LastIndex(base, ":"); i > strings.LastIndex(base, "/") {
-		if c, ok := compareHasuraVersion(base[i+1:], cand.Version); ok {
-			return c, true
-		}
+		repo = base[:i]
+	}
+	if strings.TrimPrefix(repo, "docker.io/") != "hasura/graphql-engine" {
+		return 0, false
+	}
+	if i := strings.LastIndex(base, ":"); i > strings.LastIndex(base, "/") {
+		return compareHasuraVersion(base[i+1:], cand.Version)
 	}
 	for _, e := range []compose.Ref{v14, cur} {
 		if digest != "" && digest == e.IndexDigest {
@@ -57,8 +63,13 @@ func hasuraPinOrder(pin string, cand, v14, cur compose.Ref) (order int, known bo
 	return 0, false
 }
 
+var hasuraPlainVersion = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+$`)
+
 // compareHasuraVersion orders two vMAJOR.MINOR.PATCH tags; ok is false for anything else.
 func compareHasuraVersion(a, b string) (int, bool) {
+	if !hasuraPlainVersion.MatchString(a) || !hasuraPlainVersion.MatchString(b) {
+		return 0, false
+	}
 	var x, y [3]int
 	if _, err := fmt.Sscanf(a, "v%d.%d.%d", &x[0], &x[1], &x[2]); err != nil {
 		return 0, false
