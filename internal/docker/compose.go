@@ -65,10 +65,12 @@ func withServices(args []string, services ...string) []string {
 	return append(append(args, "--"), services...)
 }
 
-// ComposeUp runs `docker compose up -d [services...]` in the given workdir.
+// ComposeUp runs `docker compose up -d --build [services...]` in the given workdir.
+// Rebuild services with a build context even when their image tag exists: a
+// plugin upgrade can change the source without changing its local image tag.
 func (c *Compose) ComposeUp(ctx context.Context, workdir string, services ...string) error {
 	args := c.buildBaseArgs()
-	args = withServices(append(args, "up", "-d"), services...)
+	args = withServices(append(args, "up", "-d", "--build"), services...)
 	return c.Run(ctx, workdir, args...)
 }
 
