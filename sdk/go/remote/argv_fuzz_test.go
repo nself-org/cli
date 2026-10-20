@@ -203,7 +203,9 @@ func FuzzArgvBuilders(f *testing.F) {
 		}
 		for i, c := range *got {
 			switch c.tool {
-			case "ssh", "scp":
+			case "scp":
+				checkScpArgv(t, c, opts, local, scpOperand(dest, remote))
+			case "ssh":
 				if i < sshN {
 					checkSSHArgv(t, c, opts)
 				}

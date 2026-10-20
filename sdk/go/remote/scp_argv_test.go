@@ -55,6 +55,11 @@ func simulateScp(args []string) (end int, operands []string, eaten []int, unknow
 // ssh-only flag is present and the D4 block comes first.
 func checkScpArgv(t testing.TB, c captured, d4 []string, src, dst string) {
 	t.Helper()
+	// SCP chooses its own session type; the rest of the D4 block stays first.
+	d4 = append([]string(nil), d4...)
+	if i := indexOf(d4, "SessionType=default"); i >= 1 {
+		d4 = append(d4[:i-1], d4[i+1:]...)
+	}
 	n := len(c.args)
 	if n < len(d4)+3 || c.args[n-3] != "--" || c.args[n-2] != src || c.args[n-1] != dst {
 		t.Fatalf("scp argv %q: tail is not -- src dst", c.args)
