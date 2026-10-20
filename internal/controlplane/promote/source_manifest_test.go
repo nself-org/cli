@@ -32,6 +32,8 @@ func TestCaptureSourceFullManifest(t *testing.T) {
 			return []byte("docker-compose.yml\n.nself/fragments/api.yml\n"), nil
 		case strings.Contains(command, "compose-env-files.txt"):
 			return []byte(".env\n.env.prod\n"), nil
+		case strings.Contains(command, " ps --all --format json"):
+			return []byte(`[]`), nil
 		case strings.Contains(command, " images --format json"):
 			if !strings.Contains(command, " -f '/srv/fixture/.nself/fragments/api.yml'") || !strings.Contains(command, " --env-file '/srv/fixture/.env.prod'") {
 				return nil, fmt.Errorf("missing full manifest: %s", command)

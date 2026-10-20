@@ -79,7 +79,24 @@ func CaptureSourceManifest(ctx context.Context, run Runner, root string) (Runner
 		return run(c, command)
 	}
 	raw, err := captured(ctx, "docker compose images --format json")
-	return captured, raw, err
+	if err != nil {
+		return nil, nil, err
+	}
+	ps, err := captured(ctx, "docker compose ps --all --format json")
+	if err != nil {
+		return nil, nil, fmt.Errorf("capture source compose containers: %w", err)
+	}
+	replay := func(c context.Context, command string) ([]byte, error) {
+		switch command {
+		case "docker compose images --format json":
+			return raw, nil
+		case "docker compose ps --all --format json":
+			return ps, nil
+		default:
+			return captured(c, command)
+		}
+	}
+	return replay, raw, nil
 }
 
 // sourceManifest reads optional host manifests; every entry is validated before use.

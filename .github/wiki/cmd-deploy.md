@@ -17,6 +17,8 @@ nself deploy [target] [flags]
 ## Description
 
 <!-- BEGIN PROSE:description -->
+
+Promotion resolves Compose models through `sh`. On Windows, run promotion from an environment with a POSIX shell on PATH (for example Git Bash or WSL).
 `nself deploy` builds your stack and deploys it to a target environment using a per-service
 sequenced rolling restart. It chains `nself build` then restarts services in dependency order,
 waiting for each service to pass a health check before restarting the next.
