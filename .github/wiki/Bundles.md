@@ -8,7 +8,7 @@ How `nself bundle install` reaches an app-ready stack, and how nself records whi
 
 | # | Step | What it checks |
 |---|------|----------------|
-| 1 | `licence` | Entitlement for a paid bundle. A free bundle (the Task Bundle) makes no licence call and the step reads `skipped (free)`. |
+| 1 | `licence` | Entitlement for a paid bundle. A free bundle (the Task Bundle) makes no bundle entitlement call: the step reads `ok` with `free bundle: no bundle entitlement call; plugin licences checked`. |
 | 2 | `fetch` | The registry resolves every member version. |
 | 3 | `install` | Each member is installed in order; a failure rolls back what this run installed. |
 | 4 | `ledger` | The bundle and its installed members are recorded in the ledger. |
@@ -24,7 +24,7 @@ The first failing step stops the run; later steps show `skipped`. Outside an nSe
 
 A bundle that is not app-ready fails with **E135** (exit 2) naming the bundle, the step and the plugin. Starting the stack and the readiness, tracking and health steps are `NSELF_V15=1` behaviour. With `NSELF_V15` off the command installs, records the ledger and reconciles (a failed reconcile is an error in both modes), prints those four steps as `skipped` / `not verified (v1.5 behaviour, NSELF_V15=1)`, ends with `NOT VERIFIED` instead of `APP-READY`, and exits 0. A free bundle skips the ping_api bundle entitlement call; each plugin's licence is still checked. Rerun the command after fixing the cause; members that are already installed are not reinstalled.
 
-**The Task Bundle reaches app-ready (v1.5).** With `NSELF_V15=1`, `nself bundle install task --yes` on a clean Linux project (`nself init && nself start`) installs the free plugins served by plugins.nself.org and ends with `APP-READY`: all eight members (storage, notifications, jobs, search, feature-flags, audit-log, webhooks, tokens) apply their own migrations at boot, the `tracking` step tracks every table in their manifests (the behaviour in step 8), and each member answers `/health`. One prerequisite: set `TOKENS_ENCRYPTION_KEY` in the project `.env` before the install (a random 32-byte hex string, for example `openssl rand -hex 32`). The tokens plugin refuses to start without it and nothing in the CLI generates it yet, so without it the `readiness` step fails with **E118** for `tokens`.
+**The Task Bundle reaches app-ready (v1.5).** With `NSELF_V15=1`, `nself bundle install task --yes` on a clean project on Linux with Docker (`nself init && nself start`) installs the free plugins served by plugins.nself.org and ends with `APP-READY`: all eight members (storage, notifications, jobs, search, feature-flags, audit-log, webhooks, tokens) apply their own migrations at boot, the `tracking` step tracks every table in their manifests (the behaviour in step 8), and each member answers `/health`. One prerequisite: set `TOKENS_ENCRYPTION_KEY` in the project `.env` before the install (a random 32-byte hex string, for example `openssl rand -hex 32`). The tokens plugin refuses to start without it and nothing in the CLI generates it yet, so without it the `tokens` container restarts in a loop and the `readiness` step ends with **E118** for `tokens` after its bounded wait.
 
 `nself plugin install <name>` of a plugin with boot migrations waits for them too when the stack is running (E118 or E119, exit 2; a warning with `NSELF_V15` off). With the stack stopped it says readiness is checked at the next `nself start` or `nself doctor`.
 
