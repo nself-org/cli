@@ -93,5 +93,19 @@ func Effective(cmd *cobra.Command, e *cmdregistry.Command) (side, out string) {
 			out = *f.Output
 		}
 	}
+	// These flags render a plan and never apply it, even when the command's
+	// default registry class is write or destructive.
+	preview := ""
+	switch e.Path {
+	case "nself build", "nself update":
+		preview = "plan"
+	case "nself config set":
+		preview = "preview"
+	}
+	if preview != "" {
+		if f := cmd.Flags().Lookup(preview); f != nil && f.Value.Type() == "bool" && f.Value.String() == "true" {
+			side = canon.SideEffectRead
+		}
+	}
 	return side, out
 }
