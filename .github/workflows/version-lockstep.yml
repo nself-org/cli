@@ -30,8 +30,7 @@ on:
       - '.github/VERSION'
       - 'internal/version/version.go'
       - 'sdk/go/doc.go'
-      - 'sdk/ts/package.json'
-      - 'sdk/ts-sdk/package.json'
+      - 'sdk/*/package.json'
       - 'sdk/py/pyproject.toml'
       - '.github/workflows/version-lockstep.yml'
       - 'scripts/check-version-lockstep.sh'
@@ -137,20 +136,22 @@ jobs:
                 | grep -oE '"[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' | head -1)
           check "cli/sdk/go/doc.go" "${V}" 1
 
-          # 4. cli/sdk/ts/package.json  (@nself/plugin-sdk)
-          V=$(node -p "require('${NSELF_REPO_ROOT}/sdk/ts/package.json').version")
-          check "cli/sdk/ts/package.json" "${V}" 1
-
-          # 4b. cli/sdk/ts-sdk/package.json  (@nself/sdk)
+          # 4. cli/sdk/*/package.json  (@nself/plugin-sdk, @nself/sdk, @nself/cli-api, ...)
           #
-          # There are TWO TypeScript packages and only the first was listed
-          # here, so a release bumped one and left the other behind. Its publish
-          # workflow then saw its version already on npm, no-opped as
-          # "already published", and reported success — and the SDK Version
-          # Coherence check caught the drift a day later on its schedule,
-          # after the release had shipped.
-          V=$(node -p "require('${NSELF_REPO_ROOT}/sdk/ts-sdk/package.json').version")
-          check "cli/sdk/ts-sdk/package.json" "${V}" 1
+          # Discovered by glob, never listed by hand: a hand-kept list let a release
+          # bump one npm package and leave another behind (sdk/ts-sdk once, then
+          # sdk/ts-cli-api at v1.4.15). bump-version.sh uses the same glob.
+          n=0
+          for pkg in "${NSELF_REPO_ROOT}"/sdk/*/package.json; do
+            [ -f "${pkg}" ] || continue
+            n=$((n + 1))
+            V=$(node -p "require('${pkg}').version")
+            check "cli/${pkg#${NSELF_REPO_ROOT}/}" "${V}" 1
+          done
+          if [ "${n}" -eq 0 ]; then
+            printf '::error::no sdk/*/package.json found\n'
+            exit 1
+          fi
 
           # 5. cli/sdk/py/pyproject.toml
           V=$(grep -E '^version\s*=' "${NSELF_REPO_ROOT}/sdk/py/pyproject.toml" \

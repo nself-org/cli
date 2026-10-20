@@ -1,6 +1,6 @@
 {
   "name": "@nself/cli-api",
-  "version": "1.4.14",
+  "version": "1.4.15",
   "description": "Typed TypeScript client for the nSelf CLI control API (nself admin serve), generated from the OpenAPI contract.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
