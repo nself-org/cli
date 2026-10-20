@@ -95,15 +95,7 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 		return loadErr
 	}
 	loadedInv := inv
-	server := controlplane.Server{Name: target + "-app", Role: controlplane.RoleApp, Host: spec.String(), Primary: true}
-	for _, environment := range inv.Environments {
-		for _, candidate := range environment.Servers {
-			if candidate.Host == spec.String() {
-				server = candidate
-			}
-		}
-	}
-	inv = &controlplane.Inventory{Environments: map[string]controlplane.Environment{target: {Name: target, Kind: "remote", Servers: []controlplane.Server{server}}}}
+	inv = deployPreflightInventory(inv, target, spec.String())
 	files, err := controlplane.ComposeFilesForDeploy(filepath.Join(workdir, "docker-compose.yml"))
 	if err != nil {
 		return err

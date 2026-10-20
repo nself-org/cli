@@ -176,17 +176,7 @@ func opsPreflight(ctx context.Context, workdir, host, composePath string) error 
 	if err != nil {
 		return err
 	}
-	server := controlplane.Server{Name: "ops-app", Role: controlplane.RoleApp, Host: spec.String(), Primary: true}
-	for _, environment := range loaded.Environments {
-		for _, candidate := range environment.Servers {
-			if candidate.Host == spec.String() {
-				server = candidate
-			}
-		}
-	}
-	inv := &controlplane.Inventory{Environments: map[string]controlplane.Environment{
-		opsEnvName: {Name: opsEnvName, Kind: "remote", Servers: []controlplane.Server{server}},
-	}}
+	inv := deployPreflightInventory(loaded, opsEnvName, spec.String())
 	files, err := controlplane.ComposeFilesForDeploy(composePath)
 	if err != nil {
 		return err
