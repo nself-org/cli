@@ -67,6 +67,9 @@ type ApplyOptions struct {
 	Clock        docker.Clock
 	Out          io.Writer
 	Now          func() time.Time
+	// KeepImages is set by a rollback (ReapplyRemote only): refs to point back at
+	// the image ids the previous deploy ran, and not to pull again.
+	KeepImages []imageTag
 }
 
 // ApplyResult records what ApplyRemote did, even when it stopped early.
@@ -216,6 +219,10 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 	if pulled, err = saveImageTags(ctx, r, imageRefs(model)); err != nil {
 		return res, err
 	}
+	// The ids the pull is about to replace: a rollback points the tags back at them (D-0700).
+	if err = writeImageRecord(ctx, r, bk.Tar, pulled); err != nil {
+		return res, err
+	}
 	say("docker compose pull")
 	if _, err = r.Run(ctx, shScript(fmt.Sprintf("cd %s && %s pull", q(rp), base))); err != nil {
 		return res, fmt.Errorf("remote pull on %s: %w", r.Label(), err)
@@ -263,9 +270,8 @@ func ReapplyRemote(ctx context.Context, o ApplyOptions) error {
 	if err != nil {
 		return err
 	}
-	base := composeBase(o.Set.Compose, o.Set.EnvManifest)
-	if _, err = o.Remote.Run(ctx, shScript(fmt.Sprintf("cd %s && %s pull", q(o.RemotePath), base))); err != nil {
-		return fmt.Errorf("remote pull on %s: %w", o.Remote.Label(), err)
+	if err = reapplyPull(ctx, o, model); err != nil {
+		return err
 	}
 	if err = applyServices(ctx, o, model); err != nil {
 		return err

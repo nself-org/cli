@@ -224,7 +224,8 @@ func TestDeployApplyV15Pipeline(t *testing.T) {
 		t.Fatalf("deploy.json %+v", st)
 	}
 
-	// Rollback restores the files in place, then the database backup, then re-applies.
+	// Rollback restores the files in place, reads the restored model (the recorded images are checked
+	// before anything else changes, D-0700), restores the database backup, then re-applies.
 	remote.mu.Lock()
 	remote.log = nil
 	remote.mu.Unlock()
@@ -234,7 +235,7 @@ func TestDeployApplyV15Pipeline(t *testing.T) {
 	}
 	cmds = remote.commands()
 	prev = -1
-	for _, want := range []string{"tar -xzf", "nself backup restore '" + st.BackupID + "' --yes", "config --format json", " pull", "up -d --no-deps -- 'web'"} {
+	for _, want := range []string{"tar -xzf", "config --format json", "nself backup restore '" + st.BackupID + "' --yes", " pull", "up -d --no-deps -- 'web'"} {
 		i := firstIndex(cmds, want)
 		if i <= prev {
 			t.Fatalf("rollback: %q at %d after %d in:\n%s", want, i, prev, strings.Join(cmds, "\n"))

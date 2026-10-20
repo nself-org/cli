@@ -201,7 +201,7 @@ func TestFrontRollbackReloadsEvenWhenReapplyFails(t *testing.T) {
 	x.d.mu.Lock()
 	x.d.execs = nil
 	x.d.mu.Unlock()
-	x.f.fail[" pull"] = errBoom
+	x.f.fail["up -d --no-deps -- 'db'"] = errBoom // the rollback pulls nothing: every image is put back from the record
 	err = roll(x, res)
 	if err == nil || !strings.Contains(err.Error(), "fronting nginx was tested and reloaded") {
 		t.Fatalf("err = %v, want the re-apply error naming the front reload", err)
@@ -219,7 +219,7 @@ func TestFrontRollbackReloadsEvenWhenReapplyFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	y.f.fail[" pull"] = errBoom
+	y.f.fail["up -d --no-deps -- 'db'"] = errBoom
 	y.d.runSeq = []string{"false"}
 	err = roll(y, res2)
 	if err == nil || !strings.Contains(err.Error(), "boom") || !strings.Contains(err.Error(), "fronting nginx reload also failed") {
