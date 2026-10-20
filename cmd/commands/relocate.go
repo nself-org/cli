@@ -168,6 +168,7 @@ func breakoutRow(cmdName string, args []string) (best canonRowT, pluginArgs []st
 		}
 		words = append(words, a)
 	}
+	words = breakoutWords(words)
 	for _, r := range canonTable.Breakouts {
 		if len(r.To) > 0 && hasPrefix(words, r.From) && (!ok || len(r.From) > len(best.From)) {
 			best, ok = r, true
@@ -249,4 +250,14 @@ func warnRelocatedCommand(cmdName string) bool {
 	}
 	deprecationRegistry.Warn(os.Stderr, item)
 	return true
+}
+
+// breakoutWords resolves authoring aliases before matching relocation rows,
+// including after the authoring command has been removed from the core tree.
+func breakoutWords(words []string) []string {
+	if len(words) >= 2 && words[0] == "plugin" && pluginInitCmd.HasAlias(words[1]) {
+		words = append([]string{}, words...)
+		words[1] = pluginInitCmd.Name()
+	}
+	return words
 }
