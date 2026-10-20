@@ -56,6 +56,9 @@ func verifyReleaseSignature(manifest *PluginManifest, paid, local bool, artifact
 }
 
 func verifyReleaseSignatureDigest(manifest *PluginManifest, paid, local bool, artifactKind string, digest func() (string, error), bypass bool) error {
+	if (artifactKind == "" || artifactKind == ArtifactKindSource) && len(manifest.PlatformSignatures) > 0 && len(cliBinaryNames(manifest.Name, manifest)) > 0 {
+		return errs.Newf("E121", "plugin %q: source fallback cannot publish a command with platform signatures", manifest.Name)
+	}
 	tier := releaseTier(paid)
 	pinned := signature.Pinned(tier)
 	if pinned && artifactKind != "" && artifactKind != ArtifactKindSource {
