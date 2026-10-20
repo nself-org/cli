@@ -61,6 +61,10 @@ func Prune(cfg *config.Config, opts PruneOptions) (*PruneResult, error) {
 		return nil, fmt.Errorf("list backups for pruning: %w", err)
 	}
 
+	// Only files this package writes are prunable; anything else in the directory
+	// (.gitkeep, notes, a restore temp file) is not a backup and is left alone.
+	entries = backupFilesOnly(entries)
+
 	// Sort newest first.
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].Date.After(entries[j].Date)
@@ -135,17 +139,12 @@ func Prune(cfg *config.Config, opts PruneOptions) (*PruneResult, error) {
 		result.Pruned = append(result.Pruned, e.ID)
 
 		if !opts.DryRun {
-			// Find and remove the actual file.
-			files, _ := os.ReadDir(backupDir)
-			for _, f := range files {
-				if f.Name() == e.ID || filepath.Base(f.Name()) == e.ID {
-					path := filepath.Join(backupDir, f.Name())
-					if err := os.Remove(path); err != nil {
-						slog.Warn("failed to remove backup", "path", path, "error", err)
-					} else {
-						slog.Info("pruned backup", "path", path)
-					}
-				}
+			// Remove the entry's own file: the ID has no extension.
+			path := filepath.Join(backupDir, e.File)
+			if err := os.Remove(path); err != nil {
+				slog.Warn("failed to remove backup", "path", path, "error", err)
+			} else {
+				slog.Info("pruned backup", "path", path)
 			}
 		}
 	}
@@ -159,4 +158,23 @@ func Prune(cfg *config.Config, opts PruneOptions) (*PruneResult, error) {
 	}
 
 	return result, nil
+}
+
+// backupPayloadExts are the extensions create, stream and WAL archiving write.
+var backupPayloadExts = []string{".dump", ".tar.gz", ".sql", ".wal"}
+
+// backupFilesOnly keeps the entries whose file name is a backup this package
+// writes: a payload extension, optionally followed by ".age".
+func backupFilesOnly(entries []BackupEntry) []BackupEntry {
+	out := entries[:0:0]
+	for _, e := range entries {
+		name := strings.TrimSuffix(e.File, ".age")
+		for _, ext := range backupPayloadExts {
+			if strings.HasSuffix(name, ext) {
+				out = append(out, e)
+				break
+			}
+		}
+	}
+	return out
 }
