@@ -102,7 +102,7 @@ func relocateBreakout(cmdName string, args []string) (handled bool, err error) {
 		_, _ = fmt.Fprintf(relocateWarnOut, "warning: 'nself %s' now comes from the %s plugin; installed %s@%s\n", old, row.Plugin, row.Plugin, installed)
 	}
 	if err := plugin.ProxyBinary(proxyBinaryName(bin), row.Plugin, pluginArgs); err != nil {
-		return true, reportProxyFailure(os.Stderr, err)
+		return true, err // main reports coded failures and preserves silent child exits
 	}
 	return true, nil
 }

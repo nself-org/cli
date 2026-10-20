@@ -74,6 +74,9 @@ func resetCanonWarning() {
 // the command line. Flags are not parsed when the engine runs, so argv is read.
 func warningsSilenced(args []string) bool {
 	for _, a := range args {
+		if a == "--" {
+			break
+		}
 		if a == "--no-deprecation-warnings" || a == "--quiet" {
 			return true
 		}
