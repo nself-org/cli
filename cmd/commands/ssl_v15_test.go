@@ -218,6 +218,15 @@ func TestSSLV15ErrorCodes(t *testing.T) {
 		{"add: lego fails", func(f *acmeFix) { acmeD.run = legoFails }, driveAdd, "E151", "E470"},
 		{"renew: lego fails", func(f *acmeFix) {}, driveRenew(func(f *acmeFix) { acmeD.run = legoFails }), "E151", "E470"},
 	}
+	prevWait := acmeVerifyWait // the served-certificate probes pause between tries; the test needs no pause
+	acmeVerifyWait = time.Millisecond
+	t.Cleanup(func() { acmeVerifyWait = prevWait })
+	start := time.Now()
+	t.Cleanup(func() { // D-0736: the unshortened pause made this test take 20 s
+		if d := time.Since(start); d > 10*time.Second {
+			t.Errorf("TestSSLV15ErrorCodes took %v: a real pause crept back in", d)
+		}
+	})
 	compattest.Both(t, func(t *testing.T) {
 		for _, c := range cases {
 			var f *acmeFix

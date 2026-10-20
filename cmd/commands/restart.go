@@ -34,6 +34,14 @@ Examples:
 	RunE: runRestart,
 }
 
+// restartSettleWait is the pause before the health check after a restart, and
+// restartDownWait the pause between stopping and starting the stack in a full
+// restart. Tests shorten both (D-0736: the lifecycle test waited 5 s per case).
+var (
+	restartSettleWait = 5 * time.Second
+	restartDownWait   = 2 * time.Second
+)
+
 func init() {
 	restartCmd.Flags().BoolP("smart", "s", true, "Detect changes, only restart affected (default)")
 	restartCmd.Flags().BoolP("all", "a", false, "Full restart: stop all + start all")
@@ -153,7 +161,7 @@ func runRestartFlow(cmd *cobra.Command, args []string) error {
 	if verbose {
 		ui.Info("Waiting 5 seconds for services to stabilize...")
 	}
-	time.Sleep(5 * time.Second)
+	time.Sleep(restartSettleWait)
 
 	report, err := health.RunAllChecks(ctx, cfg, workdir)
 	if err != nil {
