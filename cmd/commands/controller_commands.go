@@ -26,7 +26,7 @@ Subcommands:
   start   Start the controller daemon
   stop    Stop the controller daemon
   status  Show all projects and resource usage
-  init    Initialize the nself_controller Postgres schema`,
+  init    Initialize the np_tenant_controller Postgres schema`,
 }
 
 var controllerStartCmd = &cobra.Command{
