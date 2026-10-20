@@ -24,9 +24,11 @@ seed_cli() { # <with-facts 0|1>
   printf 'package sdk\n\nconst Version = "1.4.13"\n' | put sdk/go/doc.go
   printf '{"name":"a","version":"1.4.13"}\n' | put sdk/ts/package.json
   printf '{"name":"b","version":"1.4.13"}\n' | put sdk/ts-sdk/package.json
+  printf '{"name":"cli-api","version":"1.4.13"}\n' | put sdk/ts-cli-api/package.json
   printf '[project]\nname = "x"\nversion = "1.4.13"\n' | put sdk/py/pyproject.toml
   printf '# cli\n\ncli version: 1.4.13\n' | put README.md
   mkdir -p "$SD/scripts"; cp "$ROOT/scripts/bump-version.sh" "$SD/scripts/bump-version.sh"
+  cp -R "$ROOT/scripts/bump-version" "$SD/scripts/"
   for f in sdk-ts-publish sdk-py-publish; do
     printf 'on:\n  push:\n    tags:\n      - "v*"\n  workflow_dispatch:\n    inputs:\n      version:\n        required: false\n' | put ".github/workflows/$f.yml"
   done

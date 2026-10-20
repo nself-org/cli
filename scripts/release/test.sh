@@ -97,6 +97,9 @@ check "admin-merge read the owner's typed answer" test "$(grep -c 'ans=y$' "$ADM
 check "merge order admin, cli, homebrew" test "$(sed 's/ pr=.*//' "$ADMIN_LOG" | tr '\n' ' ')" = "repo=admin repo=cli repo=homebrew-nself "
 check "admin package.json bumped" test "$(show admin package.json | jq -r .version)" = "$V"
 checkc "admin Dockerfile bumped" "show admin Dockerfile | grep -q 'ARG NSELF_VERSION=$V'"
+for pkg in ts ts-sdk ts-cli-api; do
+  check "cli SDK $pkg bumped" test "$(show cli sdk/$pkg/package.json | jq -r .version)" = "$V"
+done
 check "cli VERSION bumped" test "$(show cli .github/VERSION)" = "$V"
 sha=$(git --git-dir="$FIX/cli.git" rev-parse main)
 check "tag v$V points at cli main" test "$(git --git-dir="$FIX/cli.git" rev-parse "refs/tags/v$V^{commit}")" = "$sha"
