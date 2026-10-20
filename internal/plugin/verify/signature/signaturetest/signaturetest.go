@@ -69,3 +69,14 @@ func Sign(t testing.TB, s signing.Signer, slug, version, sha256hex string) *sign
 	}
 	return &signature.Release{KeyID: s.KeyID(), Alg: signature.Alg, Sig: signing.EncodeSig(sig)}
 }
+
+// SignPlatform returns the platform_signatures entry of the platform signing
+// input for slug/version/platform/sha256.
+func SignPlatform(t testing.TB, s signing.Signer, slug, version, platform, sha256hex string) *signature.Release {
+	t.Helper()
+	sig, err := s.Sign(signature.SigningInputPlatform(slug, version, platform, sha256hex))
+	if err != nil {
+		t.Fatalf("signaturetest: sign platform: %v", err)
+	}
+	return &signature.Release{KeyID: s.KeyID(), Alg: signature.Alg, Sig: signing.EncodeSig(sig)}
+}

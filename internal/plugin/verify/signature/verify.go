@@ -47,11 +47,21 @@ func isLowerHex64(s string) bool {
 
 // Verify checks rel for the given tier, slug, version and tarball sha256.
 func Verify(tier, slug, version, sha256hex string, rel *Release) error {
+	if !cleanField(slug) || !cleanField(version) || !isLowerHex64(sha256hex) {
+		return verifyMessage(tier, nil, rel, true)
+	}
+	return verifyMessage(tier, SigningInput(slug, version, sha256hex), rel, false)
+}
+
+// verifyMessage is the check Verify and VerifyPlatform share, so the two
+// domains cannot drift in their error codes. malformed means the identity
+// fields could not be put in a signing input at all (msg is then nil).
+func verifyMessage(tier string, msg []byte, rel *Release, malformed bool) error {
 	if rel == nil {
 		return fail("E121", "release has no signature", nil)
 	}
-	if !cleanField(slug) || !cleanField(version) || !isLowerHex64(sha256hex) {
-		return fail("E121", "release identity is malformed (slug, version or sha256)", nil)
+	if malformed {
+		return fail("E121", "release identity is malformed (slug, version, platform or sha256)", nil)
 	}
 	if rel.Alg != Alg {
 		return fail("E121", fmt.Sprintf("release signature algorithm %.64q is not %s", rel.Alg, Alg), nil)
@@ -64,7 +74,7 @@ func Verify(tier, slug, version, sha256hex string, rel *Release) error {
 	if err != nil {
 		return fail("E121", "trusted key table is unusable", err)
 	}
-	err = v.Verify(SigningInput(slug, version, sha256hex), signing.Signature{KeyID: rel.KeyID, Sig: sigBytes})
+	err = v.Verify(msg, signing.Signature{KeyID: rel.KeyID, Sig: sigBytes})
 	switch {
 	case err == nil:
 		return nil

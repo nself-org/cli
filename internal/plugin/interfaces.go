@@ -254,6 +254,14 @@ type PluginManifest struct {
 	// empty Release so the install refuses (E121) instead of seeing "absent".
 	ReleaseSignature *signature.Release `json:"release_signature,omitempty"`
 
+	// PlatformSignatures is the entry-level platform_signatures map (contract
+	// plugins.release-signature v1.1, P7-PLUG-84): platform name -> the
+	// signature of that platform's tarball. A pinned tier installs a binary
+	// package only when the entry for the platform the CLI selected verifies.
+	// A present but unreadable value decodes to an empty Release, never to
+	// "absent" (E121).
+	PlatformSignatures map[string]*signature.Release `json:"platform_signatures,omitempty"`
+
 	// UpdatedAt is a per-plugin freshness timestamp (CLI-R16). The live
 	// plugins.nself.org registry does not send this field as of 2026-08-23 —
 	// only a registry-wide "fetchedAt" (see Registry.FetchedAt /

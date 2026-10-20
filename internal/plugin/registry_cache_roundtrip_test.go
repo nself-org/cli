@@ -2,9 +2,13 @@ package plugin
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/nself-org/cli/internal/plugin/verify/signature"
+	"github.com/nself-org/cli/internal/plugin/verify/signature/signaturetest"
 )
 
 // TestRegistryCacheRoundTripKeepsImplementationFields pins the fix for the bug
@@ -187,7 +191,56 @@ func TestCacheKeepsSignatureMaterial(t *testing.T) {
 	t.Setenv(pluginRequireChecksumEnv, "1")
 	stripped := *got
 	stripped.ReleaseSignature = nil
-	if err := verifyReleaseSignature(&stripped, false, false, ArtifactKindSource, false); err == nil {
+	if err := verifyReleaseSignature(&stripped, false, false, ArtifactKindSource, "", false); err == nil {
 		t.Error("a stable plugin with no signature was accepted even in hard mode")
+	}
+}
+
+// TestPlatformSignaturesCacheRoundTrip: platform_signatures survive the
+// registry cache (a warm cache would otherwise drop them and fail the install
+// closed for the wrong reason), an unreadable value stays invalid, and a
+// verified signature still verifies from the reloaded manifest.
+func TestPlatformSignaturesCacheRoundTrip(t *testing.T) {
+	const plat = "linux-amd64"
+	key, signer := signaturetest.NewKey(t, signature.TierFree)
+	signaturetest.UseKeys(t, []signature.Key{key}, nil)
+	signaturetest.UseFloor(t, map[string]map[string]string{})
+	archive := filepath.Join(t.TempDir(), "pkg.tar.gz")
+	body := binTarball(t, "")
+	if err := os.WriteFile(archive, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	signed := signaturetest.SignPlatform(t, signer, "signed-plugin", "1.0.0", plat, sha256Hex(body))
+	original := &Registry{Plugins: []PluginManifest{
+		{Name: "signed-plugin", Version: "1.0.0", PlatformSignatures: map[string]*signature.Release{plat: signed}},
+		{Name: "invalid-plugin", Version: "1.0.0", PlatformSignatures: map[string]*signature.Release{plat: {}}},
+		{Name: "plain-plugin", Version: "1.0.0"},
+	}}
+	data, err := json.Marshal(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := parseRegistryJSON(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := findPlugin(reloaded, "signed-plugin")
+	if got == nil || got.PlatformSignatures[plat] == nil || *got.PlatformSignatures[plat] != *signed {
+		t.Fatalf("platform_signatures lost or changed in the cache round trip: %+v", got)
+	}
+	if err := verifyReleaseSignature(got, false, false, plat, archive, false); err != nil {
+		t.Fatalf("a warm-cache platform install must verify, not skip: %v", err)
+	}
+	bad, _ := findPlugin(reloaded, "invalid-plugin")
+	if bad == nil || bad.PlatformSignatures[plat] == nil || *bad.PlatformSignatures[plat] != (signature.Release{}) {
+		t.Fatalf("an invalid entry must stay present and empty: %+v", bad)
+	}
+	plain, _ := findPlugin(reloaded, "plain-plugin")
+	if plain == nil || plain.PlatformSignatures != nil {
+		t.Fatalf("absent must stay absent: %+v", plain)
+	}
+	// The key is entry level, never inside checksums.
+	if !strings.Contains(string(data), `"platform_signatures"`) || strings.Contains(string(data), `"checksums":{"platform_signatures`) {
+		t.Fatalf("unexpected cache shape: %s", data)
 	}
 }

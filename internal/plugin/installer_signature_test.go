@@ -325,17 +325,17 @@ func TestInstallAllowUnsignedLocalOnly(t *testing.T) {
 	}
 	m := &PluginManifest{Name: sigPlugin, Version: "1.0.0", Checksum: sha256Hex(tb)}
 	for _, paid := range []bool{false, true} {
-		if err := verifyReleaseSignature(m, paid, false, ArtifactKindSource, false); codeOf(err) != "E107" {
+		if err := verifyReleaseSignature(m, paid, false, ArtifactKindSource, "", false); codeOf(err) != "E107" {
 			t.Errorf("registry (paid=%v) with the flag: want E107, got %v", paid, err)
 		}
 		var werr error
-		out := captureStderr(t, func() { werr = verifyReleaseSignature(m, paid, true, ArtifactKindSource, false) })
+		out := captureStderr(t, func() { werr = verifyReleaseSignature(m, paid, true, ArtifactKindSource, "", false) })
 		if werr != nil || !strings.Contains(out, "--allow-unsigned") {
 			t.Errorf("local (paid=%v) with the flag: err=%v stderr=%q", paid, werr, out)
 		}
 	}
 	t.Setenv(allowUnsignedEnv, "")
-	if err := verifyReleaseSignature(m, false, true, ArtifactKindSource, false); codeOf(err) != "E107" {
+	if err := verifyReleaseSignature(m, false, true, ArtifactKindSource, "", false); codeOf(err) != "E107" {
 		t.Errorf("local without the flag: want E107, got %v", err)
 	}
 	if !compat.V15() {
@@ -354,18 +354,18 @@ func TestReleaseSignatureTierRouting(t *testing.T) {
 		sum := sha256Hex([]byte("x"))
 		m := &PluginManifest{Name: sigPlugin, Version: "1.0.0", Checksum: strings.ToUpper(sum)}
 		m.ReleaseSignature = signaturetest.Sign(t, licSigner, sigPlugin, "1.0.0", sum)
-		if err := verifyReleaseSignature(m, true, false, ArtifactKindSource, false); err != nil {
+		if err := verifyReleaseSignature(m, true, false, ArtifactKindSource, "", false); err != nil {
 			t.Fatalf("licensed entry, licensed key (checksum upper-cased in the registry): %v", err)
 		}
-		if codeOf(verifyReleaseSignature(m, false, false, ArtifactKindSource, false)) != "E122" {
+		if codeOf(verifyReleaseSignature(m, false, false, ArtifactKindSource, "", false)) != "E122" {
 			t.Error("licensed-key signature on a free entry must be E122")
 		}
 		m.ReleaseSignature = signaturetest.Sign(t, freeSigner, sigPlugin, "1.0.0", sum)
-		if codeOf(verifyReleaseSignature(m, true, false, ArtifactKindSource, false)) != "E122" {
+		if codeOf(verifyReleaseSignature(m, true, false, ArtifactKindSource, "", false)) != "E122" {
 			t.Error("free-key signature on a licensed entry must be E122")
 		}
 		m.Checksum = ""
-		if codeOf(verifyReleaseSignature(m, false, false, ArtifactKindSource, false)) != "E121" {
+		if codeOf(verifyReleaseSignature(m, false, false, ArtifactKindSource, "", false)) != "E121" {
 			t.Error("a signature with no checksum to bind it to must be E121")
 		}
 	})
@@ -400,11 +400,12 @@ func TestInstallStrictModeRefusesUnsigned(t *testing.T) {
 	}
 }
 
-// TestBinaryPackageRefusedOnPinnedTier: D7 signs the source tarball only, and
-// the registry fields that select a binary download are unsigned, so on a
-// pinned tier a non-source package is refused in both modes (E121) even with a
-// good source signature. On an unpinned tier nothing is claimed and the
-// install proceeds.
+// TestBinaryPackageRefusedOnPinnedTier: the source signature does not cover a
+// binary package, and the registry fields that select a binary download are
+// unsigned, so on a pinned tier a non-source package with no platform signature
+// is refused in both modes (E121) even with a good source signature. On an
+// unpinned tier nothing is claimed: v1.4 warns and proceeds, v1.5 refuses an
+// unsigned release (E107), exactly as for a source package.
 func TestBinaryPackageRefusedOnPinnedTier(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
 		key, signer := signaturetest.NewKey(t, signature.TierFree)
@@ -413,20 +414,24 @@ func TestBinaryPackageRefusedOnPinnedTier(t *testing.T) {
 		sum := sha256Hex([]byte("source"))
 		m := &PluginManifest{Name: sigPlugin, Version: "1.0.0", Checksum: sum}
 		m.ReleaseSignature = signaturetest.Sign(t, signer, sigPlugin, "1.0.0", sum)
-		if err := verifyReleaseSignature(m, false, false, ArtifactKindSource, false); err != nil {
+		if err := verifyReleaseSignature(m, false, false, ArtifactKindSource, "", false); err != nil {
 			t.Fatalf("source package: %v", err)
 		}
-		if codeOf(verifyReleaseSignature(m, false, false, "linux-amd64", false)) != "E121" {
+		if codeOf(verifyReleaseSignature(m, false, false, "linux-amd64", "", false)) != "E121" {
 			t.Fatal("a binary package on a pinned tier must be refused with E121")
 		}
 		// An unsigned binary on a pinned tier is refused too.
 		m.ReleaseSignature = nil
-		if codeOf(verifyReleaseSignature(m, false, false, "linux-amd64", false)) != "E121" {
+		if codeOf(verifyReleaseSignature(m, false, false, "linux-amd64", "", false)) != "E121" {
 			t.Fatal("an unsigned binary package on a pinned tier must be refused")
 		}
 		signaturetest.UseKeys(t, nil, nil)
-		if err := verifyReleaseSignature(m, false, false, "linux-amd64", false); err != nil && codeOf(err) != "E107" {
-			t.Fatalf("unpinned tier: %v", err)
+		wantCode := ""
+		if compat.V15() {
+			wantCode = "E107"
+		}
+		if err := verifyReleaseSignature(m, false, false, "linux-amd64", "", false); codeOf(err) != wantCode {
+			t.Fatalf("unpinned tier: want code %q, got %v", wantCode, err)
 		}
 	})
 }
@@ -494,25 +499,25 @@ func TestDevBypassNeverSkipsPresentSignature(t *testing.T) {
 		signaturetest.UseFloor(t, map[string]map[string]string{signature.TierFree: {sigPlugin: "1.0.0"}})
 		sum := sha256Hex([]byte("x"))
 		m := &PluginManifest{Name: sigPlugin, Version: "1.0.0", Checksum: sum}
-		if err := verifyReleaseSignature(m, false, false, ArtifactKindSource, true); err != nil {
+		if err := verifyReleaseSignature(m, false, false, ArtifactKindSource, "", true); err != nil {
 			t.Fatalf("bypass with no signature must skip: %v", err)
 		}
 		_, stranger := signaturetest.NewKey(t, signature.TierFree)
 		m.ReleaseSignature = signaturetest.Sign(t, stranger, sigPlugin, "1.0.0", sum)
-		if codeOf(verifyReleaseSignature(m, false, false, ArtifactKindSource, true)) != "E122" {
+		if codeOf(verifyReleaseSignature(m, false, false, ArtifactKindSource, "", true)) != "E122" {
 			t.Fatal("bypass must not skip an unknown-key signature on a pinned tier")
 		}
 		m.ReleaseSignature = signaturetest.Sign(t, signer, sigPlugin, "1.0.0", sha256Hex([]byte("other")))
-		if codeOf(verifyReleaseSignature(m, false, false, ArtifactKindSource, true)) != "E121" {
+		if codeOf(verifyReleaseSignature(m, false, false, ArtifactKindSource, "", true)) != "E121" {
 			t.Fatal("bypass must not skip a bad signature on a pinned tier")
 		}
 		m.ReleaseSignature = signaturetest.Sign(t, signer, sigPlugin, "1.0.0", sum)
-		if err := verifyReleaseSignature(m, false, false, ArtifactKindSource, true); err != nil {
+		if err := verifyReleaseSignature(m, false, false, ArtifactKindSource, "", true); err != nil {
 			t.Fatalf("good signature under bypass: %v", err)
 		}
 		// Unpinned licensed tier: bypass skips.
 		m.ReleaseSignature = &signature.Release{KeyID: "plugins-0000000000000000", Alg: "ed25519", Sig: "AAAA"}
-		if err := verifyReleaseSignature(m, true, false, ArtifactKindSource, true); err != nil {
+		if err := verifyReleaseSignature(m, true, false, ArtifactKindSource, "", true); err != nil {
 			t.Fatalf("unpinned tier under bypass: %v", err)
 		}
 	})

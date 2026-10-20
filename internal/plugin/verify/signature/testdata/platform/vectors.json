@@ -1,0 +1,54 @@
+{
+  "cases": [
+    {
+      "expect": "ok",
+      "name": "valid"
+    },
+    {
+      "expect": "fail",
+      "name": "other platform",
+      "platform": "linux-arm64"
+    },
+    {
+      "expect": "fail",
+      "name": "other version",
+      "version": "1.0.1"
+    },
+    {
+      "expect": "fail",
+      "name": "other slug",
+      "slug": "other"
+    },
+    {
+      "expect": "fail",
+      "name": "flipped byte",
+      "tarball_append_byte": true
+    },
+    {
+      "expect": "fail",
+      "name": "source signature as platform signature",
+      "signature": "source"
+    }
+  ],
+  "contract": "plugins.release-signature v1.1",
+  "key_id": "plugins-b0a54b8c82cd374c",
+  "platform": "linux-amd64",
+  "platform_message": "nself-plugin-bin-v1\\n<slug>\\n<version>\\n<platform>\\n<sha256 hex of the platform tarball>\\n",
+  "platform_sha256": "0bbf761b252a3f33a7e560bc6e2f6e14368b5fad183ba3b55b3d94cd1c423934",
+  "platform_signature": {
+    "alg": "ed25519",
+    "key_id": "plugins-b0a54b8c82cd374c",
+    "sig": "UXydM3ZxI/cFhxHbz1Czwy4OMXBzpUptrNoELV8ioVuuXIp2f+WwZAphmZWzKhGbNMO1jjHuxlbXBEzy26IIBg=="
+  },
+  "platform_tarball": "demo-1.0.0-linux-amd64.tar.gz",
+  "public_key": "fixture.pub",
+  "slug": "demo",
+  "source_sha256": "635edf24942ec563525eb92dc487921c1bb0ff7fb2f9941976752f13a54e17d2",
+  "source_signature": {
+    "alg": "ed25519",
+    "key_id": "plugins-b0a54b8c82cd374c",
+    "sig": "UjlQd8JE1gHR+Q6+w6j6bHVx/FalkoYpeiwICNI60PytRFbBYS0yWdDfqEBfeAbuGfNk4rbACfX7km+1YOouBg=="
+  },
+  "source_tarball": "demo-1.0.0.tar.gz",
+  "version": "1.0.0"
+}
