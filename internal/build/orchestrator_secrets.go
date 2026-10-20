@@ -91,6 +91,9 @@ func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects, s
 			}
 			continue
 		}
+		if os.Getenv("NSELF_CI") != "" || os.Getenv("CI") != "" {
+			return fmt.Errorf("%s is unset in CI: export it for every build or define it in .env.secrets; refusing to persist an auto-generated value that would shadow later exports", c.key)
+		}
 		toWrite = append(toWrite, secretEntry{c.key, *c.dst})
 	}
 

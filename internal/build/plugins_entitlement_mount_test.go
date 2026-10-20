@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -89,6 +90,13 @@ func TestMountIgnoresOverride(t *testing.T) {
 }
 
 func TestMountEmptyFileE125(t *testing.T) {
+	// An installed host licence must not turn this empty-cache fixture into
+	// an online renewal test.
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "")
+	for i := 1; i <= 10; i++ {
+		t.Setenv(fmt.Sprintf("NSELF_LICENSE_KEY_%d", i), "")
+	}
 	compattest.Set(t, true)
 	t.Setenv("LICENSE_CACHE_PATH", filepath.Join(t.TempDir(), "missing"))
 	t.Setenv("LICENSE_PUBLIC_KEY_OVERRIDE", "")

@@ -246,7 +246,7 @@ func initializeDatabasePhase(ctx context.Context, cfg *config.Config, opts start
 		// misdirect for this case, so name the real problem instead.
 		hints := []string{
 			"Check PostgreSQL logs: nself logs postgres",
-			"Verify POSTGRES_USER and POSTGRES_PASSWORD in .env",
+			"Verify POSTGRES_USER in .env and POSTGRES_PASSWORD in .env.secrets (which overrides .env)",
 			"Try restarting: nself restart",
 		}
 		if errors.Is(err, database.ErrInvalidIdentifier) {

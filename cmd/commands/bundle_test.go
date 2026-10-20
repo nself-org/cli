@@ -32,6 +32,9 @@ const fixtureBundlesJSON = `{
 }`
 
 func TestMain(m *testing.M) {
+	// Fixtures model local projects; CI-specific tests opt in explicitly.
+	_ = os.Unsetenv("CI")
+	_ = os.Unsetenv("NSELF_CI")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(fixtureBundlesJSON))
 	}))

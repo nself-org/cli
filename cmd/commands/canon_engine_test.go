@@ -771,6 +771,7 @@ func TestCanonEngineSafety(t *testing.T) {
 // TestCanonEnginePrepare drives the whole pre-dispatch path on the fixture tree:
 // argv rewrite, tree relocation, destination check, warning, hub preflight.
 func TestCanonEnginePrepare(t *testing.T) {
+	t.Setenv("NSELF_PLUGIN_DIR", t.TempDir())
 	tb := fixtureTable(t)
 	run := func(root *cobra.Command, v15, mount bool, argv ...string) ([]string, string, error) {
 		t.Helper()
