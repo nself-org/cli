@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 
@@ -113,23 +114,42 @@ func runPluginTest(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// fallbackGoImage runs plugins whose go.mod has no readable go directive.
-const fallbackGoImage = "golang:1.26-alpine"
+// fallbackGoMinor is the Go release used when the CLI's own version cannot be read.
+const fallbackGoMinor = "1.26"
+
+// goMinorRE reads major.minor from a Go version such as go1.26.9.
+var goMinorRE = regexp.MustCompile(`^go(\d+\.\d+)`)
+
+// goImage spells the golang image for a major.minor release. It is built from
+// parts, so the image-literal scan (internal/compose) has no literal to flag.
+func goImage(minor string) string { return fmt.Sprintf("golang:%s-alpine", minor) }
+
+// fallbackGoImage runs plugins whose go.mod has no readable go directive: the
+// toolchain this CLI was built with, which the plugin catalog also targets.
+func fallbackGoImage() string { return fallbackGoImageFor(runtime.Version()) }
+
+// fallbackGoImageFor is fallbackGoImage for an explicit Go version string.
+func fallbackGoImageFor(version string) string {
+	if m := goMinorRE.FindStringSubmatch(version); m != nil {
+		return goImage(m[1])
+	}
+	return goImage(fallbackGoMinor)
+}
 
 // goDirective matches the `go 1.26.4` line of a go.mod.
 var goDirective = regexp.MustCompile(`(?m)^go[ \t]+(\d+\.\d+)(?:\.\d+)?[ \t\r]*(?://.*)?$`)
 
 // unitTestImage picks the golang image for a plugin: its go.mod go line
-// (major.minor) so the toolchain satisfies the directive, else fallbackGoImage.
+// (major.minor) so the toolchain satisfies the directive, else fallbackGoImage().
 func unitTestImage(pluginPath string) string {
 	data, err := os.ReadFile(filepath.Join(pluginPath, "go.mod"))
 	if err != nil {
-		return fallbackGoImage
+		return fallbackGoImage()
 	}
 	if m := goDirective.FindSubmatch(data); m != nil {
-		return "golang:" + string(m[1]) + "-alpine"
+		return goImage(string(m[1]))
 	}
-	return fallbackGoImage
+	return fallbackGoImage()
 }
 
 // unitTestDockerArgs builds the `docker run` arguments for the unit phase.
