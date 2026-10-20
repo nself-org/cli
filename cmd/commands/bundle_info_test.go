@@ -63,9 +63,9 @@ func TestBundleInfoPluginsAllowed(t *testing.T) {
 			t.Fatalf("ValidateFull: %+v, %v", res, err)
 		}
 		got := resolveBundleLicenseStatus("chat")
-		wantActive := strings.Contains(t.Name(), "v1.5")
-		if gotActive := strings.HasPrefix(got, "active"); gotActive != wantActive {
-			t.Errorf("status %q: active=%v, want %v", got, gotActive, wantActive)
+		wantIncluded := strings.Contains(t.Name(), "v1.5")
+		if gotIncluded := strings.HasPrefix(got, "cached entitlement (unverified;"); gotIncluded != wantIncluded {
+			t.Errorf("status %q: included=%v, want %v", got, gotIncluded, wantIncluded)
 		}
 	})
 }

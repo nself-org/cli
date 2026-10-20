@@ -3,7 +3,7 @@ name: Docker Multi-Arch Publish
 # Publishes nself/nself after every successful Release run (P7-HYG-06, EPIC H6).
 #
 # Secrets (nself-org organisation secrets, visible to this repo):
-#   DOCKERHUB_USERNAME, DOCKERHUB_TOKEN, NSELF_LICENSE_PUBKEY_HEX
+#   DOCKERHUB_USERNAME, DOCKERHUB_TOKEN
 # With either Docker Hub secret absent the job FAILS on every event; there is no
 # skip path (a green run that pushed nothing hid an unpublished image for months).
 #
@@ -110,7 +110,6 @@ jobs:
             VERSION=${{ steps.version.outputs.version }}
             COMMIT=${{ steps.source.outputs.commit }}
             BUILD_DATE=${{ steps.source.outputs.date }}
-            NSELF_LICENSE_PUBKEY_HEX=${{ secrets.NSELF_LICENSE_PUBKEY_HEX }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

@@ -142,7 +142,8 @@ func runBundleInfo(cmd *cobra.Command, args []string) error {
 
 // resolveBundleLicenseStatus returns a human-readable license status string
 // for the given canonical bundle slug. Reads the local license cache — no
-// network call.
+// network call. Cached claims are labeled unverified because this display
+// does not make the signature, clock and grace checks of a license decision.
 func resolveBundleLicenseStatus(bundleSlug string) string {
 	if bundleSlug == "task" {
 		return "active (free)"
@@ -157,7 +158,7 @@ func resolveBundleLicenseStatus(bundleSlug string) string {
 
 	// ɳSelf+ (owner / enterprise / plus tiers) covers all bundles.
 	if tier == "plus" || tier == "enterprise" || tier == "owner" {
-		return fmt.Sprintf("active via ɳSelf+ (%s tier)", cache.Tier)
+		return fmt.Sprintf("cached entitlement (unverified; ɳSelf+ via %s tier)", cache.Tier)
 	}
 
 	// Check if the specific bundle is in PluginsAllowed.
@@ -168,13 +169,13 @@ func resolveBundleLicenseStatus(bundleSlug string) string {
 		for _, allowed := range cache.PluginsAllowed {
 			for _, bp := range b.Plugins {
 				if strings.EqualFold(allowed, bp) {
-					return fmt.Sprintf("active (%s tier)", cache.Tier)
+					return fmt.Sprintf("cached entitlement (unverified; %s tier)", cache.Tier)
 				}
 			}
 		}
 	}
 
-	return fmt.Sprintf("not included in current license (%s tier — run: nself license set <key>)", cache.Tier)
+	return fmt.Sprintf("not included in cached license (unverified; %s tier; run: nself license set <key>)", cache.Tier)
 }
 
 // checkPluginInstalled returns true if the plugin appears to be installed locally.

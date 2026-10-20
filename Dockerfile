@@ -7,9 +7,8 @@
 #
 # Consumed by .github/workflows/docker-publish.yml (docker/build-push-action,
 # context: .). Build args mirror .goreleaser.yml ldflags so the image is
-# identical to the released binaries — including the license public key, without
-# which the binary is a "dev build" that skips pro-plugin license verification
-# (see internal/license/cache.go IsZeroPubKey).
+# identical to the released binaries. License verification uses the committed
+# public keys in internal/license/keys.go, with no build-time key injection.
 #
 # GO_VERSION must track the `go` directive in go.mod (currently 1.26).
 
@@ -27,7 +26,6 @@ COPY . .
 ARG VERSION=dev
 ARG COMMIT=unknown
 ARG BUILD_DATE=unknown
-ARG NSELF_LICENSE_PUBKEY_HEX=""
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -35,8 +33,7 @@ RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath \
       -ldflags="-s -w \
         -X github.com/nself-org/cli/internal/version.Version=${VERSION} \
         -X github.com/nself-org/cli/internal/version.Commit=${COMMIT} \
-        -X github.com/nself-org/cli/internal/version.BuildDate=${BUILD_DATE} \
-        -X github.com/nself-org/cli/internal/license.licensePubKeyHex=${NSELF_LICENSE_PUBKEY_HEX}" \
+        -X github.com/nself-org/cli/internal/version.BuildDate=${BUILD_DATE}" \
       -o /out/nself ./cmd/nself/
 
 # Runtime: the image IS the CLI. nself shells out to the `docker` client (100+

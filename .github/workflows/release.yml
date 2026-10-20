@@ -108,8 +108,6 @@ jobs:
           echo "Lockstep: CLI == Admin == ${CLI_VERSION}"
 
       - name: Build dist
-        env:
-          NSELF_LICENSE_PUBKEY_HEX: ${{ secrets.NSELF_LICENSE_PUBKEY_HEX }}
         run: make dist
 
       # S49-T05: verify each tarball's embedded binary arch matches the tarball filename.
