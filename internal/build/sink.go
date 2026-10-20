@@ -158,7 +158,7 @@ func (m *memSink) Remove(p string) error {
 	if _, planned := m.files[k]; planned {
 		delete(m.files, k)
 		// Removing a planned file also hides an older on-disk copy, if any.
-		if _, err := os.Stat(m.abs(p)); err == nil {
+		if _, err := os.Lstat(m.abs(p)); err == nil {
 			m.removed[k] = true
 		}
 		return nil
@@ -166,7 +166,7 @@ func (m *memSink) Remove(p string) error {
 	if m.removed[k] {
 		return &fs.PathError{Op: "remove", Path: p, Err: fs.ErrNotExist}
 	}
-	if _, err := os.Stat(m.abs(p)); err != nil {
+	if _, err := os.Lstat(m.abs(p)); err != nil {
 		return err
 	}
 	m.removed[k] = true
