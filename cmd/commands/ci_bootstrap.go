@@ -141,7 +141,7 @@ func retireLegacyCICache() {
 				_ = os.Remove(legacy)
 			}
 		}
-		fmt.Fprintln(ciNoticeOut, "notice: ~/.nself/bin/nself-ci is no longer used (unverified); nself now installs the signed ci plugin")
+		_, _ = fmt.Fprintln(ciNoticeOut, "notice: ~/.nself/bin/nself-ci is no longer used (unverified); nself now installs the signed ci plugin")
 	})
 }
 

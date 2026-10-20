@@ -68,6 +68,10 @@ func (c *Compose) ComposeConfig(ctx context.Context, workdir string) error {
 // Cancel hook propagates to all spawned child processes, not just the top-level
 // docker process.
 func (c *Compose) Run(ctx context.Context, workdir string, args ...string) error {
+	return c.run(ctx, workdir, nil, nil, args...)
+}
+
+func (c *Compose) run(ctx context.Context, workdir string, stdout, stderr io.Writer, args ...string) error {
 	cmd := exec.CommandContext(ctx, c.dockerBin(), args...)
 	cmd.Dir = workdir
 	cmd.WaitDelay = 5 * time.Second
@@ -106,7 +110,9 @@ func (c *Compose) Run(ctx context.Context, workdir string, args ...string) error
 	// caused by goroutines writing to os.Stdout past the test deadline.
 	outSink := io.Writer(os.Stdout)
 	errSink := io.Writer(os.Stderr)
-	if !term.IsTerminal(int(os.Stdout.Fd())) {
+	if stdout != nil && stderr != nil {
+		outSink, errSink = stdout, stderr
+	} else if !term.IsTerminal(int(os.Stdout.Fd())) {
 		outSink = io.Discard
 		errSink = io.Discard
 	}

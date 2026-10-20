@@ -6,7 +6,6 @@ cmd/commands/clean.go 2
 cmd/commands/db_admin.go 3
 cmd/commands/db_migrate.go 1
 cmd/commands/deploy_diagnostics.go 1
-cmd/commands/deploy_follow.go 1
 cmd/commands/deploy_lifecycle.go 1
 cmd/commands/doctor_checks_env.go 3
 cmd/commands/functions_deploy.go 1
