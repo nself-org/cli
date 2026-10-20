@@ -149,7 +149,7 @@ func TestComposeForFollowsBuildManifests(t *testing.T) {
 			t.Fatal(err)
 		}
 		got := strings.Join(strings.Fields(string(raw)), " ")
-		want := strings.Join([]string{"compose", "-f", base, "-f", frag, "--env-file", dotenv, "--env-file", computed, "up", "-d", "--", "minio"}, " ")
+		want := strings.Join([]string{"compose", "-f", base, "-f", frag, "--env-file", dotenv, "--env-file", computed, "up", "-d", "--build", "--", "minio"}, " ")
 		if got != want {
 			t.Fatalf("docker argv\n got: %s\nwant: %s", got, want)
 		}

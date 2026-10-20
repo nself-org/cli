@@ -78,7 +78,7 @@ func TestDevComposeCallsCarryEnvFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	flags := "compose --env-file " + filepath.Join(dir, ".env") + " --env-file " + filepath.Join(dir, ".nself", "compose.env")
-	want := []string{flags + " up -d", flags + " up -d --no-deps --build -- notify"}
+	want := []string{flags + " up -d --build", flags + " up -d --no-deps --build -- notify"}
 	if got := strings.Split(strings.TrimRight(string(b), "\n"), "\n"); !reflect.DeepEqual(got, want) {
 		t.Errorf("compose calls =\n%q\nwant\n%q", got, want)
 	}
