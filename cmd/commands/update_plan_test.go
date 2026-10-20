@@ -282,7 +282,7 @@ func TestUpdatePlanRateLimited(t *testing.T) {
 	if err == nil {
 		t.Fatalf("a 429 produced a plan instead of an error:\n%s", out)
 	}
-	if d := errs.Describe(err); d == nil || d.Code != "E400" || errs.ExitCodeFor(err) == 0 {
+	if d := errs.Describe(err); d == nil || d.Code != "E456" || errs.ExitCodeFor(err) == 0 {
 		t.Fatalf("error is not coded and non-zero: %v (%+v)", err, d)
 	}
 	if !strings.Contains(err.Error(), "429") && !strings.Contains(fmt.Sprint(errs.Describe(err)), "429") {
@@ -302,8 +302,8 @@ func TestUpdatePlanRateLimited(t *testing.T) {
 		return d
 	}
 	t.Cleanup(func() { newUpdateDeps = old })
-	if _, _, err := runUpdate(t, "--plan"); err == nil || errs.Describe(err).Code != "E400" {
-		t.Fatalf("registry failure = %v, want E400", err)
+	if _, _, err := runUpdate(t, "--plan"); err == nil || errs.Describe(err).Code != "E456" {
+		t.Fatalf("registry failure = %v, want E456", err)
 	}
 }
 

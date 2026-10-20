@@ -37,10 +37,11 @@ import (
 func gatherPlan(ctx context.Context, d updateDeps, l lock.Lock, target string) (plan.Plan, error) {
 	c := plan.Candidates{CLICurrent: d.runningVersion(), Images: map[string]plan.Candidate{}, Plugins: map[string]plan.Candidate{}}
 	tag, _, err := d.latestRelease(target)
+	var status *releaseAPIStatusError
 	switch {
 	case err == nil:
 		c.CLI = plan.Candidate{Value: tag}
-	case strings.Contains(err.Error(), "status 404"):
+	case errors.As(err, &status) && status.StatusCode == http.StatusNotFound:
 		c.CLI = plan.Candidate{Reason: "no such release (HTTP 404)"}
 	default:
 		return plan.Plan{}, sourceFailure("the CLI release lookup", err)

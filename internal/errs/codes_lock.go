@@ -1,4 +1,4 @@
-// Registry fragment: project lock codes (E455-E459, P7-LIVE-09). E456-E459 are
+// Registry fragment: project lock codes (E455-E459, P7-LIVE-09). E457-E459 are
 // reserved for this Ticket's owner Epic and stay unregistered until a producer
 // exists. Registered from init() through Register; see codes.go for the rules
 // and codes_blocks.go for the allocation.
@@ -14,6 +14,11 @@ func init() {
 			DefaultFix: "Run nself build to regenerate the stack from the lock, or accept the change by running nself build --write-lock and committing the new nself.lock.yaml.",
 			DocsPath:   "reference/error-codes#e455",
 			Exit:       1,
+		},
+		CodeEntry{
+			Code: "E456", Category: "reconcile", Summary: "Update plan source is unavailable",
+			DefaultWhy: "The CLI release lookup or plugin registry could not answer the update plan request.",
+			DefaultFix: "Retry in a few minutes. Nothing was changed.", DocsPath: "reference/error-codes#e456", Exit: 1,
 		},
 	)
 }

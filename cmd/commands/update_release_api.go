@@ -43,7 +43,7 @@ func fetchReleaseFromURL(apiURL string) (tag string, htmlURL string, err error) 
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
+		return "", "", &releaseAPIStatusError{StatusCode: resp.StatusCode}
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -140,4 +140,11 @@ func printCheckResult(current, latest, releaseURL string, upToDate bool) error {
 		fmt.Printf("\nRun %s to update.\n", ui.C(ui.Cyan, "nself update"))
 	}
 	return nil
+}
+
+// releaseAPIStatusError preserves the response status for update-plan decisions.
+type releaseAPIStatusError struct{ StatusCode int }
+
+func (e *releaseAPIStatusError) Error() string {
+	return fmt.Sprintf("GitHub API returned status %d", e.StatusCode)
 }
