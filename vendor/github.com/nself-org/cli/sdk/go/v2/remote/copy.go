@@ -53,7 +53,9 @@ func CopyTo(ctx context.Context, t Target, local, remote string) error {
 // own -p means "preserve times" and would leave N as a local operand that ends
 // option parsing. -4, -6, -q, -v, -i X, -o V and -oV mean the same in scp. Any
 // other element is refused, so scp only ever sees an option scp defines, with
-// its value attached or directly after it.
+// its value attached or directly after it. SessionType=default is dropped:
+// scp selects its own session type (SFTP uses ssh -s), and an explicit
+// SessionType conflicts with that selection before ssh reads its config.
 func scpOptions(opts []string) ([]string, error) {
 	out := make([]string, 0, len(opts))
 	for i := 0; i < len(opts); i++ {
@@ -72,9 +74,14 @@ func scpOptions(opts []string) ([]string, error) {
 			if a == "-p" {
 				a = "-P"
 			}
+			if a == "-o" && opts[i] == "SessionType=default" {
+				continue
+			}
 			out = append(out, a, opts[i])
 		} else if strings.HasPrefix(a, "-o") {
-			out = append(out, a)
+			if a != "-oSessionType=default" {
+				out = append(out, a)
+			}
 		} else {
 			return nil, fmt.Errorf("option %q cannot be passed to scp", a)
 		}

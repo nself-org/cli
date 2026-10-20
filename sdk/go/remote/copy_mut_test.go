@@ -15,6 +15,9 @@ func TestScpOptions_ExactMapping(t *testing.T) {
 		in   []string
 		want []string
 	}{
+		{"drop SessionType pair", []string{"-o", "SessionType=default"}, []string{}},
+		{"drop SessionType attached", []string{"-oSessionType=default"}, []string{}},
+		{"keep identity named SessionType", []string{"-i", "SessionType=default"}, []string{"-i", "SessionType=default"}},
 		{"drop -T", []string{"-T"}, []string{}},
 		{"drop -a", []string{"-a"}, []string{}},
 		{"drop -x", []string{"-x"}, []string{}},
