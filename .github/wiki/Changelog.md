@@ -9,6 +9,7 @@ follows Keep a Changelog, with Conventional Commit classification.
 
 - feat(canon): final ratchet: surface budget 52 to 20 with equality restored (`TestCommandSurfaceBudgetIsTight`), permanent ceiling (`TestCanonCeiling`), no pending command (`TestCanonNoPending`), shim lifetime (`TestCanonShimLifetime`: fails at 1.6.0 until the rows are deleted), root help fits 45 lines (`TestHelpFits`) (P7-CANON-17)
 - fix(ssl): `trust ssl setup --acme --adopt-certbot` follows a served conf that names a top-level ssl-dir symlink to `certificates/<name>` (one hop, refusing any link that leaves `certificates/`), so lineages such as api.task and auth.task can leave host certbot (D-1214)
+- fix(build): `POSTGRES_PASSWORD` and `HASURA_GRAPHQL_ADMIN_SECRET` are generated once and persisted to `.env.secrets` unless an env file or the process environment defines them; a project built before this adopts the running password from `.nself/compose.env` for its render and warns until the key is pinned in `.env.secrets` (D-0506). [[Config-Postgres]] describes the precedence and the upgrade step (D-0706)
 
 ### Moved
 

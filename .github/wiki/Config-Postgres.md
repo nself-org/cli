@@ -6,7 +6,7 @@ PostgreSQL is the foundation of every ɳSelf stack. It stores all application da
 
 ## Environment Variables
 
-All Postgres variables are optional except `POSTGRES_PASSWORD`, which must be set explicitly because ɳSelf will never generate a default database password for you.
+Every Postgres variable is optional. When `POSTGRES_PASSWORD` is unset, `nself build` generates a random password once and writes it to `.env.secrets` (mode 0600), so later builds read the same value back. A password you set yourself always wins; see [Where the password comes from](#where-the-password-comes-from).
 
 | Variable | Default | Required | Description |
 |----------|---------|----------|-------------|
@@ -18,7 +18,7 @@ All Postgres variables are optional except `POSTGRES_PASSWORD`, which must be se
 | `POSTGRES_PORT` | `5432` | No | Port exposed to the host machine. Change this if you have a port conflict with another local Postgres instance (e.g., set to `5433`). |
 | `POSTGRES_DB` | `nself` | No | Name of the default database created on first start. |
 | `POSTGRES_USER` | `postgres` | No | Superuser account name for the database. |
-| `POSTGRES_PASSWORD` | *(none)* | **Yes** | Superuser password. Must be at least 16 characters. ɳSelf enforces a minimum length and rejects common insecure patterns (e.g., `postgres`, `password`, `changeme`). |
+| `POSTGRES_PASSWORD` | *(generated on first build)* | No | Superuser password. Must be at least 16 characters. ɳSelf enforces a minimum length and, in staging and production, rejects common insecure patterns (e.g., `postgres`, `password`, `changeme`). When unset, `nself build` generates one and persists it to `.env.secrets`. |
 | `POSTGRES_EXTENSIONS` | `uuid-ossp` | No | Comma-separated list of extensions to install automatically at startup. The extensions `uuid-ossp`, `pgcrypto`, and `pg_trgm` are always installed regardless of this value. Add additional extensions here as needed. When this list contains `pgvector` and `POSTGRES_IMAGE` is unset, `nself build` selects the `pgvector/pgvector:pg<major>` image instead of plain `postgres:<POSTGRES_VERSION>`. |
 | `POSTGRES_EXPOSE_PORT` | `auto` | No | Controls whether `POSTGRES_PORT` is bound on the host. `auto` exposes the port in dev and hides it in prod. Set to `true` to always expose, or `false` to always hide. |
 | `POSTGRES_MEM_LIMIT` | `2g` | No | Docker memory limit for the Postgres container. Uses Docker format: `512m`, `1g`, `4g`, etc. |
@@ -157,10 +157,22 @@ Additional hardening applied to every Postgres container:
 **Password requirements:**
 
 - Minimum 16 characters
-- Common weak patterns are rejected (`postgres`, `password`, `secret`, `changeme`, etc.)
-- Use `nself config generate-secret` to create a strong random password if you do not have a preferred method
+- Common weak patterns are rejected in staging and production (`postgres`, `password`, `secret`, `changeme`, etc.)
+- To pick your own, set `POSTGRES_PASSWORD` in `.env.secrets` (or `.env.local` for personal development); `openssl rand -base64 24` makes a strong one
 
-**Never commit `POSTGRES_PASSWORD` to git.** Set it in `.env.secrets` (for production) or `.env.local` (for personal development), both of which are gitignored by default.
+### Where the password comes from
+
+`nself build` resolves `POSTGRES_PASSWORD` in this order, first match wins:
+
+1. A value in any of the project's env files (`.env`, `.env.dev`, `.env.staging`, `.env.prod`, `.env.secrets`, `.env.local` and custom `.env.<name>` files, whichever `ENV` is active), or exported in the process environment. Nothing is generated or written. A key in an env file for another environment also stops generation, so keep per-environment passwords in the matching file.
+2. A project built by an earlier version keeps its running database password only in `.nself/compose.env`. The build reuses that value for the render and logs a warning naming the key. It does not write it, so a later rotated export is not shadowed. Pin it by adding `POSTGRES_PASSWORD` to `.env.secrets`.
+3. Otherwise the build generates a random password and appends it to `.env.secrets`.
+
+`HASURA_GRAPHQL_ADMIN_SECRET` follows the same rule. `.env.secrets` loads after `.env.<env>`, so a value there overrides the same key in an earlier file. For the keys the build persists (these two, the JWT secret and the plugin internal secrets) it warns, naming the key and file but never the value, when `.env.secrets` holds a different value from an earlier file.
+
+**Upgrading a project that was built before the password was persisted.** Earlier versions generated a new password on every load and never saved it, so a rebuild could render a password that no longer matched the existing database volume. After upgrading, run `nself build`: the build adopts the live password from `.nself/compose.env`. Then copy `POSTGRES_PASSWORD` (and `HASURA_GRAPHQL_ADMIN_SECRET`) from `.nself/compose.env` into `.env.secrets` so the value is pinned.
+
+**Never commit `POSTGRES_PASSWORD` to git.** `.env.secrets` and `.env.local` are gitignored by default.
 
 ---
 
