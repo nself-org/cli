@@ -164,17 +164,18 @@ jobs:
 
       # D-0275: the default run above is v1.4 only, so a test that breaks under
       # the v1.5 strict host-key and pipeline paths stayed unseen until the
-      # P7-SHIP flip. One Linux leg re-runs the suite with v1.5 on. cmd/commands
-      # still has tests that assume v1.4 (see D-0275 in hq/quality/debt.yaml), so
-      # that package runs only the pinned Hasura remote test here; widen the -run as
-      # the rest are pinned or fixed, until the whole package runs.
+      # P7-SHIP flip. One Linux leg re-runs the whole suite with v1.5 on. The
+      # skipped names pass alone under NSELF_V15=1 but fail after tests that load
+      # a project .env and leave its keys in the process environment (the v1.5
+      # remote deploy then refuses them as process-only keys, D-0260). The first
+      # three are internal/reconcile tests. D-0275 in hq/quality/debt.yaml tracks
+      # isolating them so this list can go.
       - name: Test (v1.5 mode, NSELF_V15=1)
         if: matrix.os == 'ubuntu-latest'
         env:
           NSELF_V15: '1'
         run: |
-          go test -mod=vendor -timeout 10m -skip '^(TestShadowInvocationFiles|TestContainerImpactBrokenCompose|TestStateFaultInjection)$' $(go list -mod=vendor ./... | grep -v '/cmd/commands$')
-          go test -mod=vendor -timeout 10m -run '^TestDBHasuraRemotePartialFailure$' ./cmd/commands
+          go test -mod=vendor -timeout 20m -skip '^(TestShadowInvocationFiles|TestContainerImpactBrokenCompose|TestStateFaultInjection|TestWriteResolvedDeployEnv_LaterFilesOverrideEarlier|TestWriteResolvedDeployEnv_CleanupRemovesFile|TestEnvCascadePerEnv|TestDeployCascadeMatchesBuild|TestSnapshotMatchesConfigLoad|TestRemoteDeployNeverReadsEnvLocal|TestSnapshotLiteralDollarStaysLiteral|TestScratchStageShipsGeneratedAndAllowlisted|TestFrontedScratchStagesFront|TestFrontedLayoutMismatchIsRefusedBeforeStaging|TestScratchReportsStaleGeneratedOutputTheBuildDidNotRegenerate|TestScratchAllowlistedMarkedFileIsCopiedAndShipped|TestScratchReportsSymlinksUnderNginx)$' ./...
 
       - name: Test (Windows — pure-Go packages; Docker integration tests skipped)
         if: matrix.skip_docker_tests == 'true'

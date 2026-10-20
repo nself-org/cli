@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/ssl"
 	"github.com/nself-org/cli/internal/ssl/acme"
 )
@@ -128,6 +129,7 @@ func TestSSLAddACME(t *testing.T) {
 }
 
 func TestSSLAddACMERefusals(t *testing.T) {
+	compattest.Set(t, false) // D-0275: asserts v1.4 behaviour; v1.5 mode is not asserted by this test
 	f, _ := addFix(t, http.ErrServerClosed)
 	if _, err := f.runAdd("app.example.org", "--acme", "--agree-tos"); err == nil || !strings.Contains(err.Error(), "does not answer the HTTP-01 challenge location") ||
 		len(f.runs) != 0 {

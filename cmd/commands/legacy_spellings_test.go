@@ -34,6 +34,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/nself-org/cli/internal/compat/compattest"
 )
 
 // TestRewriteLegacyInvocation_ReleaseStatusSplicesArgs locks the argv-splice
@@ -89,6 +91,7 @@ func TestRewriteLegacyInvocation_ReleaseStatusSplicesArgs(t *testing.T) {
 // status` against a project directory with no `release` plugin installed,
 // and asserts both reach the same final failure.
 func TestReleaseStatusLegacyAndDirectSpellingsFailIdentically(t *testing.T) {
+	compattest.Set(t, false) // D-0275: Execute() under v1.5 reshapes the shared root command and breaks every registration test after it
 	runFromScratchDir(t)
 	t.Setenv("HOME", t.TempDir()) // ensure no release plugin is "installed" via a real ~/.nself
 

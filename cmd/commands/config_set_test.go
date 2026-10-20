@@ -23,6 +23,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/nself-org/cli/internal/sysexec"
 )
 
 // TestConfigSet_MonorepoRedirectIsVisible proves the T16 fix: running
@@ -36,6 +38,7 @@ import (
 // from — this test fails against that code because the output contains no
 // path separator at all, let alone the backend directory's full path.
 func TestConfigSet_MonorepoRedirectIsVisible(t *testing.T) {
+	t.Cleanup(sysexec.Set(&sysexec.Fake{})) // D-0275: v1.5 config set builds; keep it off the host mkcert
 	monorepoRoot := t.TempDir()
 	backendDir := filepath.Join(monorepoRoot, ".backend")
 	nestedDir := filepath.Join(monorepoRoot, "apps", "foo")

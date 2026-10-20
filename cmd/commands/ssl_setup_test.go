@@ -21,6 +21,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/nself-org/cli/internal/compat/compattest"
 )
 
 // resetSSLSetupFlags restores sslSetupCmd's flags to their registered
@@ -46,6 +48,7 @@ func TestRunSSLSetup_NoProject_Errors(t *testing.T) {
 }
 
 func TestRunSSLSetup_NoCertbot_Errors(t *testing.T) {
+	compattest.Set(t, false) // D-0275: asserts v1.4 behaviour; v1.5 mode is not asserted by this test
 	withProjectRoot(t, func(root string) {
 		resetSSLSetupFlags(t)
 		if err := os.WriteFile(filepath.Join(root, ".env"), []byte("BASE_DOMAIN=example.com\nADMIN_EMAIL=ops@example.com\n"), 0o644); err != nil {
@@ -65,6 +68,7 @@ func TestRunSSLSetup_NoCertbot_Errors(t *testing.T) {
 // regression here would attempt (and fail deep inside certbot, or worse,
 // hang on an ACME challenge) issuance for a domain that can never validate.
 func TestRunSSLSetup_LocalhostDomain_Rejected(t *testing.T) {
+	compattest.Set(t, false) // D-0275: asserts v1.4 behaviour; v1.5 mode is not asserted by this test
 	withProjectRoot(t, func(root string) {
 		resetSSLSetupFlags(t)
 		if err := os.WriteFile(filepath.Join(root, ".env"), []byte("BASE_DOMAIN=localhost\nADMIN_EMAIL=ops@example.com\n"), 0o644); err != nil {
@@ -87,6 +91,7 @@ func TestRunSSLSetup_LocalhostDomain_Rejected(t *testing.T) {
 // checked one would silently register with an empty identity when the
 // other source was used.
 func TestRunSSLSetup_MissingEmail_FlagAndEnvBothEmpty_Errors(t *testing.T) {
+	compattest.Set(t, false) // D-0275: asserts v1.4 behaviour; v1.5 mode is not asserted by this test
 	withProjectRoot(t, func(root string) {
 		resetSSLSetupFlags(t)
 		if err := os.WriteFile(filepath.Join(root, ".env"), []byte("BASE_DOMAIN=example.com\n"), 0o644); err != nil {
@@ -108,6 +113,7 @@ func TestRunSSLSetup_MissingEmail_FlagAndEnvBothEmpty_Errors(t *testing.T) {
 // deep inside the certbot invocation with a confusing error, instead of
 // failing fast with a clear message naming the supported providers.
 func TestRunSSLSetup_UnsupportedProvider_Rejected(t *testing.T) {
+	compattest.Set(t, false) // D-0275: asserts v1.4 behaviour; v1.5 mode is not asserted by this test
 	withProjectRoot(t, func(root string) {
 		resetSSLSetupFlags(t)
 		defer resetSSLSetupFlags(t)

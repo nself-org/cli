@@ -11,6 +11,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/invoke"
 	"github.com/spf13/cobra"
@@ -28,6 +29,7 @@ func findCmdForMask(t *testing.T, path ...string) *cobra.Command {
 }
 
 func TestCommandSecretValues_Positionals(t *testing.T) {
+	compattest.Set(t, false) // D-0275: asserts v1.4 behaviour; v1.5 mode is not asserted by this test
 	cases := []struct {
 		name string
 		path []string

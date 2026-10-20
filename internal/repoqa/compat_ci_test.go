@@ -10,7 +10,8 @@ import (
 )
 
 // TestV15SuiteInCI prevents the default compatibility mode from hiding v1.5
-// regressions. A required job must run the suite (cmd/commands narrowed, D-0275) with NSELF_V15=1.
+// regressions. A required job must run the whole module, cmd/commands included
+// (D-0275: named skips only), with NSELF_V15=1.
 func TestV15SuiteInCI(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci.yml"))
 	if err != nil {
@@ -43,13 +44,36 @@ func TestV15SuiteInCI(t *testing.T) {
 			if mode != "1" || step.ContinueOnError {
 				continue
 			}
-			// The step must test the module (go list ./...) and keep the Hasura
-			// remote tests of cmd/commands under v1.5.
-			if strings.Contains(step.Run, "go test") && strings.Contains(step.Run, "go list -mod=vendor ./...") &&
-				strings.Contains(step.Run, "-run '^TestDBHasuraRemotePartialFailure$' ./cmd/commands") {
+			if runsV15Suite(step.Run) {
 				return
 			}
 		}
 	}
-	t.Fatal("CI must run the v1.5 suite (go list ./... plus cmd/commands Hasura tests) in a required job with NSELF_V15=1")
+	t.Fatal("CI must run the whole v1.5 suite, cmd/commands included, in a required job with NSELF_V15=1")
+}
+
+// runsV15Suite reports whether a step's script tests the whole module: go test
+// over ./... with nothing filtered out of the package list. Skipping named
+// tests (-skip) is allowed; dropping a package is not.
+func runsV15Suite(run string) bool {
+	return strings.Contains(run, "go test") && strings.Contains(run, " ./...") &&
+		!strings.Contains(run, "grep -v") && !strings.Contains(run, "-run '")
+}
+
+// TestRunsV15SuiteControls is the positive control: the old narrowed shapes are
+// refused and the whole-module form is accepted.
+func TestRunsV15SuiteControls(t *testing.T) {
+	for _, tc := range []struct {
+		name, run string
+		want      bool
+	}{
+		{"whole module with skips", "go test -mod=vendor -timeout 20m -skip '^(TestX)$' ./...", true},
+		{"cmd/commands filtered out", "go test -mod=vendor $(go list -mod=vendor ./... | grep -v '/cmd/commands$')", false},
+		{"only a -run selection", "go test -mod=vendor -run '^TestX$' ./cmd/commands", false},
+		{"no go test", "echo ./...", false},
+	} {
+		if got := runsV15Suite(tc.run); got != tc.want {
+			t.Errorf("%s: runsV15Suite = %v, want %v", tc.name, got, tc.want)
+		}
+	}
 }

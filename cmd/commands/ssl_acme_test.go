@@ -30,6 +30,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/ssl"
 	"github.com/nself-org/cli/internal/ssl/acme"
@@ -389,6 +390,7 @@ func acmeServed(t *testing.T, f *acmeFix) []byte {
 }
 
 func TestACMEFlagsRequireACME(t *testing.T) {
+	compattest.Set(t, false) // D-0275: asserts v1.4 behaviour; v1.5 mode is not asserted by this test
 	f := newACMEFix(t)
 	for _, fl := range []string{"--dry-run", "--agree-tos", "--nginx-container=x", "--adopt-certbot", "--lineage=x", "--dns-credential-file=x"} {
 		if _, err := f.run(sslSetupCmd, fl); err == nil || !strings.Contains(err.Error(), "only works with --acme") {
@@ -531,6 +533,7 @@ func TestSSLCertbotUnchanged(t *testing.T) {
 }
 
 func TestACMENginxFailureRollsBack(t *testing.T) {
+	compattest.Set(t, false) // D-0275: asserts v1.4 behaviour; v1.5 mode is not asserted by this test
 	f := newACMEFix(t)
 	if _, err := f.run(sslSetupCmd, "--acme", "--agree-tos"); err != nil {
 		t.Fatal(err)

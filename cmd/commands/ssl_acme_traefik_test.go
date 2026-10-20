@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/build"
+	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/ssl"
@@ -105,6 +106,7 @@ func TestAcmeReloaderSelect(t *testing.T) {
 }
 
 func TestAcmeTraefikReloadRollback(t *testing.T) {
+	compattest.Set(t, false) // D-0275: asserts v1.4 behaviour; v1.5 mode is not asserted by this test
 	f := newACMEFix(t)
 	renders := f.useTraefik(2) // the 1st render is the setup install, the 2nd is the renewal's reload
 	if _, err := f.run(sslSetupCmd, "--acme", "--agree-tos"); err != nil {

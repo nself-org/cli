@@ -12,6 +12,7 @@ import (
 
 	"github.com/nself-org/cli/internal/access"
 	"github.com/nself-org/cli/internal/admin"
+	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/version"
@@ -181,6 +182,7 @@ func TestAccessProdConfirm(t *testing.T) {
 }
 
 func TestAccessListHostGolden(t *testing.T) {
+	compattest.Set(t, false) // D-0275: asserts v1.4 behaviour; v1.5 mode is not asserted by this test
 	withFixtureTransport(t)
 	defer resetFlags(accessListCmd)
 	accessListCmd.SetContext(context.Background())
