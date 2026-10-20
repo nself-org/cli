@@ -30,6 +30,7 @@ package build
 import (
 	"bytes"
 	"fmt"
+	"github.com/nself-org/cli/internal/compat"
 	"os"
 	"path/filepath"
 	"sort"
@@ -201,13 +202,20 @@ func pruneGeneratedNginxSitesVia(sink Sink, sitesDir string) (removed int, forei
 		return 0, nil, regErr
 	}
 
+	var owned map[string]string
+	if compat.V15() {
+		owned, err = recordedSiteFiles(sink)
+		if err != nil {
+			return 0, nil, err
+		}
+	}
 	const headBytes = 128
 	for _, e := range entries {
 		if e.IsDir() || registered["nginx/sites/"+e.Name()] {
 			continue
 		}
 		path := filepath.Join(sitesDir, e.Name())
-		if isGeneratedNginxSiteFile(sink, path, headBytes) {
+		if isGeneratedNginxSiteFile(sink, path, headBytes) && (!compat.V15() || owned["nginx/sites/"+e.Name()] != "") {
 			if rmErr := sink.Remove(path); rmErr != nil {
 				return removed, foreign, fmt.Errorf("removing generated file %s: %w", path, rmErr)
 			}

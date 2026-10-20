@@ -109,7 +109,7 @@ func compute(ctx context.Context, req Request) (*computed, error) {
 		}
 		before[GeneratedStateDisplayPath] = File{Data: raw, Perm: perm}
 	}
-	arts := append(Diff(before, after, pendingHandEdited(req.HandEdited, state, env, req.ProjectDir, res.Planned.PluginDir)), modeArtifacts(before, after)...)
+	arts := append(Diff(before, after, unrecordedHandEdited(before, after, state, pendingHandEdited(req.HandEdited, state, env, req.ProjectDir, res.Planned.PluginDir))), modeArtifacts(before, after)...)
 	p := &Plan{
 		Command:   req.Command,
 		Trigger:   req.Trigger,
