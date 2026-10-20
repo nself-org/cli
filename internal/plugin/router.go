@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -31,14 +32,41 @@ func (e *ExitCodeError) ExitCode() int { return e.Code }
 // inherited stdout/stderr and has already reported the failure itself.
 func (e *ExitCodeError) Silent() bool { return true }
 
-// pluginBinDir returns the directory where plugin binaries are installed.
-// This is ~/.nself/plugins/bin/ (or /tmp/.nself/plugins/bin/ as fallback).
-func pluginBinDir() string {
+// ErrNoHome is returned when the plugin directories cannot be placed because
+// the user's home directory is unknown (HOME unset: a service started without a
+// user, env -i, some cron setups). There is deliberately no fallback to a
+// shared directory such as /tmp: any local user can pre-create it and plant
+// binaries the proxy would then exec (D-1413).
+var ErrNoHome = errors.New("cannot locate the nSelf plugin directory: the home directory is unknown; set HOME (or NSELF_PLUGIN_DIR where it applies)")
+
+// noHomeRoot is the root of the paths handed to callers that cannot return an
+// error. It never exists and nobody but root can create it, so a read finds
+// nothing and a write fails with an error that names the cause.
+var noHomeRoot = filepath.FromSlash("/nself-home-unknown")
+
+// pluginBinDirChecked returns ~/.nself/plugins/bin, or ErrNoHome.
+func pluginBinDirChecked() (string, error) {
 	home, err := os.UserHomeDir()
-	if err != nil {
-		return filepath.Join("/tmp", ".nself", "plugins", "bin")
+	if err != nil || home == "" {
+		return "", ErrNoHome
 	}
-	return filepath.Join(home, ".nself", "plugins", "bin")
+	return filepath.Join(home, ".nself", "plugins", "bin"), nil
+}
+
+// NoHomeRoot returns the never-existing root used in place of a plugin
+// directory when the home directory is unknown (see noHomeRoot).
+func NoHomeRoot() string { return noHomeRoot }
+
+// pluginBinDir returns the directory where plugin binaries are installed:
+// ~/.nself/plugins/bin/. With no home directory it returns a path under
+// noHomeRoot, never a shared one; callers that can report an error use
+// pluginBinDirChecked instead.
+func pluginBinDir() string {
+	dir, err := pluginBinDirChecked()
+	if err != nil {
+		return filepath.Join(noHomeRoot, ".nself", "plugins", "bin")
+	}
+	return dir
 }
 
 // ProxyCommand checks if a plugin binary exists and executes it.
@@ -68,7 +96,10 @@ func ProxyCommandWithHint(cmdName string, args []string, installHint string) err
 	pluginBinary := fmt.Sprintf("nself-%s", cmdName)
 
 	// S-002: Only look in the plugin bin directory, never the full PATH.
-	binDir := pluginBinDir()
+	binDir, err := pluginBinDirChecked()
+	if err != nil {
+		return err
+	}
 	candidate := filepath.Join(binDir, pluginBinary)
 	if runtime.GOOS == "windows" {
 		candidate += ".exe"
@@ -118,7 +149,10 @@ func ProxyCommandWithHint(cmdName string, args []string, installHint string) err
 // The mount validates the binary at discovery time (mount.Discover, E406);
 // a binary that vanishes between discovery and exec fails with E406 here.
 func ProxyBinary(binName, slug string, args []string) error {
-	binDir := pluginBinDir()
+	binDir, err := pluginBinDirChecked()
+	if err != nil {
+		return err
+	}
 	if !safeBinaryName(binName) {
 		return errs.Newf("E406", "plugin %q binary %q has an invalid name", slug, binName)
 	}

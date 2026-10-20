@@ -188,16 +188,31 @@ func init() {
 
 // --- helpers ---
 
-// resolvePluginDir returns the plugin directory from config or a sensible default.
-func resolvePluginDir() string {
+// resolvePluginDirChecked returns the plugin directory: NSELF_PLUGIN_DIR, else
+// ~/.nself/plugins. With neither it returns plugin.ErrNoHome, never a shared
+// /tmp path that any local user could pre-create (D-1413). Commands that
+// install or execute plugins call this and print the error.
+func resolvePluginDirChecked() (string, error) {
 	if d := os.Getenv("NSELF_PLUGIN_DIR"); d != "" {
-		return d
+		return d, nil
 	}
 	home, err := os.UserHomeDir()
-	if err != nil {
-		return filepath.Join("/tmp", ".nself", "plugins")
+	if err != nil || home == "" {
+		return "", plugin.ErrNoHome
 	}
-	return filepath.Join(home, ".nself", "plugins")
+	return filepath.Join(home, ".nself", "plugins"), nil
+}
+
+// resolvePluginDir is resolvePluginDirChecked for the read-mostly callers that
+// have no error to return. With no home directory it answers a path under
+// plugin.NoHomeRoot(), which does not exist: reads find no plugins, writes fail
+// naming the cause.
+func resolvePluginDir() string {
+	dir, err := resolvePluginDirChecked()
+	if err != nil {
+		return filepath.Join(plugin.NoHomeRoot(), ".nself", "plugins")
+	}
+	return dir
 }
 
 // loadConfig loads the project config from the current working directory.

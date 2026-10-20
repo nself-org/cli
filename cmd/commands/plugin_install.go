@@ -154,7 +154,10 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	pluginDir := resolvePluginDir()
+	pluginDir, err := resolvePluginDirChecked()
+	if err != nil {
+		return err
+	}
 	stage := beginInstallStage(pluginDir) // Only this invocation's creations are undone on refusal.
 
 	// Install each named plugin. Collect per-plugin errors so that a failure on

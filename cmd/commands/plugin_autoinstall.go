@@ -39,6 +39,10 @@ const autoInstallTierEnv = "NSELF_PLUGIN_INSTALL_TIER"
 // autoInstallPlugin installs the free command plugin slug (at version, when
 // given) and returns the path of its published binary.
 func autoInstallPlugin(slug, version string) (string, error) {
+	pluginDir, err := resolvePluginDirChecked()
+	if err != nil {
+		return "", fmt.Errorf("auto-install of %q: %w", slug, err)
+	}
 	// Load the project config first: it exports the project's .env into the
 	// process, and must not be able to overwrite the policy set below.
 	cfg, err := loadConfig()
@@ -48,7 +52,7 @@ func autoInstallPlugin(slug, version string) (string, error) {
 	// The caller (a bootstrap) runs no `nself build`, and the installer's hint to do so is noise here.
 	ctx := plugin.WithCallerReconciles(context.Background())
 	var bin string
-	err = withPluginInstallOperation(ctx, resolvePluginDir(), func() error {
+	err = withPluginInstallOperation(ctx, pluginDir, func() error {
 		var installErr error
 		bin, installErr = autoInstallPluginLocked(ctx, cfg, slug, version)
 		return installErr

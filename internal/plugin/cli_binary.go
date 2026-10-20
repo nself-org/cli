@@ -133,7 +133,10 @@ func linkCLIBinary(destDir, name string, m *PluginManifest) error {
 		return err
 	}
 
-	binDir := pluginBinDir()
+	binDir, err := pluginBinDirChecked()
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		return fmt.Errorf("creating plugin bin dir: %w", err)
 	}
