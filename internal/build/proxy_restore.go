@@ -159,9 +159,11 @@ func removeTree(sink Sink, dir string) error {
 	if err != nil {
 		return err
 	}
+	markerPresent := false
 	for _, e := range entries {
 		p := filepath.Join(dir, e.Name())
 		if e.Name() == proxyGeneratedMarker {
+			markerPresent = true
 			continue
 		}
 		// The listing may be stale: only a directory that is still one is entered.
@@ -176,8 +178,10 @@ func removeTree(sink Sink, dir string) error {
 			return err
 		}
 	}
-	if err := sink.Remove(filepath.Join(dir, proxyGeneratedMarker)); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return err
+	if markerPresent {
+		if err := sink.Remove(filepath.Join(dir, proxyGeneratedMarker)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
 	}
 	return sink.Remove(dir)
 }
