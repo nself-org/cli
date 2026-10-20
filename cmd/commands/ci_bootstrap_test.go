@@ -149,6 +149,15 @@ func TestCIBootstrapOrder(t *testing.T) {
 	t.Run("published plugin binary wins over PATH", func(t *testing.T) {
 		cbEnv(t)
 		log := cbStubs(t)
+		cbRegistry(t, cbOpts{sign: true, platSign: true})
+		installedDir := filepath.Join(resolvePluginDir(), "ci")
+		if err := os.MkdirAll(installedDir, 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(installedDir, "plugin.json"), []byte(`{"version":"`+aiVersion+`"}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
 		pub := plugin.PublishedBinaryPath("nself-ci")
 		if err := os.MkdirAll(filepath.Dir(pub), 0o750); err != nil {
 			t.Fatal(err)
@@ -193,6 +202,15 @@ func TestCIBootstrapOrderLegacyAndLinks(t *testing.T) {
 	const notice = "notice: ~/.nself/bin/nself-ci is no longer used (unverified); nself now installs the signed ci plugin\n"
 	t.Run("legacy file is retired once even when the plugin is installed", func(t *testing.T) {
 		home, out := cbEnv(t)
+		cbRegistry(t, cbOpts{sign: true, platSign: true})
+		installedDir := filepath.Join(resolvePluginDir(), "ci")
+		if err := os.MkdirAll(installedDir, 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(installedDir, "plugin.json"), []byte(`{"version":"`+aiVersion+`"}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
 		pub := plugin.PublishedBinaryPath("nself-ci")
 		legacy := filepath.Join(home, ".nself", "bin", "nself-ci")
 		for _, f := range []string{pub, legacy} {
@@ -218,6 +236,15 @@ func TestCIBootstrapOrderLegacyAndLinks(t *testing.T) {
 
 	t.Run("the notice prints once across calls while the legacy path stays", func(t *testing.T) {
 		home, out := cbEnv(t)
+		cbRegistry(t, cbOpts{sign: true, platSign: true})
+		installedDir := filepath.Join(resolvePluginDir(), "ci")
+		if err := os.MkdirAll(installedDir, 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(installedDir, "plugin.json"), []byte(`{"version":"`+aiVersion+`"}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
 		pub := plugin.PublishedBinaryPath("nself-ci")
 		if err := os.MkdirAll(filepath.Dir(pub), 0o750); err != nil {
 			t.Fatal(err)

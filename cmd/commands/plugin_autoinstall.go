@@ -107,7 +107,7 @@ func autoInstallPluginLocked(ctx context.Context, cfg *config.Config, slug, vers
 		undo()
 		return "", fmt.Errorf("auto-install of %q: installed version %q but the checked catalogue entry said %s; the catalogue changed during the install (install it by hand: nself add %s)", slug, got, manifest.Version, slug)
 	}
-	if st, err := os.Stat(bin); err != nil || st.IsDir() {
+	if !isRegularFile(bin) {
 		return "", fmt.Errorf("auto-install of %q: the installer reported success but %s was not published (install it by hand: nself add %s)", slug, bin, slug)
 	}
 	return bin, nil

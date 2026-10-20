@@ -18,6 +18,7 @@ package commands
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -53,6 +54,20 @@ func ensureCIBinary(verbose bool) (string, error) {
 	}
 
 	if p := plugin.PublishedBinaryPath("nself-ci"); isRegularFile(p) {
+		manifest, _, err := autoInstallResolve(context.Background(), "ci", "")
+		if err != nil {
+			return "", err
+		}
+		if readInstalledVersion(resolvePluginDir(), "ci") == manifest.Version && isRegularFile(p) {
+			return p, nil
+		}
+		installed, err := autoInstallPlugin("ci", "")
+		if err != nil {
+			return "", err
+		}
+		if installed != p || !isRegularFile(p) {
+			return "", fmt.Errorf("ci installer did not publish a regular file at %s", p)
+		}
 		return p, nil
 	}
 
