@@ -191,7 +191,7 @@ func TestCacheKeepsSignatureMaterial(t *testing.T) {
 	t.Setenv(pluginRequireChecksumEnv, "1")
 	stripped := *got
 	stripped.ReleaseSignature = nil
-	if err := verifyReleaseSignature(&stripped, false, false, ArtifactKindSource, "", false); err == nil {
+	if err := verifyReleaseSignature(&stripped, false, false, ArtifactKindSource, nil, false); err == nil {
 		t.Error("a stable plugin with no signature was accepted even in hard mode")
 	}
 }
@@ -205,9 +205,9 @@ func TestPlatformSignaturesCacheRoundTrip(t *testing.T) {
 	key, signer := signaturetest.NewKey(t, signature.TierFree)
 	signaturetest.UseKeys(t, []signature.Key{key}, nil)
 	signaturetest.UseFloor(t, map[string]map[string]string{})
-	archive := filepath.Join(t.TempDir(), "pkg.tar.gz")
+	archivePath := filepath.Join(t.TempDir(), "pkg.tar.gz")
 	body := binTarball(t, "")
-	if err := os.WriteFile(archive, body, 0o600); err != nil {
+	if err := os.WriteFile(archivePath, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	signed := signaturetest.SignPlatform(t, signer, "signed-plugin", "1.0.0", plat, sha256Hex(body))
@@ -228,7 +228,7 @@ func TestPlatformSignaturesCacheRoundTrip(t *testing.T) {
 	if got == nil || got.PlatformSignatures[plat] == nil || *got.PlatformSignatures[plat] != *signed {
 		t.Fatalf("platform_signatures lost or changed in the cache round trip: %+v", got)
 	}
-	if err := verifyReleaseSignature(got, false, false, plat, archive, false); err != nil {
+	if err := verifyReleaseSignature(got, false, false, plat, pinForTest(t, archivePath), false); err != nil {
 		t.Fatalf("a warm-cache platform install must verify, not skip: %v", err)
 	}
 	bad, _ := findPlugin(reloaded, "invalid-plugin")

@@ -230,52 +230,52 @@ func TestInstallBinaryPackageBypassNeverSkips(t *testing.T) {
 		signaturetest.UseKeys(t, []signature.Key{key}, nil)
 		signaturetest.UseFloor(t, map[string]map[string]string{})
 		body := binTarball(t, "")
-		archive := filepath.Join(t.TempDir(), "pkg.tar.gz")
-		if err := os.WriteFile(archive, body, 0o600); err != nil {
+		archivePath := filepath.Join(t.TempDir(), "pkg.tar.gz")
+		if err := os.WriteFile(archivePath, body, 0o600); err != nil {
 			t.Fatal(err)
 		}
 		const plat = "linux-amd64"
 		m := &PluginManifest{Name: sigPlugin, Version: "1.0.0", Checksum: sha256Hex([]byte("source"))}
-		if err := verifyReleaseSignature(m, false, false, plat, archive, true); err != nil {
+		if err := verifyReleaseSignature(m, false, false, plat, pinForTest(t, archivePath), true); err != nil {
 			t.Fatalf("bypass with no platform signature must skip: %v", err)
 		}
 		_, stranger := signaturetest.NewKey(t, signature.TierFree)
 		m.PlatformSignatures = map[string]*signature.Release{plat: signaturetest.SignPlatform(t, stranger, sigPlugin, "1.0.0", plat, sha256Hex(body))}
-		if codeOf(verifyReleaseSignature(m, false, false, plat, archive, true)) != "E122" {
+		if codeOf(verifyReleaseSignature(m, false, false, plat, pinForTest(t, archivePath), true)) != "E122" {
 			t.Fatal("bypass must not skip an unknown-key platform signature (release_signature stripped)")
 		}
 		m.PlatformSignatures[plat] = signaturetest.SignPlatform(t, signer, sigPlugin, "1.0.0", plat, sha256Hex([]byte("other")))
-		if codeOf(verifyReleaseSignature(m, false, false, plat, archive, true)) != "E121" {
+		if codeOf(verifyReleaseSignature(m, false, false, plat, pinForTest(t, archivePath), true)) != "E121" {
 			t.Fatal("bypass must not skip a bad platform signature")
 		}
 		good := signaturetest.SignPlatform(t, signer, sigPlugin, "1.0.0", plat, sha256Hex(body))
 		m.PlatformSignatures[plat] = good
-		if err := verifyReleaseSignature(m, false, false, plat, archive, true); err != nil {
+		if err := verifyReleaseSignature(m, false, false, plat, pinForTest(t, archivePath), true); err != nil {
 			t.Fatalf("good platform signature under bypass: %v", err)
 		}
 		// An entry for another platform is not "present" for this one.
 		m.PlatformSignatures = map[string]*signature.Release{"darwin-arm64": good}
-		if err := verifyReleaseSignature(m, false, false, plat, archive, true); err != nil {
+		if err := verifyReleaseSignature(m, false, false, plat, pinForTest(t, archivePath), true); err != nil {
 			t.Fatalf("an entry for another platform must not count under bypass: %v", err)
 		}
-		if codeOf(verifyReleaseSignature(m, false, false, plat, archive, false)) != "E121" {
+		if codeOf(verifyReleaseSignature(m, false, false, plat, pinForTest(t, archivePath), false)) != "E121" {
 			t.Fatal("without the bypass an absent platform entry is E121")
 		}
 		// An unreadable archive is E121, never a skip, once an entry is present.
 		m.PlatformSignatures = map[string]*signature.Release{plat: good}
-		if codeOf(verifyReleaseSignature(m, false, false, plat, filepath.Join(t.TempDir(), "missing"), true)) != "E121" {
+		if codeOf(verifyReleaseSignature(m, false, false, plat, nil, true)) != "E121" {
 			t.Fatal("an archive that cannot be read must refuse")
 		}
 		// The licensed tier has no platform producer: pinned means refused.
 		lkey, _ := signaturetest.NewKey(t, signature.TierLicensed)
 		signaturetest.UseKeys(t, []signature.Key{key, lkey}, nil)
 		m.PlatformSignatures = nil
-		if codeOf(verifyReleaseSignature(m, true, false, plat, archive, false)) != "E121" {
+		if codeOf(verifyReleaseSignature(m, true, false, plat, pinForTest(t, archivePath), false)) != "E121" {
 			t.Fatal("a pinned licensed tier must refuse an unsigned platform package")
 		}
 		// An unpinned tier is untouched by v1.1.
 		signaturetest.UseKeys(t, nil, nil)
-		if err := verifyReleaseSignature(m, false, false, plat, archive, true); err != nil {
+		if err := verifyReleaseSignature(m, false, false, plat, pinForTest(t, archivePath), true); err != nil {
 			t.Fatalf("unpinned tier under bypass: %v", err)
 		}
 	})
@@ -288,8 +288,8 @@ func TestPlatformSignatureMalformedE121(t *testing.T) {
 	key, _ := signaturetest.NewKey(t, signature.TierFree)
 	signaturetest.UseKeys(t, []signature.Key{key}, nil)
 	signaturetest.UseFloor(t, map[string]map[string]string{})
-	archive := filepath.Join(t.TempDir(), "pkg.tar.gz")
-	if err := os.WriteFile(archive, binTarball(t, ""), 0o600); err != nil {
+	archivePath := filepath.Join(t.TempDir(), "pkg.tar.gz")
+	if err := os.WriteFile(archivePath, binTarball(t, ""), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	cases := map[string]string{
@@ -313,7 +313,7 @@ func TestPlatformSignatureMalformedE121(t *testing.T) {
 				t.Fatalf("a malformed value must stay present for %s: %+v", plat, m.PlatformSignatures)
 			}
 			for _, bypass := range []bool{false, true} {
-				if codeOf(verifyReleaseSignature(m, false, false, plat, archive, bypass)) != "E121" {
+				if codeOf(verifyReleaseSignature(m, false, false, plat, pinForTest(t, archivePath), bypass)) != "E121" {
 					t.Fatalf("bypass=%v: want E121", bypass)
 				}
 			}
@@ -364,4 +364,16 @@ func TestPlatformSignaturesRegistryParse(t *testing.T) {
 			t.Errorf("f/%s must be a non-nil empty Release: %+v", p, r)
 		}
 	}
+}
+
+// pinForTest opens path the way the installer does (pinArchive) and closes it
+// with the test.
+func pinForTest(t *testing.T, path string) *os.File {
+	t.Helper()
+	f, err := pinArchive(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.Close() })
+	return f
 }

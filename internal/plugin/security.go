@@ -24,7 +24,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -92,25 +91,32 @@ func pluginChecksumRequired() bool {
 // errs.ErrPluginMissingChecksum and refuse the install.
 func verifyChecksum(filePath string, expectedHash string, publishStatus string) error {
 	if expectedHash == "" {
-		if pluginChecksumRequired() && EffectiveStatus(publishStatus) == "stable" {
-			return fmt.Errorf("plugin %q is missing required checksum for stable publishStatus — install refused: %w",
-				filePath, errs.ErrPluginMissingChecksum)
-		}
-		return nil
+		return verifyChecksumFile(nil, filePath, "", publishStatus)
 	}
-
 	f, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("opening file for checksum: %w", err)
 	}
 	defer func() { _ = f.Close() }()
+	return verifyChecksumFile(f, filePath, expectedHash, publishStatus)
+}
 
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return fmt.Errorf("computing checksum: %w", err)
+// verifyChecksumFile is verifyChecksum over an already open archive handle
+// (pinArchive), read from the start. name only labels errors. A nil handle is
+// valid only with an empty expectedHash.
+func verifyChecksumFile(f *os.File, name, expectedHash, publishStatus string) error {
+	if expectedHash == "" {
+		if pluginChecksumRequired() && EffectiveStatus(publishStatus) == "stable" {
+			return fmt.Errorf("plugin %q is missing required checksum for stable publishStatus — install refused: %w",
+				name, errs.ErrPluginMissingChecksum)
+		}
+		return nil
 	}
 
-	actual := hex.EncodeToString(h.Sum(nil))
+	actual, err := archiveSHA256(f)
+	if err != nil {
+		return fmt.Errorf("computing checksum: %w", err)
+	}
 	if !strings.EqualFold(actual, expectedHash) {
 		return errs.Newf("E124", "checksum mismatch: expected %s, got %s", expectedHash, actual)
 	}

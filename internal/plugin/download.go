@@ -205,15 +205,23 @@ func buildFallbackDownloadURL(name, version, repository string) string {
 
 // extractTarGz extracts a gzipped tarball into destDir.
 func extractTarGz(archivePath, destDir string) error {
-	if err := os.MkdirAll(destDir, 0o755); err != nil {
-		return fmt.Errorf("creating destination directory: %w", err)
-	}
-
 	f, err := os.Open(archivePath)
 	if err != nil {
 		return fmt.Errorf("opening archive: %w", err)
 	}
 	defer func() { _ = f.Close() }()
+	return extractTarGzFile(f, destDir)
+}
+
+// extractTarGzFile extracts the gzipped tarball held by f (read from the
+// start) into destDir. The registry install passes the handle it verified.
+func extractTarGzFile(f *os.File, destDir string) error {
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return fmt.Errorf("creating destination directory: %w", err)
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("rewinding archive: %w", err)
+	}
 
 	gz, err := gzip.NewReader(f)
 	if err != nil {

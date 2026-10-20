@@ -10,6 +10,7 @@ package plugin
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -50,12 +51,12 @@ func unsignedAllowed(local bool) bool {
 // (contract v1.1) and never by the source signature: the registry fields that
 // choose a binary download (pluginType, binaryName, repository, platform
 // checksums) are unsigned, so only a signature over the downloaded bytes and
-// the CLI's own platform vouches for them. archivePath is the downloaded file.
-func verifyReleaseSignature(manifest *PluginManifest, paid, local bool, artifactKind, archivePath string, bypass bool) error {
+// the CLI's own platform vouches for them. archive is the pinned handle of the downloaded file (pinArchive); it is nil for a source install.
+func verifyReleaseSignature(manifest *PluginManifest, paid, local bool, artifactKind string, archive *os.File, bypass bool) error {
 	tier := releaseTier(paid)
 	pinned := signature.Pinned(tier)
 	if pinned && artifactKind != "" && artifactKind != ArtifactKindSource {
-		return verifyPlatformSignature(manifest, tier, artifactKind, archivePath, bypass)
+		return verifyPlatformSignature(manifest, tier, artifactKind, archive, bypass)
 	}
 	if bypass && (!pinned || manifest.ReleaseSignature == nil) {
 		return nil
@@ -87,7 +88,7 @@ func verifyReleaseSignature(manifest *PluginManifest, paid, local bool, artifact
 // present one, whatever release_signature says. Everything else fails closed:
 // no entry, no readable archive and a bad signature are all errors, and the
 // install never falls back to the source package.
-func verifyPlatformSignature(manifest *PluginManifest, tier, platform, archivePath string, bypass bool) error {
+func verifyPlatformSignature(manifest *PluginManifest, tier, platform string, archive *os.File, bypass bool) error {
 	rel, present := manifest.PlatformSignatures[platform]
 	if !present {
 		if bypass {
@@ -95,23 +96,37 @@ func verifyPlatformSignature(manifest *PluginManifest, tier, platform, archivePa
 		}
 		return errs.Newf("E121", "plugin %q: the %s binary package has no platform signature", manifest.Name, platform)
 	}
-	sum, err := archiveSHA256(archivePath)
+	sum, err := archiveSHA256(archive)
 	if err != nil {
 		return errs.Wrap("E121", fmt.Sprintf("plugin %q: cannot hash the %s binary package for its signature", manifest.Name, platform), err)
 	}
 	return signature.VerifyPlatform(tier, manifest.Name, manifest.Version, platform, sum, rel)
 }
 
-// archiveSHA256 returns the lowercase hex sha256 of the file at path.
-func archiveSHA256(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
+// archiveSHA256 returns the lowercase hex sha256 of the whole pinned archive,
+// read from the start of the handle (never reopened by path).
+func archiveSHA256(f *os.File) (string, error) {
+	if f == nil {
+		return "", errors.New("no archive handle")
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return "", err
 	}
-	defer func() { _ = f.Close() }()
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// pinArchive opens the downloaded archive once. The checksum, the signature
+// and the extraction all read this one handle, so a swap of archivePath after
+// this call (rename or unlink and recreate) cannot change the bytes that were
+// verified (D-1326). The caller closes it.
+func pinArchive(archivePath string) (*os.File, error) {
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return nil, fmt.Errorf("opening downloaded archive: %w", err)
+	}
+	return f, nil
 }
