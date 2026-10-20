@@ -52,15 +52,24 @@ func verifyFile(path, slug string, now time.Time) error {
 // Purpose: bound reads of mounted files. Inputs: path. Outputs: bytes or rejection.
 // Constraints: oversized files never allocate unbounded memory. SPORT: plugin.entitlement-token.
 func readTokenFile(path string) ([]byte, error) {
+	return readTokenFileWithOpen(path, os.OpenFile)
+}
+
+// readTokenFileWithOpen permits deterministic testing of path replacement at open.
+func readTokenFileWithOpen(path string, open func(string, int, os.FileMode) (*os.File, error)) ([]byte, error) {
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() {
 		return nil, ErrEntitlementExpired
 	}
-	f, err := os.Open(path)
+	f, err := open(path, tokenOpenFlags, 0)
 	if err != nil {
 		return nil, ErrEntitlementExpired
 	}
 	defer func() { _ = f.Close() }()
+	opened, err := f.Stat()
+	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(info, opened) {
+		return nil, ErrEntitlementExpired
+	}
 	data, err := io.ReadAll(io.LimitReader(f, maxTokenBytes+1))
 	if len(data) > maxTokenBytes {
 		return nil, errTokenTooLarge
