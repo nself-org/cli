@@ -22,8 +22,8 @@ Licensed plugins are source-available Rust binaries distributed through the ɳSe
 
 | Option | Monthly | Annual | What You Get |
 |--------|---------|--------|-------------|
-| **Free** | $0 | $0 | Core CLI + free plugins |
-| **Any single bundle** | $0.99/mo | $9.99/yr | All plugins in that bundle (ɳClaw, ɳChat, ɳFamily, or ClawDE) |
+| **Free** | $0 | $0 | Core CLI, free plugins and the Task Bundle |
+| **Any other Bundle** | $0.99/mo | $9.99/yr | The licensed plugins of that Bundle (Chat, Claw, Family, Sentry or ClawDE) |
 | **ɳSelf+** | $3.99/mo | $39.99/yr | Every bundle + all apps + support |
 
 Annual gives roughly 16% savings versus monthly (about 2 months free).
@@ -32,10 +32,26 @@ Annual gives roughly 16% savings versus monthly (about 2 months free).
 
 ## Per-Product Plugin Bundles
 
-Each ɳSelf product has a recommended plugin bundle. Bundles are not separate SKUs. They are a way to understand which plugins power each product. All plugins are available at the Basic tier and above.
+Each ɳSelf product has a Bundle: the plugins that power it, plus its apps. "<Name> Bundle" is the self-hosted package; "ɳ<Name>" is our hosted service. Every Bundle except Task is a separate $0.99/mo or $9.99/yr purchase, and ɳSelf+ includes all of them. `nself bundle list` shows the current Bundles and `nself bundle info <bundle>` the plugins each holds.
 
-### ɳClaw Bundle
-AI personal assistant. Requires Pro tier (includes AI suite).
+### Task Bundle
+Task management plugins and the ɳTask apps. Free, no license key. Our own deployment runs at task.nself.org.
+
+### Chat Bundle
+Messaging.
+
+| Plugin | Purpose |
+|--------|---------|
+| chat | Channels, DMs, threads, reactions |
+| livekit | Video and audio calls |
+| recording | Call recording |
+| moderation | Content filtering |
+| bots | Automated responses |
+| realtime | Enhanced WebSocket presence |
+| auth | SSO, SAML, LDAP |
+
+### Claw Bundle
+AI personal assistant.
 
 | Plugin | Purpose |
 |--------|---------|
@@ -51,21 +67,8 @@ AI personal assistant. Requires Pro tier (includes AI suite).
 | cron | Scheduled tasks |
 | post | Social media publishing |
 
-### ɳChat Bundle
-Messaging. Available at Basic tier.
-
-| Plugin | Purpose |
-|--------|---------|
-| chat | Channels, DMs, threads, reactions |
-| livekit | Video and audio calls |
-| recording | Call recording |
-| moderation | Content filtering |
-| bots | Automated responses |
-| realtime | Enhanced WebSocket presence |
-| auth | SSO, SAML, LDAP |
-
-### ɳFamily Bundle (Planned)
-Private family social media. Will be available at Basic tier.
+### Family Bundle
+Private family social media.
 
 | Plugin | Purpose |
 |--------|---------|
@@ -77,10 +80,13 @@ Private family social media. Will be available at Basic tier.
 | cms | Family pages |
 | chat | Family messaging |
 
-### ClawDE Bundle
-AI dev environment cloud sync. Available at $0.99/mo or $9.99/yr.
+### Sentry Bundle
+Error tracking for your own apps. The free Monitoring stack (metrics, logs, traces) is separate and stays free.
 
-Remote and mobile sync via API for the ClawDE Flutter desktop and mobile app.
+### ClawDE Bundle
+AI dev environment cloud sync.
+
+Remote and mobile sync via API for the ClawDE desktop and mobile apps.
 
 ---
 
@@ -108,7 +114,7 @@ The key is stored at `~/.nself/license/key` with chmod 600. It is also read from
 nself license status
 ```
 
-Shows your current tier, expiry date, and which plugin categories you can install.
+Shows your current plan, expiry date, and which plugin categories you can install.
 
 ### Removing Your Key
 
@@ -118,14 +124,14 @@ nself license remove
 
 ### Key Format
 
-Keys use a prefix format:
+New keys are per-Bundle (`nself_claw_`, `nself_chat_` and so on) and are linked to your nSelf account. Older keys use these prefixes, which still work (`nself license migrate` links one to your account):
 
-| Prefix | Tier |
-|--------|------|
-| `nself_pro_` | Pro tier and above |
-| `nself_max_` | Pro tier |
-| `nself_ent_` | Enterprise tier |
-| `nself_owner_` | Owner/internal tier |
+| Prefix | Meaning |
+|--------|---------|
+| `nself_pro_` | Legacy key |
+| `nself_max_` | Legacy key |
+| `nself_ent_` | Legacy key |
+| `nself_owner_` | Owner/internal |
 
 Keys must be at least 32 characters total.
 
@@ -133,7 +139,7 @@ Keys must be at least 32 characters total.
 
 ## License Validation
 
-Tier entitlement is checked server-side. The CLI never makes tier decisions locally.
+Entitlement is checked server-side. The CLI never makes tier decisions locally.
 
 ```
 POST https://ping.nself.org/license/validate
@@ -143,13 +149,13 @@ POST https://ping.nself.org/license/validate
 | Response | Meaning |
 |----------|---------|
 | 200 | Valid key, plugin allowed |
-| 401/403/404 | Invalid key or insufficient tier |
+| 401/403/404 | Invalid key or not entitled to the plugin |
 
-Validation results are cached at `~/.nself/license/cache`. How long a result counts depends on the tier: free keys are not cached (every command revalidates), Pro tiers 7 days, ɳSelf+, Max, Enterprise and owner keys 30 days. In v1.5 (`NSELF_V15=1`) the cache is checked against ping's signature before it is trusted; see [[Plugin-Security]].
+Validation results are cached at `~/.nself/license/cache`. How long a result counts depends on the plan: free keys are not cached (every command revalidates), single-Bundle keys 7 days, ɳSelf+ and owner keys 30 days. In v1.5 (`NSELF_V15=1`) the cache is checked against ping's signature before it is trusted; see [[Plugin-Security]].
 
 ### Runtime Revalidation
 
-Installed plugins revalidate when their cached result runs out (the tier TTL above). If the licence server cannot be reached, the last good result keeps working: silently for up to 72 hours, with a warning after that, and access fails closed once the cached result is 7 days old. A licence that has expired keeps paid plugins working for a 30-day grace window before they go dormant. A warning starts 2 days before the cached result expires. Force revalidation:
+Installed plugins revalidate when their cached result runs out (the plan TTL above). If the licence server cannot be reached, the last good result keeps working: silently for up to 72 hours, with a warning after that, and access fails closed once the cached result is 7 days old. A licence that has expired keeps paid plugins working for a 30-day grace window before they go dormant. A warning starts 2 days before the cached result expires. Force revalidation:
 
 ```bash
 nself license revalidate
@@ -168,7 +174,7 @@ NSELF_LICENSE_SKIP_VERIFY=1 nself plugin install {name}
 ## Upgrading and Downgrading
 
 ### Upgrade
-1. Purchase a higher tier at nself.org/pricing.
+1. Add a Bundle or move to ɳSelf+ at nself.org/pricing.
 2. Run `nself license set {new-key}`.
 3. Install newly available plugins: `nself plugin install ai claw mux ...`
 4. Rebuild: `nself build && nself start`.
@@ -176,8 +182,8 @@ NSELF_LICENSE_SKIP_VERIFY=1 nself plugin install {name}
 Stripe handles proration automatically. You pay the difference for the remainder of your billing cycle.
 
 ### Downgrade
-1. Change your tier in the Stripe customer portal (cloud.nself.org/license).
-2. Plugins above your new tier stop working at the next revalidation, when the cached result runs out (7 or 30 days, by tier).
+1. Change your plan in the Stripe customer portal (cloud.nself.org/license).
+2. Plugins your new plan no longer covers stop working at the next revalidation, when the cached result runs out (7 or 30 days, by plan).
 3. The CLI does not forcibly remove plugins, but they will fail health checks and be excluded from the tool registry.
 
 ### Cancellation

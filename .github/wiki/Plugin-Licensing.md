@@ -4,17 +4,13 @@ Licensed plugins require a valid ɳSelf license key. Free plugins are MIT licens
 
 ## Key Format
 
-License keys use the prefix format:
+New keys are per-Bundle (`nself_claw_`, `nself_chat_` and so on) and are linked to your nSelf account. Older keys use the prefix format:
 
 ```
 nself_pro_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-Accepted prefixes:
-- `nself_pro_`, Pro tier and above
-- `nself_max_`, Pro tier
-- `nself_ent_`, Enterprise tier
-- `nself_owner_`, Owner/self-hosted tier
+Legacy prefixes still accepted: `nself_pro_`, `nself_max_`, `nself_ent_`, `nself_owner_`. Link a legacy key to your account with `nself license migrate`.
 
 Keys must be at least 32 characters total.
 
@@ -63,7 +59,7 @@ POST https://ping.nself.org/license/validate
 
 Response codes:
 - `200`, Valid, allowed
-- `401/403/404`, Invalid or insufficient tier
+- `401/403/404`, Invalid key or not entitled to the plugin
 
 Validation results are cached locally for 24 hours at `~/.nself/license/cache`.
 
@@ -89,21 +85,17 @@ The same requirement applies to `nself license import` when importing unsigned c
 NSELF_LICENSE_SKIP_VERIFY=1 nself license import cache.json --force
 ```
 
-## Tier Entitlements
+## What a Key Unlocks
 
-| Tier | Monthly | Annual | Plugin Access |
-|------|---------|--------|--------------|
-| Free | $0 | $0 | Free plugins only |
-| Basic | $0.99 | $9.99 | Licensed plugins outside the Pro-tier AI suite |
-| Pro | $1.99 | $19.99 | Basic + full AI suite |
-| Elite | $4.99 | $49.99 | Pro + email support |
-| Business | $9.99 | $99.99 | Elite + 24h support |
-| Business+ | $49.99 | $499.99 | Business + dedicated channel |
-| Enterprise | $99.99 | $999.99 | Business+ + managed DevOps |
+| Key | Monthly | Annual | Plugin Access |
+|-----|---------|--------|--------------|
+| None (free) | $0 | $0 | Free plugins and the Task Bundle |
+| One Bundle (Chat, Claw, Family, Sentry or ClawDE) | $0.99 | $9.99 | The licensed plugins of that Bundle |
+| ɳSelf+ | $3.99 | $39.99 | Every Bundle, every app, support |
 
-Existing $9.99/yr keys are grandfathered to the Basic tier.
+Entitlement is decided server-side. Buy or manage a subscription at nself.org/pricing.
 
 ## Related Pages
 
-- [[Plugin-Overview]], Tier comparison and plugin categories
+- [[Plugin-Overview]], The offering and plugin categories
 - [[Plugin-Install]], How to install plugins

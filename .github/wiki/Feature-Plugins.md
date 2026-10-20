@@ -10,17 +10,15 @@ A plugin is a manifest + Docker Compose overlay + optional Nginx config. When yo
 2. `nself build`, merges the plugin's compose overlay into `docker-compose.yml` and injects Nginx routes
 3. `nself start` / `nself restart`, runs the updated stack
 
-## Plugin Tiers
+## Plugin Offering
 
-| Tier | Price | Included |
-|------|-------|---------|
-| Free | $0 | All free plugins, no license key required |
-| Basic | $0.99/mo | Licensed plugins outside the Pro-tier AI suite |
-| Pro | $1.99/mo | Basic + AI suite |
-| Elite | $4.99/mo | Pro + email support |
-| Business | $9.99/mo | Elite + 24h support |
+| Offering | Price | Included |
+|----------|-------|----------|
+| Free | $0 | Core CLI, all free plugins and the Task Bundle, no license key required |
+| Other Bundles (Chat, Claw, Family, Sentry, ClawDE) | $0.99/mo or $9.99/yr each | The licensed plugins and apps of that Bundle |
+| ɳSelf+ | $3.99/mo or $39.99/yr | Every Bundle, every app, support |
 
-See [[Plugin-Licensing]] for full tier details.
+See [[Plugin-Licensing]] for the license details.
 
 ## Free Plugins
 
@@ -50,7 +48,7 @@ See [[Plugin-Dev-Guide]] to build and publish a custom plugin.
 
 - [[Plugin-Overview]], browse all plugins
 - [[Plugin-Architecture]], technical details
-- [[Plugin-Licensing]], tier and pricing details
+- [[Plugin-Licensing]], offering and license details
 - [[Plugin-Dev-Guide]], build a plugin
 
 ---

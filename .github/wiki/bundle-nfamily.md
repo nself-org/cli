@@ -17,17 +17,17 @@ When the bundle is installed, your ɳSelf backend gains social posts, photo stor
 
 ## Plugins Included
 
-The bundle's licensed plugins are all `tier: pro` (Basic tier or higher).
+All of the bundle's plugins are licensed. A Bundle key or ɳSelf+ unlocks them.
 
 | Plugin | Tier | Language | What It Does |
 |--------|------|----------|-------------|
-| [social](plugin-social) | pro | Go | Posts, comments, reactions, follows |
-| [photos](plugin-photos) | pro | Go | Photo upload, albums, sharing, EXIF metadata |
-| [activity-feed](plugin-activity-feed) | pro | Go | Personalized activity timeline with fan-out |
-| [moderation](plugin-moderation) | pro | Go | Auto-moderation, word filters, user reports |
-| [realtime](plugin-realtime) | pro | Go | WebSocket presence, live updates |
-| [cms](plugin-cms) | pro | Go | Shared content (announcements, events, recipes) |
-| [chat](plugin-chat) | pro | Go | Channels, DMs, threads (shared with ɳChat bundle) |
+| [social](plugin-social) | licensed | Go | Posts, comments, reactions, follows |
+| [photos](plugin-photos) | licensed | Go | Photo upload, albums, sharing, EXIF metadata |
+| [activity-feed](plugin-activity-feed) | licensed | Go | Personalized activity timeline with fan-out |
+| [moderation](plugin-moderation) | licensed | Go | Auto-moderation, word filters, user reports |
+| [realtime](plugin-realtime) | licensed | Go | WebSocket presence, live updates |
+| [cms](plugin-cms) | licensed | Go | Shared content (announcements, events, recipes) |
+| [chat](plugin-chat) | licensed | Go | Channels, DMs, threads (shared with ɳChat bundle) |
 
 `moderation`, `realtime`, and `chat` are also part of the [ɳChat bundle](bundle-nchat), install once, used by both.
 
@@ -64,15 +64,15 @@ Family member posts → social → activity-feed → realtime → other family m
 ## Installation
 
 ```bash
-# Basic tier or higher (all nFamily plugins are tier: pro)
-nself license set nself_pro_xxxxx...
+# A Family Bundle key or ɳSelf+
+nself license set nself_family_xxxxx...
 nself plugin install social photos activity-feed moderation realtime cms chat
 
 # Rebuild and start
 nself build && nself start
 ```
 
-Basic tier is $0.99/mo or $9.99/yr. See [Plugin-Licensing](Plugin-Licensing) for the tier comparison.
+The Family Bundle costs $0.99/mo or $9.99/yr; ɳSelf+ ($3.99/mo or $39.99/yr) includes it. See [Plugin-Licensing](Plugin-Licensing) for how keys and plans work.
 
 ## Getting Started
 
@@ -80,7 +80,7 @@ Basic tier is $0.99/mo or $9.99/yr. See [Plugin-Licensing](Plugin-Licensing) for
 
 - ɳSelf CLI installed and a project initialized (`nself init`)
 - Backend running (`nself start`)
-- Basic tier license key or higher
+- A Family Bundle license key or ɳSelf+
 - Object storage (MinIO ships with the ɳSelf stack) for `photos`
 
 ### Step 1: Install the plugins
@@ -107,9 +107,9 @@ The official ɳFamily frontend is planned. Until then, the plugin APIs (REST and
 
 ## Related Pages
 
-- [Plugin Overview](Plugin-Overview), all plugins and tiers
+- [Plugin Overview](Plugin-Overview), the offering and all plugins
 - [Plugin Install](Plugin-Install), how to install plugins
-- [Plugin Licensing](Plugin-Licensing), license keys and tiers
+- [Plugin Licensing](Plugin-Licensing), license keys and validation
 - [bundle-nchat](bundle-nchat), shares moderation, realtime, chat
 - [Feature-ɳFamily](Feature-ɳFamily), feature overview
 - Individual plugin pages: [social](plugin-social), [photos](plugin-photos), [activity-feed](plugin-activity-feed), [moderation](plugin-moderation), [realtime](plugin-realtime), [cms](plugin-cms), [chat](plugin-chat)

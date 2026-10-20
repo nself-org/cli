@@ -17,22 +17,22 @@
 
 ## Plugins Included
 
-The bundle's licensed plugins are mostly `tier: max` (require Pro tier or higher); a few are `tier: pro` (Basic tier or higher).
+All of the bundle's plugins are licensed. A Bundle key or ɳSelf+ unlocks them.
 
 | Plugin | Tier | Language | What It Does |
 |--------|------|----------|-------------|
-| [nself-ai-gateway](nself-ai-gateway) | max | Go | Provider key vault, request routing, quota enforcement (port 3761) |
-| [nself-ai-cc](nself-ai-cc) | max | Go | PTY session relay for AI CLI binaries: claude, codex (port 3760) |
-| [claw](plugin-claw) | max | Go | AI assistant runtime: conversations, memory, knowledge graph |
-| [claw-web](plugin-claw-web) | max | Go | Web client backend for the ɳClaw assistant |
-| [claw-budget](plugin-claw-budget) | max | Go | Budget tracking and financial analytics for the assistant |
-| [claw-news](plugin-claw-news) | pro | Go | News feed ingestion, summarization, and topic tracking |
-| [voice](plugin-voice) | max | Go | Text-to-speech and speech-to-text |
-| [browser](plugin-browser) | max | Go | Headless browser tool for web research and automation |
-| [google](plugin-google) | pro | Go | Gmail, Calendar, Drive, Contacts integration |
-| [mux](plugin-mux) | pro | Go | Email and message classification, summarization, routing |
-| [notify](plugin-notify) | pro | Go | Push notifications across iOS, Android, web |
-| [cron](plugin-cron) | pro | Go | Scheduled jobs and recurring tasks |
+| [nself-ai-gateway](nself-ai-gateway) | licensed | Go | Provider key vault, request routing, quota enforcement (port 3761) |
+| [nself-ai-cc](nself-ai-cc) | licensed | Go | PTY session relay for AI CLI binaries: claude, codex (port 3760) |
+| [claw](plugin-claw) | licensed | Go | AI assistant runtime: conversations, memory, knowledge graph |
+| [claw-web](plugin-claw-web) | licensed | Go | Web client backend for the ɳClaw assistant |
+| [claw-budget](plugin-claw-budget) | licensed | Go | Budget tracking and financial analytics for the assistant |
+| [claw-news](plugin-claw-news) | licensed | Go | News feed ingestion, summarization, and topic tracking |
+| [voice](plugin-voice) | licensed | Go | Text-to-speech and speech-to-text |
+| [browser](plugin-browser) | licensed | Go | Headless browser tool for web research and automation |
+| [google](plugin-google) | licensed | Go | Gmail, Calendar, Drive, Contacts integration |
+| [mux](plugin-mux) | licensed | Go | Email and message classification, summarization, routing |
+| [notify](plugin-notify) | licensed | Go | Push notifications across iOS, Android, web |
+| [cron](plugin-cron) | licensed | Go | Scheduled jobs and recurring tasks |
 
 `claw-budget` and `claw-news` membership pending user verification (TRAP 10), see [F06-BUNDLE-INVENTORY](https://github.com/nself-org/nself/blob/main/.claude/docs/sport/F06-BUNDLE-INVENTORY.md).
 
@@ -67,15 +67,15 @@ Voice / Text input → AI gateway → Claw runtime → Tools (browser, google, m
 ## Installation
 
 ```bash
-# Pro tier required for tier: max plugins (ai, claw, claw-web, voice, browser, claw-budget)
-nself license set nself_pro_xxxxx...
+# A Claw Bundle key or ɳSelf+
+nself license set nself_claw_xxxxx...
 nself plugin install ai claw claw-web claw-budget claw-news voice browser google mux notify cron
 
 # Rebuild and start
 nself build && nself start
 ```
 
-Pro tier is $1.99/mo or $19.99/yr. See [Plugin-Licensing](Plugin-Licensing) for the tier comparison.
+The Claw Bundle costs $0.99/mo or $9.99/yr; ɳSelf+ ($3.99/mo or $39.99/yr) includes it. See [Plugin-Licensing](Plugin-Licensing) for how keys and plans work.
 
 ## Getting Started
 
@@ -83,7 +83,7 @@ Pro tier is $1.99/mo or $19.99/yr. See [Plugin-Licensing](Plugin-Licensing) for 
 
 - ɳSelf CLI installed and a project initialized (`nself init`)
 - Backend running (`nself start`)
-- Pro tier license key (Basic does not include `tier: max` plugins)
+- A Claw Bundle license key or ɳSelf+
 - Provider API keys (Anthropic, OpenAI, etc.) for the `ai` plugin
 - Google OAuth credentials for the `google` plugin
 
@@ -111,7 +111,7 @@ Point the [claw](https://github.com/nself-org/nclaw) Flutter app at your ɳSelf 
 
 ## Related Pages
 
-- [Plugin Overview](Plugin-Overview), all plugins and tiers
+- [Plugin Overview](Plugin-Overview), the offering and all plugins
 - [Plugin Install](Plugin-Install), how to install plugins
-- [Plugin Licensing](Plugin-Licensing), license keys and tiers
+- [Plugin Licensing](Plugin-Licensing), license keys and validation
 - Individual plugin pages: [nself-ai-gateway](nself-ai-gateway), [nself-ai-cc](nself-ai-cc), [claw](plugin-claw), [claw-web](plugin-claw-web), [claw-budget](plugin-claw-budget), [claw-news](plugin-claw-news), [voice](plugin-voice), [browser](plugin-browser), [google](plugin-google), [mux](plugin-mux), [notify](plugin-notify), [cron](plugin-cron)

@@ -2,26 +2,22 @@
 
 ## Contents
 
-- [Plugin Tiers](#plugin-tiers)
+- [Plugin Offering](#plugin-offering)
 - [Plugin Categories](#plugin-categories)
 - [How Plugins Work](#how-plugins-work)
 - [Related Pages](#related-pages)
 
 ɳSelf plugins extend your backend stack with additional services and capabilities. Install them with a single command. No manual Docker configuration required.
 
-## Plugin Tiers
+## Plugin Offering
 
-| Tier | Price | Includes |
-|------|-------|---------|
-| **Free** | $0 | Core CLI + free plugins (MIT licensed) |
-| **Basic** | $0.99/mo or $9.99/yr | The standard licensed plugins (excludes Pro-tier AI suite) |
-| **Pro** | $1.99/mo or $19.99/yr | Basic + AI suite (ai, browser, claw, claw-budget, claw-web, post, voice) |
-| **Elite** | $4.99/mo or $49.99/yr | Pro + email support |
-| **Business** | $9.99/mo or $99.99/yr | Elite + 24h email support + priority feature requests |
-| **Business+** | $49.99/mo or $499.99/yr | Business + dedicated support channel |
-| **Enterprise** | $99.99/mo or $999.99/yr | Business+ + managed DevOps |
+| Offering | Price | Includes |
+|----------|-------|----------|
+| **Free** | $0 | Core CLI, free plugins (MIT licensed) and the Task Bundle |
+| **Other Bundles** (Chat, Claw, Family, Sentry, ClawDE) | $0.99/mo or $9.99/yr each | The licensed plugins and apps of that Bundle |
+| **ɳSelf+** | $3.99/mo or $39.99/yr | Every Bundle, every app, support |
 
-Annual plans save ~17% compared to monthly. Existing $9.99/yr keys are grandfathered to the Basic tier.
+Annual plans cost about two months less than twelve monthly payments. Licensed plugins are obtainable only through a Bundle or ɳSelf+.
 
 ## Plugin Categories
 
@@ -75,12 +71,14 @@ Bundles group plugins that work together to deliver a complete feature set. Per 
 
 | Bundle | Price | Plugins | Use Case |
 |--------|-------|---------|----------|
-| [[bundle-nclaw]] | $0.99/mo | ai, claw, claw-web, mux, voice, browser, google, notify, cron, claw-budget, claw-news | AI personal assistant: email, calendar, news, budget, tools |
-| [[bundle-clawde]] | $1.99/mo / $19.99/yr | TBD (cloud sync, premium models, team features) | ClawDE+ remote/mobile sync via API |
-| [[bundle-nfamily]] | $0.99/mo | social, photos, activity-feed, moderation, realtime, cms, chat | Private family social, photo sharing, activity feeds |
-| [[bundle-nchat]] | $0.99/mo | chat, livekit, recording, moderation, bots, realtime, auth | Messaging with video calls, bots, and moderation |
+| Task Bundle | free | task management plugins | ɳTask apps; our own deployment is task.nself.org |
+| [[bundle-nchat]] | $0.99/mo or $9.99/yr | chat, livekit, recording, moderation, bots, realtime, auth | Messaging with video calls, bots, and moderation |
+| [[bundle-nclaw]] | $0.99/mo or $9.99/yr | ai, claw, claw-web, mux, voice, browser, google, notify, cron, claw-budget, claw-news | AI personal assistant: email, calendar, news, budget, tools |
+| [[bundle-nfamily]] | $0.99/mo or $9.99/yr | social, photos, activity-feed, moderation, realtime, cms, chat | Private family social, photo sharing, activity feeds |
+| Sentry Bundle | $0.99/mo or $9.99/yr | see `nself bundle info sentry` | Error tracking for your own apps (not the free Monitoring stack) |
+| [[bundle-clawde]] | $0.99/mo or $9.99/yr | see the bundle page | ClawDE remote and mobile sync via API |
 
-Or get all bundles + all apps via **ɳSelf+** ($49.99/yr).
+Or get every Bundle and every app via **ɳSelf+** ($3.99/mo or $39.99/yr). `nself bundle info <bundle>` lists the plugins a Bundle holds today.
 
 ### Monitoring Stack (10 services)
 
@@ -89,7 +87,7 @@ The free `monitoring` plugin bundles 10 services in one install: alertmanager, g
 ## Related Pages
 
 - [[Plugin-Install]], How to install, remove, and update plugins
-- [[Plugin-Licensing]], License keys, tiers, and validation
+- [[Plugin-Licensing]], License keys and validation
 - [[Plugin-Dev-Guide]], Build your own plugin
 - [[Plugin-Architecture]], Technical internals
 

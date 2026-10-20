@@ -17,17 +17,17 @@
 
 ## Plugins Included
 
-The bundle's licensed plugins are all `tier: pro` (Basic tier or higher).
+All of the bundle's plugins are licensed. A Bundle key or ɳSelf+ unlocks them.
 
 | Plugin | Tier | Language | What It Does |
 |--------|------|----------|-------------|
-| [chat](plugin-chat) | pro | Go | Channels, DMs, threads, reactions, pins, search |
-| [livekit](plugin-livekit) | pro | Go | Audio and video call rooms (WebRTC SFU) |
-| [recording](plugin-recording) | pro | Go | Call recording with playback |
-| [moderation](plugin-moderation) | pro | Go | Auto-moderation, word filters, spam detection, user reports |
-| [bots](plugin-bots) | pro | Go | Bot framework with slash commands and event subscriptions |
-| [realtime](plugin-realtime) | pro | Go | WebSocket presence, typing indicators, read receipts |
-| [auth](plugin-auth) | pro | Go | Advanced auth: SSO, MFA, session management |
+| [chat](plugin-chat) | licensed | Go | Channels, DMs, threads, reactions, pins, search |
+| [livekit](plugin-livekit) | licensed | Go | Audio and video call rooms (WebRTC SFU) |
+| [recording](plugin-recording) | licensed | Go | Call recording with playback |
+| [moderation](plugin-moderation) | licensed | Go | Auto-moderation, word filters, spam detection, user reports |
+| [bots](plugin-bots) | licensed | Go | Bot framework with slash commands and event subscriptions |
+| [realtime](plugin-realtime) | licensed | Go | WebSocket presence, typing indicators, read receipts |
+| [auth](plugin-auth) | licensed | Go | Advanced auth: SSO, MFA, session management |
 
 ## How They Work Together
 
@@ -61,15 +61,15 @@ Client (chat/) → realtime + chat → channels, DMs, threads
 ## Installation
 
 ```bash
-# Basic tier or higher (all nChat plugins are tier: pro)
-nself license set nself_pro_xxxxx...
+# A Chat Bundle key or ɳSelf+
+nself license set nself_chat_xxxxx...
 nself plugin install chat livekit recording moderation bots realtime auth
 
 # Rebuild and start
 nself build && nself start
 ```
 
-Basic tier is $0.99/mo or $9.99/yr. See [Plugin-Licensing](Plugin-Licensing) for the tier comparison.
+The Chat Bundle costs $0.99/mo or $9.99/yr; ɳSelf+ ($3.99/mo or $39.99/yr) includes it. See [Plugin-Licensing](Plugin-Licensing) for how keys and plans work.
 
 ## Getting Started
 
@@ -77,7 +77,7 @@ Basic tier is $0.99/mo or $9.99/yr. See [Plugin-Licensing](Plugin-Licensing) for
 
 - ɳSelf CLI installed and a project initialized (`nself init`)
 - Backend running (`nself start`)
-- Basic tier license key or higher
+- A Chat Bundle license key or ɳSelf+
 - TURN/STUN credentials for `livekit` if running across NAT
 - Object storage configured for `recording` (MinIO comes free with the ɳSelf stack)
 
@@ -105,8 +105,8 @@ Clone [nself-org/chat](https://github.com/nself-org/nchat), copy `.backend.examp
 
 ## Related Pages
 
-- [Plugin Overview](Plugin-Overview), all plugins and tiers
+- [Plugin Overview](Plugin-Overview), the offering and all plugins
 - [Plugin Install](Plugin-Install), how to install plugins
-- [Plugin Licensing](Plugin-Licensing), license keys and tiers
+- [Plugin Licensing](Plugin-Licensing), license keys and validation
 - [Feature-ɳChat](Feature-ɳChat), feature overview
 - Individual plugin pages: [chat](plugin-chat), [livekit](plugin-livekit), [recording](plugin-recording), [moderation](plugin-moderation), [bots](plugin-bots), [realtime](plugin-realtime), [auth](plugin-auth)

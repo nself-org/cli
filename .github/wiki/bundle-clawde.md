@@ -19,14 +19,14 @@ ClawDE itself runs free locally with limited functionality. The ClawDE bundle un
 
 ## Plugins Included
 
-Candidate set: licensed plugins, all `tier: pro`.
+Candidate set: licensed plugins.
 
 | Plugin | Tier | Language | What It Does |
 |--------|------|----------|-------------|
-| [realtime](plugin-realtime) | pro | Go | WebSocket sync between desktop and mobile clients |
-| [auth](plugin-auth) | pro | Go | Account management, MFA, session sharing across devices |
-| [cms](plugin-cms) | pro | Go | Project / workspace storage and team-shared configs |
-| [notify](plugin-notify) | pro | Go | Push notifications for build status and team events |
+| [realtime](plugin-realtime) | licensed | Go | WebSocket sync between desktop and mobile clients |
+| [auth](plugin-auth) | licensed | Go | Account management, MFA, session sharing across devices |
+| [cms](plugin-cms) | licensed | Go | Project / workspace storage and team-shared configs |
+| [notify](plugin-notify) | licensed | Go | Push notifications for build status and team events |
 
 Final membership pending user verification, TRAP 10 in [F06-BUNDLE-INVENTORY](https://github.com/nself-org/nself/blob/main/.claude/docs/sport/F06-BUNDLE-INVENTORY.md).
 
@@ -58,15 +58,15 @@ ClawDE Desktop ↔ realtime ↔ ClawDE Mobile
 ## Installation
 
 ```bash
-# Basic tier or higher (all ClawDE plugins are tier: pro)
-nself license set nself_pro_xxxxx...
+# A ClawDE Bundle key or ɳSelf+
+nself license set nself_clawde_xxxxx...
 nself plugin install realtime auth cms notify
 
 # Rebuild and start
 nself build && nself start
 ```
 
-ClawDE subscription is $0.99/mo or $9.99/yr (separately bundled, see [Plugin-Licensing](Plugin-Licensing)).
+The ClawDE Bundle costs $0.99/mo or $9.99/yr; ɳSelf+ ($3.99/mo or $39.99/yr) includes it. See [Plugin-Licensing](Plugin-Licensing) for how keys and plans work.
 
 ## Getting Started
 
@@ -101,8 +101,8 @@ Set push credentials for each platform. See [plugin-notify](plugin-notify).
 
 ## Related Pages
 
-- [Plugin Overview](Plugin-Overview), all plugins and tiers
+- [Plugin Overview](Plugin-Overview), the offering and all plugins
 - [Plugin Install](Plugin-Install), how to install plugins
-- [Plugin Licensing](Plugin-Licensing), license keys and tiers
+- [Plugin Licensing](Plugin-Licensing), license keys and validation
 - [ClawDE repo](https://github.com/nself-org/clawde), the AI dev environment client
 - Individual plugin pages: [realtime](plugin-realtime), [auth](plugin-auth), [cms](plugin-cms), [notify](plugin-notify)
