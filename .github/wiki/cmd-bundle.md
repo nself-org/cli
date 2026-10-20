@@ -8,229 +8,25 @@ See [[cmd-config]] for the current command. [[Command-Canon]] lists every move.
 ## Previous content
 
 <!-- BEGIN PROSE:summary -->
-> Manage and inspect ɳSelf plugin bundles.
+> Manage and inspect nSelf plugin bundles.
 <!-- END PROSE:summary -->
 
 ### Description
 
 <!-- BEGIN PROSE:description -->
-**Inspect and manage nSelf plugin bundles.**
-
-Bundles group related licensed plugins into a single purchase. Each paid bundle costs
-$0.99/mo or $9.99/yr. ɳSelf+ ($3.99/mo or $39.99/yr) includes every paid bundle.
-
-Activate a bundle by setting a license key:
-
-nself license set <key>
-
----
-
-## nself bundle list
-
-List all available bundles with pricing and plugin counts.
-
-```
-nself bundle list [--installed] [--json]
-```
-
-### Flags
-
-| Flag | Description |
-|------|-------------|
-| `--installed` | Show only bundles with at least one active plugin on this machine |
-| `--json` | Output a machine-readable JSON array (used by the admin/ marketplace UI) |
-
-### Examples
-
-```bash
-# Show all bundles
-nself bundle list
-
-# Show only bundles with plugins already installed
-nself bundle list --installed
-
-# Machine-readable output for scripting
-nself bundle list --json
-```
-
-### Output columns (table mode)
-
-| Column | Description |
-|--------|-------------|
-| Slug | CLI identifier used in `bundle info / install / remove` |
-| Name | Display name (ɳClaw, ɳChat, etc.) |
-| Price | $0.99/mo or $9.99/yr (paid); FREE (ɳTask); $3.99/mo (ɳSelf+) |
-| Plugin count | Number of plugins in the bundle |
-
----
-
-## nself bundle info \<name\>
-
-Show full details for one bundle: plugin membership, pricing, and your current
-license status.
-
-```
-nself bundle info <name> [--json]
-```
-
-### Arguments
-
-| Argument | Description |
-|----------|-------------|
-| `name` | Bundle slug (nclaw, nchat, nfamily, clawde, nsentry, ntask, nself-plus) |
-
-### Flags
-
-| Flag | Description |
-|------|-------------|
-| `--json` | Output a machine-readable JSON object with all fields |
-
-### Output fields (table mode)
-
-- **Bundle / Price:** display name and pricing tier
-- **License:** active, inactive, or not-set based on local license cache (no network call)
-- **Plugins:** full member list with installed marker (`✓`)
-- **Install:** one-line hint to activate and install
-
-### JSON output fields
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `slug` | string | CLI identifier |
-| `name` | string | Display name |
-| `price` | string | Human-readable price |
-| `description` | string | Optional note (omitted when empty) |
-| `plugins` | array | Plugin slug list |
-| `plugin_count` | int | Number of plugins |
-| `license_status` | string | Current license status |
-| `install_hint` | string | One-line install instruction |
-
-### Examples
-
-```bash
-# Human-readable output
-nself bundle info nclaw
-
-# Machine-readable JSON
-nself bundle info nclaw --json
-
-# Unknown bundle exits 1 and suggests nself bundle list
-nself bundle info bad-name
-```
-
-### Exit codes
-
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | Bundle not found — run `nself bundle list` for valid names |
-
----
-
-## nself bundle install \<name\>
-
-Install every plugin in a bundle in a single transaction. License validation runs
-for each plugin before any filesystem change. On failure, all plugins installed in
-this invocation are rolled back.
-
-```
-nself bundle install <name> [--dry-run] [--force] [--strict] [--channel <channel>]
-```
-
-### Flags
-
-| Flag | Description |
-|------|-------------|
-| `--dry-run` | Print planned actions without installing |
-| `--force` | Re-install even if the same version is installed (repair/upgrade path). Licence validation still runs; --force never bypasses it. |
-| `--strict` | Fail if any plugin in the bundle is missing from the registry |
-| `--channel` | Release channel: stable (default), beta, or canary |
-
-### Examples
-
-```bash
-nself bundle install nclaw
-nself bundle install nsentry --channel beta
-nself bundle install nchat --dry-run
-```
-
----
-
-## nself bundle remove \<name\>
-
-Remove the plugins of a bundle that nothing else needs. Plugin data
-(schema/tables) is kept from v1.5 unless you pass `--delete-data`; in v1.4 mode
-a paid bundle drops it by default, and `--keep-data` preserves it.
-
-An interrupted remove is resumed by running the same command again (the
-progress is kept in `.nself-state/remove-intent.json` in the plugin directory).
-A remove interrupted after the ledger file was deleted cannot resume: the
-leftover plugins are kept as explicit, and `nself plugin remove` removes them.
-A member that a kept plugin depends on is kept and recorded as explicit.
-
-```
-nself bundle remove <name> [--dry-run] [--keep-data]
-```
-
-### Flags
-
-| Flag | Description |
-|------|-------------|
-| `--dry-run` | Print planned actions without removing |
-| `--keep-data` | Preserve plugin schema and tables on remove |
-
-### Examples
-
-```bash
-nself bundle remove nclaw
-nself bundle remove nfamily --keep-data
-nself bundle remove nchat --dry-run
-```
-
----
-
-## Bundle catalog
-
-| Slug | Display name | Price | Status |
-|------|-------------|-------|--------|
-| `nclaw` | ɳClaw | $0.99/mo or $9.99/yr | active |
-| `nchat` | ɳChat | $0.99/mo or $9.99/yr | active |
-| `nfamily` | ɳFamily | $0.99/mo or $9.99/yr | planned v1.1.0 |
-| `clawde` | ClawDE | $0.99/mo or $9.99/yr | planned v1.1.0 |
-| `nsentry` | ɳSentry | $0.99/mo or $9.99/yr | planned v1.1.0 |
-| `ntask` | ɳTask | FREE | active |
-| `nself-plus` | ɳSelf+ | $3.99/mo or $39.99/yr | active |
-
-Buy or manage subscriptions at: https://nself.org/pricing
-
----
-
-[[Commands]] | [[Plugin-Overview]] | [[Home]]
+See [nSelf pricing](https://nself.org/pricing) for current offerings, bundle contents, availability and licensing terms.
 <!-- END PROSE:description -->
 
 ### Examples
 
 <!-- BEGIN PROSE:examples -->
-```bash
-# List all available bundles with pricing and plugin counts
-nself bundle list
-
-# See what's in the ɳClaw bundle and your current license status
-nself bundle info nclaw
-
-# Install every plugin in a bundle in one transaction
-nself bundle install nclaw
-
-# Preview a bundle removal without changing anything
-nself bundle remove nfamily --dry-run
-```
+Run `nself config bundles --help` for current usage.
 <!-- END PROSE:examples -->
 
 ### See Also
 
 <!-- BEGIN PROSE:see-also -->
-- [[Commands]] — full command index
-- [[Core-Services]] — what a stack is made of
+[nSelf pricing](https://nself.org/pricing)
 <!-- END PROSE:see-also -->
 
 ← [[Commands]] | [[Home]] →
