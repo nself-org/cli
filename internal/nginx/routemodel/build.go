@@ -218,7 +218,7 @@ func parseSize(s string) (int64, error) {
 }
 
 func validateTarget(target string) error {
-	for _, c := range "\n\r;{}" {
+	for _, c := range "\n\r;{}$" {
 		if strings.ContainsRune(target, c) {
 			return fmt.Errorf("target contains forbidden character %q", c)
 		}
