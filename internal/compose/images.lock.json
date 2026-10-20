@@ -67,12 +67,12 @@
       "name": "cadvisor",
       "role": "monitoring",
       "repository": "gcr.io/cadvisor/cadvisor",
-      "version": "v0.49.1",
-      "index_digest": "sha256:3cde6faf0791ebf7b41d6f8ae7145466fed712ea6f252c935294d2608b1af388",
+      "version": "v0.49.2",
+      "index_digest": "sha256:aea169b3b211216d9d61c33455ec3a85d2b6f63d8889b1ebf41b97163cffbbc5",
       "platforms": {
-        "linux/amd64": "sha256:524779a2661c9ea1b4b87d47fedfc56c3aed182511fcdac031f345a1fd229461",
-        "linux/arm/v7": "sha256:32f04f0699215b294f7291d84e7abc31cd7b2438f63cb8c8c059162c290d7343",
-        "linux/arm64": "sha256:735714451fd7b9469d5eabac22af1006b49eb284fe186f4c3fa302a3dfc1fcdf"
+        "linux/amd64": "sha256:ac7ec5621245371c85630f861813c8e7571d18eaeeec3fdea629eedc6ba48430",
+        "linux/arm/v7": "sha256:c339bd3373b2cfa44c41c831968bd2134ef3fa1f5b29130f4bdd29aedc53e41a",
+        "linux/arm64": "sha256:93270abd69a72d6f4e03345a551eeaec204232bbbd2f474299d3baeea8cf1931"
       },
       "legacy_ref": "gcr.io/cadvisor/cadvisor:v0.49.1",
       "license": "Apache-2.0",
@@ -98,11 +98,11 @@
       "name": "elasticsearch",
       "role": "optional",
       "repository": "docker.elastic.co/elasticsearch/elasticsearch",
-      "version": "8.11.3",
-      "index_digest": "sha256:2892d2363c3c12c5ed54c64faf89e3a19d633d8dd0d190d0bffe03035ff099b3",
+      "version": "8.11.4",
+      "index_digest": "sha256:8425bc28027fd667d9a29cde58bed4050a64a854d973d8d1ad4152ecec52bfdb",
       "platforms": {
-        "linux/amd64": "sha256:27338e64b1cb5b1def50b46bfed6ace00568af4ee8feb51efc735e721d7f7eaa",
-        "linux/arm64": "sha256:63a301185a91b3e541e190581da1cb89b00359084a7221062e9ab9f98aedb8f0"
+        "linux/amd64": "sha256:07767da384c14e5aee032fbaafd56d20282818205208909749e75a61b6d62631",
+        "linux/arm64": "sha256:543e9dc6df344a35bb029fc9b9bd2b17b2ad8f8f0f7719941784141cb4971b9c"
       },
       "legacy_ref": "docker.elastic.co/elasticsearch/elasticsearch:8.11.3",
       "license": "Elastic-2.0 OR SSPL-1.0 OR AGPL-3.0",
@@ -128,12 +128,12 @@
       "name": "grafana",
       "role": "monitoring",
       "repository": "docker.io/grafana/grafana",
-      "version": "11.1.0",
-      "index_digest": "sha256:079600c9517b678c10cda6006b4487d3174512fd4c6cface37df7822756ed7a5",
+      "version": "11.1.13",
+      "index_digest": "sha256:dfdfd26cc20a5e8861259ae624b39ac38013e8c85805b21c06c00e2f18f1689c",
       "platforms": {
-        "linux/amd64": "sha256:83c197f05ad57b51f5186ca902f0c95fcce45810e7fe738a84cc38f481a2227a",
-        "linux/arm/v7": "sha256:360840d8503489d75f61d3f419e62f8c13fe4f8e060df6d3c23ef94d149ef38a",
-        "linux/arm64": "sha256:bde5c7baab9cae482cf7ef7a4c4e6b52d035e4e7a4f9784fca3a875c8a459291"
+        "linux/amd64": "sha256:6ec56e4dcc16372167cf17852a5fdda0a864aa867d43f439ebb507d8d3ad6201",
+        "linux/arm/v7": "sha256:a60884dda0feb39afdfcd556e2aec818bc749bb21ede2f464b139ba8dd117705",
+        "linux/arm64": "sha256:1c1fe5582e15d942cf01393f6047993b9e9883997c480aff2e6c3ee1bdd54e9e"
       },
       "legacy_ref": "grafana/grafana:11.1.0",
       "license": "AGPL-3.0",
@@ -190,12 +190,12 @@
       "name": "loki",
       "role": "monitoring",
       "repository": "docker.io/grafana/loki",
-      "version": "3.1.0",
-      "index_digest": "sha256:d947e68a84d9e44915dfa08c3bec27e2124efd5ba6c83443eb53578101ec69e3",
+      "version": "3.1.2",
+      "index_digest": "sha256:ae0d78305c9c06512dfdee24b518eee82716269707c5e02ce62462c415a2f0c2",
       "platforms": {
-        "linux/amd64": "sha256:1fe88be0eb6d62a0b26697797218ecd7c536bc7d3f74612474e664f8b635678c",
-        "linux/arm/v7": "sha256:f1077f2855403a894842859221b2605ddc860d67781294bf661ec2b58018759b",
-        "linux/arm64": "sha256:e5c08ce40e45219283707380448ae3bc61baec1698351a6edcc35ee23033d6a3"
+        "linux/amd64": "sha256:38bf9e926143eaf04b547aa7cf754124013de637ecf8afd573add5c7908684e5",
+        "linux/arm/v7": "sha256:9a9a64380f8c6c7b4e61965b01cf45bae47b0055043c7cdf377e28cea044cffc",
+        "linux/arm64": "sha256:887ae615d0c48bfad247ab6a2bae295ccda3296d78d3c370a922ff0c34382960"
       },
       "legacy_ref": "grafana/loki:3.1.0",
       "license": "AGPL-3.0",
@@ -267,11 +267,11 @@
       "name": "mlflow",
       "role": "optional",
       "repository": "ghcr.io/mlflow/mlflow",
-      "version": "v2.10.0",
-      "index_digest": "sha256:49f5345f2615a13dff73fdad88907ffb46bc4425bf6282ad9e0ea11e2bc9b087",
+      "version": "v2.10.2",
+      "index_digest": "sha256:12035878d13e75d2a2c10450453c633afe1f40963b212d9fbeb0aff9cdd568c4",
       "platforms": {
-        "linux/amd64": "sha256:3c969836159bc0544bd307d0302b7472311379c4430c1044be6cbb7c5dec9710",
-        "linux/arm64": "sha256:249155ff519fe7eb43bf845c5db9f2e0889c038be65e50f9ba152e1c3fbd92ac"
+        "linux/amd64": "sha256:513ecf01761c8c5b6d5baa6dcc02534a421663ddc6c7d0f965751db1636945df",
+        "linux/arm64": "sha256:3a2b314c684a41e288163e8d85e715fe2be5118f7d1dde7eaf30b86b70684950"
       },
       "legacy_ref": "ghcr.io/mlflow/mlflow:v2.10.0",
       "license": "Apache-2.0",
@@ -298,12 +298,12 @@
       "name": "node-exporter",
       "role": "monitoring",
       "repository": "docker.io/prom/node-exporter",
-      "version": "v1.8.1",
-      "index_digest": "sha256:fa7fa12a57eff607176d5c363d8bb08dfbf636b36ac3cb5613a202f3c61a6631",
+      "version": "v1.8.2",
+      "index_digest": "sha256:4032c6d5bfd752342c3e631c2f1de93ba6b86c41db6b167b9a35372c139e7706",
       "platforms": {
-        "linux/amd64": "sha256:e91be75cf2b242f73fc28a609c4a09f5f0409e03c03456e2bfc224b98730d286",
-        "linux/arm/v7": "sha256:6d567bce08b9cc20e31191f35b1e5fa3ccdff55faf03ce28ac044cb3fee0014f",
-        "linux/arm64": "sha256:c13575817446993529a7192d00ec3f3480a3216e93a291dad3ed87bc23887152"
+        "linux/amd64": "sha256:065914c03336590ebed517e7df38520f0efb44465fde4123c3f6b7328f5a9396",
+        "linux/arm/v7": "sha256:e0f9ebfe8ba2077e0c70dc7eded651261dcce8434ae1abf870841cda44487604",
+        "linux/arm64": "sha256:1eabab826c9d9f0c534e4e8fa745445f743fef9aee276d561d12811edea74004"
       },
       "legacy_ref": "prom/node-exporter:v1.8.1",
       "license": "Apache-2.0",
@@ -330,12 +330,12 @@
       "name": "otel-collector-contrib",
       "role": "monitoring",
       "repository": "docker.io/otel/opentelemetry-collector-contrib",
-      "version": "0.102.0",
-      "index_digest": "sha256:26bce721ca2f83db1c2c4e8873514dfe5b3973401fe88a1208efdc74e32840c1",
+      "version": "0.102.1",
+      "index_digest": "sha256:0d928e02b0ef5abbba775da205eb102f58b29aa75ea623465ec42445dfc5c443",
       "platforms": {
-        "linux/amd64": "sha256:1a50e107c1e474d46e5c6ef9c873a59345ab630f3ce6c384d127e80143684535",
-        "linux/arm/v7": "sha256:a9d369f015817f9b9770be42681679394216cd3a311f1140be172cd03a9d933c",
-        "linux/arm64": "sha256:9ef8ff2c83588e125201814464bd17b01bdfdef146c9eef4faff1924d99f47af"
+        "linux/amd64": "sha256:eac8f408c4f6a097549edb9fa081c71981fc91600d74abff3dbe56568bba942d",
+        "linux/arm/v7": "sha256:d840f6f8153812fd9b410ca00beaefdf4f13cc5442e78b4835c60e45f4345514",
+        "linux/arm64": "sha256:f19d8cbf1cd0019c9acbc54d9d14792e3ef65173dbfd510375c38453b4747bb1"
       },
       "legacy_ref": "otel/opentelemetry-collector-contrib:0.102.0",
       "license": "Apache-2.0",
@@ -393,12 +393,12 @@
       "name": "prometheus",
       "role": "monitoring",
       "repository": "docker.io/prom/prometheus",
-      "version": "v2.53.0",
-      "index_digest": "sha256:075b1ba2c4ebb04bc3a6ab86c06ec8d8099f8fda1c96ef6d104d9bb1def1d8bc",
+      "version": "v2.53.5",
+      "index_digest": "sha256:7a34573f0b9c952286b33d537f233cd5b708e12263733aa646e50c33f598f16c",
       "platforms": {
-        "linux/amd64": "sha256:b8e8cec4bfdfda676f4334f4f2aab9d8758f51d76ac41fc35224f6ae79b79f54",
-        "linux/arm/v7": "sha256:9ea56d3db4cc06c7c5fed1668539639ad4c3c57d639e4a2a35f6e1e0db697b03",
-        "linux/arm64": "sha256:d312bc9830421eb57179917f4c6290f31b0c75990d8e2f3beab3febbcb4b24ad"
+        "linux/amd64": "sha256:28b75420506f7bb453a633fb5a6c0490bec4e2639d6a576759150eebc644d170",
+        "linux/arm/v7": "sha256:29f7630b3d7491e8a500561280098d467fa200eb801b5d176dee3989528a5986",
+        "linux/arm64": "sha256:e979dad28b261b1d82e9dbe048e99f7ee75c93df5779a7169ed558e4e29a0cd0"
       },
       "legacy_ref": "prom/prometheus:v2.53.0",
       "license": "Apache-2.0",
@@ -409,12 +409,12 @@
       "name": "promtail",
       "role": "monitoring",
       "repository": "docker.io/grafana/promtail",
-      "version": "3.1.0",
-      "index_digest": "sha256:b3db8e7b1cba0e8c45ce2ae72ebddfd88ebdcae86383f1680edf0074e9010ff6",
+      "version": "3.1.2",
+      "index_digest": "sha256:47c3488971ca1e115df050835882399044fbd7c89f3970ae6f8ee8e713774302",
       "platforms": {
-        "linux/amd64": "sha256:f9ab8cba53b34f36b03ecdb11cbd04dc3a2ede1839f72540d4c9d274aaaf0109",
-        "linux/arm/v7": "sha256:7266704553b3180f9fcc8c86369434f855c509bc66905d0781f654920f81641a",
-        "linux/arm64": "sha256:dc17f1ee1a4500a31851b20c0fd8e9ae780c3fa3ce76dcfe543d4005ff4bd00e"
+        "linux/amd64": "sha256:e56b9ea8ba05c216c486e8aed0ea46f3f5d6b81312fbbe79923dc7f33897ec62",
+        "linux/arm/v7": "sha256:8801e46097606daed26e7d4296ff8c26ee8c0dfb46724f310f76842b2735b184",
+        "linux/arm64": "sha256:f41e3ccfb9d56d713e23f8802987c84cd937382f8fd61a2a54baa78a925bdd85"
       },
       "legacy_ref": "grafana/promtail:3.1.0",
       "license": "AGPL-3.0",
