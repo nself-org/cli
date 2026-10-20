@@ -138,6 +138,16 @@ jq -e --arg u "$UID1" '(.data.notes|length)==1 and .data.notes[0].user_id==$u' "
 # The auth.uid() default fills the owner column with the caller's id.
 gql '{"query":"mutation { insert_notes_one(object: {title: \"from hasura\"}) { user_id } }"}' >"$W/insert.json" || fail 'insert request'
 jq -e --arg u "$UID1" '.data.insert_notes_one.user_id==$u' "$W/insert.json" >/dev/null || fail 'insert did not fill user_id from auth.uid()'
+# Cross-user mutations must be rejected or affect zero rows.
+for operation in update delete; do
+  if [ "$operation" = update ]; then
+    mutation="mutation { update_notes(where: {user_id: {_neq: \"$UID1\"}}, _set: {title: \"forbidden\"}) { affected_rows } }"
+  else
+    mutation="mutation { delete_notes(where: {user_id: {_neq: \"$UID1\"}}) { affected_rows } }"
+  fi
+  gql "$(jq -nc --arg q "$mutation" '{query:$q}')" >"$W/$operation-denied.json" || fail "$operation request"
+  jq -e --arg field "${operation}_notes" '.errors!=null or .data[$field].affected_rows==0' "$W/$operation-denied.json" >/dev/null || fail "cross-user $operation allowed"
+done
 # The untranslated policy leaves the table closed to the user role.
 gql '{"query":"{ announcements { id } }"}' >"$W/announcements.json" || true
 jq -e '.errors!=null' "$W/announcements.json" >/dev/null || fail 'untranslated policy table is open'

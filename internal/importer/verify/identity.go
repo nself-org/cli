@@ -1,5 +1,7 @@
 package verify
 
+import "reflect"
+
 // Purpose: one canonical form of a user's nullable identity fields.
 // Inputs: email, phone, display name (nil means SQL NULL). Outputs: a comparable string.
 // Constraints: NULL and empty text stay distinct for email and phone, because hasura-auth
@@ -23,6 +25,9 @@ func Identity(email, phone, display *string) string {
 // email_verified, disabled and role set. A target role beyond the bundle's is a
 // mismatch, except the default role itself, which a target may add on its own.
 func authMatches(want User, got UserAuth) bool {
+	if (len(want.Metadata) != 0 || len(got.Metadata) != 0) && !reflect.DeepEqual(want.Metadata, got.Metadata) {
+		return false
+	}
 	wantDefault := want.DefaultRole
 	if wantDefault == "" {
 		wantDefault = DefaultRoleFallback
