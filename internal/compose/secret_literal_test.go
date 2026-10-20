@@ -187,7 +187,7 @@ func TestOptionalServicesSecretRefsPerService(t *testing.T) {
 		// and the shell expands $$REDISCLI_AUTH for redis-server (D-0282).
 		{"meilisearch", "redis", true, []string{
 			"REDISCLI_AUTH: ${REDIS_PASSWORD}",
-			`--requirepass "$$REDISCLI_AUTH"`,
+			`/run/nself-cache/redis.conf`,
 		}},
 		{"meilisearch", "minio", true, []string{"MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}"}},
 		{"meilisearch", "minio", false, []string{"MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-}"}},

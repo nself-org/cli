@@ -173,14 +173,10 @@ func (g *Generator) buildRedisService() ServiceConfig {
 	var env map[string]string
 
 	if rc.Password != "" {
-		// D-0282: no argv carries the password. It reaches the container as
-		// REDISCLI_AUTH (Env, like every other secret), which the engine's CLI
-		// reads on its own (the health check needs no -a), and a shell expands it
-		// for the server ($$ survives compose interpolation as $). Valkey's CLI
-		// reads REDISCLI_AUTH too.
+		// Keep server credentials in a private tmpfs config, never expanded argv.
 		env = map[string]string{"REDISCLI_AUTH": secretRef("REDIS_PASSWORD", rc.Password)}
-		command = []string{"sh", "-c", fmt.Sprintf(
-			`exec %s --appendonly yes --protected-mode yes --requirepass "$$REDISCLI_AUTH" --maxclients %d`,
+		command = []string{"sh", "-c", cachePasswordConfig + fmt.Sprintf(
+			`exec %s /run/nself-cache/redis.conf --appendonly yes --protected-mode yes --maxclients %d`,
 			server, poolSize,
 		)}
 	} else {
@@ -198,6 +194,7 @@ func (g *Generator) buildRedisService() ServiceConfig {
 		Networks:      []string{g.cfg.DockerNetwork},
 		Environment:   env,
 		Command:       command,
+		Tmpfs:         []string{"/run/nself-cache:uid=999,gid=999,mode=0700"},
 		Volumes:       []string{g.cacheVolume() + ":/data"},
 		Ports:         []string{fmt.Sprintf("127.0.0.1:%d:6379", port)},
 		Healthcheck: &Healthcheck{

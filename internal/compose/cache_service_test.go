@@ -142,7 +142,7 @@ func TestCacheEngineExistingProjectNeverMoves(t *testing.T) {
 		if svc.Image != pin {
 			t.Errorf("image = %q, want the lock pin %q", svc.Image, pin)
 		}
-		wantCmd := []string{"sh", "-c", `exec redis-server --appendonly yes --protected-mode yes --requirepass "$$REDISCLI_AUTH" --maxclients 20`}
+		wantCmd := []string{"sh", "-c", cachePasswordConfig + `exec redis-server /run/nself-cache/redis.conf --appendonly yes --protected-mode yes --maxclients 20`}
 		if got, _ := svc.Command.([]string); strings.Join(got, "\x00") != strings.Join(wantCmd, "\x00") {
 			t.Errorf("command = %q, want %q", svc.Command, wantCmd)
 		}
