@@ -29,7 +29,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
 	"time"
 
 	"github.com/nself-org/cli/internal/docker"
@@ -271,24 +270,8 @@ func ReapplyRemote(ctx context.Context, o ApplyOptions) error {
 	if err != nil {
 		return err
 	}
-	base := composeBase(o.Set.Compose, o.Set.EnvManifest)
-	pull := fmt.Sprintf("cd %s && %s pull", q(o.RemotePath), base)
-	if len(o.KeepImages) > 0 {
-		// A rollback: the tags the deploy moved go back to the recorded ids and are
-		// not pulled again; only the services without a record are (D-0700).
-		if err = restoreImageTags(ctx, o.Remote, o.KeepImages); err != nil {
-			return err
-		}
-		emit(o.Out, "  [restored] %d image tag(s) pointed back at the images the previous deploy ran", len(o.KeepImages))
-		pull = ""
-		if svcs := pullTargets(model, o.KeepImages); len(svcs) > 0 {
-			pull = fmt.Sprintf("cd %s && %s pull -- %s", q(o.RemotePath), base, strings.Join(quoteAll(svcs), " "))
-		}
-	}
-	if pull != "" {
-		if _, err = o.Remote.Run(ctx, shScript(pull)); err != nil {
-			return fmt.Errorf("remote pull on %s: %w", o.Remote.Label(), err)
-		}
+	if err = reapplyPull(ctx, o, model); err != nil {
+		return err
 	}
 	if err = applyServices(ctx, o, model); err != nil {
 		return err

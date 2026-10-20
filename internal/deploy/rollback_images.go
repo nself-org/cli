@@ -135,3 +135,28 @@ func pullTargets(model ComposeModel, keep []imageTag) []string {
 	sort.Strings(svcs)
 	return svcs
 }
+
+// reapplyPull is the pull step of ReapplyRemote. A rollback (KeepImages set)
+// points the tags the deploy moved back at the recorded ids and pulls only the
+// services without a record; any other reapply pulls everything (D-0700).
+func reapplyPull(ctx context.Context, o ApplyOptions, model ComposeModel) error {
+	base := composeBase(o.Set.Compose, o.Set.EnvManifest)
+	pull := fmt.Sprintf("cd %s && %s pull", q(o.RemotePath), base)
+	if len(o.KeepImages) > 0 {
+		if err := restoreImageTags(ctx, o.Remote, o.KeepImages); err != nil {
+			return err
+		}
+		emit(o.Out, "  [restored] %d image tag(s) pointed back at the images the previous deploy ran", len(o.KeepImages))
+		pull = ""
+		if svcs := pullTargets(model, o.KeepImages); len(svcs) > 0 {
+			pull = fmt.Sprintf("cd %s && %s pull -- %s", q(o.RemotePath), base, strings.Join(quoteAll(svcs), " "))
+		}
+	}
+	if pull == "" {
+		return nil
+	}
+	if _, err := o.Remote.Run(ctx, shScript(pull)); err != nil {
+		return fmt.Errorf("remote pull on %s: %w", o.Remote.Label(), err)
+	}
+	return nil
+}
