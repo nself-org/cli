@@ -6,6 +6,11 @@
 # Constraints: bash 3.2 (no assoc arrays, no mapfile, no ${x,,}); no token is read,
 #          printed or stored: only the ambient `gh` session is used.
 
+# Shared PR/license wait budget; image publishing keeps its separate budget.
+RELEASE_WAIT_MINUTES="${RELEASE_WAIT_MINUTES:-45}"
+case "$RELEASE_WAIT_MINUTES" in
+  ''|*[!0-9]*|0*) printf 'release: RELEASE_WAIT_MINUTES must be a positive whole number without leading zeros\n' >&2; exit 2 ;;
+esac
 POLL_SECONDS=20
 # Docker image wait: 180 polls x 20 s = 60 min. The multi-arch admin build takes about
 # 40 min under QEMU (v1.4.14), which the old 90 polls (30 min) never covered.

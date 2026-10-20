@@ -7,7 +7,7 @@
 # Constraints: GET-only; time-bounded (45 min of pending, 6 tries for unreported
 #          checks); never calls admin-merge.sh itself.
 
-CHECKS_BUDGET=90   # polls of 30 s = 45 min of pending checks
+CHECKS_BUDGET=$(( RELEASE_WAIT_MINUTES * 2 )) # 30-second polls
 
 # required_contexts <repo>: names of the status checks main's protection requires
 # (GET), one per line. Nothing for a 404 (no protection, or none required); "?" when
@@ -48,9 +48,9 @@ wait_checks() {
     head -4 "$out" | sed "s/^/  $repo#$n: /"
     if [ "$rc" -eq 8 ]; then
       t=$((t + 1))
-      if [ "$t" -ge "$CHECKS_BUDGET" ]; then
+      if [ "$t" -gt "$CHECKS_BUDGET" ]; then
         rm -f "$out"
-        die_step "$s" "$id" "$repo#$n: required checks still pending after 45 minutes; nothing was merged. Look at the PR, then --from $s"
+        die_step "$s" "$id" "$repo#$n: required checks still pending after ${RELEASE_WAIT_MINUTES} minutes; nothing was merged. Look at the PR, then --from $s"
       fi
       sleep "$POLL_SECONDS"; continue
     fi

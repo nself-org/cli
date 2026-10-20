@@ -5,6 +5,7 @@
 # Inputs:  --version  target release, X.Y.Z (no v)
 #          --plan     print `S<n> <step-id> <repo> <command>` rows; only `gh api` GETs
 #          --from     resume at step S<n> (steps recover their inputs from state or GitHub)
+#          RELEASE_WAIT_MINUTES (env, default 45): PR-check and license-audit wait budget.
 #          --yes      skip release.sh's own "Run S<n>? [y/N]" prompt only; admin-merge.sh
 #                     always asks the owner at the terminal
 # Outputs: progress on stdout; errors on stderr. Exit 0 ok, 1 a step failed (message

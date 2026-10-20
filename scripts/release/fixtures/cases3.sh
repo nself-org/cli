@@ -19,7 +19,10 @@ rm -rf "$T"
 mk_env "$HAVE_GO"; bump_mains; echo 999 > "$ST/license_inflight"
 run_pty --version "$V" --from S4 --yes
 check "license-audit that never ends stops S4 with no tag" test "$RC" -eq 1 -a -z "$(cli_tag)"
-check "license-audit timeout is named" out_has "still running after 30 minutes"
+check "license-audit timeout is named" out_has "still running after 45 minutes"
+echo 0 > "$ST/license_inflight"
+run_pty --version "$V" --from S4 --yes
+check "S4 resumes after the license backlog clears" test "$RC" -eq 0 -a -n "$(cli_tag)"
 rm -rf "$T"
 mk_env "$HAVE_GO"; bump_mains; touch "$ST/license_pr_fail"
 run_pty --version "$V" --from S4 --yes

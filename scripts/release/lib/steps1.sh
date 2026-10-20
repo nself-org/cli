@@ -46,7 +46,7 @@ step_admin_lockstep() {
     plan_line S2 admin-lockstep admin "scripts/bump-version.sh $VERSION (cwd $WORK/cli; edits admin package.json, src/lib/cli-version.ts, Dockerfile, .github/wiki/Home.md)"
     plan_line S2 admin-lockstep admin "git -C $WORK/admin checkout -b $br; git commit; git push origin $br"
     plan_line S2 admin-lockstep admin "gh pr create -R nself-org/admin --base main --head $br"
-    plan_line S2 admin-lockstep admin "gh pr checks N -R nself-org/admin --required (polled, 45 min budget)"
+    plan_line S2 admin-lockstep admin "gh pr checks N -R nself-org/admin --required (polled, ${RELEASE_WAIT_MINUTES} min budget)"
     plan_line S2 admin-lockstep admin "scripts/admin-merge.sh --repo nself-org/admin --pr N"
     return 0
   fi
@@ -77,7 +77,7 @@ step_cli_version() {
     plan_line S3 cli-version cli "scripts/bump-version.sh $VERSION (cwd $WORK/cli; also regenerates the 4 version-hash goldens: UPDATE_GOLDEN=1 go test ./internal/build ./cmd/commands, then re-runs them plain)"
     plan_line S3 cli-version cli "go run -mod=vendor ./tools/facts && go run -mod=vendor ./tools/facts -readme README.md (facts regeneration, only when tools/facts exists)"
     plan_line S3 cli-version cli "git -C $WORK/cli checkout -b $br; git commit; git push origin $br; gh pr create -R nself-org/cli --base main --head $br"
-    plan_line S3 cli-version cli "gh pr checks N -R nself-org/cli --required (polled, 45 min budget)"
+    plan_line S3 cli-version cli "gh pr checks N -R nself-org/cli --required (polled, ${RELEASE_WAIT_MINUTES} min budget)"
     plan_line S3 cli-version cli "scripts/admin-merge.sh --repo nself-org/cli --pr N"
     return 0
   fi

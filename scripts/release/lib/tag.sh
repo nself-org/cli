@@ -21,15 +21,15 @@ lic_state() {
   LIC=$GH_OUT
 }
 lic_settled() { lic_state; [ "$LIC" != pending ]; }
-# lic_wait <main|any>: LIC after waiting (30 min at most) for an in-flight run.
+# lic_wait <main|any>: LIC after waiting (the configured budget, default 45 min) for an in-flight run.
 lic_wait() {
   # shellcheck disable=SC2034  # read by poll() through dynamic scope
   local POLL_SECONDS=30
   LSCOPE=$1
   lic_state
   if [ "$LIC" = pending ]; then
-    say "S4 tag: license-audit.yml ($1) is still running; waiting up to 30 minutes"
-    poll "license-audit.yml run ($1)" 60 lic_settled || true
+    say "S4 tag: license-audit.yml ($1) is still running; waiting up to ${RELEASE_WAIT_MINUTES} minutes"
+    poll "license-audit.yml run ($1)" "$(( RELEASE_WAIT_MINUTES * 2 ))" lic_settled || true
     lic_state
   fi
 }
@@ -45,14 +45,14 @@ deny_checks() {
   lic_wait main
   case "$LIC" in
     success) ;;
-    pending) die_step S4 tag "DENY-004: license-audit.yml on main is still running after 30 minutes; let it finish, then --from S4" ;;
+    pending) die_step S4 tag "DENY-004: license-audit.yml on main is still running after ${RELEASE_WAIT_MINUTES} minutes; let it finish, then --from S4" ;;
     none) die_step S4 tag "DENY-004: no license-audit.yml run on main. Start one: gh workflow run license-audit.yml -R nself-org/cli --ref main, wait for it to pass, then --from S4" ;;
     *) die_step S4 tag "DENY-004: the newest license-audit.yml run on main is '$LIC'. Fix the flagged licenses, run: gh workflow run license-audit.yml -R nself-org/cli --ref main, wait for it to pass, then --from S4" ;;
   esac
   lic_wait any
   case "$LIC" in
     success|none) ;;
-    pending) die_step S4 tag "DENY-004: a license-audit.yml run is still in flight after 30 minutes; the Pre-Release Gate reads the newest run on any branch. Let it finish, then --from S4" ;;
+    pending) die_step S4 tag "DENY-004: a license-audit.yml run is still in flight after ${RELEASE_WAIT_MINUTES} minutes; the Pre-Release Gate reads the newest run on any branch. Let it finish, then --from S4" ;;
     *) die_step S4 tag "DENY-004: pre-release-gate.yml reads the newest license-audit.yml run on ANY branch and it is '$LIC' (a PR-branch run?), so the gate would fail after the tag is pushed. Start a newer run: gh workflow run license-audit.yml -R nself-org/cli --ref main, wait for it to pass, then --from S4" ;;
   esac
   # The gate reads every milestone titled exactly $TAG (any state) and needs the result
@@ -73,7 +73,7 @@ step_tag() {
     plan_line S4 tag cli "gh pr list -R nself-org/cli --head release/v${VERSION} --state merged --json mergeCommit (the S3 merge commit)"
     plan_line S4 tag cli "git -C $WORK/cli fetch --tags origin main; tag origin/main, or the merge commit when main has moved on but still contains it; its .github/VERSION must be $VERSION"
     plan_line S4 tag cli "git -C $WORK/cli rev-list --count PRIOR_TAG..SHA (DENY-003: more than 0 commits since the prior tag)"
-    plan_line S4 tag cli "gh run list -R nself-org/cli --workflow license-audit.yml --branch main --limit 1 (DENY-004: waits up to 30 min while running; success required)"
+    plan_line S4 tag cli "gh run list -R nself-org/cli --workflow license-audit.yml --branch main --limit 1 (DENY-004: waits up to ${RELEASE_WAIT_MINUTES} min while running; success required)"
     plan_line S4 tag cli "gh run list -R nself-org/cli --workflow license-audit.yml --limit 1 (DENY-004 as pre-release-gate.yml reads it: any branch)"
     plan_line S4 tag cli "gh api repos/nself-org/cli/milestones?state=all&per_page=100 --paginate (DENY-005: exactly one milestone titled $TAG, and it is closed)"
     plan_line S4 tag cli "git -C $WORK/cli tag -a $TAG -m $TAG SHA && git -C $WORK/cli push origin refs/tags/$TAG"

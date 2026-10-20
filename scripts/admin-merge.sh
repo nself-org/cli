@@ -33,6 +33,7 @@
 #   scripts/admin-merge.sh [--repo <owner/repo>] [--branch <branch>]
 #                          [--pr <number>] [--dry-run] [--no-wait-ci]
 #                          [--wait-minutes <N>]
+#                          [--admin-bypass-pending hosted-runner-backlog]
 #
 # Flags:
 #   --repo <owner/repo>    Target repo (default: auto-detected from git remote)
@@ -41,6 +42,8 @@
 #   --dry-run              Print what would happen (incl. the restore PUT body); change nothing
 #   --no-wait-ci           Skip CI wait; restore immediately after merge (risky)
 #   --wait-minutes <N>     CI wait budget in minutes (default: 20)
+#   --admin-bypass-pending hosted-runner-backlog
+#                          Merge pending required checks only for this named backlog; failures are refused.
 #   --force-restore        Restore branch protection only (recovery mode)
 #   --snapshot <file>      With --force-restore: snapshot file to restore (its
 #                          path is in the RESTORE_FAILED / restore_mismatch audit
@@ -105,6 +108,8 @@ TARGET_REPO=""
 TARGET_BRANCH=""
 PR_NUMBER=""
 SNAPSHOT_FILE=""
+ADMIN_BYPASS_CASE=""
+MERGE_METHOD=--auto
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -113,6 +118,9 @@ while [ $# -gt 0 ]; do
     --pr)             PR_NUMBER="$2";      shift 2 ;;
     --dry-run)        DRY_RUN=1;           shift ;;
     --no-wait-ci)     NO_WAIT_CI=1;        shift ;;
+    --admin-bypass-pending)
+      [ $# -ge 2 ] || { printf 'ERROR: --admin-bypass-pending needs hosted-runner-backlog\n' >&2; exit 1; }
+      ADMIN_BYPASS_CASE="$2"; shift 2 ;;
     --force-restore)  FORCE_RESTORE=1;     shift ;;
     --snapshot)       SNAPSHOT_FILE="$2";  shift 2 ;;
     --wait-minutes)   WAIT_MINUTES="$2";   shift 2 ;;
@@ -126,6 +134,11 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
+
+case "$ADMIN_BYPASS_CASE" in
+  ''|hosted-runner-backlog) ;;
+  *) printf 'ERROR: unknown pending-check backlog case: %s\n' "$ADMIN_BYPASS_CASE" >&2; exit 1 ;;
+esac
 
 case "${WAIT_MINUTES}" in
   ''|*[!0-9]*) printf 'ERROR: --wait-minutes needs a whole number, got: %s\n' "${WAIT_MINUTES}" >&2; exit 1 ;;
@@ -159,224 +172,8 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "Required command not found: $1"
 }
 
-# ── Pre-flight checks ─────────────────────────────────────────────────────────
-require_cmd gh
-require_cmd jq
-require_cmd git
-[ -r "${PS_LIB}" ] || die "Missing library: ${PS_LIB}"
-# shellcheck source=/dev/null
-. "${PS_LIB}"
-
-# Auto-detect repo from git remote
-if [ -z "${TARGET_REPO}" ]; then
-  REMOTE_URL=$(git remote get-url origin 2>/dev/null || true)
-  if [ -z "${REMOTE_URL}" ]; then
-    die "Cannot detect repo: no git remote 'origin'. Pass --repo owner/repo."
-  fi
-  # Extract owner/repo from https://github.com/owner/repo.git or git@github.com:owner/repo.git
-  TARGET_REPO=$(printf '%s' "${REMOTE_URL}" \
-    | sed 's|.*github\.com[:/]\(.*\)\.git|\1|' \
-    | sed 's|.*github\.com[:/]\(.*\)|\1|')
-fi
-
-# Auto-detect branch and guard against merging from main. --force-restore only
-# restores protection, so it needs neither (recovery must work from any checkout).
-if [ "${FORCE_RESTORE}" -eq 0 ] && [ -z "${TARGET_BRANCH}" ]; then
-  TARGET_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
-  if [ -z "${TARGET_BRANCH}" ] || [ "${TARGET_BRANCH}" = "HEAD" ]; then
-    die "Cannot detect current branch. Pass --branch <branch>."
-  fi
-fi
-
-# Guard: never merge directly on main
-if [ "${FORCE_RESTORE}" -eq 0 ] && { [ "${TARGET_BRANCH}" = "main" ] || [ "${TARGET_BRANCH}" = "master" ]; }; then
-  die "TARGET_BRANCH is '${TARGET_BRANCH}' — this script merges TO main, not FROM main. Pass a feature/fix branch via --branch."
-fi
-
-# Verify gh auth
-if ! gh auth status >/dev/null 2>&1; then
-  die "GitHub CLI not authenticated. Run: gh auth login"
-fi
-
-# Verify admin scope (branch protection requires admin:repo or repo scope)
-SCOPES=$(gh auth status 2>&1 | grep -i 'scopes\|token scopes' | head -1 || true)
-if ! printf '%s' "${SCOPES}" | grep -qi 'repo'; then
-  warn "Could not confirm 'repo' scope on GH token. Branch protection API may fail."
-  warn "Re-authenticate with: gh auth login --scopes repo"
-fi
-
-# Auto-detect PR number
-if [ -z "${PR_NUMBER}" ] && [ "${FORCE_RESTORE}" -eq 0 ]; then
-  PR_NUMBER=$(gh pr list --repo "${TARGET_REPO}" --head "${TARGET_BRANCH}" --state open --json number --jq '.[0].number' 2>/dev/null || true)
-  if [ -z "${PR_NUMBER}" ]; then
-    die "No open PR found for branch '${TARGET_BRANCH}' in ${TARGET_REPO}. Create one first or pass --pr <number>."
-  fi
-  info "Auto-detected PR #${PR_NUMBER} for branch '${TARGET_BRANCH}'"
-fi
-
-# ── Read current branch protection (the snapshot restored after the merge) ────
-info "Reading current branch protection for ${TARGET_REPO}..."
-
-PROTECTION_JSON=$(gh api "repos/${TARGET_REPO}/branches/main/protection" 2>/dev/null || true)
-if [ -z "${PROTECTION_JSON}" ]; then
-  die "Cannot read branch protection for ${TARGET_REPO}/main. Ensure GH token has admin:repo scope."
-fi
-printf '%s' "${PROTECTION_JSON}" | jq -e 'type == "object"' >/dev/null 2>&1 \
-  || die "Branch protection response for ${TARGET_REPO}/main is not a JSON object."
-# Refuse before relaxing anything if the PUT API cannot reproduce the snapshot.
-ps_unexpressible "${PROTECTION_JSON}" || die "Cannot restore this protection faithfully; owner decision needed. Nothing was changed."
-
-info "  Snapshot: $(printf '%s' "${PROTECTION_JSON}" | jq -c '{reviews: .required_pull_request_reviews.required_approving_review_count, enforce_admins: .enforce_admins.enabled, strict: .required_status_checks.strict, checks: [.required_status_checks.contexts[]?]}')"
-
-# ── Watchdog marker files ─────────────────────────────────────────────────────
-MERGE_TS=$(date '+%Y%m%d%H%M%S')
-DONE_MARKER="${WORK_DIR}/nself-admin-merge-${MERGE_TS}.done"
-RELAX_MARKER="${WORK_DIR}/nself-admin-merge-${MERGE_TS}.relaxed"
-# RELAX_TS_MARKER: written after relax API call succeeds; contains the epoch
-# at which relax completed. Watchdog reads this to reset its deadline from the
-# actual relax time rather than from spawn time (FIX3 — watchdog deadline timing).
-RELAX_TS_MARKER="${WORK_DIR}/nself-admin-merge-${MERGE_TS}.relax_ts"
-
-# Write the snapshot (0600) to the file restore_protection and the watchdog read.
-write_snapshot() { ( umask 077; printf '%s' "${PROTECTION_JSON}" > "$1" ); }
-
-# ── Force-restore early exit ──────────────────────────────────────────────────
-if [ "${FORCE_RESTORE}" -eq 1 ]; then
-  warn "Force-restore mode: restoring branch protection without merge."
-  if [ -z "${SNAPSHOT_FILE}" ]; then
-    warn "No --snapshot given: re-applying the LIVE protection (a no-op if it is currently relaxed)."
-    SNAPSHOT_FILE="${WORK_DIR}/nself-admin-merge-${MERGE_TS}.snapshot.json"
-    write_snapshot "${SNAPSHOT_FILE}"
-  fi
-  restore_protection "${TARGET_REPO}" "${SNAPSHOT_FILE}" "${DRY_RUN}" "force_restore" || exit 3
-  exit 0
-fi
-
-# ── Pre-merge summary ─────────────────────────────────────────────────────────
-printf '\n'
-info "Admin merge plan:"
-printf '  Repo:         %s\n' "${TARGET_REPO}"
-printf '  Branch:       %s → main\n' "${TARGET_BRANCH}"
-printf '  PR:           #%s\n' "${PR_NUMBER}"
-printf '  CI wait:      %s minutes\n' "${WAIT_MINUTES}"
-printf '  Dry run:      %s\n' "${DRY_RUN}"
-printf '  Watchdog:     %ss deadline (%s marker)\n' "${WATCHDOG_DEADLINE}" "${DONE_MARKER}"
-printf '\n'
-
-if [ "${DRY_RUN}" -eq 0 ]; then
-  warn "This will TEMPORARILY relax branch protection on ${TARGET_REPO}/main."
-  warn "Protection is restored automatically within ${WATCHDOG_DEADLINE}s by the watchdog."
-  printf '\nProceed? [y/N] '
-  read -r CONFIRM
-  if [ "${CONFIRM}" != "y" ] && [ "${CONFIRM}" != "Y" ]; then
-    info "Aborted."
-    exit 0
-  fi
-fi
-
-audit "START  repo=${TARGET_REPO}  branch=${TARGET_BRANCH}  pr=${PR_NUMBER}  dry_run=${DRY_RUN}"
-SNAPSHOT_FILE="${WORK_DIR}/nself-admin-merge-${MERGE_TS}.snapshot.json"
-write_snapshot "${SNAPSHOT_FILE}"
-
-# ── Spawn watchdog sidecar ────────────────────────────────────────────────────
-# The watchdog is an INDEPENDENT process (nohup + detached).
-# It cannot be killed by SIGKILL to this shell.
-# It polls for DONE_MARKER and runs the verified restore if it never appears.
-# The script body is a quoted heredoc: no parent state is interpolated; every
-# value arrives as an argument and the restore logic is sourced from PS_LIB.
-
-WATCHDOG_SCRIPT="${WORK_DIR}/nself-watchdog-${MERGE_TS}.sh"
-
-if [ "${DRY_RUN}" -eq 0 ]; then
-  cat > "${WATCHDOG_SCRIPT}" << 'WATCHDOG_EOF'
-#!/usr/bin/env bash
-# Watchdog for admin-merge.sh. Restores branch protection from the snapshot
-# file if the parent dies before it writes the done marker.
-# Args: lib repo snapshot done relaxed relax_ts deadline audit_log dry_run self parent_pid
-set -u
-LIB="$1"; REPO="$2"; SNAP="$3"; DONE_MARKER="$4"; RELAX_MARKER="$5"
-RELAX_TS_MARKER="$6"; DEADLINE="$7"; AUDIT_LOG="$8"; DRY_RUN="$9"; SELF="${10}"; PARENT="${11}"
-export AUDIT_LOG
-# The parent verifies its own restore from the same snapshot file, so it is
-# removed only once the parent is gone (a slow CI must not lose it).
-drop_snapshot() { kill -0 "${PARENT}" 2>/dev/null || rm -f "${SNAP}"; }
-drop_markers() { rm -f "${SELF}" "${RELAX_MARKER}" "${RELAX_TS_MARKER}"; }
-# shellcheck source=/dev/null
-. "${LIB}" || { printf '[WATCHDOG] cannot source %s\n' "${LIB}"; exit 2; }
-
-deadline=$(( $(date '+%s') + DEADLINE ))
-
-# Wait until relax marker exists (protection has been relaxed) or deadline
-while [ ! -f "${RELAX_MARKER}" ]; do
-  if [ "$(date '+%s')" -ge "${deadline}" ]; then
-    printf '[WATCHDOG] Deadline reached waiting for relax marker. Exiting (nothing to restore).\n'
-    drop_snapshot; drop_markers
-    exit 0
-  fi
-  sleep 2
-done
-
-# FIX3: reset the deadline from the actual relax completion time.
-if [ -f "${RELAX_TS_MARKER}" ]; then
-  relax_epoch=$(cat "${RELAX_TS_MARKER}" 2>/dev/null || date '+%s')
-  deadline=$(( relax_epoch + DEADLINE ))
-  printf '[WATCHDOG] Deadline reset from relax time: epoch=%s deadline=%s\n' "${relax_epoch}" "${deadline}"
-fi
-printf '[WATCHDOG] Protection was relaxed. Monitoring for done marker...\n'
-
-while [ ! -f "${DONE_MARKER}" ]; do
-  if [ "$(date '+%s')" -ge "${deadline}" ]; then
-    printf '[WATCHDOG] Deadline exceeded without done marker. Forcing restore.\n'
-    rc=0
-    restore_protection "${REPO}" "${SNAP}" "${DRY_RUN}" watchdog_timeout || rc=$?
-    if [ "${rc}" -eq 0 ]; then drop_snapshot; fi
-    if ! kill -0 "${PARENT}" 2>/dev/null; then drop_markers; fi
-    printf '[WATCHDOG] exit %s\n' "${rc}"
-    exit "${rc}"
-  fi
-  sleep 3
-done
-
-printf '[WATCHDOG] Done marker found. Parent completed cleanly — no restore needed.\n'
-drop_markers
-exit 0
-WATCHDOG_EOF
-  chmod +x "${WATCHDOG_SCRIPT}"
-  nohup bash "${WATCHDOG_SCRIPT}" "${PS_LIB}" "${TARGET_REPO}" "${SNAPSHOT_FILE}" \
-    "${DONE_MARKER}" "${RELAX_MARKER}" "${RELAX_TS_MARKER}" "${WATCHDOG_DEADLINE}" \
-    "${AUDIT_LOG}" "${DRY_RUN}" "${WATCHDOG_SCRIPT}" "$$" > "${WORK_DIR}/nself-watchdog-${MERGE_TS}.log" 2>&1 &
-  WATCHDOG_PID=$!
-  info "Watchdog spawned: PID ${WATCHDOG_PID}, deadline ${WATCHDOG_DEADLINE}s"
-  audit "WATCHDOG_SPAWN  pid=${WATCHDOG_PID}  deadline=${WATCHDOG_DEADLINE}  snapshot=${SNAPSHOT_FILE}"
-else
-  info "[DRY-RUN] Would spawn watchdog (skipped)"
-fi
-
-# FIX5: EXIT trap — on any exit (clean, error, SIGINT, SIGTERM) a relaxed branch
-# is restored from the snapshot. The done marker is written only after a
-# VERIFIED restore (or when nothing was relaxed); a failed restore leaves it
-# absent so the watchdog still runs its own restore, and exits 3 for the owner.
-_exit_trap_fired=0
-_cleanup_on_exit() {
-  local rc=$?   # bash 3.2 reports 0 here after a fatal set -u/arithmetic error; keep what we got
-  if [ "${_exit_trap_fired}" -eq 1 ]; then return; fi
-  _exit_trap_fired=1
-  if [ -f "${RELAX_MARKER}" ] && [ ! -f "${DONE_MARKER}" ]; then
-    if restore_protection "${TARGET_REPO}" "${SNAPSHOT_FILE}" "${DRY_RUN}" "exit_trap"; then
-      touch "${DONE_MARKER}" 2>/dev/null || true
-      rm -f "${SNAPSHOT_FILE}"
-    else
-      error "Branch protection NOT verified restored. Snapshot: ${SNAPSHOT_FILE}. Run: $0 --repo ${TARGET_REPO} --force-restore --snapshot ${SNAPSHOT_FILE}"
-      exit 3
-    fi
-  elif [ ! -f "${RELAX_MARKER}" ]; then
-    touch "${DONE_MARKER}" 2>/dev/null || true
-  fi
-  exit "${rc}"
-}
-trap '_cleanup_on_exit' EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
+. "${SCRIPT_DIR}/lib/admin_merge_prepare.sh"
+. "${SCRIPT_DIR}/lib/admin_merge_watchdog.sh"
 
 # ── Relax branch protection ───────────────────────────────────────────────────
 info "Relaxing branch protection on ${TARGET_REPO}/main..."
@@ -409,126 +206,4 @@ else
   info "[DRY-RUN] Payload: ${RELAX_PAYLOAD}"
 fi
 
-# ── Merge PR ──────────────────────────────────────────────────────────────────
-MERGE_SUCCESS=0
-MERGE_RESULT=merged   # merged | failed | closed | auto_merge_only (decides the exit code)
-# pr_state <n>: prints the PR state (OPEN, MERGED, CLOSED), or nothing when unreadable.
-pr_state() { gh pr view "$1" --repo "${TARGET_REPO}" --json state --jq .state 2>/dev/null || true; }
-if [ "${DRY_RUN}" -eq 0 ]; then
-  info "Merging PR #${PR_NUMBER}..."
-  if gh pr merge "${PR_NUMBER}" \
-      --repo "${TARGET_REPO}" \
-      --squash \
-      --delete-branch \
-      --auto 2>&1; then
-    # `--auto` exits 0 when it only ENABLES auto-merge (non-required checks still
-    # pending), so the exit code proves nothing: read the PR state back.
-    MERGE_DEADLINE=$(( $(date '+%s') + MERGE_VERIFY_SECONDS ))
-    while :; do
-      PR_STATE=$(pr_state "${PR_NUMBER}")
-      if [ "${PR_STATE}" = "MERGED" ]; then MERGE_SUCCESS=1; break; fi
-      if [ "${PR_STATE}" = "CLOSED" ]; then break; fi
-      if [ "$(date '+%s')" -ge "${MERGE_DEADLINE}" ]; then break; fi
-      sleep "${MERGE_POLL_SECONDS}"
-    done
-    if [ "${MERGE_SUCCESS}" -eq 0 ]; then
-      # Do not leave auto-merge armed behind a restored protection, then look once
-      # more: it may have fired between the last read and now.
-      gh pr merge "${PR_NUMBER}" --repo "${TARGET_REPO}" --disable-auto >/dev/null 2>&1 || true
-      PR_STATE=$(pr_state "${PR_NUMBER}")
-      if [ "${PR_STATE}" = "MERGED" ]; then MERGE_SUCCESS=1; fi
-    fi
-    if [ "${MERGE_SUCCESS}" -eq 1 ]; then
-      ok "PR #${PR_NUMBER} merged."
-      audit "MERGE  pr=${PR_NUMBER}  result=success"
-    elif [ "${PR_STATE}" = "CLOSED" ]; then
-      MERGE_RESULT=closed
-      error "PR #${PR_NUMBER} is CLOSED, not MERGED."
-      audit "MERGE  pr=${PR_NUMBER}  result=closed"
-    else
-      MERGE_RESULT=auto_merge_only
-      error "PR #${PR_NUMBER} is ${PR_STATE:-unreadable}, not MERGED, ${MERGE_VERIFY_SECONDS}s after the merge call: GitHub only set auto-merge (non-required checks still pending?). Auto-merge was disabled again."
-      error "Not waiting for CI. Protection is restored below."
-      audit "MERGE  pr=${PR_NUMBER}  result=auto_merge_only  state=${PR_STATE:-unreadable}"
-    fi
-  else
-    # The call can fail after the merge landed (network drop): read the state once.
-    if [ "$(pr_state "${PR_NUMBER}")" = "MERGED" ]; then
-      MERGE_SUCCESS=1
-      ok "PR #${PR_NUMBER} merged (the merge call reported an error, the PR reads MERGED)."
-      audit "MERGE  pr=${PR_NUMBER}  result=success_after_error"
-    else
-      MERGE_RESULT=failed
-      error "PR merge failed."
-      audit "MERGE  pr=${PR_NUMBER}  result=failed"
-      # Still restore even on failure
-    fi
-  fi
-else
-  info "[DRY-RUN] Would merge PR #${PR_NUMBER} (squash + delete branch), then verify state MERGED."
-  MERGE_SUCCESS=1
-fi
-
-# ── Wait for CI (optional) ────────────────────────────────────────────────────
-if [ "${NO_WAIT_CI}" -eq 0 ] && [ "${MERGE_SUCCESS}" -eq 1 ] && [ "${DRY_RUN}" -eq 0 ]; then
-  info "Waiting up to ${WAIT_MINUTES} minutes for post-merge CI to pass..."
-  WAIT_DEADLINE=$(( $(date '+%s') + WAIT_MINUTES * 60 ))
-  CI_PASSED=0
-
-  while [ "$(date '+%s')" -lt "${WAIT_DEADLINE}" ]; do
-    # Query CI for the merge commit on main
-    RUN_STATUS=$(gh run list \
-      --repo "${TARGET_REPO}" \
-      --branch main \
-      --limit 1 \
-      --json status,conclusion \
-      --jq '.[0] | "\(.status)/\(.conclusion)"' 2>/dev/null || printf 'unknown/unknown')
-
-    STATUS_PART=$(printf '%s' "${RUN_STATUS}" | cut -d'/' -f1)
-    CONCLUSION_PART=$(printf '%s' "${RUN_STATUS}" | cut -d'/' -f2)
-
-    if [ "${STATUS_PART}" = "completed" ]; then
-      if [ "${CONCLUSION_PART}" = "success" ]; then
-        ok "CI passed."
-        CI_PASSED=1
-        audit "CI_PASS  repo=${TARGET_REPO}"
-      else
-        warn "CI completed with conclusion: ${CONCLUSION_PART}"
-        audit "CI_FAIL  repo=${TARGET_REPO}  conclusion=${CONCLUSION_PART}"
-      fi
-      break
-    fi
-
-    printf '  CI status: %s/%s — waiting...\n' "${STATUS_PART}" "${CONCLUSION_PART}"
-    sleep "${CI_POLL_SECONDS}"
-  done
-
-  if [ "${CI_PASSED}" -eq 0 ]; then
-    warn "CI did not pass within ${WAIT_MINUTES} minutes. Restoring protection anyway."
-    audit "CI_TIMEOUT  repo=${TARGET_REPO}"
-  fi
-fi
-
-# ── Restore branch protection (verified; exit 3 on failure) ───────────────────
-# On failure the EXIT trap retries once and the watchdog tries again at its
-# deadline; the done marker stays absent until a restore is verified.
-restore_protection "${TARGET_REPO}" "${SNAPSHOT_FILE}" "${DRY_RUN}" "post_merge" || exit 3
-
-# ── Signal watchdog that we're done ──────────────────────────────────────────
-touch "${DONE_MARKER}"
-rm -f "${SNAPSHOT_FILE}"
-audit "DONE  repo=${TARGET_REPO}  pr=${PR_NUMBER}  merge=${MERGE_RESULT}"
-
-# Protection is back and verified; the PR itself did not land.
-if [ "${MERGE_RESULT}" != "merged" ]; then
-  error "PR #${PR_NUMBER} was NOT merged (${MERGE_RESULT}). Branch protection is restored and verified."
-  exit 1
-fi
-
-ok "Admin merge complete. Branch protection restored and verified. Watchdog will self-exit."
-
-printf '\n'
-info "Audit log: ${AUDIT_LOG}"
-if [ "${DRY_RUN}" -eq 0 ]; then
-  info "Watchdog log: ${WORK_DIR}/nself-watchdog-${MERGE_TS}.log"
-fi
+. "${SCRIPT_DIR}/lib/admin_merge_finish.sh"

@@ -28,6 +28,7 @@ nlines() { wc -l < "$1" | tr -d ' '; }
 out_has() { grep -q -- "$1" "$T/out"; }
 HAVE_PTY=0; command -v script >/dev/null 2>&1 && HAVE_PTY=1
 HAVE_GO=0; command -v go >/dev/null 2>&1 && HAVE_GO=1
+check "configurable PR and license polling budgets" bash "$RELDIR/wait_budget_test.sh"
 V=1.5.0
 ARM=554a93c77f0a4d50fabbdc3ed7bd01638f092ce082f2d54d866d659d662bfd77
 INTEL=6f823864cb70bb06e0d87f751db0fafcf96375da658da2b281b0fb1d9a4deeba

@@ -46,8 +46,8 @@ if [ -x /bin/bash ]; then ln -s /bin/bash "${TMP}/bin/bash"; fi
 
 # -- helpers ------------------------------------------------------------------
 setup() { # <fixture-name>: fresh server state and logs
-  unset STUB_DROP STUB_PUT_FAIL STUB_KILL_PARENT STUB_SLOW_CI STUB_FAIL_AFTER_LAND_ONCE STUB_GET_STDERR STUB_MERGE_MODE STUB_MERGE_LAG STUB_LATE_MERGE STUB_VIEW
-  rm -rf "${STUB_DIR}/calls" "${STUB_DIR}/watchdog.rc" "${STUB_DIR}/runcount" "${STUB_DIR}/landed" "${STUB_DIR}/armed" "${STUB_DIR}/disabled" "${STUB_DIR}/merged" "${STUB_DIR}/viewcount" "${HOME}/.nself" "${TMP}"/work/*
+  unset STUB_CHECK_CHANGE STUB_DROP STUB_PUT_FAIL STUB_KILL_PARENT STUB_SLOW_CI STUB_FAIL_AFTER_LAND_ONCE STUB_GET_STDERR STUB_MERGE_MODE STUB_MERGE_LAG STUB_LATE_MERGE STUB_VIEW
+  rm -rf "${STUB_DIR}/calls" "${STUB_DIR}/watchdog.rc" "${STUB_DIR}/runcount" "${STUB_DIR}/landed" "${STUB_DIR}/armed" "${STUB_DIR}/disabled" "${STUB_DIR}/merged" "${STUB_DIR}/viewcount" "${STUB_DIR}/checkcount" "${HOME}/.nself" "${TMP}"/work/*
   cp "${FX}/$1.json" "${STUB_DIR}/state.json"
   cp "${FX}/$1.json" "${STUB_DIR}/snapshot.json"
 }
@@ -289,10 +289,47 @@ case_force_restore() {
   check "force-restore refuses a merge from main" bash -c '! (cd "$1" && printf "y\n" | bash "$2" --repo "$3" --pr 7 --dry-run) > /dev/null 2>&1' _ "${TMP}/mainrepo" "${AM}" "${REPO}"
 }
 
+case_pending_bypass() {
+  local name bucket backlog want method rc
+  while read -r name bucket backlog want method; do
+    setup cli-like
+    export STUB_CHECK_BUCKET="$bucket"
+    rc=0
+    run_am --admin-bypass-pending "$backlog" > "$TMP/am.out" 2>&1 || rc=$?
+    check "$name: exit $want" test "$rc" -eq "$want"
+    if [ "$method" = none ]; then
+      check "$name: protection not relaxed" no_puts
+      check "$name: no merge" bash -c '! grep -q "^pr merge" "$1"' _ "$STUB_DIR/calls"
+    else
+      check "$name: merge uses --$method" grep -q -- "^pr merge .*--$method" "$STUB_DIR/calls"
+      check "$name: restore still verified" compare "$(cat "$FX/cli-like.json")" "$(server)"
+      check "$name: restore diff still audited" audit_has 'RESTORE .*post_merge'
+      check "$name: watchdog completed" wait_watchdog
+    fi
+  done <<'TABLE'
+pending pending hosted-runner-backlog 0 admin
+passing pass hosted-runner-backlog 0 auto
+failed fail hosted-runner-backlog 1 none
+unknown pending other-backlog 1 none
+missing none hosted-runner-backlog 1 none
+unknown-state unreadable hosted-runner-backlog 1 none
+TABLE
+  setup cli-like
+  export STUB_CHECK_BUCKET=pending STUB_CHECK_CHANGE=1
+  rc=0
+  run_am --admin-bypass-pending hosted-runner-backlog > "$TMP/am.out" 2>&1 || rc=$?
+  check "check turns red at merge: refused" test "$rc" -eq 1
+  check "check turns red at merge: protection restored" compare "$(cat "$FX/cli-like.json")" "$(server)"
+  check "check turns red at merge: restore verified in trap" audit_has 'RESTORE .*exit_trap'
+  check "check turns red at merge: no merge" bash -c '! grep -q "^pr merge" "$1"' _ "$STUB_DIR/calls"
+  check "check turns red at merge: watchdog completed" wait_watchdog
+  unset STUB_CHECK_BUCKET STUB_CHECK_CHANGE
+}
+
 # -- main ---------------------------------------------------------------------
 want=""
 if [ "${1:-}" = "--case" ]; then want="${2:-}"; fi
-for c in round-trip mismatch review-fields dry-run watchdog-timeout merge-flow slow-ci merge-verify relax-ambiguous force-restore; do
+for c in round-trip mismatch review-fields dry-run watchdog-timeout merge-flow slow-ci merge-verify relax-ambiguous force-restore pending-bypass; do
   if [ -z "${want}" ] || [ "${want}" = "${c}" ]; then
     printf '== %s\n' "${c}"
     "case_$(printf '%s' "${c}" | tr '-' '_')"

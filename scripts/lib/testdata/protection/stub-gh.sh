@@ -18,7 +18,15 @@ case "$1" in
     if [ "${STUB_SLOW_CI:-0}" = 1 ] && [ "${n}" -lt 3 ]; then echo "in_progress/"; else echo "completed/success"; fi
     exit 0 ;;
   pr)
-    echo "pr $2" >> "${D}/calls"
+    printf '%s\n' "$*" >> "${D}/calls"
+    if [ "$2" = checks ]; then
+      n=$(cat "$D/checkcount" 2>/dev/null || echo 0); echo $((n + 1)) > "$D/checkcount"
+      bucket=${STUB_CHECK_BUCKET:-pending}
+      [ "${STUB_CHECK_CHANGE:-0}" != 1 ] || [ "$n" -eq 0 ] || bucket=fail
+      if [ "$bucket" = none ]; then echo '[]'; exit 0; fi
+      printf '[{"bucket":"%s"}]\n' "$bucket"
+      case "$bucket" in pending) exit 8;; fail) exit 1;; *) exit 0;; esac
+    fi
     if [ "$2" = merge ] && [ "${STUB_KILL_PARENT:-0}" = 1 ]; then kill -9 "${PPID}"; fi
     if [ "$2" = merge ] && [ "${STUB_MERGE_MODE:-}" = fail ]; then echo "stub: merge failed" >&2; exit 1; fi
     if [ "$2" = merge ] && [ "${STUB_MERGE_MODE:-}" = auto ]; then
