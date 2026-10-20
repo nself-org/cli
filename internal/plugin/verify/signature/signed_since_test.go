@@ -40,6 +40,7 @@ type signedSinceDoc struct {
 // checkFloors reports why doc is not a complete two-tier floor: a missing or empty tier, an empty entry, a recorded ref that is not <repo>@<40 hex>, or a ref list
 // that lacks one of the evidence shas (or holds a sha the evidence never recorded).
 func checkFloors(doc signedSinceDoc) error {
+	// min is a floor on the slug count, not the exact count (the first signed releases name 131 free and 46 licensed slugs); a floor that shrinks below it lost a tier's data.
 	want := map[string]struct {
 		repo string
 		shas []string
