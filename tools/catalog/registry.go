@@ -82,14 +82,22 @@ func buildRegistry(t tierInfo, ms map[string]*manifestv2.Manifest, rel *model.Re
 			rep.problems = append(rep.problems, prob)
 			continue
 		}
-		reg.Plugins[s] = entryOf(t, m, r, link, membership(b, s, t.catalog), peer[s])
+		e, problem := entryOf(t, m, r, link, membership(b, s, t.catalog), peer[s])
+		if problem != "" {
+			rep.problem("%s", problem)
+			continue
+		}
+		reg.Plugins[s] = e
 	}
 	reg.PluginsCount = len(reg.Plugins)
 	return reg, rep
 }
 
 // entryOf projects one manifest and its release row.
-func entryOf(t tierInfo, m *manifestv2.Manifest, r model.Release, link linkKeys, bundles []string, pair bool) model.RegistryEntry {
+func entryOf(t tierInfo, m *manifestv2.Manifest, r model.Release, link linkKeys, bundles []string, pair bool) (model.RegistryEntry, string) {
+	if t.catalog == model.TierLicensed && len(r.PlatformSignatures) > 0 {
+		return model.RegistryEntry{}, m.Name + ": platform_signatures are unsupported on licensed entries"
+	}
 	e := model.RegistryEntry{
 		Name: m.Name, Version: r.Version, Description: m.Description, Category: m.Category,
 		Tier: t.wire, License: firstNonEmpty(m.LicenseSPDX, m.License),
@@ -120,7 +128,7 @@ func entryOf(t tierInfo, m *manifestv2.Manifest, r model.Release, link linkKeys,
 	if t.catalog == model.TierFree {
 		e.Checksums = &model.Checksums{SHA256: r.SHA256, Platforms: r.PlatformChecksums}
 	}
-	return e
+	return e, ""
 }
 
 // dependencies keeps the shape each registry has always used: a free entry is a

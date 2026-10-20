@@ -15,6 +15,7 @@ package main
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/nself-org/cli/tools/catalog/model"
 )
@@ -70,6 +71,16 @@ func buildCatalog(free, licensed *model.Registry, b *model.Bundles, from model.G
 func rowOf(slug, tier string, e model.RegistryEntry, b *model.Bundles) (model.CatalogPlugin, string) {
 	if e.Catalog == nil {
 		return model.CatalogPlugin{}, fmt.Sprintf("%s (%s): registry entry has no catalog block; regenerate the registry with this tool", slug, tier)
+	}
+	if tier == model.TierLicensed && len(e.PlatformSignatures) > 0 {
+		return model.CatalogPlugin{}, slug + ": platform_signatures are unsupported on licensed entries"
+	}
+	var checksums map[string]string
+	if e.Checksums != nil {
+		checksums = e.Checksums.Platforms
+	}
+	if problems := platformSignatureProblems(slug, model.Release{ReleaseSignature: e.ReleaseSignature, PlatformSignatures: e.PlatformSignatures, PlatformChecksums: checksums}); len(problems) > 0 {
+		return model.CatalogPlugin{}, strings.Join(problems, "; ")
 	}
 	in := e.Catalog
 	row := model.CatalogPlugin{
