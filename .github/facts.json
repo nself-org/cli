@@ -9,8 +9,8 @@
   },
   "schema_version": "1",
   "sources": {
-    "openapi_sha256": "e079f9894e1cf0923c77d92820fcf4fdca321add29acfb406b186c306e1b19fe",
-    "registry_sha256": "3e09ab6e33461e8083d34db426946c8905f342ab2fb5add85c28634199ab8549"
+    "openapi_sha256": "627acf3bb3d5500c9ed1c41afad31f9754a6dd66aeaa586db3e7860ac6ac793e",
+    "registry_sha256": "5c581731bef3cf4af9738464df3788f294b365d387ced587ba40c736ae2424d5"
   },
   "verbs": [
     "init",

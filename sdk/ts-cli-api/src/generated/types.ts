@@ -15,6 +15,8 @@ export type AddFlags = {
   "allow-downgrade"?: boolean;
   /** Allow installing an EOL plugin (not recommended) */
   "allow-eol"?: boolean;
+  /** Allow an unsigned third-party URL install */
+  "allow-unsigned"?: boolean;
   /** Release channel: stable | beta | canary */
   channel?: string;
   /** Expected SHA-256 checksum of the downloaded archive (third-party URL installs only) */

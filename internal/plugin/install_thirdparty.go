@@ -12,7 +12,8 @@ package plugin
 //     Ed25519-signature verified against a registry-pinned author key whose
 //     checksum comes from the registry entry — a trust anchor external to
 //     the downloaded tarball.
-//   - `nself plugin install <url>` NEVER touches the registry and is NOT
+//   - `nself plugin install <url>` checks the registry before replacing an
+//     existing directory and is NOT
 //     signature verified — there is no registry-pinned key to check an
 //     arbitrary URL's tarball against. Checksum verification requires the
 //     SAME kind of external anchor: the extracted plugin.json's own
@@ -91,6 +92,9 @@ func ValidateThirdPartyURL(ref string) (*url.URL, error) {
 // opt-in such as --yes) BEFORE calling this — it downloads and executes
 // arbitrary third-party code with no vetting beyond what's described above.
 func InstallFromURL(ctx context.Context, cfg *config.Config, sourceURL string, pluginDir string, expectedChecksum string) error {
+	if err := CheckUnsignedURLInstall(ctx); err != nil {
+		return err
+	}
 	u, err := ValidateThirdPartyURL(sourceURL)
 	if err != nil {
 		return err
@@ -173,6 +177,9 @@ func InstallFromURL(ctx context.Context, cfg *config.Config, sourceURL string, p
 	// installed copy is removed. A refusal after the swap would roll back, and
 	// so remove, an upgrade.
 	if err := checkCLIBinaries(pluginDir, manifest.Name, manifest); err != nil {
+		return err
+	}
+	if err := checkURLReplacement(ctx, pluginDir, manifest.Name); err != nil {
 		return err
 	}
 	destDir := filepath.Join(pluginDir, manifest.Name)

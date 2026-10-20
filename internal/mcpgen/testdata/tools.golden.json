@@ -48,6 +48,11 @@
                 "description": "Allow installing an EOL plugin (not recommended)",
                 "type": "boolean"
               },
+              "allow-unsigned": {
+                "default": false,
+                "description": "Allow an unsigned third-party URL install",
+                "type": "boolean"
+              },
               "channel": {
                 "default": "stable",
                 "description": "Release channel: stable | beta | canary",

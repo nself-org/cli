@@ -86,6 +86,7 @@ func init() {
 	installCmd.Flags().Bool("skip-sbom-check", false, "Skip SBOM verification (air-gapped installs only — sets NSELF_SKIP_SBOM_CHECK=1)")
 	installCmd.Flags().Bool("dry-run", false, "Show what would be installed without making changes")
 	installCmd.Flags().Bool("show-graph", false, "Show dependency graph with topological sort order")
+	installCmd.Flags().Bool("allow-unsigned", false, "Allow an unsigned third-party URL install")
 	installCmd.Flags().String("checksum", "", "Expected SHA-256 checksum of the downloaded archive (third-party URL installs only)")
 	installCmd.Flags().Bool("strict", false, "Fail if any plugin in the bundle is missing from the registry")
 	installCmd.Flags().String("channel", "stable", "Release channel: stable | beta | canary")
