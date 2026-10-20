@@ -179,12 +179,17 @@ func TestRealPlatformRelease(t *testing.T) {
 }
 
 // TestLicensedPairRefusedUntilPLUG72: the interim state P7-PLUG-71 knowingly creates. cron and notify exist in both tiers, the free floor names them, and the licensed
-// tier has no key and no pre-signing list yet, so an unsigned licensed entry of those slugs is refused (E107). Every other licensed slug keeps the warn-only path.
+// tier has no key and no pre-signing list yet, so a licensed entry of those slugs is refused (E107), signed or not (production serves them signed). Every other licensed
+// slug keeps the warn-only path. No CLI release may ship in this state.
 // P7-PLUG-72 fills the licensed floor and pre-signing list and changes this test.
 func TestLicensedPairRefusedUntilPLUG72(t *testing.T) {
 	for _, slug := range []string{"cron", "notify"} {
 		if _, err := signature.Decide(signature.Input{Tier: signature.TierLicensed, Slug: slug, Version: "1.1.2", SHA256: "00"}); code(err) != "E107" {
 			t.Errorf("licensed %s unsigned: code %q, want E107 until P7-PLUG-72", slug, code(err))
+		}
+		signed := &signature.Release{Alg: "ed25519", KeyID: "plugins-e2ac3ee72a143603", Sig: "AAAA"}
+		if _, err := signature.Decide(signature.Input{Tier: signature.TierLicensed, Slug: slug, Version: "1.1.2", SHA256: "00", Release: signed}); code(err) != "E107" {
+			t.Errorf("licensed %s with a signature the CLI cannot yet trust: code %q, want E107 until P7-PLUG-72", slug, code(err))
 		}
 	}
 	out, err := signature.Decide(signature.Input{Tier: signature.TierLicensed, Slug: "chat", Version: "1.0.0", SHA256: "00"})
