@@ -1,0 +1,24 @@
+{
+  "releases": {
+    "demo": {
+      "platform_checksums": {
+        "linux-amd64": "0bbf761b252a3f33a7e560bc6e2f6e14368b5fad183ba3b55b3d94cd1c423934"
+      },
+      "platform_signatures": {
+        "linux-amd64": {
+          "alg": "ed25519",
+          "key_id": "plugins-b0a54b8c82cd374c",
+          "sig": "UXydM3ZxI/cFhxHbz1Czwy4OMXBzpUptrNoELV8ioVuuXIp2f+WwZAphmZWzKhGbNMO1jjHuxlbXBEzy26IIBg=="
+        }
+      },
+      "release_signature": {
+        "alg": "ed25519",
+        "key_id": "plugins-b0a54b8c82cd374c",
+        "sig": "UjlQd8JE1gHR+Q6+w6j6bHVx/FalkoYpeiwICNI60PytRFbBYS0yWdDfqEBfeAbuGfNk4rbACfX7km+1YOouBg=="
+      },
+      "sha256": "635edf24942ec563525eb92dc487921c1bb0ff7fb2f9941976752f13a54e17d2",
+      "version": "1.0.0"
+    }
+  },
+  "schema_version": 1
+}

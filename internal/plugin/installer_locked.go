@@ -222,7 +222,7 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 			slog.Warn("audit log write failed — bypass event not recorded", "error", werr)
 		}
 	}
-	if err := verifyReleaseSignature(manifest, paid, false, artifactKind, bypassed); err != nil {
+	if err := verifyReleaseSignature(manifest, paid, false, artifactKind, archivePath, bypassed); err != nil {
 		_ = os.Remove(archivePath)
 		return fmt.Errorf("signature verification for plugin %q: %w", name, err)
 	}
