@@ -221,3 +221,15 @@ update_admin_dockerfile() {
   report "${f} (LABEL image.version)" "${old_label:-?}" "${NEW_VERSION}"
 }
 
+
+# Admin's lockstep check reads both release labels on its wiki home page.
+update_admin_wiki() {
+  local f="${NSELF_ROOT}/admin/.github/wiki/Home.md"
+  if [ ! -f "$f" ]; then
+    printf 'ERROR: Missing file: %s\n' "$f" >&2; exit 1
+  fi
+  sed -E \
+    -e "s/^(Version )[0-9]+\.[0-9]+\.[0-9]+/\1${NEW_VERSION}/" \
+    -e "s/^(\*\*v)[0-9]+\.[0-9]+\.[0-9]+/\1${NEW_VERSION}/" \
+    "$f" | atomic_write "$f"
+}

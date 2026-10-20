@@ -14,8 +14,15 @@ done
 printf '{"version":"1.0.0"}\n' > "$BASE/admin/package.json"
 printf "export const CLI_VERSION = '1.0.0'\n" > "$BASE/admin/src/lib/cli-version.ts"
 printf 'ARG NSELF_VERSION=1.0.0\nENV ADMIN_VERSION=1.0.0\nLABEL org.opencontainers.image.version="1.0.0"\n' > "$BASE/admin/Dockerfile"
+mkdir -p "$BASE/admin/.github/wiki"
+printf 'Version 1.0.0 · MIT License\n**v1.0.0** - See CHANGELOG\nKeep example 2.3.4\n' > "$BASE/admin/.github/wiki/Home.md"
 for mode in --dry-run --no-goldens --no-goldens; do
   bash "$BASE/cli/scripts/bump-version.sh" 9.8.7 "$mode" > "$BASE/output"
+  if [ "$mode" != --dry-run ]; then
+    for line in 'Version 9.8.7 · MIT License' '**v9.8.7** - See CHANGELOG' 'Keep example 2.3.4'; do
+      grep -qxF "$line" "$BASE/admin/.github/wiki/Home.md"
+    done
+  fi
   for pkg in ts ts-sdk ts-cli-api; do
     actual=$(jq -r .version "$BASE/cli/sdk/$pkg/package.json")
     if [ "$mode" = --dry-run ]; then

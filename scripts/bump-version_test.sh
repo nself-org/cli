@@ -350,19 +350,12 @@ EOF
 # it covers all 11 known lockstep files without errors.
 test_dry_run_smoke() {
   local out
-  out="$(bash "${SCRIPT_DIR}/bump-version.sh" 9.8.7 --dry-run 2>&1)"
+  out="$(bash "${SCRIPT_DIR}/bump-version_lockstep_test.sh" 2>&1)"
   local rc=$?
-  if [ "${rc}" -ne 0 ]; then
-    bad "dry-run smoke" "exit ${rc}: ${out}"
-    return
-  fi
-  # Expect at least 7 unique file paths reported (some are SKIP if already at target).
-  local n
-  n="$(printf '%s\n' "${out}" | grep -E '(SKIP|->)' | wc -l | tr -d ' ')"
-  if [ "${n}" -ge 8 ]; then
-    ok "dry-run smoke (${n} files reported)"
+  if [ "$rc" -eq 0 ]; then
+    ok "bumper integration smoke in private sibling trees"
   else
-    bad "dry-run smoke" "only ${n} files reported (expected >=8)"
+    bad "bumper integration smoke" "exit ${rc}: ${out}"
   fi
 }
 

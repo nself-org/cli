@@ -13,13 +13,16 @@ NEWH=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 # mk_bump_env: a nself/{cli,admin} tree at 1.4.13 with the golden tests present and a stub go.
 mk_bump_env() {
   B=$(mktemp -d "$BASE/bump.XXXXXX"); C=$B/nself/cli; A=$B/nself/admin
-  mkdir -p "$C/scripts" "$C/internal/version" "$C/sdk/go" "$C/sdk/ts" "$C/sdk/ts-sdk" "$C/sdk/py" "$C/.github" \
+  mkdir -p "$C/scripts" "$C/internal/version" "$C/sdk/go" "$C/sdk/ts" "$C/sdk/ts-sdk" "$C/sdk/ts-cli-api" "$C/sdk/py" "$C/.github" \
     "$C/internal/build" "$C/cmd/commands" "$A/src/lib" "$B/bin"
   cp "$ROOT/scripts/bump-version.sh" "$C/scripts/"
+  cp -R "$ROOT/scripts/bump-version" "$C/scripts/"
+  mkdir -p "$A/.github/wiki"
+  printf 'Version 1.4.13 · MIT License\n**v1.4.13** - See CHANGELOG\n' > "$A/.github/wiki/Home.md"
   echo 1.4.13 > "$C/.github/VERSION"
   printf 'package version\n\nvar (\n\tVersion string = "1.4.13"\n)\n' > "$C/internal/version/version.go"
   printf 'package sdk\n\nconst Version = "1.4.13"\n' > "$C/sdk/go/doc.go"
-  for f in sdk/ts sdk/ts-sdk; do echo '{"version":"1.4.13"}' > "$C/$f/package.json"; done
+  for f in sdk/ts sdk/ts-sdk sdk/ts-cli-api; do echo '{"version":"1.4.13"}' > "$C/$f/package.json"; done
   printf '[project]\nversion = "1.4.13"\n' > "$C/sdk/py/pyproject.toml"
   echo '{"version":"1.4.13"}' > "$A/package.json"
   echo "export const CLI_VERSION = '1.4.13'" > "$A/src/lib/cli-version.ts"

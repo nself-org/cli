@@ -169,6 +169,7 @@ update_sdk_py_pyproject
 update_admin_pkg
 update_admin_cliver
 update_admin_dockerfile
+update_admin_wiki
 if [ "${GOLDENS}" = "true" ]; then
   update_goldens
 fi

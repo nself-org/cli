@@ -60,6 +60,7 @@ mk_env() { # <with-facts 0|1>
   echo '{"name":"admin","version":"1.4.13"}' | put package.json
   echo "export const CLI_VERSION = '1.4.13'" | put src/lib/cli-version.ts
   printf 'ARG NSELF_VERSION=1.4.13\nENV ADMIN_VERSION=1.4.13\nLABEL org.opencontainers.image.version="1.4.13"\n' | put Dockerfile
+  printf 'Version 1.4.13 · MIT License\n**v1.4.13** - See CHANGELOG\n' | put .github/wiki/Home.md
   seed_end admin
   seed_begin homebrew-nself
   mkdir -p "$SD/Formula" "$SD/.github/scripts"

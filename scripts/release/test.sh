@@ -95,6 +95,9 @@ check "admin-merge ran three times" test "$(nlines "$ADMIN_LOG")" -eq 3
 check "admin-merge got a TTY every time" test "$(grep -c 'tty=yes' "$ADMIN_LOG")" -eq 3
 check "admin-merge read the owner's typed answer" test "$(grep -c 'ans=y$' "$ADMIN_LOG")" -eq 3
 check "merge order admin, cli, homebrew" test "$(sed 's/ pr=.*//' "$ADMIN_LOG" | tr '\n' ' ')" = "repo=admin repo=cli repo=homebrew-nself "
+for label in "Version $V · MIT License" "**v$V** - See CHANGELOG"; do
+  checkc "admin wiki label $label bumped" 'show admin .github/wiki/Home.md | grep -qxF "$label"'
+done
 check "admin package.json bumped" test "$(show admin package.json | jq -r .version)" = "$V"
 checkc "admin Dockerfile bumped" "show admin Dockerfile | grep -q 'ARG NSELF_VERSION=$V'"
 for pkg in ts ts-sdk ts-cli-api; do

@@ -43,7 +43,7 @@ step_preflight() {
 step_admin_lockstep() {
   local br="release/v${VERSION}-lockstep"
   if [ "$PLAN" = 1 ]; then
-    plan_line S2 admin-lockstep admin "scripts/bump-version.sh $VERSION (cwd $WORK/cli; edits admin package.json, src/lib/cli-version.ts, Dockerfile)"
+    plan_line S2 admin-lockstep admin "scripts/bump-version.sh $VERSION (cwd $WORK/cli; edits admin package.json, src/lib/cli-version.ts, Dockerfile, .github/wiki/Home.md)"
     plan_line S2 admin-lockstep admin "git -C $WORK/admin checkout -b $br; git commit; git push origin $br"
     plan_line S2 admin-lockstep admin "gh pr create -R nself-org/admin --base main --head $br"
     plan_line S2 admin-lockstep admin "gh pr checks N -R nself-org/admin --required (polled, 45 min budget)"
@@ -68,7 +68,7 @@ step_admin_lockstep() {
     checkout_branch admin "$br"
   fi
   pr_flow S2 admin-lockstep admin "$br" admin_pr "chore(release): bump admin to v${VERSION}" \
-    "Lockstep bump for the cli v${VERSION} release (package.json, src/lib/cli-version.ts, Dockerfile). Opened by scripts/release/release.sh."
+    "Lockstep bump for the cli v${VERSION} release (package.json, src/lib/cli-version.ts, Dockerfile, .github/wiki/Home.md). Opened by scripts/release/release.sh."
 }
 
 step_cli_version() {
