@@ -189,6 +189,80 @@ func TestCIBootstrapOrder(t *testing.T) {
 	})
 }
 
+func TestCIBootstrapOrderLegacyAndLinks(t *testing.T) {
+	const notice = "notice: ~/.nself/bin/nself-ci is no longer used (unverified); nself now installs the signed ci plugin\n"
+	t.Run("legacy file is retired once even when the plugin is installed", func(t *testing.T) {
+		home, out := cbEnv(t)
+		pub := plugin.PublishedBinaryPath("nself-ci")
+		legacy := filepath.Join(home, ".nself", "bin", "nself-ci")
+		for _, f := range []string{pub, legacy} {
+			if err := os.MkdirAll(filepath.Dir(f), 0o750); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(f, []byte("#!/bin/sh\n"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for i := 0; i < 3; i++ {
+			if got, err := ensureCIBinary(false); err != nil || got != pub {
+				t.Fatalf("call %d: %q, %v", i, got, err)
+			}
+		}
+		if _, err := os.Lstat(legacy + ".unverified-legacy"); err != nil {
+			t.Fatalf("legacy file not set aside: %v", err)
+		}
+		if out.String() != notice {
+			t.Fatalf("want exactly one notice over three calls, got %q", out.String())
+		}
+	})
+
+	t.Run("the notice prints once across calls while the legacy path stays", func(t *testing.T) {
+		home, out := cbEnv(t)
+		pub := plugin.PublishedBinaryPath("nself-ci")
+		if err := os.MkdirAll(filepath.Dir(pub), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(pub, []byte("#!/bin/sh\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Join(home, ".nself", "bin", "nself-ci"), 0o750); err != nil {
+			t.Fatal(err) // a directory is never moved, so every call would see it again
+		}
+		for i := 0; i < 3; i++ {
+			if _, err := ensureCIBinary(false); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if out.String() != notice {
+			t.Fatalf("want exactly one notice over three calls, got %q", out.String())
+		}
+	})
+
+	t.Run("a symlink at the published path is not trusted", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("symlinks")
+		}
+		cbEnv(t)
+		log := cbStubs(t)
+		t.Setenv("NSELF_PLUGIN_REGISTRY", "http://127.0.0.1:1") // nothing to install from
+		target := filepath.Join(t.TempDir(), "planted")
+		if err := os.WriteFile(target, []byte("#!/bin/sh\necho ran >> '"+log+"'\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		pub := plugin.PublishedBinaryPath("nself-ci")
+		if err := os.MkdirAll(filepath.Dir(pub), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(target, pub); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := ensureCIBinary(false); err == nil {
+			t.Fatalf("a symlinked binary was returned: %q", got)
+		}
+		cbAssertNoStubRan(t, log)
+	})
+}
+
 func TestCIBootstrapLegacyCache(t *testing.T) {
 	const notice = "notice: ~/.nself/bin/nself-ci is no longer used (unverified); nself now installs the signed ci plugin\n"
 	setup := func(t *testing.T) (string, string, *bytes.Buffer) {
@@ -327,11 +401,15 @@ func TestCIBootstrapSigned(t *testing.T) {
 }
 
 func TestCIBootstrapNoGo(t *testing.T) {
-	cases := map[string]cbOpts{
-		"unsigned release":  {},
-		"tampered platform": {sign: true, platSign: true, platTamper: true},
+	cases := map[string]struct {
+		o    cbOpts
+		code string
+	}{
+		"unsigned release":  {cbOpts{}, "E107"},
+		"tampered platform": {cbOpts{sign: true, platSign: true, platTamper: true}, "E124"},
 	}
-	for name, o := range cases {
+	for name, tc := range cases {
+		o := tc.o
 		t.Run(name, func(t *testing.T) {
 			cbEnv(t)
 			log := cbStubs(t)
@@ -339,6 +417,9 @@ func TestCIBootstrapNoGo(t *testing.T) {
 			got, err := ensureCIBinary(false)
 			if err == nil {
 				t.Fatalf("a %s was accepted: %q", name, got)
+			}
+			if got := aiCode(err); got != tc.code {
+				t.Fatalf("verification error code %q, want %q (%v)", got, tc.code, err)
 			}
 			if !strings.Contains(err.Error(), "nself add ci") {
 				t.Fatalf("error does not name `nself add ci`: %v", err)

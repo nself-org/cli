@@ -100,7 +100,7 @@ check_catalogue() {
   local base="$1" min="$2" file entry n bad=0 v p
   file="${WORK}/registry.json"
   # shellcheck disable=SC2086 # CURL_PROTO is two options on purpose
-  if ! curl -fsS ${CURL_PROTO} --max-time 60 -o "${file}" "${base}/registry.json"; then fail "cannot fetch ${base}/registry.json"; return 1; fi
+  if ! curl -fsS ${CURL_PROTO} --retry 3 --retry-delay 2 --retry-all-errors --max-time 60 -o "${file}" "${base}/registry.json"; then fail "cannot fetch ${base}/registry.json"; return 1; fi
   if ! jq -e '(.plugins // .) | type == "array"' "${file}" >/dev/null 2>&1; then fail "${base}/registry.json is not a plugin list"; return 1; fi
   n="$(jq '[(.plugins // .)[] | select(.name == "ci" and ((.tier // "free") == "free"))] | length' "${file}")"
   if [ "${n}" != "1" ]; then fail "want exactly one free ci entry, found ${n}"; return 1; fi
@@ -108,7 +108,7 @@ check_catalogue() {
   CI_VERSION="$(printf '%s' "${entry}" | jq -r '.version // ""')"
   # The served catalogue omits `repository`; the installer then uses the plugins repo
   # (internal/plugin/download.go), so the probe fetches the same release assets.
-  CI_REPO="$(printf '%s' "${entry}" | jq -r '.repository // "https://github.com/nself-org/plugins"')"
+  CI_REPO="$(printf '%s' "${entry}" | jq -r '(.repository | select(. != null and . != "")) // "https://github.com/nself-org/plugins"')"
   CI_REPO="${CI_REPO%.git}"; CI_ENTRY="${entry}"; v="${CI_VERSION}"
   if [ -z "${v}" ] || ! ver_ge "${v}" "${min}"; then fail "ci version '${v}' is below --min-version ${min}"; bad=1; fi
   if ! printf '%s' "${entry}" | jq -e '.release_signature | type == "object" and ((.key_id // "") != "") and ((.alg // "") != "") and ((.sig // "") != "")' >/dev/null 2>&1; then fail "the ci entry has no complete release_signature (key_id, alg, sig)"; bad=1; fi
@@ -130,7 +130,7 @@ check_tarballs() {
     url="${CI_REPO}/releases/download/v${CI_VERSION}/ci-${CI_VERSION}-${p}.tar.gz"
     f="${WORK}/tar-${p}.tar.gz"
     # shellcheck disable=SC2086
-    if ! curl -fsSL ${CURL_PROTO} --max-time 300 -o "${f}" "${url}"; then fail "cannot download the ${p} tarball (${url})"; bad=1; continue; fi
+    if ! curl -fsSL ${CURL_PROTO} --retry 3 --retry-delay 2 --retry-all-errors --max-time 300 -o "${f}" "${url}"; then fail "cannot download the ${p} tarball (${url})"; bad=1; continue; fi
     want="$(printf '%s' "${CI_ENTRY}" | jq -r --arg p "${p}" '.checksums.platforms[$p] // ""')"
     if ! printf '%s' "${want}" | grep -Eq '^[0-9a-f]{64}$'; then fail "the ci entry has no checksums.platforms entry for ${p}: the tarball cannot be authenticated"; bad=1; continue; fi
     if [ "$(sha256_of "${f}")" != "${want}" ]; then fail "the ${p} tarball does not match its checksums.platforms entry"; bad=1; rm -f "${f}"; continue; fi
@@ -199,7 +199,7 @@ check_run() {
 # (gate from PATH) on the same fixture, on the host and in a clean golang container.
 # Runs when NSELF_BIN and NSELF_BASE_BIN are set; NSELF_LINUX_BIN adds the container leg.
 check_cli_parity() {
-  local host_p hostbin d rc_b rc_h rc_c out_b out_h out_c img="${PARITY_IMAGE:-golang:1.26.6}" bad=0 pathdir
+  local host_p hostbin d rc_b rc_h rc_c out_b out_h out_c p img="${PARITY_IMAGE:-golang:1.26.6}" bad=0 pathdir
   if [ -z "${NSELF_BIN:-}" ] || [ -z "${NSELF_BASE_BIN:-}" ]; then return 0; fi
   need git
   host_p="$(host_platform)"
@@ -210,12 +210,18 @@ check_cli_parity() {
   git -C "${WORK}/parity-src" config user.email probe@example.invalid; git -C "${WORK}/parity-src" config user.name probe
   cp -R "${FIX}/repo/head/." "${WORK}/parity-src/"; git -C "${WORK}/parity-src" add -A; git -C "${WORK}/parity-src" commit -q -m fixture
   git clone -q "${WORK}/parity-src" "${d}"
+  # The fixture has no supported stack on purpose (no toolchain needed): a run that really
+  # started the gate prints the `nself-ci gate` section and ends in "no supported stack".
+  # Equal exit codes and stdout that both come from a failed start would prove nothing.
   rc_b=0; mkdir -p "${WORK}/home-base"
   # shellcheck disable=SC2086
-  out_b="$(cd "${d}" && env -i PATH="${pathdir}:/usr/bin:/bin" HOME="${WORK}/home-base" "${NSELF_BASE_BIN}" ci ${CI_ARGS} "${d}" 2>/dev/null)" || rc_b=$?
+  out_b="$(cd "${d}" && env -i PATH="${pathdir}:/usr/bin:/bin" HOME="${WORK}/home-base" "${NSELF_BASE_BIN}" ci ${CI_ARGS} "${d}" 2>"${WORK}/err-base")" || rc_b=$?
   rc_h=0; mkdir -p "${WORK}/home-head"
   # shellcheck disable=SC2086
-  out_h="$(cd "${d}" && env -i PATH=/usr/bin:/bin HOME="${WORK}/home-head" NSELF_PLUGIN_REGISTRY="${REGISTRY_URL}" "${NSELF_BIN}" ci ${CI_ARGS} "${d}" 2>/dev/null)" || rc_h=$?
+  out_h="$(cd "${d}" && env -i PATH=/usr/bin:/bin HOME="${WORK}/home-head" NSELF_PLUGIN_REGISTRY="${REGISTRY_URL}" "${NSELF_BIN}" ci ${CI_ARGS} "${d}" 2>"${WORK}/err-head")" || rc_h=$?
+  for p in base head; do
+    if ! grep -Fq "no supported stack detected" "${WORK}/err-${p}"; then fail "${p}: the gate did not run to its fixture verdict (stderr: $(head -c 300 "${WORK}/err-${p}"))"; bad=1; fi
+  done
   if [ ! -x "${WORK}/home-head/.nself/plugins/bin/${BIN}" ]; then fail "the head binary did not install ${BIN} through the plugin seam"; bad=1; fi
   if [ "${rc_b}" != "${rc_h}" ]; then fail "host: head exit ${rc_h} differs from base exit ${rc_b}"; bad=1
   elif [ "${out_b}" != "${out_h}" ]; then fail "host: head stdout differs from base stdout"; bad=1
@@ -226,7 +232,8 @@ check_cli_parity() {
     rc_c=0
     # shellcheck disable=SC2086
     out_c="$(docker run --rm -v "$(dirname "${NSELF_LINUX_BIN}"):/probe:ro" -v "${d}:/work" -w /work -e HOME=/tmp/home -e NSELF_PLUGIN_REGISTRY="${REGISTRY_URL}" \
-      "${img}" "/probe/$(basename "${NSELF_LINUX_BIN}")" ci ${CI_ARGS} /work 2>/dev/null)" || rc_c=$?
+      "${img}" "/probe/$(basename "${NSELF_LINUX_BIN}")" ci ${CI_ARGS} /work 2>"${WORK}/err-container")" || rc_c=$?
+    if ! grep -Fq "no supported stack detected" "${WORK}/err-container"; then fail "container: the gate did not run to its fixture verdict (stderr: $(head -c 300 "${WORK}/err-container"))"; bad=1; fi
     if [ "${rc_b}" != "${rc_c}" ]; then fail "container: head exit ${rc_c} differs from base exit ${rc_b}"; bad=1
     elif [ "$(printf '%s' "${out_b}" | sed "s#${d}#/work#g")" != "${out_c}" ]; then fail "container: head stdout differs from base stdout"; bad=1
     else echo "ok   cli parity (container ${img}): head and base agree (exit ${rc_c})"; fi

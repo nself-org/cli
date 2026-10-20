@@ -127,17 +127,23 @@ func retireLegacyCICache() {
 		if err != nil {
 			return
 		}
-		aside := legacy + ".unverified-legacy"
-		if _, aerr := os.Lstat(aside); info.Mode().IsRegular() && aerr != nil {
-			_ = os.Rename(legacy, aside) // an earlier aside copy is never overwritten
+		if info.Mode().IsRegular() {
+			// Link then unlink, not rename: a link never replaces an existing aside
+			// copy, even one created after the Lstat above.
+			aside := legacy + ".unverified-legacy"
+			if os.Link(legacy, aside) == nil {
+				_ = os.Remove(legacy)
+			}
 		}
 		fmt.Fprintln(ciNoticeOut, "notice: ~/.nself/bin/nself-ci is no longer used (unverified); nself now installs the signed ci plugin")
 	})
 }
 
-// isRegularFile reports whether path is a regular file (following symlinks).
+// isRegularFile reports whether path is itself a regular file. A symlink does
+// not count: the installer publishes a copy, so a link there was not put by a
+// verified install and falls through to the seam, which replaces it.
 func isRegularFile(path string) bool {
-	info, err := os.Stat(path)
+	info, err := os.Lstat(path)
 	return err == nil && info.Mode().IsRegular()
 }
 
