@@ -252,7 +252,7 @@ build_start() {
   nsf build
   if [ "$RC" -ne 0 ]; then fail "$1: nself build exits 0" "rc=$RC $(nsf_tail)"; return 1; fi
   pass "$1: nself build exits 0"
-  nsf start
+  nsf start --skip-db-init
   if [ "$RC" -ne 0 ]; then fail "$1: nself start exits 0" "rc=$RC $(nsf_tail)"; return 1; fi
   pass "$1: nself start exits 0"
   if wait_hasura; then pass "$1: Hasura healthy"; else fail "$1: Hasura healthy" "$(docker ps -a --format '{{.Names}} {{.Status}}' | grep "^$PROJECT" | tr '\n' '|')"; return 1; fi
@@ -458,7 +458,7 @@ nsf build
 if [ "$RC" -eq 0 ]; then pass "switch: nself build exits 0"; else fail "switch: nself build exits 0" "rc=$RC $(nsf_tail)"; fi
 if [ "$(compose_hasura_image)" = "$REF_NEW" ]; then pass "switch: compose hasura image is the hasura ref"; else fail "switch: compose hasura image is the hasura ref" "got $(compose_hasura_image)"; fi
 if [ "$(lock_hasura_pin)" = "$REF_NEW" ]; then pass "switch: nself.lock.yaml pins the hasura ref"; else fail "switch: nself.lock.yaml pins the hasura ref" "got $(lock_hasura_pin)"; fi
-nsf start
+nsf start --skip-db-init
 if [ "$RC" -eq 0 ]; then pass "switch: nself start exits 0"; else fail "switch: nself start exits 0" "rc=$RC $(nsf_tail)"; fi
 if wait_hasura; then pass "switch: Hasura healthy"; else fail "switch: Hasura healthy" "$(docker logs --tail 5 "${PROJECT}_hasura" 2>&1 | redact | tr '\n' '|')"; fi
 if [ "$(running_hasura_image)" = "$REF_NEW" ]; then pass "switch: running Hasura container uses the hasura ref"; else fail "switch: running Hasura container uses the hasura ref" "got $(running_hasura_image)"; fi
@@ -501,7 +501,7 @@ nsf build
 if [ "$RC" -ne 0 ]; then
   fail "pin-back-without-restore-observed" "nself build failed, rc=$RC $(nsf_tail)"
 else
-  nsf start
+  nsf start --skip-db-init
   START_RC="$RC"
   if wait_hasura 90 && [ "$(running_hasura_version)" = "$VER_V14" ] && [ "$(running_hasura_image)" = "$REF_V14" ]; then
     CAT_BACK="$(catalog_version)"
