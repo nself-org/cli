@@ -39,7 +39,8 @@ import (
 	"github.com/nself-org/cli/internal/plugin"
 )
 
-// envNoAutoAdd turns the break-out auto-add off: the command fails with E404.
+// envNoAutoAdd is a shell-exported bootstrap policy (1 or true, any case).
+// It is read before project config; .env files cannot set this policy.
 const envNoAutoAdd = "NSELF_NO_AUTO_ADD"
 
 // autoAddPlugin is the install seam and relocateWarnOut the warning's writer;
@@ -82,7 +83,7 @@ func relocateBreakout(cmdName string, args []string) (handled bool, err error) {
 	if hasPrefix(append([]string{cmdName}, args...), row.From) {
 		old = strings.Join(row.From, " ")
 	}
-	if os.Getenv(envNoAutoAdd) == "1" {
+	if v := os.Getenv(envNoAutoAdd); v == "1" || strings.EqualFold(v, "true") {
 		return true, breakoutRefused(old, row.Plugin, errors.New("automatic install is switched off ("+envNoAutoAdd+"=1)"))
 	}
 	if _, err := os.Stat(filepath.Join(resolvePluginDir(), row.Plugin, ".disabled")); err == nil {

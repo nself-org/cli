@@ -72,6 +72,7 @@ var knownEnvVarsOps = []string{
 
 	// Plugin System
 	"NSELF_PLUGIN_DIR",
+	"NSELF_NO_AUTO_ADD", // Shell-exported bootstrap policy; read before loading .env.
 	"NSELF_PLUGIN_CACHE",
 	"NSELF_PLUGIN_REGISTRY",
 	"NSELF_REGISTRY_CACHE_TTL",

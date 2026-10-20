@@ -283,6 +283,7 @@ PLUGIN_DEFAULT_MEMORY_LIMIT                   (default: 512m)                def
 PLUGIN_DEFAULT_CPU_LIMIT                      (default: 0.5)                 default
 PLUGIN_INTERNAL_SECRET                        (unset)                        unset
 NSELF_PLUGIN_DIR                              (default: ~/.nself/plugins)    default
+NSELF_NO_AUTO_ADD                             (unset)                        unset
 NSELF_PLUGIN_CACHE                            (default: ~/.nself/cache/plugins) default
 NSELF_PLUGIN_REGISTRY                         (default: https://plugins.nself.org) default
 NSELF_REGISTRY_CACHE_TTL                      (default: 300)                 default
