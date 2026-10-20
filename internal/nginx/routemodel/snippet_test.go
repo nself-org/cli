@@ -23,7 +23,7 @@ var update = flag.Bool("update", false, "rewrite snippet goldens")
 
 // renderVars stands in for the build's template variables.
 var renderVars = strings.NewReplacer("${BASE_DOMAIN}", "example.test", "${DOMAIN}", "example.test",
-	"${NSELF_DOMAIN}", "example.test", "${SSL_DIR}", "example-test", "${GRAFANA_ROUTE}", "grafana",
+	"${NSELF_DOMAIN}", "example.test", "${SSL_DIR}", "certificates/example-test", "${GRAFANA_ROUTE}", "grafana",
 	"${PROMETHEUS_ROUTE}", "prometheus", "${ALERTMANAGER_ROUTE}", "alertmanager")
 
 type corpusFile struct{ slug, name, path string }
