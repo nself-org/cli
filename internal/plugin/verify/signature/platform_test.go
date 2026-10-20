@@ -14,6 +14,7 @@ import (
 
 	"github.com/nself-org/cli/internal/plugin/verify/signature"
 	"github.com/nself-org/cli/internal/plugin/verify/signature/signaturetest"
+	"github.com/nself-org/cli/sdk/go/v2/signing"
 )
 
 const platform = "linux-amd64"
@@ -110,6 +111,42 @@ func TestVerifyPlatformTamperedE121(t *testing.T) {
 			t.Fatal("duplicate key must fail closed with E121")
 		}
 	})
+}
+
+// TestVerifyPlatformSignedAmbiguousIdentityE121: the signer signs a message whose
+// identity fields would change its line structure or break the shape; the
+// verifier must still refuse, so the guards (not just the signature check) are
+// what hold.
+func TestVerifyPlatformSignedAmbiguousIdentityE121(t *testing.T) {
+	f := newFixture(t)
+	sha := digest("binary tarball")
+	cases := map[string]struct{ slug, version, platform, sha string }{
+		"newline in slug":     {"ci\nx", version, platform, sha},
+		"newline in version":  {slug, "1.2.7\n", platform, sha},
+		"carriage return":     {slug, "1.2.7\r", platform, sha},
+		"nul in slug":         {"ci\x00", version, platform, sha},
+		"empty slug":          {"", version, platform, sha},
+		"empty version":       {slug, "", platform, sha},
+		"empty platform":      {slug, version, "", sha},
+		"unknown platform":    {slug, version, "freebsd-amd64", sha},
+		"upper-case platform": {slug, version, "Linux-amd64", sha},
+		"uppercase sha":       {slug, version, platform, strings.ToUpper(sha)},
+		"short sha":           {slug, version, platform, sha[:63]},
+		"non-hex sha":         {slug, version, platform, strings.Repeat("g", 64)},
+		"sha with newline":    {slug, version, platform, sha[:63] + "\n"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			sig, err := f.freeSign.Sign(signature.SigningInputPlatform(c.slug, c.version, c.platform, c.sha))
+			if err != nil {
+				t.Fatal(err)
+			}
+			rel := &signature.Release{KeyID: f.freeSign.KeyID(), Alg: signature.Alg, Sig: signing.EncodeSig(sig)}
+			if got := code(signature.VerifyPlatform(signature.TierFree, c.slug, c.version, c.platform, c.sha, rel)); got != "E121" {
+				t.Fatalf("a signed but ambiguous identity must be E121, got %q", got)
+			}
+		})
+	}
 }
 
 func TestVerifyPlatformWrongPlatformE121(t *testing.T) {

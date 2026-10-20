@@ -403,8 +403,9 @@ func TestInstallStrictModeRefusesUnsigned(t *testing.T) {
 // TestBinaryPackageRefusedOnPinnedTier: the source signature does not cover a
 // binary package, and the registry fields that select a binary download are
 // unsigned, so on a pinned tier a non-source package with no platform signature
-// is refused in both modes (E121) even with a good source signature. On an unpinned tier nothing is claimed and the
-// install proceeds.
+// is refused in both modes (E121) even with a good source signature. On an
+// unpinned tier nothing is claimed: v1.4 warns and proceeds, v1.5 refuses an
+// unsigned release (E107), exactly as for a source package.
 func TestBinaryPackageRefusedOnPinnedTier(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
 		key, signer := signaturetest.NewKey(t, signature.TierFree)
@@ -425,8 +426,12 @@ func TestBinaryPackageRefusedOnPinnedTier(t *testing.T) {
 			t.Fatal("an unsigned binary package on a pinned tier must be refused")
 		}
 		signaturetest.UseKeys(t, nil, nil)
-		if err := verifyReleaseSignature(m, false, false, "linux-amd64", "", false); err != nil && codeOf(err) != "E107" {
-			t.Fatalf("unpinned tier: %v", err)
+		wantCode := ""
+		if compat.V15() {
+			wantCode = "E107"
+		}
+		if err := verifyReleaseSignature(m, false, false, "linux-amd64", "", false); codeOf(err) != wantCode {
+			t.Fatalf("unpinned tier: want code %q, got %v", wantCode, err)
 		}
 	})
 }
