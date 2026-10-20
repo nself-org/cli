@@ -16,8 +16,10 @@
 #          every process gets a clean HOME and project directory under $TMPDIR,
 #          removed on exit. Each E404 case also asserts its cause text, so a dead
 #          fixture server cannot pass as an unsigned or tampered refusal. The CLI
-#          pins no release key in this build, so the tampered catalogue is refused
-#          as unverifiable before any download.
+#          pins the real free release key, so a signed entry is judged after the
+#          download: the fixture server serves a stand-in tarball, a wrong checksum
+#          is refused with E124, and a right checksum with a bad signature by the
+#          pinned key id is refused with E121.
 set -euo pipefail
 
 die() { echo "breakout-smoke: $*" >&2; exit 2; }
@@ -115,6 +117,15 @@ for kind in unsigned tampered; do
   mkdir -p "$WORK/served/$kind"
   sed "s#@BASE@#$BASE_URL#g" "$FIX/registry/$kind/registry.json" >"$WORK/served/$kind/registry.json"
 done
+# A stand-in tarball at the fallback URL the CLI tries after the primary 404s, so a signed entry is judged on its checksum and signature, not on a failed download.
+mkdir -p "$WORK/served/releases/download/v1.0.0"
+printf 'breakout-smoke stand-in tarball, not a real release\n' >"$WORK/served/releases/download/v1.0.0/ci-1.0.0.tar.gz"
+TARBALL_SHA="$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$WORK/served/releases/download/v1.0.0/ci-1.0.0.tar.gz")"
+# badsig: the right checksum and a zero signature under the pinned free key id, so only the signature check can refuse it.
+mkdir -p "$WORK/served/badsig"
+jq --arg sha "$TARBALL_SHA" --arg sig "$(python3 -c 'import base64; print(base64.b64encode(bytes(64)).decode())')" \
+  '.plugins[0].checksum = $sha | .plugins[0].release_signature = {key_id: "plugins-2ebca8dfad98e19e", alg: "ed25519", sig: $sig}' \
+  "$WORK/served/tampered/registry.json" >"$WORK/served/badsig/registry.json"
 (cd "$WORK/served" && exec python3 -m http.server "$PORT" --bind 127.0.0.1 >/dev/null 2>&1) &
 SERVER_PID=$!
 READY=0
@@ -156,7 +167,8 @@ expect_e404() { # <label> <cause regex for stderr> <env assignment or ""> <args.
 expect_e404 "NSELF_NO_AUTO_ADD=1" 'automatic install is switched off' "NSELF_NO_AUTO_ADD=1" ci --check
 expect_e404 "offline registry" 'registry fetch failed' "NSELF_PLUGIN_REGISTRY=http://127.0.0.1:9" ci --check
 expect_e404 "unsigned release" '\[E107\].*has no release signature' "NSELF_PLUGIN_REGISTRY=$BASE_URL/unsigned/registry.json" ci --check
-expect_e404 "tampered release (refused before download: no key pinned; the in-process test proves the checksum and signature)" '\[E107\].*(cannot be verified|does not verify)' "NSELF_PLUGIN_REGISTRY=$BASE_URL/tampered/registry.json" runner verify x
+expect_e404 "tampered release (checksum mismatch, refused before extraction)" '\[E124\].*checksum mismatch' "NSELF_PLUGIN_REGISTRY=$BASE_URL/tampered/registry.json" runner verify x
+expect_e404 "bad signature (right checksum, zero signature under the pinned free key)" '\[E121\]' "NSELF_PLUGIN_REGISTRY=$BASE_URL/badsig/registry.json" runner verify x
 
 # 4. v1.5: the marketplace is gone.
 for c in "plugin marketplace" "plugin submit"; do
