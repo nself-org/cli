@@ -216,25 +216,18 @@ func HasuraEntry() string {
 	return "hasura-v14"
 }
 
-// hasuraImage renders the hasura image for the config's HASURA_VERSION. Blank
-// or v2.44.0 (the config default nself init writes into .env) is no override
-// and renders the HasuraEntry entry: v2.44.0 in v1.4, v2.51.0 in v1.5 (in v1.5
-// without a lock pin, v2.44.0 is the init default and renders hasura). The
-// current release's own version (v2.51.0) renders hasura in any mode and, unlike
-// the init default, is an override (image_inputs.go NotInitDefault). A project
-// lock pin wins over the defaults, so a v1.5 project pinned to v2.44.0 stays on
-// it until `nself update`. Any other value is an explicit tag, used as given,
-// unpinned.
+// hasuraImage uses the mode default only for a blank version. Every non-blank
+// version is explicit, including the release used by older init templates.
 func hasuraImage(version string) string {
 	version = strings.TrimSpace(version)
 	entry := HasuraEntry()
 	v14, _ := LockedRef("hasura-v14")
 	cur, _ := LockedRef("hasura")
-	switch {
-	case v14.IsDefaultVersion(version):
-		version = ""
-	case cur.IsDefaultVersion(version):
-		entry, version = "hasura", ""
+	switch version {
+	case v14.Version:
+		entry = "hasura-v14"
+	case cur.Version:
+		entry = "hasura"
 	}
 	if entry == "hasura" {
 		return ResolveImage("hasura", ImageRef("hasura", version))

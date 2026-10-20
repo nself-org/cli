@@ -364,7 +364,7 @@ if [ "$(grep -c "^PROJECT_NAME=$PROJECT\$" "$PDIR/.env")" -eq 1 ]; then
 else
   fatal "project .env names PROJECT_NAME=$PROJECT" "refusing to continue: the project is not the one this run created"
 fi
-check "project .env carries the init default HASURA_VERSION=$VER_V14" grep -q "^HASURA_VERSION=$VER_V14\$" "$PDIR/.env"
+check "project .env leaves HASURA_VERSION at the mode default" grep -q "^HASURA_VERSION=\$" "$PDIR/.env"
 (umask 077; sed -n 's/^HASURA_GRAPHQL_ADMIN_SECRET=//p' "$PDIR/.env" | head -n1 | tr -d '\r\n"' > "$WORK/admin.secret")
 if [ -s "$WORK/admin.secret" ]; then
   (umask 077; printf 'X-Hasura-Admin-Secret: %s\n' "$(cat "$WORK/admin.secret")" > "$WORK/admin.hdr")

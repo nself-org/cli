@@ -30,7 +30,7 @@ type ImageInput struct {
 	Vars               []string // variables that feed the rendered reference, precedence order
 	alsoDefaultEntries []string // explicit compatibility defaults that render this entry
 	// NotInitDefault marks an entry whose version nself init never writes into .env
-	// (hasura: init writes v2.44.0, the hasura-v14 entry). Setting a variable to that
+	// (Hasura: init leaves the version blank). Setting a variable to that
 	// version is a deliberate choice, so it is an override and not a default.
 	NotInitDefault bool
 }
@@ -41,12 +41,9 @@ var imageInputs = []ImageInput{
 	// pgvector repository from the major version.
 	{Service: "postgres", Entry: "postgres", Vars: []string{"POSTGRES_IMAGE", "POSTGRES_VERSION"}},
 	{Service: "postgres", Entry: "pgvector", Vars: []string{"POSTGRES_IMAGE", "POSTGRES_VERSION"}, alsoDefaultEntries: []string{"postgres"}},
-	// hasura: the current release (v2.51.0). init does not write it, so a project that
-	// sets HASURA_VERSION to it moves off a lock pin of v2.44.0 (P7-LIVE-23).
-	{Service: "hasura", Entry: "hasura", Vars: []string{"HASURA_VERSION"}, alsoDefaultEntries: []string{"hasura-v14"}, NotInitDefault: true},
-	// hasura-v14: graphql-engine v2.44.0, what v1.4 runs and the version nself init
-	// writes into .env (core_services.go, P7-LIVE-23); the same variable picks the tag.
-	{Service: "hasura", Entry: "hasura-v14", Vars: []string{"HASURA_VERSION"}},
+	// Hasura versions are always explicit; init leaves HASURA_VERSION blank.
+	{Service: "hasura", Entry: "hasura", Vars: []string{"HASURA_VERSION"}, NotInitDefault: true},
+	{Service: "hasura", Entry: "hasura-v14", Vars: []string{"HASURA_VERSION"}, NotInitDefault: true},
 	{Service: "auth", Entry: "auth", Vars: []string{"AUTH_VERSION"}, alsoDefaultEntries: []string{"auth-v14"}},
 	// auth-v14: nhost/auth 0.36.0, what v1.4 runs and v1.5 until AUTH_ENCRYPTION_KEY is
 	// set (core_services_auth_nginx.go, P7-LIVE-20); the same variable picks the tag.

@@ -134,7 +134,7 @@ func TestImageInputDefaultCompatibilityIsDirectional(t *testing.T) {
 		{"postgres rejects pgvector default", "postgres", pgvector.Version, false},
 		{"valkey accepts redis init default", "valkey", redis.Version, true},
 		{"redis rejects valkey default", "redis", valkey.Version, false},
-		{"current hasura accepts init default", "hasura", v14.Version, true},
+		{"old hasura version is explicit", "hasura", v14.Version, false},
 		{"current hasura remains explicit", "hasura", current.Version, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

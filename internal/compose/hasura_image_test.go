@@ -49,9 +49,9 @@ func TestHasuraImageByMode(t *testing.T) {
 		{"v1.4 lock default", "v2.44.0", false, PinningLock, v14.String()},
 		{"v1.4 lock blank version", "", false, PinningLock, v14.String()},
 		{"v1.4 legacy default", "v2.44.0", false, PinningLegacy, "hasura/graphql-engine:v2.44.0"},
-		{"v1.5 lock default", "v2.44.0", true, PinningLock, cur.String()}, // the config default nself init writes
+		{"explicit v1.4 release in v1.5", "v2.44.0", true, PinningLock, v14.String()}, // explicit version, even when older init templates wrote it
 		{"v1.5 lock blank version", "", true, PinningLock, cur.String()},
-		{"v1.5 legacy default", "v2.44.0", true, PinningLegacy, "hasura/graphql-engine:v2.51.0"},
+		{"explicit v1.4 release in v1.5 legacy", "v2.44.0", true, PinningLegacy, "hasura/graphql-engine:v2.44.0"},
 		{"explicit current release in v1.4", "v2.51.0", false, PinningLock, cur.String()},
 		{"explicit current release in v1.4 legacy", "v2.51.0", false, PinningLegacy, "hasura/graphql-engine:v2.51.0"},
 		{"explicit older release in v1.4", "v2.43.0", false, PinningLock, "hasura/graphql-engine:v2.43.0"},
@@ -89,8 +89,7 @@ func TestHasuraLockPinKept(t *testing.T) {
 		var notices bytes.Buffer
 		defer PinNoticeSink(&notices)()
 		defer SetProjectPins(map[string]string{"hasura": pin})()
-		// What nself init writes into .env (v2.44.0) and a blank value are CLI defaults and
-		// not overrides: the pin stays.
+		// A blank value keeps the pin; explicitly selecting its version also keeps it.
 		for _, v := range []string{"", v14.Version} {
 			t.Setenv("HASURA_VERSION", v)
 			if got := hasuraImageFor(t, v); got != pin {
@@ -122,7 +121,7 @@ func TestHasuraLockPinKept(t *testing.T) {
 			t.Errorf("v1.4 without a pin: %q, want %q", got, v14.String())
 		}
 		compattest.Set(t, true)
-		if got := hasuraImageFor(t, "v2.44.0"); got != cur.String() {
+		if got := hasuraImageFor(t, ""); got != cur.String() {
 			t.Errorf("v1.5 without a pin: %q, want %q", got, cur.String())
 		}
 	})
@@ -137,7 +136,7 @@ func TestHasuraLockPinKeptAfterUpdate(t *testing.T) {
 		var notices bytes.Buffer
 		defer PinNoticeSink(&notices)()
 		defer SetProjectPins(map[string]string{"hasura": cur.String()})()
-		for _, v := range []string{"", "v2.44.0", cur.Version} {
+		for _, v := range []string{"", cur.Version} {
 			t.Setenv("HASURA_VERSION", v)
 			if got := hasuraImageFor(t, v); got != cur.String() {
 				t.Errorf("HASURA_VERSION=%q: hasura image = %q, want the pin %q", v, got, cur.String())
@@ -145,6 +144,19 @@ func TestHasuraLockPinKeptAfterUpdate(t *testing.T) {
 		}
 		if notices.Len() != 0 {
 			t.Errorf("a kept pin printed a notice: %q", notices.String())
+		}
+	})
+}
+
+func TestExplicitOldHasuraVersionDropsNewPin(t *testing.T) {
+	old, _ := LockedRef("hasura-v14")
+	cur, _ := LockedRef("hasura")
+	compattest.Both(t, func(t *testing.T) {
+		setMode(t, PinningLock)
+		defer SetProjectPins(map[string]string{"hasura": cur.String()})()
+		t.Setenv("HASURA_VERSION", old.Version)
+		if got := hasuraImageFor(t, old.Version); got != old.String() {
+			t.Fatalf("explicit older version=%q, want %q", got, old.String())
 		}
 	})
 }
