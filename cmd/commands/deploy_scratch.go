@@ -92,8 +92,15 @@ func runScratchBuild(ctx context.Context, workdir, env string, snap deploy.Targe
 	if err := writeFrontStubSSL(scratch, frontedBy, snap.FrontSSL); err != nil {
 		return "", fmt.Errorf("deploy: writing the stub ssl tree: %w", err)
 	}
+	restore, err := preserveScratchNginx(scratch, policy)
+	if err != nil {
+		return "", fmt.Errorf("deploy: preserving included nginx files: %w", err)
+	}
 	if _, err := deployScratchBuildFn(ctx, scratch, true, nil); err != nil {
 		return "", fmt.Errorf("deploy: scratch build failed, nothing was sent: %w", err)
+	}
+	if err := restore(); err != nil {
+		return "", fmt.Errorf("deploy: restoring included nginx files: %w", err)
 	}
 	return scratch, nil
 }
