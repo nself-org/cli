@@ -36,12 +36,44 @@ import (
 // to free so its pre-check and the installer resolve the same registry entry.
 const autoInstallTierEnv = "NSELF_PLUGIN_INSTALL_TIER"
 
+// autoInstallLocationEnv names the variables that decide where the seam fetches
+// the catalogue from and where it installs; a project .env cannot change them.
+var autoInstallLocationEnv = []string{"NSELF_PLUGIN_REGISTRY", "HOME", "USERPROFILE", "NSELF_PLUGIN_DIR"}
+
+// autoInstallSnapshotEnv records the current state of keys and returns a func
+// that puts each back (unsetting a key that was unset).
+func autoInstallSnapshotEnv(keys []string) func() {
+	type prev struct {
+		val string
+		had bool
+	}
+	saved := make(map[string]prev, len(keys))
+	for _, k := range keys {
+		v, had := os.LookupEnv(k)
+		saved[k] = prev{v, had}
+	}
+	return func() {
+		for k, p := range saved {
+			if p.had {
+				_ = os.Setenv(k, p.val)
+			} else {
+				_ = os.Unsetenv(k)
+			}
+		}
+	}
+}
+
 // autoInstallPlugin installs the free command plugin slug (at version, when
 // given) and returns the path of its published binary.
 func autoInstallPlugin(slug, version string) (string, error) {
 	// Load the project config first: it exports the project's .env into the
 	// process, and must not be able to overwrite the policy set below.
+	// It must not redirect the fetch or the install either (D-1414): the registry
+	// URL, HOME and the plugin directory keep the values the process had before
+	// the .env was exported.
+	restoreLocation := autoInstallSnapshotEnv(autoInstallLocationEnv)
 	cfg, err := loadConfig()
+	restoreLocation()
 	if err != nil {
 		cfg = &config.Config{} // no project here: a bootstrap runs anywhere
 	}
