@@ -251,7 +251,7 @@ func collectInstalledPluginRoutes(pluginDir, skipPlugin string) []nginx.NginxRou
 	}
 
 	for _, entry := range entries {
-		if !entry.IsDir() {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
 		// isOwnPluginDir also skips "<skipPlugin>.prev", the backup Update()
