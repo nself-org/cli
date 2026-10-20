@@ -230,7 +230,7 @@ nself db rls apply-table public np_chat_messages
 nself doctor --deep --only security
 ```
 
-**See also:** [multi-tenant conventions](https://nself.org/docs/multi-tenancy/conventions) for the canonical wall doc on `source_account_id` vs `tenant_id`.
+**See also:** [[cmd-tenant]] for tenant management commands.
 
 ---
 

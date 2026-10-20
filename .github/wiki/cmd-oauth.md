@@ -62,8 +62,8 @@ nself oauth refresh --all
 
 ### See Also
 
-- [Observability](https://nself.org/docs/operations/observability), oauth_token_refresh_total metric
-- [google plugin](https://nself.org/docs/plugins/google), Google OAuth configuration
+- [Observability](plugin-observability), oauth_token_refresh_total metric
+- [google plugin](plugin-google), Google OAuth configuration
 <!-- END PROSE:description -->
 
 ### Examples

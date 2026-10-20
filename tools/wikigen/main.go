@@ -68,6 +68,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := checkCommandProseLinks(*dir); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
 	var stale, placeholders []string
 	pagesWritten := 0
 	auxWritten := 0
