@@ -39,6 +39,7 @@ const DefaultRoleFallback = "user"
 
 // UserAuth is the auth state the verifier reads back from a target user.
 type UserAuth struct {
+	Metadata      map[string]any
 	DefaultRole   string
 	EmailVerified bool
 	Disabled      bool
@@ -111,7 +112,7 @@ func CompareState(state State, m portable.Manifest, users []User, metadata Metad
 		} else if got, have := state.UserIdent[u.ID]; state.UserIdent != nil && (!have || got != Identity(u.Email, u.Phone, u.DisplayName)) {
 			add("user", u.ID, "user identity fields differ", "user")
 		} else if got, have := state.UserAuth[u.ID]; state.UserAuth != nil && (!have || !authMatches(u, got)) {
-			add("user", u.ID, "user role or status fields differ", "user")
+			add("user", u.ID, "user role, status or metadata fields differ", "user")
 		}
 	}
 	for _, o := range m.Storage.Objects {

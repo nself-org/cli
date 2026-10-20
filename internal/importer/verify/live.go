@@ -57,7 +57,7 @@ func (l *Live) Snapshot(ctx context.Context, m portable.Manifest) (State, error)
 	if l.HasAuth || len(l.Users) > 0 {
 		s.UserIdent = map[string]string{}
 		s.UserAuth = map[string]UserAuth{}
-		rows, e := tx.Query(ctx, `SELECT id::text, password_hash, email::text, phone_number, display_name, default_role, email_verified, disabled FROM auth.users`)
+		rows, e := tx.Query(ctx, `SELECT id::text, password_hash, email::text, phone_number, display_name, default_role, email_verified, disabled, metadata FROM auth.users`)
 		if e != nil {
 			return s, errors.New("target users unavailable")
 		}
@@ -65,7 +65,7 @@ func (l *Live) Snapshot(ctx context.Context, m portable.Manifest) (State, error)
 			var id string
 			var hash, email, phone, display *string
 			var ua UserAuth
-			if rows.Scan(&id, &hash, &email, &phone, &display, &ua.DefaultRole, &ua.EmailVerified, &ua.Disabled) != nil {
+			if rows.Scan(&id, &hash, &email, &phone, &display, &ua.DefaultRole, &ua.EmailVerified, &ua.Disabled, &ua.Metadata) != nil {
 				rows.Close()
 				return s, errors.New("target user read failed")
 			}
