@@ -74,6 +74,10 @@ func finishInstall(ctx context.Context, rn *appready.Runner, store *ledger.Store
 	if out == nil {
 		out = os.Stderr
 	}
+	prior, _, err := store.Load()
+	if err != nil {
+		return err
+	}
 	var names []string
 	var prior ledger.Ledger
 	_ = rn.Step(appready.StepLedger, func() (string, error) {
@@ -129,7 +133,9 @@ func finishInstall(ctx context.Context, rn *appready.Runner, store *ledger.Store
 	if f := rn.Failure(); f != nil {
 		verdict := appReadyVerdict(out, result.Bundle, f)
 		// A failure after the generated files were written keeps the plugins:
-		// that configuration references them.
+		// that configuration references them (HEAD). Before commit, roll back
+		// the fresh members so a refused reconcile does not leave them on disk
+		// and in the ledger (D-0760).
 		if f.Step == appready.StepReconcile && !errors.Is(f.Err, appready.ErrCommitted) {
 			undoErr := undoFreshMembers(ctx, store, pluginDir, planned, prior, result, before, out)
 			return errors.Join(verdict, undoErr)
