@@ -84,11 +84,13 @@ jobs:
             exit 1
           fi
 
-      - name: Verify @nself/sdk and @nself/cli-api versions (sdk/ts-sdk, sdk/ts-cli-api)
+      - name: Verify every sdk npm package version (sdk/*/package.json)
         run: |
           TARGET='${{ steps.target.outputs.target }}'
-          for dir in sdk/ts-sdk sdk/ts-cli-api; do
-            V=$(node -p "require('./${dir}/package.json').version")
+          # Globbed, not listed: a package missing from a hand-kept list was skipped by the bumper.
+          for pkg in sdk/*/package.json; do
+            dir="${pkg%/package.json}"
+            V=$(node -p "require('./${pkg}').version")
             echo "${dir} declared: ${V}"
             if [ "${V}" != "${TARGET}" ]; then
               echo "MISMATCH: ${dir} is ${V}, expected ${TARGET}"
