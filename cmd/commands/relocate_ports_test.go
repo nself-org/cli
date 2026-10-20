@@ -5,6 +5,7 @@ package commands
 // built and signed by scripts/ci/ports-fixture-registry.sh, so the relocation is
 // proven against the binaries users get, not stubs.
 // Inputs: NSELF_CANON_PORTS_REGISTRY, the output directory of that script.
+// Run by: .github/workflows/breakout.yml (D-0909), which sets the variable.
 // Constraints: skips only when that variable is unset; the generated key replaces
 // the key table for the test (restored by t.Cleanup); HOME and the project are
 // throwaway; the server is loopback only.
