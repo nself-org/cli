@@ -1,0 +1,10 @@
+{
+  "slug": "cron",
+  "version": "1.1.2",
+  "sha256": "f35a309367739f152fa10b492fd1d4a4761897426d32965e611e9100f9431909",
+  "release_signature": {
+    "alg": "ed25519",
+    "key_id": "plugins-e2ac3ee72a143603",
+    "sig": "qj/PuSy204JE5P2PZRzgk+ZTWgnvQf4zj6w6GlZTr293Jh5btIbTDRAfvBM7/eon0ex2wbt8vRCn03Tg+yAMBg=="
+  }
+}
