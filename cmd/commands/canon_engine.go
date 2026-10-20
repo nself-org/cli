@@ -96,6 +96,9 @@ func emitCanonWarning(w io.Writer, args []string, notes []canonNote, old, final 
 	if final == "" {
 		final = n.New
 	}
+	if old == final {
+		return
+	}
 	if output.JSONRequestedFromArgs(args) {
 		output.AddDeprecation(old, final, n.RemovalAt)
 		for _, x := range notes[1:] {
