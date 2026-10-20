@@ -21,7 +21,7 @@ import (
 )
 
 func TestInitTemplateNextSteps(t *testing.T) {
-	// Golden: byte-for-byte the output at the merge-base for the six clones.
+	// App-clone hints follow their manifest commands without a legacy UI note.
 	for _, name := range clonetemplate.All() {
 		if name == "multi-app" {
 			continue
@@ -31,11 +31,8 @@ func TestInitTemplateNextSteps(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			want := "\n  Next steps:\n    cd /tmp/app\n    nself start\n    nself db migrate\n    nself db hasura metadata apply\n"
-			if len(m.RequiredPlugins) > 0 {
-				want += "    nself plugin install " + strings.Join(m.RequiredPlugins, " ") + "\n"
-			}
-			want += "\n  The flutter/ folder holds a legacy starter app; see README.md.\n\n"
+			want := "\n  Next steps:\n    cd /tmp/app\n    " + strings.Join(m.NextSteps, "\n    ") + "\n\n"
+
 			var buf bytes.Buffer
 			printTemplateNextSteps(&buf, "/tmp/app", m)
 			if buf.String() != want {

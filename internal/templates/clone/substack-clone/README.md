@@ -6,15 +6,16 @@ Newsletter publishing starter built with nSelf.
 
 - `np_newsletters`, `np_posts`, `np_subscribers`, `np_tiers` tables with RLS
 - Hasura permissions and relationships
-- Flutter starter with post list, editor, and subscriber management
 - Required plugins: `cms`, `notify`, `auth`
 
 ## Getting started
 
+<!-- Generated from manifest.json by generate_readmes.py. -->
+
 ```bash
 nself plugin install cms notify auth
+nself build
 nself start
-nself db migrate
-nself hasura metadata apply --file hasura/metadata.json
-cd flutter && flutter run
+nself db migrate up --migration-dir migrations
+nself db hasura metadata apply
 ```

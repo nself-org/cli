@@ -2,5 +2,16 @@
   "name": "notion-clone",
   "version": "1.0.0",
   "description": "Collaborative workspace with pages and block editor",
-  "required_plugins": ["cms", "auth", "realtime"]
+  "required_plugins": [
+    "cms",
+    "auth",
+    "realtime"
+  ],
+  "next_steps": [
+    "nself plugin install cms auth realtime",
+    "nself build",
+    "nself start",
+    "nself db migrate up --migration-dir migrations",
+    "nself db hasura metadata apply"
+  ]
 }

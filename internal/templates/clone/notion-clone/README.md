@@ -6,15 +6,16 @@ Collaborative workspace starter built with nSelf.
 
 - `np_workspaces`, `np_pages`, `np_blocks`, `np_page_members` tables with RLS
 - Hasura permissions and relationships
-- Flutter starter with sidebar tree and block editor
 - Required plugins: `cms`, `auth`, `realtime`
 
 ## Getting started
 
+<!-- Generated from manifest.json by generate_readmes.py. -->
+
 ```bash
 nself plugin install cms auth realtime
+nself build
 nself start
-nself db migrate
-nself hasura metadata apply --file hasura/metadata.json
-cd flutter && flutter run
+nself db migrate up --migration-dir migrations
+nself db hasura metadata apply
 ```

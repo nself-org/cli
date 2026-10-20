@@ -2,5 +2,17 @@
   "name": "discord-clone",
   "version": "1.0.0",
   "description": "Community chat platform with servers, channels, and roles",
-  "required_plugins": ["chat", "realtime", "auth", "moderation"]
+  "required_plugins": [
+    "chat",
+    "realtime",
+    "auth",
+    "moderation"
+  ],
+  "next_steps": [
+    "nself plugin install chat realtime auth moderation",
+    "nself build",
+    "nself start",
+    "nself db migrate up --migration-dir migrations",
+    "nself db hasura metadata apply"
+  ]
 }

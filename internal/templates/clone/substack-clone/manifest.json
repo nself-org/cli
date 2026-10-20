@@ -2,5 +2,16 @@
   "name": "substack-clone",
   "version": "1.0.0",
   "description": "Newsletter and subscription publishing platform",
-  "required_plugins": ["cms", "notify", "auth"]
+  "required_plugins": [
+    "cms",
+    "notify",
+    "auth"
+  ],
+  "next_steps": [
+    "nself plugin install cms notify auth",
+    "nself build",
+    "nself start",
+    "nself db migrate up --migration-dir migrations",
+    "nself db hasura metadata apply"
+  ]
 }

@@ -237,23 +237,38 @@ func TestMultiAppFiles(t *testing.T) {
 	}
 }
 
-// TestSixClonesKeepOldShape: the six app clones declare no next_steps and keep
-// their flutter/ starter, so their printed output is unchanged.
-func TestSixClonesKeepOldShape(t *testing.T) {
+// App clones ship backend assets and canonical commands, without a legacy UI.
+func TestSixClonesBackendShape(t *testing.T) {
 	for _, name := range All() {
 		if name == "multi-app" {
 			continue
 		}
-		m, err := GetManifest(name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if m.NextSteps != nil {
-			t.Errorf("%s declares next_steps %v", name, m.NextSteps)
-		}
-		if !HasFlutter(name) {
-			t.Errorf("%s lost its flutter/ starter", name)
-		}
+		t.Run(name, func(t *testing.T) {
+			m, err := GetManifest(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(m.NextSteps) == 0 {
+				t.Fatal("missing next steps")
+			}
+			if HasFlutter(name) {
+				t.Fatal("obsolete Flutter starter")
+			}
+			readme, err := templateFS.ReadFile(name + "/README.md")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, bad := range []string{"flutter", "nself hasura", "metadata apply --file"} {
+				if strings.Contains(strings.ToLower(string(readme)), bad) {
+					t.Errorf("obsolete README instruction %q", bad)
+				}
+			}
+			for _, step := range m.NextSteps {
+				if !strings.Contains(string(readme), step) {
+					t.Errorf("README missing step %q", step)
+				}
+			}
+		})
 	}
 }
 

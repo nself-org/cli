@@ -6,15 +6,16 @@ Video meeting platform starter built with nSelf.
 
 - `np_meetings`, `np_participants`, `np_recordings` tables with RLS
 - Hasura permissions and relationships
-- Flutter starter with meeting lobby, video grid, and recording playback
 - Required plugins: `livekit`, `recording`, `auth`, `notify`
 
 ## Getting started
 
+<!-- Generated from manifest.json by generate_readmes.py. -->
+
 ```bash
 nself plugin install livekit recording auth notify
+nself build
 nself start
-nself db migrate
-nself hasura metadata apply --file hasura/metadata.json
-cd flutter && flutter run
+nself db migrate up --migration-dir migrations
+nself db hasura metadata apply
 ```

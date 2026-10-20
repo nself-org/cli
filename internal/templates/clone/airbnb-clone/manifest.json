@@ -2,5 +2,16 @@
   "name": "airbnb-clone",
   "version": "1.0.0",
   "description": "Rental marketplace with listings, bookings, and reviews",
-  "required_plugins": ["auth", "notify", "photos"]
+  "required_plugins": [
+    "auth",
+    "notify",
+    "photos"
+  ],
+  "next_steps": [
+    "nself plugin install auth notify photos",
+    "nself build",
+    "nself start",
+    "nself db migrate up --migration-dir migrations",
+    "nself db hasura metadata apply"
+  ]
 }
