@@ -1,0 +1,46 @@
+{
+  "slug": "ci",
+  "version": "1.2.13",
+  "platforms": {
+    "darwin-amd64": {
+      "sha256": "57ac22c9552d7739a11ca846f8cbe055d7a15a6fb1e2766592322e98ccb87ca7",
+      "platform_signature": {
+        "alg": "ed25519",
+        "key_id": "plugins-2ebca8dfad98e19e",
+        "sig": "9b+R2gghZP37OPYXG5RynvqlEmhrrU3zPGIxB790BR3m0qcvtzXDruNaeQZBfQ4u+tGqfQVvPDIVGtn+ocbsCg=="
+      }
+    },
+    "darwin-arm64": {
+      "sha256": "52065bb743a3de692257a2bf91d126c1cd2861854eea2477617fcf66b3443f79",
+      "platform_signature": {
+        "alg": "ed25519",
+        "key_id": "plugins-2ebca8dfad98e19e",
+        "sig": "TYDtr08+dNqW7FTsfQMcHmX8iRGJvPTufDVuyZiWXXtXL8CiSt2rHJdXHuWrFEd08VT/Uq04O6k4OGnzl2mWAA=="
+      }
+    },
+    "linux-amd64": {
+      "sha256": "2b2d24a17937cecbe3c1d4ee2e59f1c488fe2a7ea6e3e60bd5c814c56454272e",
+      "platform_signature": {
+        "alg": "ed25519",
+        "key_id": "plugins-2ebca8dfad98e19e",
+        "sig": "KfzJUqn4RzJdLcTukM20vF3IjI7HGJIr4naw1ADsFcAvH+0rF2vE0Fv6nGo7AemCe+JmD9JVAqDQaISOpVmjDA=="
+      }
+    },
+    "linux-arm64": {
+      "sha256": "a14f3f6f0b3ff73fe4a2e5c27de5e5816dd2569b44ce7ccc50db89f5be086aef",
+      "platform_signature": {
+        "alg": "ed25519",
+        "key_id": "plugins-2ebca8dfad98e19e",
+        "sig": "JsEm5OTX/3IG3fRKNkJFaONFhSuODlL3wy7TyhfrR0MNSbFm3KeF4k3NGp8d+yj1H6GIPQd33Pmt/IT4T8M5DQ=="
+      }
+    },
+    "windows-amd64": {
+      "sha256": "a4824863e9dd5e43621260868f4a9b53f90c13662fa763cc3405b99231f0a271",
+      "platform_signature": {
+        "alg": "ed25519",
+        "key_id": "plugins-2ebca8dfad98e19e",
+        "sig": "siUDOjq/+b+9lc6S+nZHSl06/QKwY83vOtyp3W2fCoI3PhRQDTwbHoqT4qcRHzC2GkGCkzGIWFBq58sIqm+OAw=="
+      }
+    }
+  }
+}
