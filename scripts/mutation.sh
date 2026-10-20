@@ -90,6 +90,8 @@ MUTATION_EQUIVALENT='
 ARITHMETIC_BASE at internal/license/validate.go:23:32 | unmeasurable, not equivalent: const initialiser: Go emits no coverage block for a const, so gremlins can only report NOT COVERED; TestDefaultCheckIntervalIsSixHours pins the value
 CONDITIONALS_BOUNDARY at internal/license/entitlement/selection.go:22:31 | exp=0 cannot beat the selected expiry initialized to zero, so accepting this boundary never changes the selection
 CONDITIONALS_BOUNDARY at internal/license/entitlement/lifecycle.go:73:30 | exp=0 is already rejected by the grace deadline at the Unix epoch plus 30 days
+CONDITIONALS_BOUNDARY at internal/plugin/verify/signature/floor.go:100:22 | only reached when len(x[i]) != len(y[i]), so < and <= give the same answer
+CONDITIONALS_BOUNDARY at internal/plugin/verify/signature/floor.go:102:16 | only reached when x[i] != y[i] (equal identifiers continue above), so < and <= give the same answer
 '
 
 # Load exact repo-relative IDs for either verdict mode; never match basenames
