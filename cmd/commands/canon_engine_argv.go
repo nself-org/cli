@@ -66,7 +66,7 @@ func rewriteOldToNew(t *canonTableT, root *cobra.Command, args []string, start i
 	pick("retired", t.RetiredHubs)
 	pick("breakout", t.Breakouts)
 	pick("removed", t.Removed)
-	if !found {
+	if !found || kind != "removed" && strings.Join(best.From, " ") == strings.Join(best.To, " ") {
 		return args, nil, nil
 	}
 	if kind == "removed" {
