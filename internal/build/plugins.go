@@ -21,6 +21,7 @@ import (
 	"sync"
 
 	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/license/entitlement"
 	"github.com/nself-org/cli/internal/ui"
@@ -29,7 +30,7 @@ import (
 // composeManifestFile is the path relative to workdir where the ordered list
 // of compose files (base + plugins) is recorded. Start/stop/restart commands
 // read this file to build the `-f` flag list for docker compose.
-const composeManifestFile = ".nself/compose-files.txt"
+const composeManifestFile = docker.ComposeManifestFile
 
 // pluginComposeFilename is the well-known name for a plugin's Docker Compose
 // fragment. Plugins that only contribute background processes (no containers)

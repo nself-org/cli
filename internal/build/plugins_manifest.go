@@ -1,7 +1,6 @@
 package build
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -115,87 +114,18 @@ func writeComposeManifestVia(sink Sink, workdir string, baseCompose string, plug
 	return nil
 }
 
-// ReadComposeManifest reads .nself/compose-files.txt and returns the ordered
-// list of compose file paths. If the manifest does not exist, it returns a
-// single-element slice with "docker-compose.yml" (relative, base only) so
-// callers always get a usable default. Lines pointing to files that no longer
-// exist on disk (e.g. a plugin was uninstalled) are silently skipped.
+// userComposeOverrideFile is the hand-written override docker.WithUserOverride appends.
+const userComposeOverrideFile = docker.UserComposeOverrideFile
+
+// ReadComposeManifest reads .nself/compose-files.txt: see docker.ReadComposeManifest,
+// which lives there so packages below internal/build can read the same list.
 func ReadComposeManifest(workdir string) ([]string, error) {
-	manifestPath := filepath.Join(workdir, composeManifestFile)
-
-	f, err := os.Open(manifestPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return withUserOverride(workdir, []string{"docker-compose.yml"}), nil
-		}
-		return nil, fmt.Errorf("opening compose manifest: %w", err)
-	}
-	defer func() { _ = f.Close() }()
-
-	var paths []string
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-		// Skip lines pointing to files that no longer exist.
-		if _, err := os.Stat(line); err != nil {
-			continue
-		}
-		paths = append(paths, line)
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("reading compose manifest: %w", err)
-	}
-
-	// If the manifest was empty or all entries were stale, fall back to base.
-	if len(paths) == 0 {
-		return withUserOverride(workdir, []string{"docker-compose.yml"}), nil
-	}
-
-	return withUserOverride(workdir, paths), nil
+	return docker.ReadComposeManifest(workdir)
 }
 
-// userComposeOverrideFile is the hand-written file Docker Compose merges
-// automatically when it is invoked with no -f at all.
-const userComposeOverrideFile = "docker-compose.override.yml"
-
-// withUserOverride appends the user's docker-compose.override.yml when it sits
-// next to the generated compose file.
-//
-// `docker compose` only auto-merges the override when invoked with NO -f flag.
-// The CLI always passes -f (it has to: plugin fragments are separate files), so
-// the override was silently inert on every project — the container came up with
-// none of it applied and nothing said so. Reported by the ntask clean-fork
-// self-host drill, 2026-08-24, where the override was the only place the
-// functions service got its entrypoint, a writable rootfs and its SMTP/MinIO
-// environment.
-//
-// It is appended LAST on purpose: Compose lets later -f files win, and a
-// hand-written override must beat both the generated base and any plugin
-// fragment, which is the whole reason it exists.
+// withUserOverride appends the user's override files: see docker.WithUserOverride.
 func withUserOverride(workdir string, paths []string) []string {
-	userListed := false
-	for _, p := range paths {
-		if filepath.Base(p) == userComposeOverrideFile {
-			userListed = true
-		}
-	}
-	if !userListed {
-		if _, err := os.Stat(filepath.Join(workdir, userComposeOverrideFile)); err == nil {
-			paths = append(paths, userComposeOverrideFile)
-		}
-	}
-	for _, p := range paths {
-		if filepath.Clean(p) == filepath.Join(workdir, docker.ImageOverrideFile) || p == docker.ImageOverrideFile {
-			return paths
-		}
-	}
-	if _, err := os.Stat(filepath.Join(workdir, docker.ImageOverrideFile)); err == nil {
-		paths = append(paths, filepath.Join(workdir, docker.ImageOverrideFile))
-	}
-	return paths
+	return docker.WithUserOverride(workdir, paths)
 }
 
 // pluginManifestMinimal holds the fields we need from plugin.json during build.

@@ -104,6 +104,26 @@ func projectDir() (string, error) {
 	return dir, nil
 }
 
+// composeFor builds the Compose for the project in dir the way `nself start`
+// and `nself restart` do: every file in .nself/compose-files.txt as -f (plugin
+// fragments included) and docker.ProjectEnvFiles as --env-file, so ${VAR}
+// references resolve from the project's env files (D-0703). A project built
+// before the manifest existed gets docker-compose.yml alone.
+func composeFor(dir string) (*docker.Compose, error) {
+	files, err := docker.ReadComposeManifest(dir)
+	if err != nil {
+		return nil, fmt.Errorf("reading compose manifest: %w", err)
+	}
+	for i, f := range files {
+		if !filepath.IsAbs(f) {
+			files[i] = filepath.Join(dir, f)
+		}
+	}
+	c := docker.NewCompose(files...)
+	c.EnvFiles = docker.ProjectEnvFiles(dir)
+	return c, nil
+}
+
 // Start starts a named nSelf service via `docker compose up -d --no-deps <service>`.
 // The service must be configured in the stack (docker-compose.yml must exist).
 func Start(ctx context.Context, serviceName string) error {
@@ -115,8 +135,11 @@ func Start(ctx context.Context, serviceName string) error {
 	if err != nil {
 		return err
 	}
-	c := docker.NewCompose(filepath.Join(dir, "docker-compose.yml"))
-	return c.ComposeUp(ctx, dir, canon)
+	c, err := composeFor(dir)
+	if err != nil {
+		return err
+	}
+	return config.WithComposeEnvironment(func() error { return c.ComposeUp(ctx, dir, canon) })
 }
 
 // Stop stops a named nSelf service via `docker compose stop <service>`.
@@ -130,8 +153,11 @@ func Stop(ctx context.Context, serviceName string) error {
 	if err != nil {
 		return err
 	}
-	c := docker.NewCompose(filepath.Join(dir, "docker-compose.yml"))
-	return c.ComposeStop(ctx, dir, canon)
+	c, err := composeFor(dir)
+	if err != nil {
+		return err
+	}
+	return config.WithComposeEnvironment(func() error { return c.ComposeStop(ctx, dir, canon) })
 }
 
 // Restart restarts a named nSelf service via `docker compose restart <service>`.
@@ -144,8 +170,11 @@ func Restart(ctx context.Context, serviceName string) error {
 	if err != nil {
 		return err
 	}
-	c := docker.NewCompose(filepath.Join(dir, "docker-compose.yml"))
-	return c.ComposeRestart(ctx, dir, canon)
+	c, err := composeFor(dir)
+	if err != nil {
+		return err
+	}
+	return config.WithComposeEnvironment(func() error { return c.ComposeRestart(ctx, dir, canon) })
 }
 
 // PSEntry represents a single service row in the `nself service ps` output.
@@ -164,8 +193,15 @@ func PS(ctx context.Context) ([]PSEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := docker.NewCompose(filepath.Join(dir, "docker-compose.yml"))
-	containers, err := c.ComposePs(ctx, dir)
+	c, err := composeFor(dir)
+	if err != nil {
+		return nil, err
+	}
+	var containers []docker.ContainerInfo
+	err = config.WithComposeEnvironment(func() (psErr error) {
+		containers, psErr = c.ComposePs(ctx, dir)
+		return psErr
+	})
 	if err != nil {
 		return nil, fmt.Errorf("service ps: %w", err)
 	}
@@ -195,18 +231,20 @@ func Update(ctx context.Context, serviceName string) error {
 	if err != nil {
 		return err
 	}
-	composePath := filepath.Join(dir, "docker-compose.yml")
-	c := docker.NewCompose(composePath)
+	c, err := composeFor(dir)
+	if err != nil {
+		return err
+	}
 
 	// Pull the latest image for the specific service.
 	pullCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
-	if err := c.ComposePullService(pullCtx, dir, canon); err != nil {
+	if err := config.WithComposeEnvironment(func() error { return c.ComposePullService(pullCtx, dir, canon) }); err != nil {
 		return fmt.Errorf("pulling image for %s: %w", canon, err)
 	}
 
 	// Restart the service with the new image (--no-deps = don't restart dependents).
-	return c.ComposeUp(ctx, dir, canon)
+	return config.WithComposeEnvironment(func() error { return c.ComposeUp(ctx, dir, canon) })
 }
 
 // Scale adjusts the replica count for a named service via
@@ -224,8 +262,11 @@ func Scale(ctx context.Context, serviceName string, replicas int) error {
 	if err != nil {
 		return err
 	}
-	c := docker.NewCompose(filepath.Join(dir, "docker-compose.yml"))
-	return c.ComposeScale(ctx, dir, canon, replicas)
+	c, err := composeFor(dir)
+	if err != nil {
+		return err
+	}
+	return config.WithComposeEnvironment(func() error { return c.ComposeScale(ctx, dir, canon, replicas) })
 }
 
 // shortID returns the first 12 characters of a container ID, matching the
