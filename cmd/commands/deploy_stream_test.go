@@ -585,6 +585,7 @@ const goldenLocalDryRun = `{
 // bytes as before this feature (goldens captured from the base code) and nothing
 // goes to the stream writer.
 func TestDeployJSONUnchanged(t *testing.T) {
+	compattest.Set(t, false) // D-0275: asserts v1.4 behaviour; v1.5 mode is not asserted by this test
 	for _, tc := range []struct{ name, target, golden string }{
 		{"pipeline dry run", "qa", goldenPipelineDryRun},
 		{"legacy local dry run", "local", goldenLocalDryRun},

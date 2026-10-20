@@ -23,6 +23,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/nself-org/cli/internal/compat/compattest"
 )
 
 // TestRunSSLAdd_NoProject_Errors verifies runSSLAdd refuses to proceed
@@ -46,6 +48,7 @@ func TestRunSSLAdd_NoProject_Errors(t *testing.T) {
 // a project misconfigured in ANY way should fail on the most actionable
 // error, and "install certbot" must not be masked by a later check.
 func TestRunSSLAdd_NoCertbot_Errors(t *testing.T) {
+	compattest.Set(t, false) // D-0275: asserts v1.4 behaviour; v1.5 mode is not asserted by this test
 	withProjectRoot(t, func(root string) {
 		if err := os.WriteFile(filepath.Join(root, ".env"), []byte("ADMIN_EMAIL=ops@example.com\n"), 0o644); err != nil {
 			t.Fatalf("write .env: %v", err)
@@ -100,6 +103,7 @@ func stubBinDir(t *testing.T, name string) string {
 // one would either fail deep inside certbot with a confusing error or
 // register the account under no identity at all.
 func TestRunSSLAdd_MissingAdminEmail_Errors(t *testing.T) {
+	compattest.Set(t, false) // D-0275: asserts v1.4 behaviour; v1.5 mode is not asserted by this test
 	withProjectRoot(t, func(root string) {
 		if err := os.WriteFile(filepath.Join(root, ".env"), []byte("BASE_DOMAIN=example.com\n"), 0o644); err != nil {
 			t.Fatalf("write .env: %v", err)

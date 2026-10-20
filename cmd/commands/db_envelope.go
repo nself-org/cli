@@ -72,7 +72,7 @@ func dataEnv(run func(*cobra.Command, []string) error) func(*cobra.Command, []st
 // the registry is not consulted (a plain run never builds it).
 func jsonEnvelopeOn(cmd *cobra.Command) bool {
 	// compat.V15(P7-SURF-14): --json on the data commands is ignored or the pre-contract form (NSELF_JSON_LEGACY=1 then prints an empty list as bare []) -> v1 envelope
-	if !compat.V15() {
+	if !compat.V15() || cmd == nil { // a nil command (runBundleList accepts one) has no flags to read
 		return false
 	}
 	if _, ok := jsonDataTypes[invokedKey(cmd)]; !ok {

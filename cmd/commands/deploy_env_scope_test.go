@@ -717,6 +717,7 @@ func TestBlueGreenRemoteRefused(t *testing.T) {
 // pipeline deploy fail, naming it. The ssh and rsync on PATH are fakes that
 // exit 1 (and PATH holds nothing else), so no host is contacted.
 func TestPipelineFailedServerExitsNonZero(t *testing.T) {
+	compattest.Set(t, false) // D-0275: asserts v1.4 behaviour; v1.5 mode is not asserted by this test
 	dir, _ := scopeFixture(t, false)
 	bin := t.TempDir()
 	for _, n := range []string{"ssh", "rsync"} {
@@ -1067,6 +1068,7 @@ func TestPipelineBuildsRemoteAndShipsSnapshot(t *testing.T) {
 // snapshot fails, nothing is probed or shipped, so a stale local compose can
 // never reach a host.
 func TestPipelineBuildOrSnapshotFailureStopsBeforeProbe(t *testing.T) {
+	compattest.Set(t, false) // D-0275: asserts v1.4 behaviour; v1.5 mode is not asserted by this test
 	for _, mode := range []string{"build", "snapshot"} {
 		dir, p := scopeFixture(t, false)
 		log, _ := fakeShipBin(t)

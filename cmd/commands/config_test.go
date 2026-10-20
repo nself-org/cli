@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/sysexec"
 	"github.com/spf13/cobra"
 )
 
@@ -565,6 +566,7 @@ func TestConfigGet_UnknownKeyReturnsError(t *testing.T) {
 // TestConfigSet_UpdatesExistingKey verifies that 'config set KEY VALUE'
 // updates an existing key in-place in the .env file.
 func TestConfigSet_UpdatesExistingKey(t *testing.T) {
+	t.Cleanup(sysexec.Set(&sysexec.Fake{})) // D-0275: v1.5 config set builds; keep it off the host mkcert
 	dir := makeNSelfProject(t, "BASE_DOMAIN=old.example.com\n")
 
 	root := newConfigCmd()
@@ -591,6 +593,7 @@ func TestConfigSet_UpdatesExistingKey(t *testing.T) {
 // TestConfigSet_AppendsNewKey verifies that 'config set KEY VALUE' appends a
 // new key=value line to the .env file when the key does not already exist.
 func TestConfigSet_AppendsNewKey(t *testing.T) {
+	t.Cleanup(sysexec.Set(&sysexec.Fake{})) // D-0275: v1.5 config set builds; keep it off the host mkcert
 	dir := makeNSelfProject(t, "PROJECT_NAME=myapp\n")
 
 	root := newConfigCmd()
@@ -617,6 +620,7 @@ func TestConfigSet_AppendsNewKey(t *testing.T) {
 // TestConfigSet_EnvFlagWritesToNamedFile verifies that --env dev causes
 // 'config set' to write to .env.dev rather than the default .env.
 func TestConfigSet_EnvFlagWritesToNamedFile(t *testing.T) {
+	t.Cleanup(sysexec.Set(&sysexec.Fake{})) // D-0275: v1.5 config set builds; keep it off the host mkcert
 	dir := makeNSelfProject(t, "PROJECT_NAME=myapp\n")
 
 	root := newConfigCmd()
