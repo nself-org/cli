@@ -5,7 +5,7 @@ package signature
 // Purpose: hold the Ed25519 public keys (with ids) and the revoked-id list the CLI trusts for plugin release signatures, one set per tier (hq PLUG D7, contract plugins.release-signature v1).
 // Inputs: nothing at runtime; the table is source. No file, environment variable, registry field or manifest field adds a key.
 // Outputs: Keys, Revoked, Pinned and the per-tier verifier Verify builds from them.
-// Constraints: public keys only. Key ids are derived (plugins-<16 hex of sha256(pub)>), so revoking an id revokes the key. A key verifies only its own tier. The production free key is pinned by P7-PLUG-71 (it equals plugins:scripts/release/keys/plugins-release-free-2ebca8dfad98e19e.pub); the licensed key is pinned by P7-PLUG-72, so the licensed tier stays "unpinned" until then (see Decide). One key per tier, never one key for both. Tests swap the table with signaturetest.UseKeys, never by editing this file.
+// Constraints: public keys only. Key ids are derived (plugins-<16 hex of sha256(pub)>), so revoking an id revokes the key. A key verifies only its own tier. The production free key is pinned by P7-PLUG-71 (it equals plugins:scripts/release/keys/plugins-release-free-2ebca8dfad98e19e.pub); the production licensed key by P7-PLUG-72 (it equals bundles:scripts/release/keys/plugins-release-licensed-plugins-e2ac3ee72a143603.pub). Both tiers are pinned, so Decide enforces both. One key per tier, never one key for both. Tests swap the table with signaturetest.UseKeys, never by editing this file.
 
 import (
 	"crypto/ed25519"
@@ -28,17 +28,22 @@ type Key struct {
 	PublicKey ed25519.PublicKey
 }
 
-// Keys is the trust root. Free: pinned by P7-PLUG-71. Licensed: empty until P7-PLUG-72.
+// Keys is the trust root: exactly one production key per tier. Free: P7-PLUG-71. Licensed: P7-PLUG-72.
 var Keys = []Key{
 	{
 		ID:        "plugins-2ebca8dfad98e19e",
 		Tier:      TierFree,
 		PublicKey: mustKey("4cc89067123feba2e4172e4a384b0cb3aa455aba0b2d7e89f1e979070ff1fa75"),
 	},
+	{
+		ID:        "plugins-e2ac3ee72a143603",
+		Tier:      TierLicensed,
+		PublicKey: mustKey("6eeb9ecacd4f6588929be37d52b28a68448435cd45f4e6db613dae8fbbe0aaad"),
+	},
 }
 
 // mustKey decodes a 64-hex-character Ed25519 public key. It panics on a bad
-// literal; TestFreeTierPinned and TestKeyTable would fail first.
+// literal; TestPinnedTiers and TestKeyTable would fail first.
 func mustKey(hexKey string) ed25519.PublicKey {
 	b, err := hex.DecodeString(hexKey)
 	if err != nil || len(b) != ed25519.PublicKeySize {

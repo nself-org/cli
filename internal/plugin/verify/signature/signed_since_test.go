@@ -1,16 +1,18 @@
 package signature_test
 
-// signed_since_test.go — the real free release (P7-PLUG-71): the committed floor and one genuine signed entry.
+// signed_since_test.go — the committed floors of both tiers and one genuine signed entry per tier (P7-PLUG-71 free, P7-PLUG-72 licensed).
 //
-// Purpose: prove signed_since.json carries a non-empty free-tier floor generated from the P7-PLUG-69 release data, and that a real signed free entry verifies in-process while a one-byte change to its signature fails.
-// Inputs: signed_since.json, testdata/real/ci-1.2.11.json (slug, version, sha256, release_signature copied from plugins releases.json at the release-data sha).
+// Purpose: prove signed_since.json carries a non-empty floor for each tier generated from the recorded release data, and that a real signed entry of each tier verifies in-process while a one-byte change to its signature fails.
+// Inputs: signed_since.json, testdata/real/ci-1.2.11.json and testdata/real/cron-1.1.2.json (slug, version, sha256, release_signature copied from the plugins and bundles releases.json at the release-data sha).
 // Outputs: test results only.
-// Constraints: no network, no clock. The licensed tier is only checked for presence and emptiness: P7-PLUG-72 fills it and changes that line.
+// Constraints: no network, no clock.
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"regexp"
+	"slices"
 	"testing"
 
 	"github.com/nself-org/cli/internal/plugin/verify/signature"
@@ -23,58 +25,106 @@ const releaseDataSHA = "63f29729fa637558f7fecf99672fcfb9623c4ba7"
 // wholeCatalogueSHA is the release-data commit P7-PLUG-86 recorded for v1.2.13, the whole-catalogue release that carries the first platform signatures.
 const wholeCatalogueSHA = "1349341da7c75b91a5eaffe7710d7e2ddd30f6c4"
 
-// TestSignedSinceFreeNonEmpty: the free floor is filled and traces to the evidence sha; the licensed tier is present and still empty.
-func TestSignedSinceFreeNonEmpty(t *testing.T) {
+// earlierFreeSHAs are the release-data commits PLUG-69 recorded for the earlier free releases (v1.2.7 and v1.2.9), which still set floors.
+var earlierFreeSHAs = []string{"bc6ee963bd70a46c60ff713299d35ab093f8c258", "93cad14e1384f0270f61ec9d28d81043dc86008a"}
+
+// licensedReleaseDataSHA is the bundles release-data commit P7-PLUG-70 recorded as release-data-sha for v1.2.10, the first signed licensed release.
+const licensedReleaseDataSHA = "e83373ec5828276dfc6c9b4fe8d9fd08317f62f7"
+
+// signedSinceDoc is the part of signed_since.json the floor tests read.
+type signedSinceDoc struct {
+	Refs  map[string][]string          `json:"refs"`
+	Tiers map[string]map[string]string `json:"tiers"`
+}
+
+// checkFloors reports why doc is not a complete two-tier floor: a missing or empty tier, an empty entry, a recorded ref that is not <repo>@<40 hex>, or a ref list
+// that lacks one of the evidence shas (or holds a sha the evidence never recorded).
+func checkFloors(doc signedSinceDoc) error {
+	want := map[string]struct {
+		repo string
+		shas []string
+		min  int
+		must []string
+	}{
+		signature.TierFree:     {"nself-org/plugins", append([]string{releaseDataSHA, wholeCatalogueSHA}, earlierFreeSHAs...), 100, []string{"ci"}},
+		signature.TierLicensed: {"nself-org/bundles", []string{licensedReleaseDataSHA}, 40, []string{"cron", "notify", "claw"}},
+	}
+	for tier, w := range want {
+		floor, ok := doc.Tiers[tier]
+		if !ok || len(floor) == 0 {
+			return fmt.Errorf("%s-tier signed-since floor is missing or empty", tier)
+		}
+		if len(floor) < w.min {
+			return fmt.Errorf("%s floor names %d slugs, want the whole catalogue (at least %d)", tier, len(floor), w.min)
+		}
+		for slug, v := range floor {
+			if slug == "" || v == "" {
+				return fmt.Errorf("%s floor has an empty entry %q=%q", tier, slug, v)
+			}
+		}
+		for _, slug := range w.must {
+			if floor[slug] == "" {
+				return fmt.Errorf("%s floor does not name %s", tier, slug)
+			}
+		}
+		refForm := regexp.MustCompile("^" + regexp.QuoteMeta(w.repo) + "@[0-9a-f]{40}$")
+		for _, r := range doc.Refs[tier] {
+			if !refForm.MatchString(r) {
+				return fmt.Errorf("%s ref %q is not %s@<40 hex>", tier, r, w.repo)
+			}
+			if !slices.Contains(w.shas, r[len(w.repo)+1:]) {
+				return fmt.Errorf("%s ref %q is not a release-data sha the evidence recorded", tier, r)
+			}
+		}
+		for _, sha := range w.shas {
+			if !slices.Contains(doc.Refs[tier], w.repo+"@"+sha) {
+				return fmt.Errorf("%s refs %v lack the evidence release-data sha %s", tier, doc.Refs[tier], sha)
+			}
+		}
+	}
+	return nil
+}
+
+// TestSignedSinceNonEmpty: both floors are filled and trace to the evidence shas; checkFloors rejects an empty or missing tier, a floor that lost a named slug and a
+// ref that is not an evidence sha.
+func TestSignedSinceNonEmpty(t *testing.T) {
 	data, err := os.ReadFile("signed_since.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var doc struct {
-		Refs  map[string][]string          `json:"refs"`
-		Tiers map[string]map[string]string `json:"tiers"`
-	}
+	var doc signedSinceDoc
 	if err := json.Unmarshal(data, &doc); err != nil {
 		t.Fatal(err)
 	}
-	if len(doc.Tiers[signature.TierFree]) == 0 {
-		t.Fatal("free-tier signed-since floor is empty")
+	if err := checkFloors(doc); err != nil {
+		t.Fatal(err)
 	}
-	for slug, v := range doc.Tiers[signature.TierFree] {
-		if slug == "" || v == "" {
-			t.Errorf("free floor has an empty entry %q=%q", slug, v)
+	clone := func(mut func(d *signedSinceDoc)) signedSinceDoc {
+		var c signedSinceDoc
+		if err := json.Unmarshal(data, &c); err != nil {
+			t.Fatal(err)
 		}
+		mut(&c)
+		return c
 	}
-	if doc.Tiers[signature.TierFree]["ci"] == "" {
-		t.Error("free floor does not name the ci plugin, the first signed free release")
-	}
-	licensed, ok := doc.Tiers[signature.TierLicensed]
-	if !ok || len(licensed) != 0 {
-		t.Errorf("licensed tier = %v (present %v): it stays empty until P7-PLUG-72", licensed, ok)
-	}
-	refForm := regexp.MustCompile(`^nself-org/plugins@[0-9a-f]{40}$`)
-	found, foundAll := false, false
-	for _, r := range doc.Refs[signature.TierFree] {
-		if !refForm.MatchString(r) {
-			t.Errorf("free ref %q is not nself-org/plugins@<40 hex>", r)
+	for name, mut := range map[string]func(d *signedSinceDoc){
+		"licensed tier empty":   func(d *signedSinceDoc) { d.Tiers[signature.TierLicensed] = map[string]string{} },
+		"licensed tier missing": func(d *signedSinceDoc) { delete(d.Tiers, signature.TierLicensed) },
+		"free tier empty":       func(d *signedSinceDoc) { d.Tiers[signature.TierFree] = map[string]string{} },
+		"free tier missing":     func(d *signedSinceDoc) { delete(d.Tiers, signature.TierFree) },
+		"empty version":         func(d *signedSinceDoc) { d.Tiers[signature.TierLicensed]["chat"] = "" },
+		"cron dropped":          func(d *signedSinceDoc) { delete(d.Tiers[signature.TierLicensed], "cron") },
+		"licensed ref not evidence sha": func(d *signedSinceDoc) {
+			d.Refs[signature.TierLicensed] = []string{"nself-org/bundles@" + releaseDataSHA}
+		},
+		"licensed ref lost": func(d *signedSinceDoc) { d.Refs[signature.TierLicensed] = nil },
+		"free ref wrong repo": func(d *signedSinceDoc) {
+			d.Refs[signature.TierFree] = append(d.Refs[signature.TierFree], "nself-org/bundles@"+licensedReleaseDataSHA)
+		},
+	} {
+		if checkFloors(clone(mut)) == nil {
+			t.Errorf("%s: checkFloors accepted it", name)
 		}
-		if r == "nself-org/plugins@"+releaseDataSHA {
-			found = true
-		}
-		if r == "nself-org/plugins@"+wholeCatalogueSHA {
-			foundAll = true
-		}
-	}
-	if !foundAll {
-		t.Errorf("free refs %v lack the PLUG-86 whole-catalogue release-data sha %s", doc.Refs[signature.TierFree], wholeCatalogueSHA)
-	}
-	if n := len(doc.Tiers[signature.TierFree]); n < 100 {
-		t.Errorf("free floor names %d slugs, want the whole catalogue (at least 100)", n)
-	}
-	if !found {
-		t.Errorf("free refs %v lack the PLUG-69 release-data sha %s", doc.Refs[signature.TierFree], releaseDataSHA)
-	}
-	if len(doc.Refs[signature.TierLicensed]) != 0 {
-		t.Errorf("licensed refs = %v, want none until P7-PLUG-72", doc.Refs[signature.TierLicensed])
 	}
 }
 
@@ -84,43 +134,48 @@ type realEntry struct {
 	ReleaseSignature      signature.Release `json:"release_signature"`
 }
 
-// TestRealRelease: the real ci 1.2.11 entry verifies against the compiled-in free key; one flipped signature byte fails with E121, and the
-// free key is no key for the licensed tier (E122).
+// TestRealRelease: the real ci 1.2.11 entry (free) and the real cron 1.1.2 entry (licensed, bundles v1.2.10) verify against their compiled-in key and decide as
+// verified in v1.5 mode; one flipped signature byte fails with E121, another version fails with E121, and the other tier's key is no key for the entry (E122).
 func TestRealRelease(t *testing.T) {
-	data, err := os.ReadFile("testdata/real/ci-1.2.11.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var e realEntry
-	if err := json.Unmarshal(data, &e); err != nil {
-		t.Fatal(err)
-	}
-	rel := e.ReleaseSignature
-	if err := signature.Verify(signature.TierFree, e.Slug, e.Version, e.SHA256, &rel); err != nil {
-		t.Fatalf("real signed entry does not verify: %v", err)
-	}
-	out, err := signature.Decide(signature.Input{Tier: signature.TierFree, Slug: e.Slug, Version: e.Version, SHA256: e.SHA256, Release: &rel, V15: true})
-	if err != nil || !out.Verified {
-		t.Fatalf("Decide on the real entry: out=%+v err=%v", out, err)
-	}
-	sig, err := signing.DecodeSig(rel.Sig)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, i := range []int{0, len(sig) / 2, len(sig) - 1} {
-		bad := rel
-		flipped := append([]byte(nil), sig...)
-		flipped[i] ^= 0x01
-		bad.Sig = signing.EncodeSig(flipped)
-		if got := code(signature.Verify(signature.TierFree, e.Slug, e.Version, e.SHA256, &bad)); got != "E121" {
-			t.Errorf("signature byte %d flipped: code %q, want E121", i, got)
+	for _, c := range []struct{ file, tier, other string }{
+		{"testdata/real/ci-1.2.11.json", signature.TierFree, signature.TierLicensed},
+		{"testdata/real/cron-1.1.2.json", signature.TierLicensed, signature.TierFree},
+	} {
+		data, err := os.ReadFile(c.file)
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
-	if got := code(signature.Verify(signature.TierFree, e.Slug, "1.2.12", e.SHA256, &rel)); got != "E121" {
-		t.Errorf("other version, same signature: code %q, want E121", got)
-	}
-	if got := code(signature.Verify(signature.TierLicensed, e.Slug, e.Version, e.SHA256, &rel)); got != "E122" {
-		t.Errorf("free key checked for the licensed tier: code %q, want E122", got)
+		var e realEntry
+		if err := json.Unmarshal(data, &e); err != nil {
+			t.Fatal(err)
+		}
+		rel := e.ReleaseSignature
+		if err := signature.Verify(c.tier, e.Slug, e.Version, e.SHA256, &rel); err != nil {
+			t.Fatalf("%s: real signed entry does not verify: %v", c.tier, err)
+		}
+		out, err := signature.Decide(signature.Input{Tier: c.tier, Slug: e.Slug, Version: e.Version, SHA256: e.SHA256, Release: &rel, V15: true})
+		if err != nil || !out.Verified {
+			t.Fatalf("%s: Decide on the real entry: out=%+v err=%v", c.tier, out, err)
+		}
+		sig, err := signing.DecodeSig(rel.Sig)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, i := range []int{0, len(sig) / 2, len(sig) - 1} {
+			bad := rel
+			flipped := append([]byte(nil), sig...)
+			flipped[i] ^= 0x01
+			bad.Sig = signing.EncodeSig(flipped)
+			if got := code(signature.Verify(c.tier, e.Slug, e.Version, e.SHA256, &bad)); got != "E121" {
+				t.Errorf("%s: signature byte %d flipped: code %q, want E121", c.tier, i, got)
+			}
+		}
+		if got := code(signature.Verify(c.tier, e.Slug, "9.9.9", e.SHA256, &rel)); got != "E121" {
+			t.Errorf("%s: other version, same signature: code %q, want E121", c.tier, got)
+		}
+		if got := code(signature.Verify(c.other, e.Slug, e.Version, e.SHA256, &rel)); got != "E122" {
+			t.Errorf("%s key checked for the %s tier: code %q, want E122", c.tier, c.other, got)
+		}
 	}
 }
 
@@ -178,22 +233,31 @@ func TestRealPlatformRelease(t *testing.T) {
 	}
 }
 
-// TestLicensedPairRefusedUntilPLUG72: the interim state P7-PLUG-71 knowingly creates. cron and notify exist in both tiers, the free floor names them, and the licensed
-// tier has no key and no pre-signing list yet, so a licensed entry of those slugs is refused (E107), signed or not (production serves them signed). Every other licensed
-// slug keeps the warn-only path. No CLI release may ship in this state.
-// P7-PLUG-72 fills the licensed floor and pre-signing list and changes this test.
-func TestLicensedPairRefusedUntilPLUG72(t *testing.T) {
-	for _, slug := range []string{"cron", "notify"} {
-		if _, err := signature.Decide(signature.Input{Tier: signature.TierLicensed, Slug: slug, Version: "1.1.2", SHA256: "00"}); code(err) != "E107" {
-			t.Errorf("licensed %s unsigned: code %q, want E107 until P7-PLUG-72", slug, code(err))
-		}
-		signed := &signature.Release{Alg: "ed25519", KeyID: "plugins-e2ac3ee72a143603", Sig: "AAAA"}
-		if _, err := signature.Decide(signature.Input{Tier: signature.TierLicensed, Slug: slug, Version: "1.1.2", SHA256: "00", Release: signed}); code(err) != "E107" {
-			t.Errorf("licensed %s with a signature the CLI cannot yet trust: code %q, want E107 until P7-PLUG-72", slug, code(err))
-		}
+// TestLicensedPairEnforced: cron and notify exist in both tiers and both tiers are pinned (P7-PLUG-72), so each tier's entry is judged by its own tier alone. The real
+// signed licensed cron verifies; an unsigned or free-signed licensed cron, notify or chat is refused (E107 for no signature, E122 for the wrong tier's key) in v1.4 mode too,
+// because the licensed floor names every slug of the first signed release and the pre-signing list is empty.
+func TestLicensedPairEnforced(t *testing.T) {
+	data, err := os.ReadFile("testdata/real/cron-1.1.2.json")
+	if err != nil {
+		t.Fatal(err)
 	}
-	out, err := signature.Decide(signature.Input{Tier: signature.TierLicensed, Slug: "chat", Version: "1.0.0", SHA256: "00"})
-	if err != nil || out.Warning == "" {
-		t.Errorf("licensed chat unsigned: out=%+v err=%v, want the v1.4 warning", out, err)
+	var e realEntry
+	if err := json.Unmarshal(data, &e); err != nil {
+		t.Fatal(err)
+	}
+	for _, v15 := range []bool{false, true} {
+		rel := e.ReleaseSignature
+		out, err := signature.Decide(signature.Input{Tier: signature.TierLicensed, Slug: "cron", Version: e.Version, SHA256: e.SHA256, Release: &rel, V15: v15})
+		if err != nil || !out.Verified || out.Warning != "" {
+			t.Errorf("licensed cron signed (v15=%v): out=%+v err=%v, want verified", v15, out, err)
+		}
+		for _, slug := range []string{"cron", "notify", "chat"} {
+			if _, err := signature.Decide(signature.Input{Tier: signature.TierLicensed, Slug: slug, Version: "1.1.2", SHA256: "00", V15: v15}); code(err) != "E107" {
+				t.Errorf("licensed %s unsigned (v15=%v): code %q, want E107", slug, v15, code(err))
+			}
+		}
+		if _, err := signature.Decide(signature.Input{Tier: signature.TierFree, Slug: "cron", Version: e.Version, SHA256: e.SHA256, Release: &rel, V15: v15}); code(err) != "E122" {
+			t.Errorf("licensed signature on the free cron (v15=%v): code %q, want E122", v15, code(err))
+		}
 	}
 }

@@ -11,7 +11,9 @@
       "nself-org/plugins@93cad14e1384f0270f61ec9d28d81043dc86008a",
       "nself-org/plugins@1349341da7c75b91a5eaffe7710d7e2ddd30f6c4"
     ],
-    "licensed": []
+    "licensed": [
+      "nself-org/bundles@e83373ec5828276dfc6c9b4fe8d9fd08317f62f7"
+    ]
   },
   "tiers": {
     "free": {
@@ -147,6 +149,53 @@
       "webhooks": "1.2.13",
       "workflows": "1.2.13"
     },
-    "licensed": {}
+    "licensed": {
+      "activity-feed": "1.1.2",
+      "ai": "1.1.3",
+      "auth": "1.1.3",
+      "bots": "1.1.2",
+      "browser": "1.1.2",
+      "calendar": "1.1.2",
+      "chat": "1.1.2",
+      "claw": "1.1.12",
+      "claw-budget": "1.1.2",
+      "claw-news": "1.1.2",
+      "claw-web": "1.1.2",
+      "cms": "1.1.2",
+      "cron": "1.1.2",
+      "family": "1.1.2",
+      "family-geni": "1.1.2",
+      "geolocation": "1.1.2",
+      "google": "1.1.2",
+      "knowledge-base": "1.1.2",
+      "livekit": "1.1.3",
+      "mcp": "1.1.2",
+      "moderation": "1.1.2",
+      "mux": "1.1.3",
+      "notify": "1.1.3",
+      "nself-alert-router": "0.1.0",
+      "nself-anomaly": "0.1.0",
+      "nself-audit": "1.0.0",
+      "nself-crash": "0.1.0",
+      "nself-cron-monitor": "0.1.0",
+      "nself-csam": "0.1.0",
+      "nself-errors": "0.1.0",
+      "nself-incident-mgmt": "1.1.0",
+      "nself-oncall": "0.1.0",
+      "nself-rum": "0.1.0",
+      "nself-saas-gateway": "0.1.0",
+      "nself-slo-tracker": "0.1.0",
+      "nself-sms": "1.0.0",
+      "nself-status-page": "0.1.0",
+      "nself-stripe": "0.1.0",
+      "nself-synthetic-monitor": "0.1.0",
+      "nself-uptime-monitor": "0.1.0",
+      "photos": "1.1.2",
+      "realtime": "1.1.2",
+      "search-gateway": "1.0.0",
+      "social": "1.1.2",
+      "support": "1.1.2",
+      "voice": "1.1.2"
+    }
   }
 }
