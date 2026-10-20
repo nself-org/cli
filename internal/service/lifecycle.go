@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/docker"
 	"gopkg.in/yaml.v3"
@@ -107,11 +106,11 @@ func projectDir() (string, error) {
 
 // composeFor builds the Compose for the project in dir the way `nself start`
 // and `nself restart` do: every file in .nself/compose-files.txt as -f (plugin
-// fragments included) and build.ComposeEnvFiles as --env-file, so ${VAR}
+// fragments included) and docker.ProjectEnvFiles as --env-file, so ${VAR}
 // references resolve from the project's env files (D-0703). A project built
 // before the manifest existed gets docker-compose.yml alone.
 func composeFor(dir string) (*docker.Compose, error) {
-	files, err := build.ReadComposeManifest(dir)
+	files, err := docker.ReadComposeManifest(dir)
 	if err != nil {
 		return nil, fmt.Errorf("reading compose manifest: %w", err)
 	}
@@ -121,7 +120,7 @@ func composeFor(dir string) (*docker.Compose, error) {
 		}
 	}
 	c := docker.NewCompose(files...)
-	c.EnvFiles = build.ComposeEnvFiles(dir)
+	c.EnvFiles = docker.ProjectEnvFiles(dir)
 	return c, nil
 }
 
