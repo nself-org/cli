@@ -36,7 +36,7 @@ var secretsResolveCmd = newSecretsResolveCmd()
 
 // newSecretsResolveCmd builds the additive resolver leaf.
 func newSecretsResolveCmd() *cobra.Command {
-	c := &cobra.Command{Use: "resolve <ref>...", Short: "Resolve secret references to a FIFO consumer", RunE: runSecretsResolveCommand}
+	c := &cobra.Command{Use: "resolve <ref>...", Short: "Resolve secret references to a FIFO consumer", Annotations: map[string]string{"audit-secret-resolve": "true"}, RunE: runSecretsResolveCommand}
 	c.Flags().String("project", "", "Project directory (default current directory)")
 	c.Flags().String("for-attempt", "", "Required attempt identifier")
 	c.Flags().Bool("json", false, "Required JSON envelope output")
@@ -105,4 +105,19 @@ func runSecretsResolve(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	return output.EmitData(output.Default(), "config secrets resolve", secretResolveData{Schema: "cli.secret-resolve/v1", AttemptID: attempt, Values: values})
+}
+
+// auditResolvePreRunError covers refusals before the resolve RunE can audit.
+func auditResolvePreRunError(cmd *cobra.Command, args []string, refusal error) error {
+	if cmd.Annotations["audit-secret-resolve"] != "true" || errs.ExitCodeFor(refusal) == 0 {
+		return refusal
+	}
+	project, _ := cmd.Flags().GetString("project")
+	project, _ = filepath.Abs(project)
+	attempt, _ := cmd.Flags().GetString("for-attempt")
+	req := secrets.ResolveRequest{ProjectRoot: project, AttemptID: attempt, Refs: args}
+	if err := secrets.AuditResolve(audit.Write, req, "E401"); err != nil {
+		return err
+	}
+	return refusal
 }

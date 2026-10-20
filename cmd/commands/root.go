@@ -88,7 +88,12 @@ func init() {
 	// and other local shorthands must not collide). The invocation decorator
 	// (invocation.go) refuses it on commands that cannot produce JSON.
 	RootCmd.PersistentFlags().Bool("json", false, "Machine-readable output: one JSON document on stdout (see JSON-Output)")
-	RootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+	RootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) (runErr error) {
+		defer func() {
+			if runErr != nil {
+				runErr = auditResolvePreRunError(cmd, args, runErr)
+			}
+		}()
 		// ── OTel tracing ──────────────────────────────────────────────────────
 		// InitTracer is only called when OTEL_EXPORTER_OTLP_ENDPOINT is set.
 		// Leaving it unset is the zero-config path: no tracer, no side-effects.
