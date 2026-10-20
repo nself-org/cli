@@ -52,10 +52,14 @@ func unsignedAllowed(local bool) bool {
 // checksums) are unsigned, so only a signature over the downloaded bytes and
 // the CLI's own platform vouches for them. archivePath is the downloaded file.
 func verifyReleaseSignature(manifest *PluginManifest, paid, local bool, artifactKind, archivePath string, bypass bool) error {
+	return verifyReleaseSignatureDigest(manifest, paid, local, artifactKind, func() (string, error) { return archiveSHA256(archivePath) }, bypass)
+}
+
+func verifyReleaseSignatureDigest(manifest *PluginManifest, paid, local bool, artifactKind string, digest func() (string, error), bypass bool) error {
 	tier := releaseTier(paid)
 	pinned := signature.Pinned(tier)
 	if pinned && artifactKind != "" && artifactKind != ArtifactKindSource {
-		return verifyPlatformSignature(manifest, tier, artifactKind, archivePath, bypass)
+		return verifyPlatformSignatureDigest(manifest, tier, artifactKind, digest, bypass)
 	}
 	if bypass && (!pinned || manifest.ReleaseSignature == nil) {
 		return nil
@@ -87,7 +91,7 @@ func verifyReleaseSignature(manifest *PluginManifest, paid, local bool, artifact
 // present one, whatever release_signature says. Everything else fails closed:
 // no entry, no readable archive and a bad signature are all errors, and the
 // install never falls back to the source package.
-func verifyPlatformSignature(manifest *PluginManifest, tier, platform, archivePath string, bypass bool) error {
+func verifyPlatformSignatureDigest(manifest *PluginManifest, tier, platform string, digest func() (string, error), bypass bool) error {
 	rel, present := manifest.PlatformSignatures[platform]
 	if !present {
 		if bypass {
@@ -95,7 +99,7 @@ func verifyPlatformSignature(manifest *PluginManifest, tier, platform, archivePa
 		}
 		return errs.Newf("E121", "plugin %q: the %s binary package has no platform signature", manifest.Name, platform)
 	}
-	sum, err := archiveSHA256(archivePath)
+	sum, err := digest()
 	if err != nil {
 		return errs.Wrap("E121", fmt.Sprintf("plugin %q: cannot hash the %s binary package for its signature", manifest.Name, platform), err)
 	}

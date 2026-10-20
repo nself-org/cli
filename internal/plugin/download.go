@@ -205,16 +205,18 @@ func buildFallbackDownloadURL(name, version, repository string) string {
 
 // extractTarGz extracts a gzipped tarball into destDir.
 func extractTarGz(archivePath, destDir string) error {
-	if err := os.MkdirAll(destDir, 0o755); err != nil {
-		return fmt.Errorf("creating destination directory: %w", err)
-	}
-
 	f, err := os.Open(archivePath)
 	if err != nil {
 		return fmt.Errorf("opening archive: %w", err)
 	}
 	defer func() { _ = f.Close() }()
+	return extractTarGzReader(f, destDir)
+}
 
+func extractTarGzReader(f io.Reader, destDir string) error {
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return fmt.Errorf("creating destination directory: %w", err)
+	}
 	gz, err := gzip.NewReader(f)
 	if err != nil {
 		return fmt.Errorf("gzip reader: %w", err)
