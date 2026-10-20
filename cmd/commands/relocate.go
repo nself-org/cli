@@ -93,7 +93,7 @@ func relocateBreakout(cmdName string, args []string) (handled bool, err error) {
 	if err != nil {
 		return true, err
 	}
-	bin, err := autoAddPlugin(row.Plugin, version)
+	bin, err := autoAddPluginIsolated(row.Plugin, version)
 	if err != nil {
 		return true, breakoutRefused(old, row.Plugin, err)
 	}
@@ -105,6 +105,46 @@ func relocateBreakout(cmdName string, args []string) (handled bool, err error) {
 		return true, reportProxyFailure(os.Stderr, err)
 	}
 	return true, nil
+}
+
+// autoAddPluginIsolated runs the install seam and puts the process environment
+// back as it was. The installer loads the project config, which exports the
+// whole .env cascade (secrets included) over the shell's values; the plugin
+// that runs next must see the same environment as one that was already mounted
+// (D-0905).
+func autoAddPluginIsolated(slug, version string) (string, error) {
+	before := envMap(os.Environ())
+	defer func() {
+		now := envMap(os.Environ())
+		for k := range now {
+			if _, kept := before[k]; !kept {
+				_ = os.Unsetenv(k)
+			}
+		}
+		for k, v := range before {
+			if now[k] != v || !hasKey(now, k) {
+				_ = os.Setenv(k, v)
+			}
+		}
+	}()
+	return autoAddPlugin(slug, version)
+}
+
+func hasKey(m map[string]string, k string) bool { _, ok := m[k]; return ok }
+
+// envMap splits KEY=value entries. A Windows entry such as "=C:=C:\work"
+// starts with "=" and keeps it in the key.
+func envMap(entries []string) map[string]string {
+	m := make(map[string]string, len(entries))
+	for _, e := range entries {
+		i := strings.Index(e[min(1, len(e)):], "=")
+		if i < 0 {
+			continue
+		}
+		i += min(1, len(e))
+		m[e[:i]] = e[i+1:]
+	}
+	return m
 }
 
 // proxyBinaryName turns the path the installer published into the bare name
