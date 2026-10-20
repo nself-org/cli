@@ -8,10 +8,16 @@
 #   - GitHub Wiki flattens the namespace, so a page in any subdirectory is
 #     reachable by its basename; path-style links are matched on basename too.
 #   - Anchors (#section) and a trailing .md are stripped before matching.
+#   - comm needs both lists in one collation. The page list comes from sort and
+#     the link list from Python's code-point sort, so the script pins LC_ALL=C;
+#     under en_US.UTF-8 (macOS) comm reported ~195 false broken links (D-1288).
+#     Tested by scripts/ci/wiki-link-audit_test.sh.
 #   - Fenced code blocks AND inline `code` spans are skipped: templates and the
 #     wiki's own link-audit notes show [[link]] syntax as an example, and
 #     GitHub Wiki does not resolve a backtick-enclosed token as a link either.
 set -euo pipefail
+
+export LC_ALL=C
 
 cd "$(dirname "$0")/../.."
 WIKI=".github/wiki"
