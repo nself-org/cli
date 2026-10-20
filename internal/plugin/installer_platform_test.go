@@ -221,8 +221,8 @@ func TestInstallBinaryPackageNoSourceFallback(t *testing.T) {
 	})
 }
 
-// TestInstallBinaryPackageBypassNeverSkips: the dev bypass skips an ABSENT
-// platform signature, never a present one, and a registry that strips
+// TestInstallBinaryPackageBypassNeverSkips: the dev bypass never skips a
+// pinned platform signature, and a registry that strips
 // release_signature does not change that.
 func TestInstallBinaryPackageBypassNeverSkips(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
@@ -236,8 +236,8 @@ func TestInstallBinaryPackageBypassNeverSkips(t *testing.T) {
 		}
 		const plat = "linux-amd64"
 		m := &PluginManifest{Name: sigPlugin, Version: "1.0.0", Checksum: sha256Hex([]byte("source"))}
-		if err := verifyReleaseSignature(m, false, false, plat, archive, true); err != nil {
-			t.Fatalf("bypass with no platform signature must skip: %v", err)
+		if codeOf(verifyReleaseSignature(m, false, false, plat, archive, true)) != "E121" {
+			t.Fatal("bypass must refuse a missing pinned platform signature")
 		}
 		_, stranger := signaturetest.NewKey(t, signature.TierFree)
 		m.PlatformSignatures = map[string]*signature.Release{plat: signaturetest.SignPlatform(t, stranger, sigPlugin, "1.0.0", plat, sha256Hex(body))}
@@ -255,8 +255,8 @@ func TestInstallBinaryPackageBypassNeverSkips(t *testing.T) {
 		}
 		// An entry for another platform is not "present" for this one.
 		m.PlatformSignatures = map[string]*signature.Release{"darwin-arm64": good}
-		if err := verifyReleaseSignature(m, false, false, plat, archive, true); err != nil {
-			t.Fatalf("an entry for another platform must not count under bypass: %v", err)
+		if codeOf(verifyReleaseSignature(m, false, false, plat, archive, true)) != "E121" {
+			t.Fatal("an entry for another platform must not count under bypass")
 		}
 		if codeOf(verifyReleaseSignature(m, false, false, plat, archive, false)) != "E121" {
 			t.Fatal("without the bypass an absent platform entry is E121")

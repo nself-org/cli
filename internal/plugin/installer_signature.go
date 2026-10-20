@@ -55,7 +55,7 @@ func verifyReleaseSignature(manifest *PluginManifest, paid, local bool, artifact
 	tier := releaseTier(paid)
 	pinned := signature.Pinned(tier)
 	if pinned && artifactKind != "" && artifactKind != ArtifactKindSource {
-		return verifyPlatformSignature(manifest, tier, artifactKind, archivePath, bypass)
+		return verifyPlatformSignature(manifest, tier, artifactKind, archivePath)
 	}
 	if bypass && (!pinned || manifest.ReleaseSignature == nil) {
 		return nil
@@ -83,16 +83,13 @@ func verifyReleaseSignature(manifest *PluginManifest, paid, local bool, artifact
 
 // verifyPlatformSignature checks the platform signature of a binary package
 // on a pinned tier. Only the platform the CLI selected (artifactKind, from
-// PlatformArch()) is ever looked up. The bypass skips an ABSENT entry, never a
-// present one, whatever release_signature says. Everything else fails closed:
+// PlatformArch()) is ever looked up. The dev bypass never skips platform
+// verification on a pinned tier, whatever release_signature says:
 // no entry, no readable archive and a bad signature are all errors, and the
 // install never falls back to the source package.
-func verifyPlatformSignature(manifest *PluginManifest, tier, platform, archivePath string, bypass bool) error {
+func verifyPlatformSignature(manifest *PluginManifest, tier, platform, archivePath string) error {
 	rel, present := manifest.PlatformSignatures[platform]
 	if !present {
-		if bypass {
-			return nil
-		}
 		return errs.Newf("E121", "plugin %q: the %s binary package has no platform signature", manifest.Name, platform)
 	}
 	sum, err := archiveSHA256(archivePath)
