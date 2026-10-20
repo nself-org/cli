@@ -87,10 +87,13 @@ func (st *buildState) installImagePins() (func(), error) {
 
 // bootstrapPins takes the first lock's pins from the project's existing
 // docker-compose.yml, for the services the CLI owns and that file has. A
-// service the old compose lacks takes the CLI default.
+// service the old compose lacks takes the CLI default. With no compose file
+// there is no pin source: the project takes the CLI defaults, and an existing
+// project is told so (noticeUnpinnedHasura).
 func (st *buildState) bootstrapPins() (map[string]string, error) {
 	data, err := st.sink.ReadFile(filepath.Join(st.workdir, "docker-compose.yml"))
 	if errors.Is(err, fs.ErrNotExist) {
+		st.noticeUnpinnedHasura()
 		return nil, nil
 	}
 	if err != nil {
