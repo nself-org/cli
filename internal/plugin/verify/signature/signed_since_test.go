@@ -13,6 +13,7 @@ import (
 	"os"
 	"regexp"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/nself-org/cli/internal/plugin/verify/signature"
@@ -33,8 +34,9 @@ const licensedReleaseDataSHA = "e83373ec5828276dfc6c9b4fe8d9fd08317f62f7"
 
 // signedSinceDoc is the part of signed_since.json the floor tests read.
 type signedSinceDoc struct {
-	Refs  map[string][]string          `json:"refs"`
-	Tiers map[string]map[string]string `json:"tiers"`
+	Refs       map[string][]string          `json:"refs"`
+	Tiers      map[string]map[string]string `json:"tiers"`
+	Presigning map[string]json.RawMessage   `json:"presigning"`
 }
 
 // checkFloors reports why doc is not a complete two-tier floor: a missing or empty tier, an empty entry, a recorded ref that is not <repo>@<40 hex>, or a ref list
@@ -51,6 +53,10 @@ func checkFloors(doc signedSinceDoc) error {
 		signature.TierLicensed: {"nself-org/bundles", []string{licensedReleaseDataSHA}, 40, []string{"cron", "notify", "claw"}},
 	}
 	for tier, w := range want {
+		// The first signed release of each tier signed every row, so no unsigned pre-signing release may be listed: a row here would let an unsigned release install.
+		if got := string(doc.Presigning[tier]); got != "{}" && got != "" {
+			return fmt.Errorf("%s pre-signing list is %s, want {} (every release of the first signed release is signed)", tier, got)
+		}
 		floor, ok := doc.Tiers[tier]
 		if !ok || len(floor) == 0 {
 			return fmt.Errorf("%s-tier signed-since floor is missing or empty", tier)
@@ -117,6 +123,12 @@ func TestSignedSinceNonEmpty(t *testing.T) {
 		"cron dropped":          func(d *signedSinceDoc) { delete(d.Tiers[signature.TierLicensed], "cron") },
 		"licensed ref not evidence sha": func(d *signedSinceDoc) {
 			d.Refs[signature.TierLicensed] = []string{"nself-org/bundles@" + releaseDataSHA}
+		},
+		"licensed presigning row": func(d *signedSinceDoc) {
+			d.Presigning[signature.TierLicensed] = json.RawMessage(`{"cron":[{"version":"1.1.1","sha256":"` + strings.Repeat("a", 64) + `"}]}`)
+		},
+		"free presigning row": func(d *signedSinceDoc) {
+			d.Presigning[signature.TierFree] = json.RawMessage(`{"ci":[{"version":"1.2.1","sha256":"` + strings.Repeat("a", 64) + `"}]}`)
 		},
 		"licensed ref lost": func(d *signedSinceDoc) { d.Refs[signature.TierLicensed] = nil },
 		"free ref wrong repo": func(d *signedSinceDoc) {
@@ -256,6 +268,9 @@ func TestLicensedPairEnforced(t *testing.T) {
 			if _, err := signature.Decide(signature.Input{Tier: signature.TierLicensed, Slug: slug, Version: "1.1.2", SHA256: "00", V15: v15}); code(err) != "E107" {
 				t.Errorf("licensed %s unsigned (v15=%v): code %q, want E107", slug, v15, code(err))
 			}
+		}
+		if _, err := signature.Decide(signature.Input{Tier: signature.TierLicensed, Slug: "claw", Version: "1.1.2", SHA256: "00", V15: v15}); code(err) != "E107" {
+			t.Errorf("licensed claw 1.1.2 unsigned, below its floor 1.1.12 (v15=%v): code %q, want E107", v15, code(err))
 		}
 		if _, err := signature.Decide(signature.Input{Tier: signature.TierFree, Slug: "cron", Version: e.Version, SHA256: e.SHA256, Release: &rel, V15: v15}); code(err) != "E122" {
 			t.Errorf("licensed signature on the free cron (v15=%v): code %q, want E122", v15, code(err))
