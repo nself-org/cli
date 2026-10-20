@@ -7,8 +7,8 @@ package commands
 // Inputs: a document value (any struct, slice, map or pointer tree) or an
 // error. Outputs: a copy of the same type with every string leaf scrubbed, or
 // an error with scrubbed text and the same classification (code, exit status).
-// Constraints: human and v1.4 output are never touched (callers gate on
-// jsonEnvelopeOn); a masked key, a UUID and a date pass unchanged; nil slices
+// Constraints: document callers gate on jsonEnvelopeOn; human licence
+// diagnostics also scrub server text. A masked key, UUID and date pass unchanged; nil slices
 // stay nil and empty ones stay empty. SPORT: P7-SURF-16,
 // contract:cli.json-envelope
 
