@@ -2,14 +2,14 @@
 # Purpose: authenticate served ci releases before archive inspection or execution.
 # Usage: --min-version VERSION [--registry-url URL] [--skip-run] [--ci-args ARGS]
 #        --self-test (loopback only; fixture trust; never executes downloaded code).
-# Inputs: catalogue and four platform tarballs; compiled-in signature trust root.
+# Inputs: catalogue, source tarball and five platform tarballs; compiled-in signature trust root.
 # Outputs: check results; exit 0 success, 1 failed check, 2 usage/missing tool.
 # Constraints: Bash 3.2; jq/curl/tar/go; python3 for self-test; git/docker for runs.
 # Scratch: TMPDIR, removed on exit. Unpinned keys and unsigned platform hashes fail closed.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 FIX="${ROOT}/scripts/ci/testdata/ci-bootstrap"
-PLATFORMS="linux-amd64 linux-arm64 darwin-amd64 darwin-arm64"
+PLATFORMS="linux-amd64 linux-arm64 darwin-amd64 darwin-arm64 windows-amd64"
 BIN="nself-ci"
 REGISTRY_URL="https://plugins.nself.org"; MIN_VERSION=""; SELF_TEST=0; SKIP_RUN=0
 CI_ARGS="--check --no-status --no-gitleaks"; WORK=""; SERVER_PID=""
@@ -22,8 +22,10 @@ cleanup() {
 trap cleanup EXIT
 need() { command -v "$1" >/dev/null 2>&1 || die "needs $1 on PATH"; }
 ver_ge() {
-  local a="${1#v}" b="${2#v}" i x y
-  a="${a%%[-+]*}"; b="${b%%[-+]*}"
+  local a="${1#v}" b="${2#v}" i x y pre_a="" pre_b=""
+  a="${a%%+*}"; b="${b%%+*}"
+  case "$a" in *-*) pre_a="${a#*-}"; a="${a%%-*}" ;; esac
+  case "$b" in *-*) pre_b="${b#*-}"; b="${b%%-*}" ;; esac
   local IFS=.
   # shellcheck disable=SC2086 # word splitting on IFS=. is the point
   set -- $a; local -a pa=("$@")
@@ -35,8 +37,18 @@ ver_ge() {
     if [ "$x" -gt "$y" ]; then return 0; fi
     if [ "$x" -lt "$y" ]; then return 1; fi
   done
+  # Equal numbers: a release beats its own pre-release; two pre-releases must match exactly.
+  if [ -n "$pre_a" ] && [ -z "$pre_b" ]; then return 1; fi
+  if [ -n "$pre_a" ] && [ "$pre_a" != "$pre_b" ]; then return 1; fi
   return 0
 }
+# The gate must have reached a stack, or host-versus-container agreement proves only that both failed to start.
+gate_output_ok() {
+  case "$1" in *"no supported stack"*) return 1 ;; esac
+  printf '%s\n' "$1" | grep -Eq '^Stacks: .+'
+}
+# Archive layout the CLI reads first (findExtractedBinary): the binary at the root or under bin/.
+BIN_ENTRY_RE="^(\./)?(bin/)?${BIN}(\.exe)?\$"
 fail() { echo "FAIL: $*" >&2; }
 sha256_of() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi
@@ -120,10 +132,17 @@ check_tarballs() {
     if [ "$(sha256_of "${f}")" != "${want}" ]; then fail "the ${p} tarball does not match its checksums.platforms entry"; bad=1; rm -f "${f}"; continue; fi
     if ! printf '%s' "${CI_ENTRY}" | "${WORK}/verify" verify "${want}"; then fail "the ${p} tarball is not covered by release_signature"; bad=1; continue; fi
     if ! entries="$(tar -tzf "${f}" 2>/dev/null)"; then fail "the ${p} tarball is not a readable tar.gz"; bad=1; continue; fi
-    if ! printf '%s\n' "${entries}" | grep -Eq "(^|/)${BIN}\$"; then fail "the ${p} tarball holds no ${BIN} file"; bad=1; continue; fi
+    if ! printf '%s\n' "${entries}" | grep -Eq "${BIN_ENTRY_RE}"; then fail "the ${p} tarball holds no ${BIN} file at its root or under bin/"; bad=1; continue; fi
     if printf '%s\n' "${entries}" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then fail "the ${p} tarball has an absolute or .. entry"; bad=1; continue; fi
     echo "ok   tarball ${p}: holds ${BIN}"
   done
+  url="${CI_REPO}/releases/download/v${CI_VERSION}/ci-${CI_VERSION}.tar.gz"
+  f="${WORK}/source.tar.gz"
+  want="$(printf '%s' "${CI_ENTRY}" | jq -r '.checksum // ""')"
+  # shellcheck disable=SC2086
+  if ! curl -fsSL ${CURL_PROTO} --max-time 300 -o "${f}" "${url}"; then fail "cannot download the source tarball (${url})"; bad=1
+  elif [ "$(sha256_of "${f}")" != "${want}" ]; then fail "the source tarball does not match the ci entry checksum"; bad=1
+  else echo "ok   source tarball: matches the signed checksum"; fi
   if [ "${bad}" -ne 0 ]; then return 1; fi
 }
 host_platform() {
@@ -133,10 +152,12 @@ host_platform() {
   echo "${os}-${arch}"
 }
 unpack() {
-  local p="$1" dir="$2" found
+  local p="$1" dir="$2" found="" c
   mkdir -p "${dir}"
   tar -xzf "${WORK}/tar-${p}.tar.gz" -C "${dir}"
-  found="$(find "${dir}" -type f -name "${BIN}" | head -n 1)"
+  for c in "${BIN}" "bin/${BIN}" "${BIN}.exe" "bin/${BIN}.exe"; do
+    if [ -f "${dir}/${c}" ] && [ ! -L "${dir}/${c}" ]; then found="${dir}/${c}"; break; fi
+  done
   if [ -z "${found}" ]; then return 1; fi
   chmod +x "${found}"
   echo "${found}"
@@ -172,6 +193,8 @@ check_run() {
     # shellcheck disable=SC2086
     out_c="$(docker run --rm -v "$(dirname "${linuxbin}"):/probe:ro" -v "${d}:/work" -w /work -e HOME=/tmp \
       "${PROBE_IMAGE:-debian:stable-slim}" "/probe/${BIN}" ${CI_ARGS} 2>&1)" || rc=$?
+    if ! gate_output_ok "${out_h}"; then fail "${ref}: the host gate never reached a supported stack"; bad=1; continue; fi
+    if ! gate_output_ok "${out_c}"; then fail "${ref}: the container gate never reached a supported stack"; bad=1; continue; fi
     if [ "${rc_h}" != "${rc}" ]; then fail "${ref}: host exit ${rc_h} differs from container exit ${rc}"; bad=1; continue; fi
     if [ "$(printf '%s' "${out_h}" | normalize)" != "$(printf '%s' "${out_c}" | normalize)" ]; then fail "${ref}: host and container output differ"; bad=1; continue; fi
     echo "ok   run ${ref}: host and container agree (exit ${rc})"
@@ -186,7 +209,8 @@ probe() { # BASE MIN
 serve_case() {
   local root="$1" name="$2" ver tb p f sum sums stage sig
   ver="$(jq -r '.plugins[0].version' "${FIX}/catalogues/${name}/registry.json")"
-  tb="with-binary"; if [ "${name}" = "no-binary" ]; then tb="without-binary"; fi
+  tb="with-binary"
+  case "${name}" in no-binary) tb="without-binary" ;; deep-binary) tb="deep-binary" ;; esac
   mkdir -p "${root}/${name}/releases/download/v${ver}"
   sed "s#@BASE@#http://127.0.0.1:${PORT}/${name}#" "${FIX}/catalogues/${name}/registry.json" > "${root}/${name}/registry.json"
   stage="${root}/.stage-${name}"
@@ -201,6 +225,8 @@ serve_case() {
     if [ "${name}" = "tampered" ]; then sum="0000000000000000000000000000000000000000000000000000000000000000"; fi
     sums="$(printf '%s' "${sums}" | jq -c --arg p "${p}" --arg s "${sum}" '. + {($p): $s}')"
   done
+  # The source tarball is the same bytes as the platform tarballs, so the one signed checksum covers it.
+  cp "${f}" "${root}/${name}/releases/download/v${ver}/ci-${ver}.tar.gz"
   jq --argjson s "${sums}" '.plugins[0].checksums = {sha256: .plugins[0].checksum, platforms: $s}' "${root}/${name}/registry.json" > "${root}/${name}/registry.tmp"
   mv "${root}/${name}/registry.tmp" "${root}/${name}/registry.json"
   if [ "${name}" != "no-signature" ]; then
@@ -215,12 +241,18 @@ serve_case() {
     jq '.plugins[0].repository |= sub("/good$"; "/forged-signature") |
       .plugins[0].release_signature = {key_id:"made-up", alg:"not-ed25519", sig:"forged"}' \
       "${root}/good/registry.json" > "${root}/forged-signature/registry.json"
-    for variant in unknown-alg unknown-key invalid-signature unsigned-platform; do
+    mkdir -p "${root}/bad-source"
+    cp -R "${root}/good/releases" "${root}/bad-source/"
+    printf 'attacker bytes' > "${root}/bad-source/releases/download/v${ver}/ci-${ver}.tar.gz"
+    jq '.plugins[0].repository |= sub("/good$"; "/bad-source")' "${root}/good/registry.json" > "${root}/bad-source/registry.json"
+    for variant in unknown-alg unknown-key invalid-signature unsigned-platform no-windows prerelease; do
       mkdir -p "${root}/${variant}"
       jq --arg variant "${variant}" '
         if $variant == "unknown-alg" then .plugins[0].release_signature.alg = "not-ed25519"
         elif $variant == "unknown-key" then .plugins[0].release_signature.key_id = "made-up"
         elif $variant == "invalid-signature" then .plugins[0].release_signature.sig = ("A" * 86 + "==")
+        elif $variant == "no-windows" then del(.plugins[0].checksums.platforms["windows-amd64"])
+        elif $variant == "prerelease" then .plugins[0].version = "1.0.0-rc1"
         else .plugins[0].checksums.platforms["linux-amd64"] = ("0" * 64) end' \
         "${root}/good/registry.json" > "${root}/${variant}/registry.json"
     done
@@ -235,12 +267,34 @@ serve_case() {
     mv "${root}/unsigned-platform/registry.tmp" "${root}/unsigned-platform/registry.json"
   fi
 }
+# Unit checks for the pure helpers and the parity fixture (no network, no docker).
+self_test_helpers() {
+  local v
+  for v in "1.3.0 1.3.0" "1.3.1 1.3.0" "1.3.0-rc1 1.3.0-rc1" "1.3.0 1.3.0-rc1"; do
+    # shellcheck disable=SC2086 # two words on purpose
+    ver_ge ${v} || { echo "SELF-TEST FAIL: ver_ge ${v} should hold" >&2; return 1; }
+  done
+  for v in "1.3.0-rc1 1.3.0" "1.2.9 1.3.0" "1.3.0-rc1 1.3.0-rc2"; do
+    # shellcheck disable=SC2086
+    if ver_ge ${v}; then echo "SELF-TEST FAIL: ver_ge ${v} should not hold" >&2; return 1; fi
+  done
+  echo "self-test ok: version comparison honours pre-releases"
+  gate_output_ok "Stacks: go
+  Overall: FAILED (0s)" || { echo "SELF-TEST FAIL: a run that detected a stack was rejected" >&2; return 1; }
+  if gate_output_ok "Error: no supported stack detected in /work (need go.mod)"; then echo "SELF-TEST FAIL: a run without a stack was accepted" >&2; return 1; fi
+  if gate_output_ok ""; then echo "SELF-TEST FAIL: an empty run was accepted" >&2; return 1; fi
+  echo "self-test ok: gate output must show a detected stack"
+  for v in base head; do
+    [ -f "${FIX}/repo/${v}/go.mod" ] || { echo "SELF-TEST FAIL: the ${v} fixture has no go.mod, so the gate has no supported stack" >&2; return 1; }
+  done
+  echo "self-test ok: parity fixture has a supported stack"
+}
 self_test() {
   need python3
   local root="${WORK}/serve" name want out i status=0
   mkdir -p "${root}"
   PORT="$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
-  for name in good no-signature no-binary low-version tampered licensed; do serve_case "${root}" "${name}"; done
+  for name in good no-signature no-binary deep-binary low-version tampered licensed; do serve_case "${root}" "${name}"; done
   python3 -m http.server "${PORT}" --bind 127.0.0.1 --directory "${root}" >"${WORK}/server.log" 2>&1 &
   SERVER_PID=$!
   for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
@@ -248,14 +302,18 @@ self_test() {
     sleep 0.25
   done
   curl -fsS --max-time 2 -o /dev/null "http://127.0.0.1:${PORT}/good/registry.json" || die "the fixture server did not start"
+  self_test_helpers || return 1
   SKIP_RUN=1
   CURL_PROTO="--proto =http,https --proto-redir =http,https"
-  for name in good forged-signature unknown-alg unknown-key invalid-signature unsigned-platform no-signature no-binary low-version tampered licensed; do
+  for name in good forged-signature unknown-alg unknown-key invalid-signature unsigned-platform no-windows prerelease bad-source no-signature no-binary deep-binary low-version tampered licensed; do
     case "${name}" in
       good) want="" ;;
       forged-signature|unknown-alg|unknown-key|invalid-signature|unsigned-platform) want="release_signature" ;;
       no-signature) want="release_signature" ;;
-      no-binary) want="holds no ${BIN} file" ;;
+      no-binary|deep-binary) want="holds no ${BIN} file" ;;
+      no-windows) want="windows-amd64" ;;
+      prerelease) want="below --min-version" ;;
+      bad-source) want="source tarball" ;;
       low-version) want="below --min-version" ;;
       tampered) want="does not match its checksums.platforms" ;;
       licensed) want="licence marker" ;;
