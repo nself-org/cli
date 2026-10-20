@@ -3,8 +3,10 @@ package service
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -27,11 +29,76 @@ func fakeDocker(t *testing.T) (bin, log string) {
 	t.Helper()
 	d := t.TempDir()
 	log = filepath.Join(d, "argv.txt")
-	bin = writeFile(t, d, "docker", "#!/bin/sh\nfor a in \"$@\"; do echo \"$a\" >> '"+log+"'; done\n")
-	if err := os.Chmod(bin, 0o755); err != nil {
+	// Copy the test executable so exec.Command and PATH lookup use a native
+	// executable on every OS, without depending on a shell or a real Docker.
+	name := "docker"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin = filepath.Join(d, name)
+	if err := os.WriteFile(bin, data, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	return bin, log
+}
+
+// The copied executable acts only as Docker; normal test binaries continue
+// into testing.Main. Recording beside the executable survives environment sealing.
+func init() {
+	name := strings.ToLower(filepath.Base(os.Args[0]))
+	if name != "docker" && name != "docker.exe" {
+		return
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		os.Exit(1)
+	}
+	dir := filepath.Dir(exe)
+	if err := os.WriteFile(filepath.Join(dir, "argv.txt"), []byte(strings.Join(os.Args[1:], "\n")+"\n"), 0o600); err != nil {
+		os.Exit(1)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "seen.txt"), []byte("["+os.Getenv("POSTGRES_PASSWORD")+"]\n"), 0o600); err != nil {
+		os.Exit(1)
+	}
+	os.Exit(0)
+}
+
+func TestFakeDockerExecutable(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		lookup bool
+	}{
+		{name: "absolute path"},
+		{name: "PATH lookup", lookup: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bin, log := fakeDocker(t)
+			if tc.lookup {
+				t.Setenv("PATH", filepath.Dir(bin)+string(os.PathListSeparator)+os.Getenv("PATH"))
+				bin = "docker"
+			}
+			args := []string{"compose", "argument with spaces", "--", "minio"}
+			if out, err := exec.Command(bin, args...).CombinedOutput(); err != nil {
+				t.Fatalf("stub: %v: %s", err, out)
+			}
+			raw, err := os.ReadFile(log)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := strings.Split(strings.TrimSuffix(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n"), "\n")
+			if !reflect.DeepEqual(got, args) {
+				t.Fatalf("argv = %q, want %q", got, args)
+			}
+		})
+	}
 }
 
 // composeFor follows the build's recorded manifests (D-0703): plugin fragments
@@ -94,8 +161,7 @@ func TestComposeForFollowsBuildManifests(t *testing.T) {
 // so the value in --env-file wins (D-0703 review).
 func TestStartDropsExportedProjectVariables(t *testing.T) {
 	bin, _ := fakeDocker(t)
-	seen := filepath.Join(t.TempDir(), "seen.txt")
-	writeFile(t, filepath.Dir(bin), "docker", "#!/bin/sh\necho \"[$POSTGRES_PASSWORD]\" > '"+seen+"'\n")
+	seen := filepath.Join(filepath.Dir(bin), "seen.txt")
 	t.Setenv("PATH", filepath.Dir(bin)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("POSTGRES_PASSWORD", "exported-in-shell")
 	dir, err := filepath.EvalSymlinks(t.TempDir())
@@ -105,9 +171,6 @@ func TestStartDropsExportedProjectVariables(t *testing.T) {
 	writeFile(t, dir, "docker-compose.yml", "services:\n  postgres:\n    image: x\n")
 	writeFile(t, dir, ".env", "PROJECT_NAME=t\n")
 	t.Chdir(dir)
-	if err := os.Chmod(filepath.Join(filepath.Dir(bin), "docker"), 0o755); err != nil {
-		t.Fatal(err)
-	}
 	if err := Start(context.Background(), "postgres"); err != nil {
 		t.Fatal(err)
 	}
