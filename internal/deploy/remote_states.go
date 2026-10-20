@@ -8,15 +8,12 @@ package deploy
 //          taken before `up`.
 // Constraints: `docker compose ps -a --format json` and `docker inspect` over
 //              ssh. The rows are decoded into the exported docker.ContainerState
-//              and filtered with its OneOff(); internal/docker exports no
-//              decoder for the ps document (both shapes, array and one object
-//              per line, are handled here). Same StartedAt rules as
+//              and filtered with its OneOff(); the shared docker parser accepts
+//              both ps document shapes. Same StartedAt rules as
 //              docker.Compose.FreshStates.
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -32,7 +29,7 @@ func RemoteStates(ctx context.Context, r Remote, remotePath string, files, envFi
 	if err != nil {
 		return nil, err
 	}
-	all, err := decodeContainerStates(out)
+	all, err := docker.ParseContainerStates(out)
 	if err != nil {
 		return nil, err
 	}
@@ -94,30 +91,4 @@ func startedAt(ctx context.Context, r Remote, ids []string) ([]string, error) {
 		return nil, fmt.Errorf("docker inspect returned %d start times for %d containers", len(lines), len(ids))
 	}
 	return lines, nil
-}
-
-// decodeContainerStates accepts one JSON array or one object per line.
-func decodeContainerStates(raw []byte) ([]docker.ContainerState, error) {
-	t := bytes.TrimSpace(raw)
-	if len(t) == 0 {
-		return nil, nil
-	}
-	var rows []docker.ContainerState
-	if t[0] == '[' {
-		if err := json.Unmarshal(t, &rows); err != nil {
-			return nil, fmt.Errorf("parsing compose ps JSON: %w", err)
-		}
-		return rows, nil
-	}
-	for _, line := range bytes.Split(t, []byte("\n")) {
-		if line = bytes.TrimSpace(line); len(line) == 0 {
-			continue
-		}
-		var s docker.ContainerState
-		if err := json.Unmarshal(line, &s); err != nil {
-			return nil, fmt.Errorf("parsing compose ps JSON: %w", err)
-		}
-		rows = append(rows, s)
-	}
-	return rows, nil
 }

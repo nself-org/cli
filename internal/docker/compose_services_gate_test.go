@@ -184,7 +184,7 @@ func TestParseServiceSpecsHealthTiming(t *testing.T) {
 		"NONE":                            {`{"test":["NONE"],"interval":"5m"}`, false, 0},
 	} {
 		t.Run(name, func(t *testing.T) {
-			got, err := parseServiceSpecs([]byte(hcOf(tc.hc)))
+			got, err := ParseServiceSpecs([]byte(hcOf(tc.hc)))
 			if err != nil || len(got) != 1 || got[0].HasHealthcheck != tc.has || got[0].HealthTimeout != tc.want {
 				t.Errorf("got %+v, err %v; want has=%v HealthTimeout=%s", got, err, tc.has, tc.want)
 			}
@@ -192,7 +192,7 @@ func TestParseServiceSpecsHealthTiming(t *testing.T) {
 	}
 	for _, field := range []string{"interval", "timeout", "start_period"} {
 		raw := hcOf(`{"test":["CMD","true"],"` + field + `":"soon"}`)
-		if _, err := parseServiceSpecs([]byte(raw)); err == nil || !strings.Contains(err.Error(), field) {
+		if _, err := ParseServiceSpecs([]byte(raw)); err == nil || !strings.Contains(err.Error(), field) {
 			t.Errorf("bad %s duration must error naming the field, got %v", field, err)
 		}
 	}
