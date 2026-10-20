@@ -34,6 +34,9 @@ jobs:
       # tooling but GitHub rejects the whole file, reporting only "this run
       # likely failed because of a workflow file issue". Catch it here instead
       # of burning a push cycle.
+      - name: Image bump policy coverage
+        run: go test -mod=vendor ./tools/imagebump -run TestRepositoryPolicyCoverage
+
       - name: workflow YAML lint
         run: bash scripts/ci/workflow-lint.sh
 
