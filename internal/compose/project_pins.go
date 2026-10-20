@@ -240,7 +240,9 @@ func CanonicalRef(ref string) string {
 func CLILockedRef(ref string) (string, bool) {
 	c := CanonicalRef(ref)
 	if rest, ok := strings.CutPrefix(c, "nhost/hasura-auth:"); ok {
-		c = "nhost/auth:" + rest
+		if auth, found := LockedRef("auth"); found {
+			c = CanonicalRef(auth.Repository) + ":" + rest
+		}
 	}
 	for _, r := range LockedImages() {
 		for _, cand := range []string{r.LegacyRef, r.LegacyRepository() + ":" + r.Version, r.Repository + ":" + r.Version} {

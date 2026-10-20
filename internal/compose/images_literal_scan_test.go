@@ -6,10 +6,10 @@ package compose
 // of the CLI's own tools come from the image lock (images.yaml ->
 // images.lock.json); this test fails on any single Go string literal under
 // internal/ and cmd/ that spells an image reference, so the three-source drift
-// behind D-0122 cannot return.
-// Not seen (by design of a literal scan): literals built from parts such as
-// "postgres:" + version (D-0213), Dockerfile templates in raw strings, tools/,
-// untagged repository strings.
+// behind D-0122 cannot return. Concatenations with a literal image prefix are
+// included (D-0213).
+// Not seen: Dockerfile FROM directives, tools/, untagged repository strings or
+// wholly dynamic references.
 // Inputs: non-test Go files under ../../internal and ../../cmd;
 // testdata/image-literal-allowlist.txt, lines `<path> <image> # <reason>`.
 // Outputs: a failure per literal that is neither in the lock accessor path nor
@@ -94,6 +94,13 @@ func scanImageLiterals(t *testing.T, roots ...string) []string {
 				t.Fatalf("parse %s: %v", path, perr)
 			}
 			ast.Inspect(f, func(n ast.Node) bool {
+				if expr, ok := n.(*ast.BinaryExpr); ok && expr.Op == token.ADD {
+					if prefix, complete := imageStringPrefix(expr); !complete && isImageLiteral(prefix+"dynamic", repos) {
+						rel, _ := filepath.Rel("../..", path)
+						hits = append(hits, filepath.ToSlash(rel)+" "+prefix+"<dynamic>")
+						return false
+					}
+				}
 				if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.STRING {
 					if s, uerr := strconv.Unquote(lit.Value); uerr == nil && isImageLiteral(s, repos) {
 						rel, _ := filepath.Rel("../..", path)
@@ -110,6 +117,30 @@ func scanImageLiterals(t *testing.T, roots ...string) []string {
 	}
 	sort.Strings(hits)
 	return hits
+}
+
+// imageStringPrefix folds constant leading strings in a concatenation. complete
+// is false as soon as a dynamic expression ends the known prefix.
+func imageStringPrefix(expr ast.Expr) (prefix string, complete bool) {
+	switch e := expr.(type) {
+	case *ast.ParenExpr:
+		return imageStringPrefix(e.X)
+	case *ast.BasicLit:
+		if e.Kind == token.STRING {
+			s, err := strconv.Unquote(e.Value)
+			return s, err == nil
+		}
+	case *ast.BinaryExpr:
+		if e.Op == token.ADD {
+			left, ok := imageStringPrefix(e.X)
+			if !ok {
+				return left, false
+			}
+			right, ok := imageStringPrefix(e.Y)
+			return left + right, ok
+		}
+	}
+	return "", false
 }
 
 func readImageAllowlist(t *testing.T) map[string]bool {
