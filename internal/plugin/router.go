@@ -151,6 +151,12 @@ func ProxyBinaryAt(candidate, rootDir, slug string, args []string) error {
 // project settings the plugin's manifest declares, and the plugin's exit
 // status surfaced as ExitCodeError (silent: the child already reported).
 func execPluginBinary(path, slug string, args []string) error {
+	// The CLI has already restored machine-invoked secrets before Cobra runs.
+	// Until plugins support the secret-bundle protocol, forwarding these args
+	// would expose secrets through the plugin process's argv (D-0651).
+	if os.Getenv("NSELF_INVOKED_BY") != "" {
+		return errs.New("E421", "machine-invoked plugin execution is unavailable until plugins support secret handoff")
+	}
 	// Prepare the command.
 	//
 	// The plugin inherits this process's environment, plus whichever project
