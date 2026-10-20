@@ -83,6 +83,7 @@ run_pty --version "$V" --from S6 --yes
 check "S6 done path exits 0" test "$RC" -eq 0
 check "S6 done path says done" grep -q "S6 homebrew-formula.* done" "$T/out"
 check "S6 done path re-ran the lockstep job" grep -q 'run rerun 5551 -R nself-org/cli --failed' "$GH_LOG"
+check "S6 done path re-ran the standalone gate" grep -q 'run rerun 5552 -R nself-org/cli --failed' "$GH_LOG"
 check "S6 done path merged nothing" test ! -s "$ADMIN_LOG"
 rm -rf "$T"
 mk_env "$HAVE_GO"

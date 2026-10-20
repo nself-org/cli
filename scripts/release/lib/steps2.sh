@@ -56,6 +56,17 @@ step_build_wait() {
 # run still in progress is left alone.
 rerun_lockstep() {
   local c
+  # The standalone tag-push gate runs before S6 can merge the formula.
+  # Repair that expected failure as well as release.yml's embedded gate.
+  gh_need "the standalone Homebrew gate for $TAG" run list -R nself-org/cli \
+    --workflow homebrew-version-lockstep.yml --branch "$TAG" --event push \
+    --json databaseId,status,conclusion \
+    --jq '[.[] | select(.status == "completed" and .conclusion == "failure")][0].databaseId // empty'
+  if [ -n "$GH_OUT" ]; then
+    gh run rerun "$GH_OUT" -R nself-org/cli --failed \
+      || die_step S6 homebrew-formula "could not re-run standalone Homebrew gate $GH_OUT"
+    say "S6 homebrew-formula: re-ran standalone Homebrew gate $GH_OUT"
+  fi
   find_run
   if [ -z "$RUN_ID" ]; then return 0; fi
   if [ "$1" = 1 ]; then poll "run $RUN_ID to settle" 60 release_finished || return 0; fi
