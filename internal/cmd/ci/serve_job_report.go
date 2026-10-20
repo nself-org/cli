@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -120,52 +119,4 @@ func truncateStr(s string, max int) string {
 		return s
 	}
 	return string(runes[:max-1]) + "…"
-}
-
-// ensureCIBinary resolves the nself-ci gate binary path (also used from ci.go CLI side).
-// Duplicating the lookup here keeps this package self-contained from the cmd layer.
-func ensureCIBinary(verbose bool) (string, error) {
-	if p, err := exec.LookPath("nself-ci"); err == nil {
-		return p, nil
-	}
-
-	// Locate plugin source relative to the cli/ repo.
-	exe, err := os.Executable()
-	if err != nil {
-		return "", fmt.Errorf("cannot determine executable path: %w", err)
-	}
-	exe, _ = filepath.EvalSymlinks(exe)
-
-	candidates := []string{
-		filepath.Join(filepath.Dir(exe), "..", "plugins", "free", "ci"),
-		filepath.Join(filepath.Dir(exe), "..", "..", "plugins", "free", "ci"),
-	}
-
-	var pluginDir string
-	for _, c := range candidates {
-		abs, _ := filepath.Abs(c)
-		if info, err := os.Stat(filepath.Join(abs, "cmd", "main.go")); err == nil && !info.IsDir() {
-			pluginDir = abs
-			break
-		}
-	}
-	if pluginDir == "" {
-		return "", fmt.Errorf("nself-ci not on PATH and plugin source not found near CLI binary")
-	}
-
-	binary := filepath.Join(pluginDir, "nself-ci")
-	if _, err := os.Stat(binary); err != nil {
-		// Build it.
-		if verbose {
-			fmt.Fprintf(os.Stderr, "[nself-ci] building from %s\n", pluginDir)
-		}
-		var stderr bytes.Buffer
-		build := exec.Command("go", "build", "-o", binary, "./cmd/")
-		build.Dir = pluginDir
-		build.Stderr = &stderr
-		if err := build.Run(); err != nil {
-			return "", fmt.Errorf("go build failed: %w — %s", err, strings.TrimSpace(stderr.String()))
-		}
-	}
-	return binary, nil
 }

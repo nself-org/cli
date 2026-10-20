@@ -12,7 +12,20 @@
       "binaryName": "nself-ci",
       "repository": "@BASE@",
       "checksum": "0000000000000000000000000000000000000000000000000000000000000000",
-      "release_signature": {"key_id": "fixture-key-0000", "alg": "ed25519", "sig": "FIXTURE-NOT-A-REAL-SIGNATURE"}
+      "release_signature": {
+        "key_id": "fixture-key-0000",
+        "alg": "ed25519",
+        "sig": "FIXTURE-NOT-A-REAL-SIGNATURE"
+      },
+      "catalog": {
+        "commands": {
+          "command": "ci",
+          "subcommands": [
+            "run"
+          ]
+        },
+        "service_kind": "cli"
+      }
     }
   ]
 }

@@ -36,6 +36,11 @@ type ServeConfig struct {
 	JobTimeout  int    // per-job timeout in seconds
 	Verbose     bool
 
+	// ResolveGate returns the path of the nself-ci gate binary. The cmd layer
+	// supplies its verified resolver (no PATH lookup, no go install); there is no
+	// fallback here, so a nil value is a refusal to start.
+	ResolveGate func(verbose bool) (string, error)
+
 	// Insecure opts out of the fail-closed "refuse to start without a
 	// webhook secret" default (T32). When true and no secret is configured,
 	// RunServe starts anyway with signature verification disabled — the
@@ -94,7 +99,10 @@ func RunServe(cfg ServeConfig) error {
 	}
 
 	// Build the nself-ci binary path once at startup.
-	binaryPath, err := ensureCIBinary(cfg.Verbose)
+	if cfg.ResolveGate == nil {
+		return fmt.Errorf("nself-ci binary unavailable: no gate resolver configured")
+	}
+	binaryPath, err := cfg.ResolveGate(cfg.Verbose)
 	if err != nil {
 		return fmt.Errorf("nself-ci binary unavailable: %w", err)
 	}
