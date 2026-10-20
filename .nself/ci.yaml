@@ -7,10 +7,10 @@
 # Default pipeline: declaring `jobs:` turns catalogue detection off. Detection on
 #   this tree plans flutter, node, trivy and fixture-module jobs and runs Go
 #   without `-mod=vendor`; the cli builds and tests against the committed
-#   vendor/ tree, so the Go jobs are named here with the same argv as the `ci`
-#   job of .github/workflows/ci.yml (scripts/ci/gofmt-check.sh is the single
-#   source of the format rule). The v1.5 test leg, vendor-sync check, contract
-#   gate and the multi-OS matrix stay in ci.yml until it is retired (debt row).
+#   vendor/ tree. These jobs own the default Linux format, vet, build and test
+#   checks (scripts/ci/gofmt-check.sh is the single source of the format rule).
+#   The v1.5 test leg, vendor-sync check, contract gate and the other OS legs
+#   stay in .github/workflows/ci.yml.
 # Rule: a job here may be tuned (workdir, when.paths, timeout) but never made
 #   optional to get a green run (Epic D28).
 # Drills: every directory of scripts/drill/legs that holds an executable `run`
@@ -23,7 +23,7 @@
 version: 1
 
 jobs:
-  # Format rule, shared with `make fmt-check` and the ci.yml gofmt job. No `when`:
+  # Format rule, shared with `make fmt-check`. No `when`:
   # every change can unformat a file.
   gofmt:
     kind: static
@@ -44,7 +44,7 @@ jobs:
       CGO_ENABLED: "0"
     timeout: 900s
 
-  # The unit suite, as ci.yml runs it on the Linux leg. AI_AUTO_INSTALL=false keeps
+  # The default Linux unit suite. AI_AUTO_INSTALL=false keeps
   # `nself start` from installing anything over the network; NSELF_REQUIRE_AGE=1
   # makes the config secrets leak gate (D-0413) fail instead of skip when `age`
   # is missing, so the `nself-ci` workflow installs age before the gate runs.

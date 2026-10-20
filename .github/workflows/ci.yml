@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   fmt:
-    name: gofmt
+    name: workflow YAML lint
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -22,13 +22,6 @@ jobs:
         uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
-
-      # CLI-R01: this gate did not exist before 2026-08-23, which is how 30
-      # unformatted files reached main while the PRI claimed `gofmt -l .` was
-      # enforced. scripts/ci/gofmt-check.sh is the single source of the rule so
-      # the local `make fmt-check` and this job can never disagree.
-      - name: gofmt check
-        run: bash scripts/ci/gofmt-check.sh
 
       # A duplicate mapping key (two `if:` on one step) parses fine in most YAML
       # tooling but GitHub rejects the whole file, reporting only "this run
@@ -140,8 +133,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
 
+      # The required nself-ci pipeline owns the default ubuntu-latest checks.
+      # Keep the other platforms and the additional Linux gates below.
       - name: Vet
-        if: matrix.skip_docker_tests != 'true'
+        if: matrix.skip_docker_tests != 'true' && matrix.os != 'ubuntu-latest'
         run: go vet -mod=vendor ./...
 
       - name: Vet (Windows — pure-Go packages only)
@@ -150,7 +145,7 @@ jobs:
         shell: cmd
 
       - name: Build
-        if: matrix.skip_docker_tests != 'true'
+        if: matrix.skip_docker_tests != 'true' && matrix.os != 'ubuntu-latest'
         run: go build -mod=vendor ./...
 
       - name: Build (Windows)
@@ -159,7 +154,7 @@ jobs:
         shell: cmd
 
       - name: Test
-        if: matrix.skip_docker_tests != 'true'
+        if: matrix.skip_docker_tests != 'true' && matrix.os != 'ubuntu-latest'
         run: go test -mod=vendor -timeout 10m ./...
 
       # D-0275: the default run above is v1.4 only, so a test that breaks under
