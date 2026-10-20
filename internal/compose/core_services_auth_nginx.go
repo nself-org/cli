@@ -98,7 +98,7 @@ func (g *Generator) buildAuthService() (ServiceConfig, error) {
 	}
 	return ServiceConfig{
 		Image:         image,
-		ContainerName: fmt.Sprintf("%s_auth", cfg.ProjectName),
+		ContainerName: g.containerName("auth"),
 		Restart:       "unless-stopped",
 		Networks:      []string{cfg.DockerNetwork},
 		DependsOn: map[string]DepOn{
@@ -146,7 +146,7 @@ func (g *Generator) buildNginxService(dc *DockerCompose) ServiceConfig {
 
 	return ServiceConfig{
 		Image:         ResolveImage("nginx", ImageRef("nginx", "")),
-		ContainerName: fmt.Sprintf("%s_nginx", cfg.ProjectName),
+		ContainerName: g.containerName("nginx"),
 		Restart:       "unless-stopped",
 		// No User override on purpose. The nginx.conf this same tool generates
 		// declares `user nginx;` on line 4, which requires the MASTER process to

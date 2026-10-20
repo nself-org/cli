@@ -192,7 +192,7 @@ func (g *Generator) buildRedisService() ServiceConfig {
 
 	return ServiceConfig{
 		Image:         g.cacheImage(engine),
-		ContainerName: fmt.Sprintf("%s_redis", g.cfg.ProjectName),
+		ContainerName: g.containerName("redis"),
 		Restart:       "unless-stopped",
 		User:          "999:999",
 		Networks:      []string{g.cfg.DockerNetwork},

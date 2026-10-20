@@ -59,7 +59,7 @@ func (g *Generator) buildPostgresService() ServiceConfig {
 	}
 	return ServiceConfig{
 		Image:         image,
-		ContainerName: fmt.Sprintf("%s_postgres", cfg.ProjectName),
+		ContainerName: g.containerName("postgres"),
 		Restart:       "unless-stopped",
 		Networks:      []string{cfg.DockerNetwork},
 		User:          user,
@@ -171,7 +171,7 @@ func (g *Generator) buildHasuraService() (ServiceConfig, error) {
 
 	return ServiceConfig{
 		Image:         hasuraImage(cfg.Hasura.Version),
-		ContainerName: fmt.Sprintf("%s_hasura", cfg.ProjectName),
+		ContainerName: g.containerName("hasura"),
 		Restart:       "unless-stopped",
 		User:          "1001:1001",
 		Networks:      []string{cfg.DockerNetwork},
