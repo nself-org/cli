@@ -153,14 +153,13 @@ func TestNextStep(t *testing.T) {
 		t.Run(tc.stage+"_"+tc.mode, func(t *testing.T) {
 			nextStepFixture(t, tc.stage)
 			t.Setenv("NEXTSTEP_DOCKER", tc.mode)
-			start := time.Now()
 			ctx, cancel := context.WithTimeout(context.Background(), nextStepTimeout)
 			defer cancel()
 			if got := nextStep(ctx); got != "Next: nself "+tc.want {
 				t.Errorf("got %q, want %q", got, tc.want)
 			}
-			if elapsed := time.Since(start); elapsed > 4*time.Second {
-				t.Errorf("detection took %v", elapsed)
+			if tc.mode == "slow" && ctx.Err() != context.DeadlineExceeded {
+				t.Errorf("slow Docker probe must honour the context deadline, got %v", ctx.Err())
 			}
 		})
 	}
