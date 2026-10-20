@@ -27,6 +27,14 @@ func TestCompareStateUserAuth(t *testing.T) {
 		miss bool
 	}{
 		{"identical", base, ok, false},
+		{"metadata changed", func() User {
+			b := base
+			b.Metadata = map[string]any{"preferences": map[string]any{"theme": "dark"}}
+			return b
+		}(), with(func(u *UserAuth) { u.Metadata = map[string]any{"preferences": map[string]any{"theme": "light"}} }), true},
+		{"metadata missing", func() User { b := base; b.Metadata = map[string]any{"a": true}; return b }(), ok, true},
+		{"metadata added", base, with(func(u *UserAuth) { u.Metadata = map[string]any{"a": true} }), true},
+		{"empty metadata default", base, with(func(u *UserAuth) { u.Metadata = map[string]any{} }), false},
 		{"default role drifted to user", base, with(func(u *UserAuth) { u.DefaultRole = "user" }), true},
 		{"email_verified lost", base, with(func(u *UserAuth) { u.EmailVerified = false }), true},
 		{"disabled lost", func() User { b := base; b.Disabled = true; return b }(), ok, true},

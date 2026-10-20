@@ -14,9 +14,10 @@ type FlagSpec struct {
 	EnvVarName  bool
 }
 type Input struct {
-	Values map[string]string
-	Env    func(string) string
-	Target *config.Config
+	SkipStorage bool
+	Values      map[string]string
+	Env         func(string) string
+	Target      *config.Config
 }
 type Detection struct {
 	Kind    string   `json:"kind"`

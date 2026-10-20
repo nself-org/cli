@@ -21,7 +21,12 @@ const maxObjectBytes = 5 << 30
 
 var s3Bucket = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$`)
 
-func (r *run) catalogCounts(ctx context.Context, tx pgx.Tx, m *portable.Manifest) error {
+type storageCatalog interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+}
+
+func (r *run) catalogCounts(ctx context.Context, tx storageCatalog, m *portable.Manifest) error {
 	fail := errs.New("E520", "source storage lookup failed")
 	var has bool
 	if tx.QueryRow(ctx, `SELECT to_regclass('storage.objects') IS NOT NULL`).Scan(&has) != nil {
@@ -30,6 +35,24 @@ func (r *run) catalogCounts(ctx context.Context, tx pgx.Tx, m *portable.Manifest
 	r.catalog = map[string]int64{}
 	r.names = map[string]map[string]int64{}
 	if !has {
+		return nil
+	}
+	if r.skipStorage {
+		rows, err := tx.Query(ctx, `SELECT bucket_id::text, name::text FROM storage.objects ORDER BY 1, 2`)
+		if err != nil {
+			return fail
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var bucket, key string
+			if rows.Scan(&bucket, &key) != nil {
+				return fail
+			}
+			m.Exemptions = append(m.Exemptions, portable.Exemption{Kind: "object", ID: bucket + "/" + key, Reason: "--skip-storage"})
+		}
+		if rows.Err() != nil {
+			return fail
+		}
 		return nil
 	}
 	rows, err := tx.Query(ctx, `SELECT bucket_id::text, count(*) FROM storage.objects GROUP BY 1 ORDER BY 1`)

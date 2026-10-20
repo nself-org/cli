@@ -14,6 +14,7 @@ package bundle
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -72,6 +73,10 @@ func finishInstall(ctx context.Context, rn *appready.Runner, store *ledger.Store
 	if out == nil {
 		out = os.Stderr
 	}
+	prior, _, err := store.Load()
+	if err != nil {
+		return err
+	}
 	var names []string
 	_ = rn.Step(appready.StepLedger, func() (string, error) {
 		members, err := installedMembers(pluginDir, planned)
@@ -114,6 +119,9 @@ func finishInstall(ctx context.Context, rn *appready.Runner, store *ledger.Store
 		appready.Render(out, rep)
 	}
 	if f := rn.Failure(); f != nil {
+		if f.Step == appready.StepReconcile {
+			return errors.Join(appReadyVerdict(out, result.Bundle, f), rollbackReconcile(ctx, store, pluginDir, before, prior, opts, result, out))
+		}
 		return appReadyVerdict(out, result.Bundle, f)
 	}
 	return nil
