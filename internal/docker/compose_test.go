@@ -43,7 +43,7 @@ func TestComposeServicesAfterDoubleDash(t *testing.T) {
 		tail func(svc string) []string // argv after "compose -f /m/base.yml"
 	}{
 		{"up", func(c *Compose, s string) error { return c.ComposeUp(ctx, ".", s) },
-			func(s string) []string { return []string{"up", "-d", "--", s} }},
+			func(s string) []string { return []string{"up", "-d", "--build", "--", s} }},
 		{"up --no-deps", func(c *Compose, s string) error { return c.ComposeUpNoDeps(ctx, ".", s) },
 			func(s string) []string { return []string{"up", "-d", "--no-deps", "--", s} }},
 		{"restart", func(c *Compose, s string) error { return c.ComposeRestart(ctx, ".", s) },
