@@ -17,7 +17,16 @@
         "alg": "ed25519",
         "sig": "FIXTURE-NOT-A-REAL-SIGNATURE"
       },
-      "requires_license": true
+      "requires_license": true,
+      "catalog": {
+        "commands": {
+          "command": "ci",
+          "subcommands": [
+            "run"
+          ]
+        },
+        "service_kind": "cli"
+      }
     }
   ]
 }

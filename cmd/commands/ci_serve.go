@@ -81,6 +81,7 @@ Examples:
 			WorkDir:          workdir,
 			JobTimeout:       jobTimeout,
 			Verbose:          verbose,
+			ResolveGate:      ensureCIBinary,
 			Insecure:         insecure,
 			AllowUnsandboxed: allowUnsandboxed,
 			AllowedRepos:     allowedRepos,

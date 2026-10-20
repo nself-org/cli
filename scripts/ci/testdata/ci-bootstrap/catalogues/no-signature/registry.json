@@ -11,7 +11,16 @@
       "pluginType": "cli",
       "binaryName": "nself-ci",
       "repository": "@BASE@",
-      "checksum": "0000000000000000000000000000000000000000000000000000000000000000"
+      "checksum": "0000000000000000000000000000000000000000000000000000000000000000",
+      "catalog": {
+        "commands": {
+          "command": "ci",
+          "subcommands": [
+            "run"
+          ]
+        },
+        "service_kind": "cli"
+      }
     }
   ]
 }
