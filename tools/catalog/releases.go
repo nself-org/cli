@@ -82,24 +82,35 @@ func validateReleases(r *model.Releases) []string {
 	return probs
 }
 
+// licensedSignatureProblem is the refusal of platform_signatures on a licensed
+// row: no licensed platform producer exists (D-1286), so the key could only be
+// hand-written, and a licensed row writes no platform checksums to anchor it.
+const licensedSignatureProblem = ": platform_signatures is not supported on a licensed row (no licensed platform producer exists)"
+
 // platformSignatureProblems lists every problem in rel.PlatformSignatures
 // (contract:plugins.release-signature v1.1): each key is a known platform with a
 // platform_checksums entry, each value is a complete ed25519 signature, and the
 // source release_signature is set because it is the anchor.
 func platformSignatureProblems(slug string, rel model.Release) []string {
-	if len(rel.PlatformSignatures) == 0 {
+	return checkPlatformSignatures(slug, rel.ReleaseSignature, rel.PlatformSignatures, rel.PlatformChecksums)
+}
+
+// checkPlatformSignatures applies those rules to any carrier of the key: a
+// releases.json row, or a registry entry that catalog mode copies it from.
+func checkPlatformSignatures(slug string, anchor *model.Signature, sigs map[string]*model.Signature, sums map[string]string) []string {
+	if len(sigs) == 0 {
 		return nil
 	}
 	var probs []string
-	if rel.ReleaseSignature == nil {
+	if anchor == nil {
 		probs = append(probs, slug+": platform_signatures needs a release_signature (the source signature is the anchor)")
 	}
 	known := map[string]bool{}
 	for _, p := range model.Platforms {
 		known[p] = true
 	}
-	names := make([]string, 0, len(rel.PlatformSignatures))
-	for p := range rel.PlatformSignatures {
+	names := make([]string, 0, len(sigs))
+	for p := range sigs {
 		names = append(names, p)
 	}
 	sort.Strings(names)
@@ -108,10 +119,10 @@ func platformSignatureProblems(slug string, rel model.Release) []string {
 		if !known[p] {
 			probs = append(probs, pre+" is not a platform (want one of "+strings.Join(model.Platforms, ", ")+")")
 		}
-		if _, ok := rel.PlatformChecksums[p]; !ok {
+		if _, ok := sums[p]; !ok {
 			probs = append(probs, pre+" has no platform_checksums."+p)
 		}
-		sig := rel.PlatformSignatures[p]
+		sig := sigs[p]
 		if sig == nil || sig.KeyID == "" || sig.Sig == "" || sig.Alg != model.SigAlg {
 			probs = append(probs, pre+" needs key_id, sig and alg "+model.SigAlg)
 		}

@@ -31,8 +31,8 @@ func buildCatalog(free, licensed *model.Registry, b *model.Bundles, from model.G
 	}{{free, model.TierFree}, {licensed, model.TierLicensed}} {
 		for _, slug := range sortedKeys(side.reg.Plugins) {
 			row, p := rowOf(slug, side.tier, side.reg.Plugins[slug], b)
-			if p != "" {
-				probs = append(probs, p)
+			if len(p) > 0 {
+				probs = append(probs, p...)
 				continue
 			}
 			row.TierPair = shared[slug]
@@ -66,10 +66,22 @@ func buildCatalog(free, licensed *model.Registry, b *model.Bundles, from model.G
 	return c, probs
 }
 
-// rowOf maps one registry entry to a catalog row.
-func rowOf(slug, tier string, e model.RegistryEntry, b *model.Bundles) (model.CatalogPlugin, string) {
+// rowOf maps one registry entry to a catalog row, or lists why it cannot. A
+// registry is an input here (it may be hand-edited), so platform_signatures gets
+// the checks releases.json gets before it is copied into the row.
+func rowOf(slug, tier string, e model.RegistryEntry, b *model.Bundles) (model.CatalogPlugin, []string) {
 	if e.Catalog == nil {
-		return model.CatalogPlugin{}, fmt.Sprintf("%s (%s): registry entry has no catalog block; regenerate the registry with this tool", slug, tier)
+		return model.CatalogPlugin{}, []string{fmt.Sprintf("%s (%s): registry entry has no catalog block; regenerate the registry with this tool", slug, tier)}
+	}
+	if tier == model.TierLicensed && len(e.PlatformSignatures) > 0 {
+		return model.CatalogPlugin{}, []string{slug + licensedSignatureProblem}
+	}
+	var sums map[string]string
+	if e.Checksums != nil {
+		sums = e.Checksums.Platforms
+	}
+	if probs := checkPlatformSignatures(slug, e.ReleaseSignature, e.PlatformSignatures, sums); len(probs) > 0 {
+		return model.CatalogPlugin{}, probs
 	}
 	in := e.Catalog
 	row := model.CatalogPlugin{
@@ -89,7 +101,7 @@ func rowOf(slug, tier string, e model.RegistryEntry, b *model.Bundles) (model.Ca
 	if in.DocsURL != "" {
 		row.DocsURL = &in.DocsURL
 	}
-	return row, ""
+	return row, nil
 }
 
 // sharedSlugs is the set of slugs present in both registries.
