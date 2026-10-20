@@ -85,37 +85,6 @@ func (st *buildState) installImagePins() (func(), error) {
 	return compose.SetProjectPins(pins), nil
 }
 
-// projectPostgresVolumeExists reports whether the project's postgres data
-// volume exists, through the docker funnel. It is a variable so tests can fake
-// it. A docker error counts as "no": the notice it gates is advisory.
-var projectPostgresVolumeExists = func(name string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	ok, err := docker.VolumeExists(ctx, name)
-	return err == nil && ok
-}
-
-// noticeUnpinnedHasura warns, once per build, that a project with data but no
-// pin source (no lock, no docker-compose.yml: nself clean keeps data and
-// removes both) takes the CLI default hasura, which in v1.5 is a newer
-// graphql-engine than the v1.4 default (D-0719). It names the move and the
-// backup step. A project without a postgres volume is new and gets no notice.
-func (st *buildState) noticeUnpinnedHasura() {
-	if st.cfg == nil || compose.HasuraEntry() == "hasura-v14" {
-		return
-	}
-	vol := strings.TrimSpace(st.cfg.Postgres.DataVolume)
-	if vol == "" {
-		vol = st.cfg.ProjectName + "_postgres_data"
-	}
-	if !projectPostgresVolumeExists(vol) {
-		return
-	}
-	from, _ := compose.LockedRef("hasura-v14")
-	to, _ := compose.LockedRef("hasura")
-	st.warnOnce("no "+lock.FileName+" and no docker-compose.yml, but this project's database exists: hasura takes the v1.5 default graphql-engine "+to.Version+" (v1.4 ran "+from.Version+"); run `nself backup create` first (going back is restore-then-pin-back, see the Image-Lock wiki page, Roll back)", "volume", vol)
-}
-
 // bootstrapPins takes the first lock's pins from the project's existing
 // docker-compose.yml, for the services the CLI owns and that file has. A
 // service the old compose lacks takes the CLI default. With no compose file
