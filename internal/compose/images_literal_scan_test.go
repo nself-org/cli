@@ -35,9 +35,9 @@ import (
 	"testing"
 )
 
-// maxAllowlist is the ratchet: the allowlist has exactly the three tool
-// entries today and may only shrink.
-const maxAllowlist = 2
+// maxAllowlist is the ratchet: the allowlist has exactly the tool entries
+// listed today and may only shrink.
+const maxAllowlist = 1
 
 var imageShapeRE = regexp.MustCompile(`^((?:[a-z0-9][a-z0-9._-]*/)*[a-z0-9][a-z0-9._-]*):(%[sv]|[A-Za-z0-9._-]+)(@sha256:[0-9a-f]{64})?$`)
 

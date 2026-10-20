@@ -16,6 +16,8 @@ nself plugin test <name> [flags]
 - **smoke** — performs a real install/uninstall cycle, verifying the plugin integrates correctly with the nSelf runtime.
 - **both** (default) — runs unit then smoke.
 
+The container image follows the `go` line of the plugin's `go.mod` (`golang:<major.minor>-alpine`, the Go release this CLI was built with when there is none), with `GOTOOLCHAIN=auto` so a newer patch level is fetched.
+
 Use `--host` to run tests in host-process mode instead of a container. Use `--no-cleanup` to preserve the post-test state for manual inspection when smoke tests fail.
 
 ## Flags
