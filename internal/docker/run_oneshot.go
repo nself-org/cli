@@ -17,11 +17,14 @@ package docker
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
 	"sort"
 	"strings"
+	"time"
 )
 
 // RunSpec describes one `docker run --rm` invocation.
@@ -112,10 +115,31 @@ func buildRunArgs(spec RunSpec) ([]string, error) {
 	return append(args, spec.Args...), nil
 }
 
+// oneShotRemoveTimeout bounds the `docker rm -f` that follows a cancelled run.
+const oneShotRemoveTimeout = 30 * time.Second
+
+// newOneShotName returns a unique container name for a run whose caller set none.
+// It is a variable so tests can pin the name.
+var newOneShotName = func() string {
+	b := make([]byte, 6)
+	if _, err := rand.Read(b); err != nil {
+		return fmt.Sprintf("nself-oneshot-%d", time.Now().UnixNano())
+	}
+	return "nself-oneshot-" + hex.EncodeToString(b)
+}
+
 // RunOneShot runs spec to completion (`docker run --rm`) and returns what the
 // container wrote to stdout and stderr. A non-zero exit returns the captured
 // output together with an error that quotes the last stderr line.
+//
+// Cancelling ctx (signal or deadline) kills only the docker client, so the
+// container would keep running against its target. Every run therefore has a
+// name (spec.Name, or a generated one), and when ctx ends the container is
+// force-removed before RunOneShot returns.
 func RunOneShot(ctx context.Context, spec RunSpec) (stdout, stderr string, err error) {
+	if spec.Name == "" {
+		spec.Name = newOneShotName()
+	}
 	args, err := buildRunArgs(spec)
 	if err != nil {
 		return "", "", err
@@ -125,12 +149,31 @@ func RunOneShot(ctx context.Context, spec RunSpec) (stdout, stderr string, err e
 	for n, v := range spec.EnvPass {
 		cmd.Env = append(cmd.Env, n+"="+v)
 	}
+	cmd.WaitDelay = 5 * time.Second
 	var so, se bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &so, &se
-	if runErr := cmd.Run(); runErr != nil {
+	runErr := cmd.Run()
+	// Remove only a container this run may have created: a run cancelled before
+	// docker started cannot have, and a caller-set name may belong to another.
+	if ctx.Err() != nil && cmd.Process != nil {
+		removeAfterCancel(spec.Name)
+	}
+	if runErr != nil {
 		return so.String(), se.String(), fmt.Errorf("docker run %s: %w: %s", spec.Image, runErr, lastLine(se.String()))
 	}
 	return so.String(), se.String(), nil
+}
+
+// removeAfterCancel force-removes the named container with a context that
+// outlives the cancelled one. It runs docker in its own process group so the
+// Ctrl-C that cancelled the run does not also interrupt the removal. An absent
+// container (the run was cancelled before docker created it) is not an error.
+func removeAfterCancel(name string) {
+	rmCtx, cancel := context.WithTimeout(context.Background(), oneShotRemoveTimeout)
+	defer cancel()
+	rm := exec.CommandContext(rmCtx, "docker", "rm", "-f", name)
+	setProcGroupAttr(rm)
+	_ = rm.Run()
 }
 
 // lastLine returns the last non-empty line of s, for error messages.
