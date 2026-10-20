@@ -126,14 +126,22 @@ func runSSLAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("installing certificate for %s: %w", domain, err)
 	}
 
-	// Write the nginx server block for this custom domain.
+	// Write the nginx server block for this custom domain. Keep what was there:
+	// a conf nginx rejects must not stay behind to break the next restart.
+	snap, err := snapshotCustomDomainConf(workdir, frontedBy, domain)
+	if err != nil {
+		return fmt.Errorf("reading nginx conf: %w", err)
+	}
 	if err := writeCustomDomainConfServed(workdir, frontedBy, domain, upstream); err != nil {
 		return fmt.Errorf("writing nginx conf: %w", err)
 	}
 
 	// Validate nginx config before reloading.
 	if testErr := nginxCompose(cmd.Context(), servedRoot, "-t"); testErr != nil {
-		return fmt.Errorf("nginx config test failed: %w", testErr)
+		if rerr := snap.restore(); rerr != nil {
+			return fmt.Errorf("nginx config test failed: %w (restoring %s also failed: %v)", testErr, snap.path, rerr)
+		}
+		return fmt.Errorf("nginx config test failed, %s: %w", snap.outcome(), testErr)
 	}
 
 	if err := nginxCompose(cmd.Context(), servedRoot, "-s", "reload"); err != nil {

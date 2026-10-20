@@ -445,3 +445,31 @@ func TestACMENonASCIIName(t *testing.T) {
 		t.Fatalf("want a punycode remediation, got %v", err)
 	}
 }
+
+// TestACMEFirstConversionFailure: when the symlink switch of the first
+// conversion fails, the real directory goes back in place (D-0412) and the
+// error is tagged as an install failure (E471).
+func TestACMEFirstConversionFailure(t *testing.T) {
+	posixOnly(t)
+	ssl, certA := fixture(t)
+	certB, keyB := testPair(t, []string{"api.example.org"}, time.Now().Add(90*24*time.Hour))
+	// A non-empty directory where point() stages its link makes the symlink fail.
+	if err := os.MkdirAll(filepath.Join(ssl, tgt+".tmp-link", "x"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	rel := &fakeReloader{}
+	_, err := Install(context.Background(), InstallReq{SSLDir: ssl, Targets: []string{tgt}, Cert: certB, Key: keyB, Reloader: rel})
+	if err == nil {
+		t.Fatal("install succeeded with a blocked link")
+	}
+	if !errors.Is(err, ErrInstall) || CodeFor(err) != CodeInstall {
+		t.Errorf("error not tagged as an install failure: %v (code %q)", err, CodeFor(err))
+	}
+	fi, lerr := os.Lstat(filepath.Join(ssl, tgt))
+	if lerr != nil || !fi.IsDir() {
+		t.Fatalf("target is not the original directory after the failure: %v %v", fi, lerr)
+	}
+	if string(served(t, ssl, tgt)) != string(certA) || rel.calls != 0 {
+		t.Errorf("previous pair not intact (reloads=%d)", rel.calls)
+	}
+}
