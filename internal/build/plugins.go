@@ -66,6 +66,13 @@ func DiscoverPluginComposeFiles(workdir, pluginDir string) ([]string, error) {
 // discoverPluginComposeFilesFx normalizes installed fragments into the project
 // Sink: plan mode records overlays without changing either filesystem.
 func discoverPluginComposeFilesFx(fx Effects, sink Sink, workdir, pluginDir string, refreshed ...*bool) ([]string, error) {
+	return discoverPluginComposeFilesWanted(fx, sink, workdir, pluginDir, nil, refreshed...)
+}
+
+// discoverPluginComposeFilesWanted is discoverPluginComposeFilesFx with a
+// project filter: a plugin for which wanted returns false is left out of the
+// stack without touching its fragment (nil keeps every enabled plugin).
+func discoverPluginComposeFilesWanted(fx Effects, sink Sink, workdir, pluginDir string, wanted func(name string) bool, refreshed ...*bool) ([]string, error) {
 	entries, err := os.ReadDir(pluginDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -87,6 +94,9 @@ func discoverPluginComposeFilesFx(fx Effects, sink Sink, workdir, pluginDir stri
 		// Skip disabled plugins (those with a .disabled marker file).
 		disabledPath := filepath.Join(pluginDir, entry.Name(), ".disabled")
 		if _, err := os.Stat(disabledPath); err == nil {
+			continue
+		}
+		if wanted != nil && !wanted(entry.Name()) {
 			continue
 		}
 		composePath := filepath.Join(pluginDir, entry.Name(), pluginComposeFilename)

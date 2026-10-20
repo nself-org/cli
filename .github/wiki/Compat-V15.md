@@ -170,6 +170,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-PLUG-60 | media-hosting recommends MinIO | recommends core object storage and the MinIO plugin for existing data | `cmd/commands/init_presets.go` |
 | P7-PLUG-60 | no object storage line | OBJECT_STORAGE_ENABLED=false listed with the optional services | `internal/setup/setup_env_files.go` |
 | P7-PLUG-60 | optional core MinIO | core SeaweedFS or MinIO plugin | `internal/compose/object_storage.go` |
+| P7-PLUG-60 | the minio fragment merges into every project once installed | only where ActiveStore picks the plugin | `internal/compose/object_storage.go` |
 | P7-PLUG-63 | bundle reply trusted for any key and bundle | only a signed reply naming this key, this bundle and a live window | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | cache age from the unsigned fetched_at | the older of fetched_at and the signed jwt iat | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | cache trusted whatever the clock says | refused when the clock is behind the signed iat or the highest time seen | `internal/license/cache.go` |
