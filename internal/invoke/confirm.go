@@ -172,6 +172,7 @@ func (g *Guard) auditWritable() error {
 	if g.auditPath == "" {
 		return errors.New("this server has no machine audit log")
 	}
+	deadline := auditLockDeadline()
 	auditFileMu.Lock()
 	defer auditFileMu.Unlock()
 	if err := ensureAuditDir(filepath.Dir(g.auditPath)); err != nil {
@@ -184,7 +185,7 @@ func (g *Guard) auditWritable() error {
 	// Take the same flock appendLine takes, so a lock held by another process
 	// refuses the run now instead of losing its record afterwards. Closing f
 	// releases the lock.
-	if err := lockFile(f); err != nil {
+	if err := lockFileUntil(f, deadline); err != nil {
 		_ = f.Close()
 		return err
 	}

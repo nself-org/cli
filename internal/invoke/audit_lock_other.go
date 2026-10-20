@@ -9,10 +9,13 @@ package invoke
 // native process may interleave whole lines but never splits one, because each
 // line is one append-mode write.
 
-import "os"
+import (
+	"os"
+	"time"
+)
 
 // closeBeforeRotate is true: Windows cannot rename an open file.
 const closeBeforeRotate = true
 
-// lockFile is a no-op without flock.
-func lockFile(*os.File) error { return nil }
+func auditLockDeadline() time.Time            { return time.Time{} }
+func lockFileUntil(*os.File, time.Time) error { return nil }

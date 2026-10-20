@@ -23,11 +23,11 @@ var lockWait = 5 * time.Second
 // renaming under the lock is what keeps a second rotator out.
 const closeBeforeRotate = false
 
-// lockFile takes an exclusive flock on f, waiting at most lockWait: a writer
-// that holds the lock forever must not hang every audited call of this
-// server (the caller holds the process-wide audit mutex).
-func lockFile(f *os.File) error {
-	deadline := time.Now().Add(lockWait)
+// auditLockDeadline includes time queued behind other in-process writers.
+func auditLockDeadline() time.Time { return time.Now().Add(lockWait) }
+
+// lockFileUntil takes a flock within the budget set before queuing.
+func lockFileUntil(f *os.File, deadline time.Time) error {
 	for {
 		err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
 		switch {

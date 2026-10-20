@@ -206,6 +206,7 @@ func childErrorCode(stdout []byte) *string {
 
 // appendLine writes one line under the in-process mutex and the file lock.
 func (g *Guard) appendLine(line []byte) error {
+	deadline := auditLockDeadline()
 	auditFileMu.Lock()
 	defer auditFileMu.Unlock()
 	if err := ensureAuditDir(filepath.Dir(g.auditPath)); err != nil {
@@ -216,7 +217,7 @@ func (g *Guard) appendLine(line []byte) error {
 		if err != nil {
 			return err
 		}
-		if err := lockFile(f); err != nil {
+		if err := lockFileUntil(f, deadline); err != nil {
 			_ = f.Close()
 			return err
 		}
