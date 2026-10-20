@@ -20,6 +20,9 @@ import (
 // releaseDataSHA is the plugins release-data commit P7-PLUG-69 recorded as release-data-sha for v1.2.11.
 const releaseDataSHA = "63f29729fa637558f7fecf99672fcfb9623c4ba7"
 
+// wholeCatalogueSHA is the release-data commit P7-PLUG-86 recorded for v1.2.13, the whole-catalogue release that carries the first platform signatures.
+const wholeCatalogueSHA = "1349341da7c75b91a5eaffe7710d7e2ddd30f6c4"
+
 // TestSignedSinceFreeNonEmpty: the free floor is filled and traces to the evidence sha; the licensed tier is present and still empty.
 func TestSignedSinceFreeNonEmpty(t *testing.T) {
 	data, err := os.ReadFile("signed_since.json")
@@ -49,7 +52,7 @@ func TestSignedSinceFreeNonEmpty(t *testing.T) {
 		t.Errorf("licensed tier = %v (present %v): it stays empty until P7-PLUG-72", licensed, ok)
 	}
 	refForm := regexp.MustCompile(`^nself-org/plugins@[0-9a-f]{40}$`)
-	found := false
+	found, foundAll := false, false
 	for _, r := range doc.Refs[signature.TierFree] {
 		if !refForm.MatchString(r) {
 			t.Errorf("free ref %q is not nself-org/plugins@<40 hex>", r)
@@ -57,6 +60,15 @@ func TestSignedSinceFreeNonEmpty(t *testing.T) {
 		if r == "nself-org/plugins@"+releaseDataSHA {
 			found = true
 		}
+		if r == "nself-org/plugins@"+wholeCatalogueSHA {
+			foundAll = true
+		}
+	}
+	if !foundAll {
+		t.Errorf("free refs %v lack the PLUG-86 whole-catalogue release-data sha %s", doc.Refs[signature.TierFree], wholeCatalogueSHA)
+	}
+	if n := len(doc.Tiers[signature.TierFree]); n < 100 {
+		t.Errorf("free floor names %d slugs, want the whole catalogue (at least 100)", n)
 	}
 	if !found {
 		t.Errorf("free refs %v lack the PLUG-69 release-data sha %s", doc.Refs[signature.TierFree], releaseDataSHA)
@@ -109,5 +121,59 @@ func TestRealRelease(t *testing.T) {
 	}
 	if got := code(signature.Verify(signature.TierLicensed, e.Slug, e.Version, e.SHA256, &rel)); got != "E122" {
 		t.Errorf("free key checked for the licensed tier: code %q, want E122", got)
+	}
+}
+
+// realPlatformEntry is the committed copy of the platform checksums and signatures of one signed binary plugin.
+type realPlatformEntry struct {
+	Slug, Version string
+	Platforms     map[string]struct {
+		SHA256            string            `json:"sha256"`
+		PlatformSignature signature.Release `json:"platform_signature"`
+	}
+}
+
+// TestRealPlatformRelease: every platform signature of the real ci 1.2.13 release (the first whole-catalogue release with platform signatures,
+// P7-PLUG-86) verifies against the compiled-in free key; a flipped signature byte, another platform's hash and the licensed tier all fail.
+func TestRealPlatformRelease(t *testing.T) {
+	data, err := os.ReadFile("testdata/real/ci-1.2.13-platforms.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var e realPlatformEntry
+	if err := json.Unmarshal(data, &e); err != nil {
+		t.Fatal(err)
+	}
+	if len(e.Platforms) != 5 {
+		t.Fatalf("fixture has %d platforms, want 5", len(e.Platforms))
+	}
+	for plat, p := range e.Platforms {
+		rel := p.PlatformSignature
+		if err := signature.VerifyPlatform(signature.TierFree, e.Slug, e.Version, plat, p.SHA256, &rel); err != nil {
+			t.Errorf("%s: real platform signature does not verify: %v", plat, err)
+			continue
+		}
+		sig, err := signing.DecodeSig(rel.Sig)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bad := rel
+		flipped := append([]byte(nil), sig...)
+		flipped[len(flipped)/2] ^= 0x01
+		bad.Sig = signing.EncodeSig(flipped)
+		if got := code(signature.VerifyPlatform(signature.TierFree, e.Slug, e.Version, plat, p.SHA256, &bad)); got != "E121" {
+			t.Errorf("%s: flipped byte: code %q, want E121", plat, got)
+		}
+		if got := code(signature.VerifyPlatform(signature.TierLicensed, e.Slug, e.Version, plat, p.SHA256, &rel)); got != "E122" {
+			t.Errorf("%s: free key checked for the licensed tier: code %q, want E122", plat, got)
+		}
+		for other, q := range e.Platforms {
+			if other == plat {
+				continue
+			}
+			if got := code(signature.VerifyPlatform(signature.TierFree, e.Slug, e.Version, plat, q.SHA256, &rel)); got != "E121" {
+				t.Errorf("%s signature over %s hash: code %q, want E121", plat, other, got)
+			}
+		}
 	}
 }
