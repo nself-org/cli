@@ -50,6 +50,12 @@ Every step first checks whether GitHub already shows it finished. If so it print
 | S9 `admin-image` | Tags admin: an annotated `vX.Y.Z` on the S2 merge commit, pushed from the admin clone. Admin's `docker-publish.yml` starts on a `v*` tag push, and admin's release-tag-drift check fails 6 hours after the bump without the tag. The tag push also starts admin's other tag-triggered workflows (`release.yml` and `docker-publish.yml`). The tag goes on the S2 merge commit; if no merged lockstep PR is found, on the commit that set `package.json` to the version, never the tip of main. S9 then waits for that run for up to 60 minutes (it does not dispatch a second publish) and checks `nself/nself-admin:X.Y.Z`. Only if no run publishes the image does it dispatch the workflow once. An admin tag on another commit stops the run. | `--from S9`. |
 | S10 `sdk-publish` | For each `sdk-*publish*.yml` in cli: done if a run on the tag succeeded, otherwise dispatches it on the tag's ref. Only `sdk-publish-go.yml` gets `-f version`; the py, ts and ts-sdk workflows would overwrite their own manifest version with it, so they publish the version committed at the tag. A file without `workflow_dispatch` is printed for a manual run. An API error stops the run. | `--from S10`. Check the npm and PyPI secrets. |
 
+## Verify the published release
+
+After the workflow succeeds, check GitHub's Releases page: the intended stable `vX.Y.Z` must occupy the **Latest** slot, rather than an older stable release. Confirm the release is published (not a draft or prerelease) and that its assets and checksums are present. Correct a wrong Latest selection before calling the release complete.
+
+Confirm S10's Go workflow created the module tag returned by `bash sdk/go/scripts/sdk-tag.sh vX.Y.Z` on the reviewed release commit, alongside the CLI tag `vX.Y.Z`. The `/v2` Go module maps CLI `v1.M.P` to `sdk/go/v2.M.P`. A green CLI release alone does not prove the nested Go module is available. Confirm the admin tag and image match the CLI version and that the merged Homebrew formula matches both published Darwin checksums; the Homebrew PR and lockstep rerun in S6 are required work.
+
 ## The denylist runs in two places
 
 `.github/release-denylist.json` has five rules. S4 evaluates the three that can be decided at tag time:
