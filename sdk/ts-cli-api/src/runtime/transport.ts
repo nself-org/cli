@@ -156,9 +156,14 @@ export function createTransport(options: ClientOptions): Transport {
 
   async function openapi(opts: CallOptions = {}): Promise<unknown> {
     const res = await doFetch(base + "/openapi.json", { method: "GET", headers: headers("application/json", false), signal: opts.signal });
+    opts.onResponse?.(infoOf(res));
     const text = await res.text();
     if (res.status >= 400) throw fail(decode(text, res), res);
-    return JSON.parse(text);
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw clientError(`response is not JSON (HTTP ${res.status})`, res.status);
+    }
   }
 
   return { call, stream, openapi };
