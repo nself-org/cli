@@ -81,7 +81,7 @@ func PrunePreDeployTars(ctx context.Context, r Remote, remotePath string, keep i
 		drop = append(drop, strings.TrimSuffix(n, ".tar.gz")+"-front.tar.gz", imageRecordPath(n)) // and its image record (D-0700)
 	}
 	rm := fmt.Sprintf(backupsDirProof, q(remotePath)) +
-		fmt.Sprintf(`for n in %s; do f="$x/$n"; if [ -f "$f" ] && [ ! -L "$f" ]; then rm -f -- "$f" && printf 'RM %%s\n' "$n"; fi; done`, strings.Join(quoteAll(drop), " "))
+		fmt.Sprintf(`for n in %s; do f="$x/$n"; if [ -f "$f" ] && [ ! -L "$f" ]; then rm -f -- "$f" || exit $?; printf 'RM %%s\n' "$n"; fi; done`, strings.Join(quoteAll(drop), " "))
 	out, err = r.Run(ctx, shScript(rm))
 	if err != nil {
 		return nil, fmt.Errorf("removing old pre-deploy tars on %s: %w", r.Label(), err)
