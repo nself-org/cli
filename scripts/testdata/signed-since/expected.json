@@ -1,4 +1,16 @@
 {
-  "free": {"ci": "1.2.7", "minio": "v1.2.9-rc.1", "tokens": "1.2.9"},
-  "licensed": {"ai": "1.1.2", "claw": "2.0.0+build7"}
+  "free": {
+    "ci": "1.2.7",
+    "minio": "v1.2.9-rc.1",
+    "tokens": "1.2.9",
+    "numeric-prerelease": "1.2.3-rc.2",
+    "numeric-before-text": "1.2.3-11",
+    "shorter-prerelease": "1.2.3-alpha",
+    "hyphen-prerelease": "1.2.3-alpha-beta.2",
+    "release-after-prerelease": "1.2.3-rc.2+build10"
+  },
+  "licensed": {
+    "ai": "1.1.2",
+    "claw": "2.0.0+build7"
+  }
 }

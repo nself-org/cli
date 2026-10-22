@@ -53,7 +53,9 @@ floor_of() {
     def key: (. // "" | sub("^v"; "") | sub("\\+.*$"; "")) as $v
       | ($v | split("-")) as $p
       | ($p[0] | split(".") | map(tonumber? // 0)) as $n
-      | [($n[0] // 0), ($n[1] // 0), ($n[2] // 0), (if ($p | length) > 1 then 0 else 1 end), ($p[1:] | join("-"))];
+      | ($p[1:] | join("-") | split(".")
+          | map(if test("^[0-9]+$") then [0, tonumber] else [1, .] end)) as $pre
+      | [($n[0] // 0), ($n[1] // 0), ($n[2] // 0), (if ($p | length) > 1 then 0 else 1 end), $pre];
     ([ .[] | (.releases // {}) | to_entries[]
       | select(.value.release_signature != null and (.value.version // "") != "")
       | {slug: .key, version: .value.version} ]
