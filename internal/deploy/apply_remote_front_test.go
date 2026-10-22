@@ -497,11 +497,12 @@ func TestFrontContainerStopsBeforeReload(t *testing.T) {
 func TestFrontPruneOnlyOwnShipped(t *testing.T) {
 	x := frontFixture(t)
 	sites := filepath.Join(x.front, "nginx", "sites")
-	writeFile(t, filepath.Join(sites, "old.conf"), markedConf+"# shipped by the previous deploy\n", 0o644)
+	writeFile(t, filepath.Join(sites, "old.conf"), markedConf+"server { server_name old.example; }\n", 0o644)
 	writeFile(t, filepath.Join(sites, "mine-but-edited.conf"), "# hand edited, marker removed\n", 0o644)
-	x.o.Set.Front.PreviousNames = map[string]map[string][]string{"fake-host": {"nginx/sites/old.conf": {}}} // old.conf shipped with no server_name
+	writeFile(t, filepath.Join(sites, "empty.conf"), markedConf+"# no server_name\n", 0o644)
+	x.o.Set.Front.PreviousNames = map[string]map[string][]string{"fake-host": {"nginx/sites/old.conf": {"old.example"}, "nginx/sites/empty.conf": {}}}
 	x.o.Set.Front.Previous = map[string][]string{
-		"fake-host":  {"nginx/sites/old.conf", "nginx/sites/mine-but-edited.conf", "nginx/sites/api.conf", ".env", "nginx/sites/../../.env"},
+		"fake-host":  {"nginx/sites/old.conf", "nginx/sites/empty.conf", "nginx/sites/mine-but-edited.conf", "nginx/sites/api.conf", ".env", "nginx/sites/../../.env"},
 		"other-host": {"nginx/sites/sibling.conf"}, // another host's record never prunes here
 	}
 	res, err := ApplyRemote(context.Background(), x.o)
@@ -511,7 +512,7 @@ func TestFrontPruneOnlyOwnShipped(t *testing.T) {
 	if exists(filepath.Join(sites, "old.conf")) {
 		t.Error("the file the previous deploy shipped and the new set dropped was not pruned")
 	}
-	for name, want := range map[string]string{"mine-but-edited.conf": "# hand edited", "sibling.conf": "another project"} {
+	for name, want := range map[string]string{"mine-but-edited.conf": "# hand edited", "sibling.conf": "another project", "empty.conf": "# no server_name"} {
 		if got := readFile(t, filepath.Join(sites, name)); !strings.Contains(got, want) {
 			t.Errorf("%s was removed or changed: %q", name, got)
 		}

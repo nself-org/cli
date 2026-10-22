@@ -32,7 +32,9 @@ type frontView struct {
 	Names map[string][]string // that record's server_name set per path; a missing key is "unknown"
 }
 
-func sameNames(a, b []string) bool { return strings.Join(a, " ") == strings.Join(b, " ") }
+func sameNames(a, b []string) bool {
+	return len(a) > 0 && len(b) > 0 && strings.Join(a, " ") == strings.Join(b, " ")
+}
 
 // checkFrontForeign refuses (E485, nothing sent) to replace a host file that is
 // not this project's.
