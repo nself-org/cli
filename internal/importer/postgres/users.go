@@ -25,8 +25,8 @@ func exportUsers(ctx context.Context, tx pgx.Tx, w *portable.Writer, m *portable
 
 // WriteUsers runs selectSQL (one JSON user object per row, ordered by id) inside the snapshot
 // and writes auth/users.jsonl with each user's hash algorithm, the manifest user counts and the
-// independent count(*) of auth.users. A hash that is not bcrypt marks the user reset-required.
-func WriteUsers(ctx context.Context, tx pgx.Tx, w *portable.Writer, m *portable.Manifest, selectSQL string) error {
+// independent count(*) of auth.users. Optional normalizers map source-specific fields before writing. A hash that is not bcrypt marks the user reset-required.
+func WriteUsers(ctx context.Context, tx pgx.Tx, w *portable.Writer, m *portable.Manifest, selectSQL string, normalize ...func(*verify.User, []byte)) error {
 	rows, err := tx.Query(ctx, selectSQL)
 	if err != nil {
 		return err
@@ -43,6 +43,9 @@ func WriteUsers(ctx context.Context, tx pgx.Tx, w *portable.Writer, m *portable.
 		var u verify.User
 		if err = json.Unmarshal(raw, &u); err != nil {
 			return err
+		}
+		for _, fn := range normalize {
+			fn(&u, raw)
 		}
 		u.HashAlgorithm = "none"
 		if u.PasswordHash != nil && len(*u.PasswordHash) >= 4 && (*u.PasswordHash)[:2] == "$2" {
