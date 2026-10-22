@@ -126,6 +126,7 @@ func Run(ctx context.Context, cfg *config.Config, s Source, in Input, opts RunOp
 			return report, err
 		}
 	}
+	in.Bundle = detection.Bundle
 	report.Detection = &detection
 	report.Steps = []string{"extract snapshot", "check portable bundle", "restore pre-data and data", "load auth users", "load storage", "restore post-data", "apply additive metadata", "verify zero mismatches"}
 	if opts.Plan {
@@ -152,7 +153,7 @@ func Run(ctx context.Context, cfg *config.Config, s Source, in Input, opts RunOp
 	if err != nil {
 		err = publicError(err, "E520", "source extraction failed")
 	} else {
-		err = runBundle(ctx, cfg, stage, opts, &report)
+		err = runBundle(ctx, cfg, stage, extracted.Bundle, opts, &report)
 	}
 	b, e := json.MarshalIndent(report, "", "  ")
 	if e == nil {
@@ -163,10 +164,13 @@ func Run(ctx context.Context, cfg *config.Config, s Source, in Input, opts RunOp
 	}
 	return report, withReportHint(err, report.RunID, report.Wrote)
 }
-func runBundle(ctx context.Context, cfg *config.Config, stage string, opts RunOptions, report *Report) error {
-	bundle, err := portable.Open(stage)
-	if err != nil {
-		return errs.New("E520", "extracted bundle failed integrity checks")
+func runBundle(ctx context.Context, cfg *config.Config, stage string, bundle *portable.Reader, opts RunOptions, report *Report) error {
+	if bundle == nil || bundle.Dir() != stage {
+		var err error
+		bundle, err = portable.Open(stage)
+		if err != nil {
+			return errs.New("E520", "extracted bundle failed integrity checks")
+		}
 	}
 	m := bundle.Manifest()
 	progress := &load.Progress{}

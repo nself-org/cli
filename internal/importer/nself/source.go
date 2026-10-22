@@ -56,7 +56,7 @@ func (Source) Detect(ctx context.Context, in importer.Input) (importer.Detection
 		return importer.Detection{}, err
 	}
 	m := r.Manifest()
-	d := importer.Detection{Kind: "nself", Version: m.Postgres.ServerVersion, Schemas: m.DB.Schemas, SourceUsers: m.Auth.Users, Objects: m.Storage.Objects, Notes: []string{fmt.Sprintf("portable bundle from %s %s (source %s)", m.Producer.Tool, m.Producer.Version, m.Producer.Source)}}
+	d := importer.Detection{Kind: "nself", Bundle: r, Version: m.Postgres.ServerVersion, Schemas: m.DB.Schemas, SourceUsers: m.Auth.Users, Objects: m.Storage.Objects, Notes: []string{fmt.Sprintf("portable bundle from %s %s (source %s)", m.Producer.Tool, m.Producer.Version, m.Producer.Source)}}
 	if in.Target == nil {
 		return d, nil
 	}
@@ -78,7 +78,11 @@ func (Source) Detect(ctx context.Context, in importer.Input) (importer.Detection
 // The staged copy is opened again and its manifest must equal the one verified from the source, so
 // a bundle that changes while it is staged is refused (E516) rather than loaded.
 func (Source) Extract(ctx context.Context, in importer.Input, stage string) (importer.Extracted, error) {
-	r, err := open(in)
+	r := in.Bundle
+	var err error
+	if r == nil || r.Dir() != in.Values["dir"] {
+		r, err = open(in)
+	}
 	if err != nil {
 		return importer.Extracted{}, err
 	}
@@ -92,5 +96,5 @@ func (Source) Extract(ctx context.Context, in importer.Input, stage string) (imp
 	if !reflect.DeepEqual(staged.Manifest(), r.Manifest()) {
 		return importer.Extracted{}, errs.New("E516", "bundle changed while it was staged")
 	}
-	return importer.Extracted{Stage: stage}, nil
+	return importer.Extracted{Stage: stage, Bundle: staged}, nil
 }

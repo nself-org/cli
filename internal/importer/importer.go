@@ -17,6 +17,8 @@ type Input struct {
 	Values map[string]string
 	Env    func(string) string
 	Target *config.Config
+	// Bundle is the verified source reader handed from Detect to Extract for this run.
+	Bundle *portable.Reader
 }
 type Detection struct {
 	Kind    string   `json:"kind"`
@@ -29,11 +31,15 @@ type Detection struct {
 	// Objects lists the bucket/key pairs a bundle source will load, for the --plan object-store check.
 	// It never reaches the report: keys can be user file names.
 	Objects []portable.Object `json:"-"`
+	// Bundle carries source verification to Extract and is never serialized.
+	Bundle *portable.Reader `json:"-"`
 }
 
 // Extracted names the written bundle. UntranslatedPolicies lists the source access rules the
 // source could not express as Hasura permissions; they reach the report unchanged.
 type Extracted struct {
+	// Bundle carries the verified staged copy to the loader. Nil asks the runner to open it.
+	Bundle               *portable.Reader
 	Stage                string
 	UntranslatedPolicies []Policy
 }
