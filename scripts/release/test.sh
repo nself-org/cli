@@ -16,6 +16,7 @@ BASE=$(mktemp -d "${TMPDIR:-/tmp}/release-test.XXXXXX")
 trap 'rm -rf "$BASE"' EXIT
 # shellcheck disable=SC1091
 . "$FIXTURES/setup.sh"
+bash "$RELDIR/lockstep_test.sh" || exit 1
 
 PASS=0; FAILN=0
 ok() { echo "PASS $1"; PASS=$((PASS + 1)); }
@@ -108,6 +109,7 @@ check "formula on_intel hash" test "$(formula_hash intel)" = "$INTEL"
 check "formula hashes differ" test "$(formula_hash arm)" != "$(formula_hash intel)"
 check "formula step needed no release download" test -z "$(grep 'releases/download' "$CURL_LOG")"
 check "lockstep job re-run" grep -q 'run rerun 5551 -R nself-org/cli --failed' "$GH_LOG"
+check "standalone lockstep job re-run" grep -q 'run rerun 5552 -R nself-org/cli --failed' "$GH_LOG"
 check "cli image dispatched" grep -q "workflow run docker-publish.yml -R nself-org/cli -f version=$V" "$GH_LOG"
 check "admin tagged on its lockstep merge commit" test "$(git --git-dir="$FIX/admin.git" rev-parse "refs/tags/v$V^{commit}")" = "$(git --git-dir="$FIX/admin.git" rev-parse main)"
 check "admin tag is annotated" test "$(git --git-dir="$FIX/admin.git" cat-file -t "refs/tags/v$V")" = tag

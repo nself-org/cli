@@ -56,14 +56,18 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      - name: Harness regression tests
+        run: |
+          python3 scripts/e2e/proxy-swap-kill_test.py
+          python3 scripts/e2e/proxy-swap-workflow_test.py
       - name: Add leg
         if: ${{ github.event_name == 'pull_request' || inputs.leg == 'add' }}
         run: bash scripts/e2e/proxy-swap.sh --add
       - name: Round-trip leg
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.leg == 'round-trip' }}
+        if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.leg == 'round-trip') }}
         run: bash scripts/e2e/proxy-swap.sh --round-trip --assert-identical
       - name: Kill-mid-remove leg
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.leg == 'round-trip' }}
+        if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.leg == 'round-trip') }}
         run: bash scripts/e2e/proxy-swap.sh --kill-mid-remove
       - name: Renew leg
         if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.leg == 'renew') }}

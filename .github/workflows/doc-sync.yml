@@ -37,7 +37,9 @@ jobs:
         run: bin/wikigen -check
 
       - name: Wiki links resolve
-        run: bash scripts/ci/wiki-link-audit.sh
+        run: |
+          python3 scripts/ci/wiki-link-audit_test.py
+          bash scripts/ci/wiki-link-audit.sh
 
       # Catches a documented/scripted `nself <path> --flag` whose flag was
       # never registered on the command it names (the --quick regression

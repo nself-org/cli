@@ -95,6 +95,12 @@ case "$cmd $sub" in
       prev=$a
     done
     case "$wf" in
+      homebrew-version-lockstep.yml)
+        if [ -f "$ST/rerun-standalone" ]; then
+          echo '[{"databaseId":5552,"status":"completed","conclusion":"success"}]' | emit
+        else
+          echo '[{"databaseId":5552,"status":"completed","conclusion":"failure"}]' | emit
+        fi ;;
       release.yml)
         if has_tag "$br"; then
           printf '[{"databaseId":5551,"status":"completed","conclusion":"success","event":"push","headSha":"%s"}]\n' \
@@ -141,7 +147,8 @@ case "$cmd $sub" in
     [ -f "$ST/artifact_expired" ] && { echo "no valid artifacts found" >&2; exit 1; }
     dir=""; prev=""; for a in "$@"; do [ "$prev" = -D ] && dir=$a; prev=$a; done
     mkdir -p "$dir"; cp "$FIXTURES/checksums.txt" "$dir/checksums.txt" ;;
-  "run rerun") touch "$ST/rerun" ;;
+  "run rerun")
+    if [ "$3" = 5552 ]; then touch "$ST/rerun-standalone"; else touch "$ST/rerun"; fi ;;
   "release view")
     published || { echo "release not found" >&2; exit 1; }
     printf '{"publishedAt":"2026-01-01T00:00:00Z","assets":[{"name":"checksums.txt"},{"name":"nself-1.5.0-darwin-arm64.tar.gz"}]}\n' | emit ;;

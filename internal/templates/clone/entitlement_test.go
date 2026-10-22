@@ -55,6 +55,10 @@ func required(t *testing.T, template string) []string {
 }
 
 func TestTemplateEntitlementE110NoWrite(t *testing.T) {
+	// Check runs in the scaffold target, so an accidental relative write is
+	// visible to the assertion below.
+	dir := t.TempDir()
+	t.Chdir(dir)
 	s := &spy{err: errors.New("no license key configured")}
 	rep := Check(context.Background(), "discord-clone", required(t, "discord-clone"), fixtureCatalog(), s.lic)
 	if len(rep.MissingLicence) != 4 || len(rep.Unknown) != 0 || len(rep.Unchecked) != 0 {
@@ -78,8 +82,11 @@ func TestTemplateEntitlementE110NoWrite(t *testing.T) {
 		t.Errorf("bundles asked = %s, want family, clawde and claw once each", got)
 	}
 	// Check does no I/O: the scaffold target stays untouched.
-	dir := t.TempDir()
-	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+	entries, readErr := os.ReadDir(dir)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if len(entries) != 0 {
 		t.Errorf("target not empty: %v", entries)
 	}
 }

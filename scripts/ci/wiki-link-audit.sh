@@ -12,6 +12,7 @@
 #     wiki's own link-audit notes show [[link]] syntax as an example, and
 #     GitHub Wiki does not resolve a backtick-enclosed token as a link either.
 set -euo pipefail
+export LC_ALL=C
 
 cd "$(dirname "$0")/../.."
 WIKI=".github/wiki"
@@ -64,7 +65,7 @@ for root, _dirs, files in os.walk(wiki):
                         continue
                     found.add(target)
 
-for target in sorted(found):
+for target in sorted(found, key=lambda value: value.encode("utf-8")):
     print(target)
 PYEOF
 

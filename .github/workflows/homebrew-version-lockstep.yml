@@ -1,12 +1,12 @@
 name: Homebrew Version Lockstep
 
 # Standalone gate: fires on every v*.*.* tag push to nself-org/cli.
-# Asserts that the Homebrew formula version already matches the tag being cut.
+# Asserts that the Homebrew formula version matches the tag being cut.
 # The release.yml workflow also has this check embedded; this standalone workflow
-# fires earlier and provides a clear red status without requiring the full build.
+# fires earlier and initially fails while S6 prepares the formula PR.
 #
-# If this gate fails: update Formula/nself.rb in nself-org/homebrew-nself first,
-# then re-push (or re-tag) on cli.
+# S6 re-runs this standalone gate after the formula merges. Resume S6 if the
+# formula or this check still needs repair; release tags are never moved.
 #
 # Authority: S30-T02, doc-sync-ritual.md#release-gates
 
@@ -75,15 +75,15 @@ jobs:
             echo "  CLI tag ${TAG} does not match Homebrew formula version ${FORMULA_VER}."
             echo ""
             echo "  CLI tag v${TAG_VER} does not match Homebrew formula version ${FORMULA_VER}."
-            echo "  Run S14 (formula bump) before cutting this tag."
+            echo "  S6 merges the formula after the release artifacts are built."
             echo ""
             echo "  Steps to fix:"
             echo "    1. Update Formula/nself.rb in nself-org/homebrew-nself:"
             echo "       - Set: version \"${TAG_VER}\""
             echo "       - Update sha256 for the new release archive"
             echo "    2. Commit and push to homebrew-nself main"
-            echo "    3. Delete this tag: git tag -d ${TAG} && git push origin :${TAG}"
-            echo "    4. Re-tag cli at the same commit: git tag ${TAG} && git push origin ${TAG}"
+            echo "    3. Resume scripts/release/release.sh --version ${TAG_VER} --from S6"
+            echo "       S6 re-runs this check after the formula merges."
             exit 1
           fi
 
