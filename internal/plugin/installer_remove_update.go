@@ -45,17 +45,24 @@ func checkReverseDependencies(pluginDir, name string) ([]string, error) {
 
 	var dependents []string
 	for _, entry := range entries {
-		if !entry.IsDir() || entry.Name() == name {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") || strings.EqualFold(entry.Name(), name) {
 			continue
 		}
 		manifestPath := filepath.Join(pluginDir, entry.Name(), "plugin.json")
-		m, err := parseManifest(manifestPath)
+		data, err := os.ReadFile(manifestPath)
+		if os.IsNotExist(err) {
+			continue
+		} // no manifest: not an installed plugin
 		if err != nil {
-			continue // skip directories without valid manifests
+			return nil, fmt.Errorf("cannot read plugin manifest %s", manifestPath)
 		}
-		for _, dep := range m.Dependencies {
+		deps, err := reverseManifestDependencies(data)
+		if err != nil {
+			return nil, fmt.Errorf("cannot parse plugin manifest %s", manifestPath)
+		}
+		for _, dep := range deps {
 			if strings.EqualFold(dep, name) {
-				dependents = append(dependents, m.Name)
+				dependents = append(dependents, entry.Name())
 				break
 			}
 		}

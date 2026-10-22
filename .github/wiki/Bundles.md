@@ -87,7 +87,7 @@ A bundle remove deletes a plugin only when the bundle was the last one in its `i
 - **Data is kept** (schema and tables) unless you pass `--delete-data`. `--delete-data` asks for confirmation on a terminal; without a terminal it needs `--yes`, otherwise it exits 4 with E403 and changes nothing. A dry run needs neither.
 - **Not recorded.** The ledger at `<plugin dir>/.nself-state/bundles.json` records a bundle only when all its plugins are installed. For a bundle it does not record, `bundle remove` fails with E134 (exit 1): nothing it installed is removable as a unit. Remove the individual plugins with `nself plugin remove <plugin>`.
 - **`--dry-run`** prints the plan and changes nothing; it never creates the ledger. `nself remove <plugin> --dry-run` prints the plugin, the data rule, the referencing bundles and whether E133 would refuse, and changes nothing.
-- **A failure stops the run.** The ledger then keeps the bundle recorded and drops only the plugins already removed, so running the same command again continues from there.
+- **A failure stops the run.** The durable checkpoint at `<plugin dir>/.nself-state/remove-intent.json` records the bundle and remaining members. The ledger keeps the bundle recorded and drops only the plugins already removed, so running the same command again continues from there, including after a process interruption. A successful bundle install clears that bundle’s remove intent; other bundles’ checkpoints remain.
 - `--force` keeps its meaning (overwrite hand-edited generated files). `--keep-data` is a hidden, deprecated alias; from v1.5 it does nothing and prints a warning. It is removed in v1.6.0.
 
 `nself remove <plugin>` (and `nself plugin remove`) refuses a plugin an installed bundle still references: **E133**, exit 1, naming the bundle. Remove the bundle, or pass `--force` to remove only that plugin; the ledger then drops the plugin's record.
@@ -101,7 +101,7 @@ A bundle remove deletes a plugin only when the bundle was the last one in its `i
 | Unrecorded bundle | warns, removes nothing, exit 0 | E134, exit 1 |
 | `--keep-data` | keeps data | deprecated no-op, with a warning |
 
-Plugin removal inside a bundle remove still bypasses the reverse-dependency check (`force`), as before.
+Before removing members, the bundle plan keeps any member needed by an installed plugin outside the removal plan and records it as explicit. Dependents are identified by their installed directory names. An unreadable or invalid manifest refuses the plan before anything is removed, because its dependencies cannot be established. Individual removals then use `force` after this plan-wide check.
 
 ## First use (bootstrap)
 
