@@ -45,6 +45,10 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 		return nil, err
 	}
 
+	// Reject invalid docs paths before persisting secrets or changing env modes.
+	if _, err := routemodel.APIDocs(st.cfg); err != nil {
+		return nil, err
+	}
 	if err := st.preflightProxy(); err != nil {
 		return nil, err
 	}
