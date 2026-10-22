@@ -255,7 +255,7 @@ func TestTemplateSecrets_MultiLineAndKeyPositions(t *testing.T) {
 	if env["POSTGRES_PASSWORD"] != "${POSTGRES_PASSWORD}" || env["OTHER"] != "kept" {
 		t.Errorf("multi-line value not replaced whole:\n%s", out)
 	}
-	if !strings.Contains(out, "\n  postgres-db-data: {}") || !strings.Contains(out, "- postgres-db-data:/var/lib") {
+	if !strings.Contains(out, "\n  postgres-db-data: {}") || !strings.Contains(out, "- ${MINIO_ROOT_USER}:/var/lib") {
 		t.Errorf("volume key renamed by a secret:\n%s", out)
 	}
 	if leaks := LiteralSecretLeaks([]byte(out), secrets); len(leaks) != 1 || leaks[0] != "MINIO_ROOT_USER" {
