@@ -15,12 +15,33 @@ package reconcile
 // writing.
 // Constraints: pure on the record (no disk), so plan == apply stays exact.
 
-import "strings"
+import (
+	"path/filepath"
+	"strings"
+)
 
 // pruneLegacyPluginKeys deletes every "@plugins/" key except those in keep.
 func (s *GeneratedState) pruneLegacyPluginKeys(keep map[string]bool) {
 	for key := range s.Files {
 		if strings.HasPrefix(key, PluginsPrefix) && !keep[key] {
+			delete(s.Files, key)
+		}
+	}
+}
+
+// rekeyAbsolutePlugins upgrades old absolute plugin paths before pruning them.
+// Unrelated absolute files retain their keys and the current record is untouched.
+func (s *GeneratedState) rekeyAbsolutePlugins(pluginDir string) {
+	for key, hash := range s.Files {
+		if !strings.HasPrefix(key, AbsPrefix) {
+			continue
+		}
+		path := string(filepath.Separator) + filepath.FromSlash(strings.TrimPrefix(key, AbsPrefix))
+		canonical := displayPath(pluginDir, path)
+		if strings.HasPrefix(canonical, PluginsPrefix) {
+			if _, exists := s.Files[canonical]; !exists {
+				s.Files[canonical] = hash
+			}
 			delete(s.Files, key)
 		}
 	}

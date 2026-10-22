@@ -55,7 +55,8 @@ func (s *GeneratedState) HandEdited(path string, current []byte) bool {
 // current bytes. A nil record (no state yet) answers false for everything:
 // the first run on an existing project records and never blocks.
 func (s *GeneratedState) HandEditedFn(projectDir string) func(path string) bool {
-	return s.handEditedFnWith(projectDir, nil, "")
+	pluginDir := strings.TrimSpace(cascadeValue(projectDir, nil, "NSELF_PLUGIN_DIR"))
+	return s.handEditedFnWith(projectDir, nil, pluginDir)
 }
 
 // handEditedFnWith is HandEditedFn with the env files a pending change will

@@ -138,6 +138,7 @@ func PlannedRecord(state *GeneratedState, pb *nbuild.PlannedBuild) (*GeneratedSt
 		}
 		next.Host = append([]GeneratedHostEntry(nil), state.Host...)
 	}
+	next.rekeyAbsolutePlugins(pb.PluginDir)
 	next.RecordPlanned(pb)
 	keep := make(map[string]bool, len(pb.Files))
 	for key := range pb.Files {
