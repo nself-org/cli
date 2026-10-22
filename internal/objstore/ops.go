@@ -60,6 +60,16 @@ func (c *Client) EnsureBucket(ctx context.Context, bucket string) error {
 // seekable body is hashed and rewound, any other body is spooled to a
 // temporary file (removed before return).
 func (c *Client) Put(ctx context.Context, bucket, key string, body io.Reader, size int64) error {
+	return c.put(ctx, bucket, key, body, size, false)
+}
+
+// PutIfAbsent uploads only when no object exists. A concurrent creation returns
+// an *Error with Status 412, without replacing the existing object.
+func (c *Client) PutIfAbsent(ctx context.Context, bucket, key string, body io.Reader, size int64) error {
+	return c.put(ctx, bucket, key, body, size, true)
+}
+
+func (c *Client) put(ctx context.Context, bucket, key string, body io.Reader, size int64, absent bool) error {
 	if err := checkBucket(bucket); err != nil {
 		return err
 	}
@@ -81,6 +91,10 @@ func (c *Client) Put(ctx context.Context, bucket, key string, body io.Reader, si
 	req, err := c.build(ctx, http.MethodPut, bucket, key, nil, payload)
 	if err != nil {
 		return err
+	}
+	if absent {
+		req.Header.Set("If-None-Match", "*")
+		c.signer().Sign(req, payload, c.now())
 	}
 	req.ContentLength = size
 	if size == 0 {

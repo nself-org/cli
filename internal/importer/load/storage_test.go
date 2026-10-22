@@ -9,6 +9,7 @@ import (
 	"github.com/nself-org/cli/internal/objstore"
 	"github.com/nself-org/cli/internal/portable"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -37,6 +38,28 @@ func TestStorageMissingAndExemptions(t *testing.T) {
 	r, err := portable.Open(dir)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, status := range []int{http.StatusOK, http.StatusPreconditionFailed} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				if req.Method == http.MethodHead {
+					w.WriteHeader(http.StatusOK)
+					return
+				}
+				if req.Method != http.MethodPut || req.Header.Get("If-None-Match") != "*" {
+					t.Error("object upload must be conditional")
+				}
+				w.WriteHeader(status)
+			}))
+			defer srv.Close()
+			_, err := ApplyStorage(context.Background(), r, &objstore.Client{Endpoint: srv.URL, AccessKey: "fixture-access", SecretKey: "fixture-secret"}, false)
+			if status == http.StatusOK && err != nil {
+				t.Fatal(err)
+			}
+			if status == http.StatusPreconditionFailed && codeOf(err) != "E519" {
+				t.Fatalf("concurrent creation must be refused: %v", err)
+			}
+		})
 	}
 	if err = StoragePreflight(m, nil, false); err == nil || !strings.Contains(err.Error(), "E529") {
 		t.Fatal("missing store not refused")

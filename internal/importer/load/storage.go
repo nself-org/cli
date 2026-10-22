@@ -42,8 +42,8 @@ func canonicalKey(key string) (string, bool) {
 }
 
 // StorageCollisions refuses, before the first write, a bundle whose objects would replace objects
-// the target store already holds (D-0723): the load is an unconditional PUT and verification
-// compares against the bundle, so an overwrite would otherwise pass. Keys are compared in the
+// the target store already holds (D-0723), providing early refusal before restore.
+// Conditional PUT also refuses objects created after this preflight. Keys are compared in the
 // store's canonical form, because a PUT to "a//b" replaces "a/b" without listing differently; a key
 // with no canonical form, or two bundle keys that share one, are refused. A bucket the target does
 // not have yet is empty. Errors name no key.
@@ -100,9 +100,13 @@ func ApplyStorage(ctx context.Context, r *portable.Reader, store *objstore.Clien
 		if e != nil {
 			return nil, errs.New("E521", "object bundle member invalid")
 		}
-		e = store.Put(ctx, o.Bucket, o.Key, f, o.Bytes)
+		e = store.PutIfAbsent(ctx, o.Bucket, o.Key, f, o.Bytes)
 		_ = f.Close()
 		if e != nil {
+			var apiErr *objstore.Error
+			if errors.As(e, &apiErr) && apiErr.Status == 412 {
+				return nil, errs.New("E519", "target object store already has an object the bundle would overwrite")
+			}
 			return nil, errs.New("E521", "object load failed")
 		}
 	}
