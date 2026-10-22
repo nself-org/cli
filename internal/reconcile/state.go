@@ -22,7 +22,8 @@ package reconcile
 // Safe-On-Live.md, not normalised here). Recording is bookkeeping both compat
 // modes do; only the refusal that reads the record is v1.5 behaviour (ADR 0021,
 // gated in confirm.go). A first run on a project without a record records it
-// and warns once (apply.go); it never blocks.
+// and warns once (apply.go); marked files differing from the fresh render
+// still need --force.
 
 import (
 	"crypto/sha256"

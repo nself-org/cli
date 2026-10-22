@@ -74,11 +74,11 @@ func validateNoPlaceholderSecrets(cfg *Config) error {
 	}
 	for _, f := range required {
 		if f.value == "" {
-			return fmt.Errorf("%s is empty in %s environment — set a unique value in .env: %w",
+			return fmt.Errorf("%s is empty in %s environment — set a unique value in .env.secrets (which overrides .env): %w",
 				f.name, cfg.Env, errs.ErrPlaceholderSecret)
 		}
 		if isPlaceholderSecret(f.value) {
-			return fmt.Errorf("%s is a known placeholder value in %s environment — set a unique value in .env: %w",
+			return fmt.Errorf("%s is a known placeholder value in %s environment — set a unique value in .env.secrets (which overrides .env): %w",
 				f.name, cfg.Env, errs.ErrPlaceholderSecret)
 		}
 	}
@@ -103,7 +103,7 @@ func validateNoPlaceholderSecrets(cfg *Config) error {
 	}
 	for _, f := range optional {
 		if isPlaceholderSecret(f.value) {
-			return fmt.Errorf("%s is a known placeholder value in %s environment — set a unique value in .env: %w",
+			return fmt.Errorf("%s is a known placeholder value in %s environment — set a unique value in .env.secrets (which overrides .env): %w",
 				f.name, cfg.Env, errs.ErrPlaceholderSecret)
 		}
 	}

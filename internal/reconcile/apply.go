@@ -77,8 +77,8 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (applied *Pl
 
 	// P7-LIVE-04 (EPIC D5): the generated-state record tells a generated change
 	// from a human one. A missing record is the first run on an existing
-	// project: nothing is detected (never block), the apply records what it
-	// wrote and warns once below. A record a caller already supplied (tests,
+	// project: compute compares marked files to the fresh render, and the
+	// apply records what it wrote and warns once below. A record a caller already supplied (tests,
 	// later callers) is used as given.
 	state, err := LoadGeneratedState(req.ProjectDir)
 	if err != nil {

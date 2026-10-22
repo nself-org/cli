@@ -130,7 +130,7 @@ func checkTablePrefixConflict(pluginDir, newPluginName string, newTables []strin
 	}
 
 	for _, entry := range entries {
-		if !entry.IsDir() {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
 		if isOwnPluginDir(entry.Name(), newPluginName) {
@@ -169,7 +169,7 @@ func checkTableConflicts(pluginDir string, newPlugin *PluginManifest) error {
 	}
 
 	for _, entry := range entries {
-		if !entry.IsDir() || isOwnPluginDir(entry.Name(), newPlugin.Name) {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") || isOwnPluginDir(entry.Name(), newPlugin.Name) {
 			continue
 		}
 		existing, err := parseManifest(filepath.Join(pluginDir, entry.Name(), "plugin.json"))

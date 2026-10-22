@@ -194,7 +194,7 @@ func (e *surfaceEnv) resetProject(t *testing.T) {
 	if envName == "" {
 		envName = "dev"
 	}
-	if err := os.WriteFile(filepath.Join(e.proj, ".env"), []byte("PROJECT_NAME=fixture\nENV="+envName+"\nMINIO_ENABLED=false\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(e.proj, ".env"), []byte("PROJECT_NAME=fixture\nENV="+envName+"\nMINIO_ENABLED=false\nPOSTGRES_PASSWORD=actuallyuniquevalueforthisenvironmentnumberone\nHASURA_GRAPHQL_ADMIN_SECRET=totallydifferentvaluealtogetherforthisservice\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }

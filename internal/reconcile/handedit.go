@@ -19,6 +19,7 @@ package reconcile
 // formatter or editor makes counts.
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -212,3 +213,21 @@ func warnHandEdits(req Request, p *Plan, c *computed, v15 bool) error {
 
 // firstRunNotice is the one-time warning of a project's first recorded apply.
 const firstRunNotice = "nself: no generated-state record was found; the files this build wrote are recorded in .nself/state/generated.json, and hand-edits are detected against them from now on\n"
+
+// Without a recorded baseline, the fresh render is the only safe comparison
+// for a marked file. Differences need the same explicit force as recorded edits.
+func unrecordedHandEdited(before, after ArtifactSet, state *GeneratedState, next func(string) bool) func(string) bool {
+	return func(path string) bool {
+		if next != nil && next(path) {
+			return true
+		}
+		if state != nil {
+			if _, ok := state.Files[path]; ok {
+				return false
+			}
+		}
+		current, exists := before[path]
+		fresh, rendered := after[path]
+		return exists && rendered && IsGenerated(current.Data) && !bytes.Equal(current.Data, fresh.Data)
+	}
+}
