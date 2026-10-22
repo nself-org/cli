@@ -44,10 +44,13 @@ func (g *Generator) cacheEngine() string {
 		return EngineRedis
 	}
 	if pin, ok := ProjectPins()["redis"]; ok {
-		if strings.Contains(repoOf(pin), "valkey") {
-			return EngineValkey
+		if engine := cacheImageEngine(repoOf(pin)); engine != "" {
+			return engine
 		}
-		return EngineRedis
+		if engine := existingCacheEngine(); engine != "" {
+			return engine
+		}
+		return EngineRedis // an opaque existing pin alone must not switch volumes
 	}
 	// Evidence that the project already runs a cache beats the mode default, so an
 	// existing project never moves to a new empty volume without being asked.
@@ -97,7 +100,8 @@ func existingCacheEngine() string {
 func ExistingCacheEngine(composeYAML []byte) string {
 	var doc struct {
 		Services map[string]struct {
-			Image string `yaml:"image"`
+			Image   string        `yaml:"image"`
+			Volumes []interface{} `yaml:"volumes"`
 		} `yaml:"services"`
 		Volumes map[string]interface{} `yaml:"volumes"`
 	}
@@ -105,8 +109,29 @@ func ExistingCacheEngine(composeYAML []byte) string {
 		return ""
 	}
 	if svc, ok := doc.Services["redis"]; ok {
-		if strings.Contains(strings.ToLower(svc.Image), "valkey") {
-			return EngineValkey
+		if engine := cacheImageEngine(cacheImageExpanded(svc.Image)); engine != "" {
+			return engine
+		}
+		for _, mount := range svc.Volumes {
+			source, target := "", ""
+			switch v := mount.(type) {
+			case string:
+				fields := strings.Split(v, ":")
+				if len(fields) >= 2 {
+					source, target = fields[0], fields[1]
+				}
+			case map[string]interface{}:
+				source, _ = v["source"].(string)
+				target, _ = v["target"].(string)
+			}
+			if strings.TrimRight(target, "/") == "/data" {
+				switch cacheImageExpanded(source) {
+				case "valkey_data":
+					return EngineValkey
+				case "redis_data":
+					return EngineRedis
+				}
+			}
 		}
 		return EngineRedis
 	}

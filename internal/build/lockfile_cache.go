@@ -20,7 +20,7 @@ import (
 )
 
 // installLockPins installs the image pins for this render, plus the cache engine
-// the existing compose shows when the lock has no redis pin, and returns the
+// the existing compose shows (also used for opaque pins), and returns the
 // function that restores the previous state.
 func (st *buildState) installLockPins() (func(), error) {
 	restorePins, err := st.installImagePins()
@@ -28,10 +28,8 @@ func (st *buildState) installLockPins() (func(), error) {
 		return nil, err
 	}
 	hint := ""
-	if _, pinned := compose.ProjectPins()["redis"]; !pinned {
-		if data, rerr := st.sink.ReadFile(filepath.Join(st.workdir, "docker-compose.yml")); rerr == nil {
-			hint = compose.ExistingCacheEngine(data)
-		}
+	if data, rerr := st.sink.ReadFile(filepath.Join(st.workdir, "docker-compose.yml")); rerr == nil {
+		hint = compose.ExistingCacheEngine(data)
 	}
 	restoreHint := compose.SetExistingCacheEngine(hint)
 	return func() { restoreHint(); restorePins() }, nil

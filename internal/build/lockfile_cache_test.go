@@ -89,3 +89,20 @@ func TestBuildCacheEngineControls(t *testing.T) {
 		t.Errorf("explicit valkey over an existing redis: image %q volume %q", img, vol)
 	}
 }
+
+func TestBuildCacheImageInterpolation(t *testing.T) {
+	for _, tc := range []struct{ name, image, extra, volume string }{
+		{"env beats default", "${CACHE_IMAGE:-redis:7-alpine}", "CACHE_IMAGE=valkey/valkey:8.1-alpine\n", "valkey_data"},
+		{"env overrides valkey default", "${CACHE_IMAGE:-valkey/valkey:8.1-alpine}", "CACHE_IMAGE=redis:7-alpine\n", "redis_data"},
+		{"default", "${CACHE_IMAGE:-valkey/valkey:8.1-alpine}", "CACHE_IMAGE=\n", "valkey_data"},
+		{"opaque mounted volume", "example/custom-cache:1", "", "valkey_data"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			existing := "services:\n  redis:\n    image: " + tc.image + "\n    volumes:\n      - " + tc.volume + ":/data\nvolumes:\n  redis_data: {}\n  valkey_data: {}\n"
+			_, volume := cacheOf(t, existing, tc.extra)
+			if volume != tc.volume {
+				t.Errorf("volume = %s, want %s", volume, tc.volume)
+			}
+		})
+	}
+}
