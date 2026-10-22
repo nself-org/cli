@@ -695,10 +695,10 @@ func TestPilotSchemaEnumsAndArrays(t *testing.T) {
 	}
 }
 
-// TestPilotJSONUnderV15Guard runs the JSON tests of the pilots (and the doctor
-// JSON unit tests that predate them) with NSELF_V15=1 set through t.Setenv, so
-// the default CI run, which never sets the variable, covers v1.5 mode: a
-// pilot change that only breaks under the flag fails here, not at the flip.
+// TestPilotJSONUnderV15Guard covers older JSON emitters under v1.5.
+// The standalone PilotJSONStatus/Doctor/Config tests already run their emitters
+// in both modes and their live binaries in v1.5; repeating them here doubled
+// the live doctor checks without adding coverage (D-0915).
 func TestPilotJSONUnderV15Guard(t *testing.T) {
 	t.Setenv("NSELF_V15", "1")
 	for _, tc := range []struct {
@@ -707,9 +707,6 @@ func TestPilotJSONUnderV15Guard(t *testing.T) {
 	}{
 		{"PrintDoctorJSON_Valid", TestPrintDoctorJSON_Valid},
 		{"PrintDoctorJSON_EmptyChecks", TestPrintDoctorJSON_EmptyChecks},
-		{"PilotJSONStatus", TestPilotJSONStatus},
-		{"PilotJSONDoctor", TestPilotJSONDoctor},
-		{"PilotJSONConfig", TestPilotJSONConfig},
 		{"PilotSchemaEnumsAndArrays", TestPilotSchemaEnumsAndArrays},
 	} {
 		t.Run(tc.name, tc.fn)

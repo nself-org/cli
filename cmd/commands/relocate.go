@@ -39,7 +39,8 @@ import (
 	"github.com/nself-org/cli/internal/plugin"
 )
 
-// envNoAutoAdd turns the break-out auto-add off: the command fails with E404.
+// envNoAutoAdd is a shell-exported bootstrap policy (1 or true, any case).
+// It is read before project config; .env files cannot set this policy.
 const envNoAutoAdd = "NSELF_NO_AUTO_ADD"
 
 // autoAddPlugin is the install seam and relocateWarnOut the warning's writer;
@@ -82,7 +83,7 @@ func relocateBreakout(cmdName string, args []string) (handled bool, err error) {
 	if hasPrefix(append([]string{cmdName}, args...), row.From) {
 		old = strings.Join(row.From, " ")
 	}
-	if os.Getenv(envNoAutoAdd) == "1" {
+	if v := os.Getenv(envNoAutoAdd); v == "1" || strings.EqualFold(v, "true") {
 		return true, breakoutRefused(old, row.Plugin, errors.New("automatic install is switched off ("+envNoAutoAdd+"=1)"))
 	}
 	if _, err := os.Stat(filepath.Join(resolvePluginDir(), row.Plugin, ".disabled")); err == nil {
@@ -102,7 +103,7 @@ func relocateBreakout(cmdName string, args []string) (handled bool, err error) {
 		_, _ = fmt.Fprintf(relocateWarnOut, "warning: 'nself %s' now comes from the %s plugin; installed %s@%s\n", old, row.Plugin, row.Plugin, installed)
 	}
 	if err := plugin.ProxyBinary(proxyBinaryName(bin), row.Plugin, pluginArgs); err != nil {
-		return true, reportProxyFailure(os.Stderr, err)
+		return true, err // main reports coded failures and preserves silent child exits
 	}
 	return true, nil
 }
@@ -168,6 +169,7 @@ func breakoutRow(cmdName string, args []string) (best canonRowT, pluginArgs []st
 		}
 		words = append(words, a)
 	}
+	words = breakoutWords(words)
 	for _, r := range canonTable.Breakouts {
 		if len(r.To) > 0 && hasPrefix(words, r.From) && (!ok || len(r.From) > len(best.From)) {
 			best, ok = r, true
@@ -249,4 +251,14 @@ func warnRelocatedCommand(cmdName string) bool {
 	}
 	deprecationRegistry.Warn(os.Stderr, item)
 	return true
+}
+
+// breakoutWords resolves authoring aliases before matching relocation rows,
+// including after the authoring command has been removed from the core tree.
+func breakoutWords(words []string) []string {
+	if len(words) >= 2 && words[0] == "plugin" && pluginInitCmd.HasAlias(words[1]) {
+		words = append([]string{}, words...)
+		words[1] = pluginInitCmd.Name()
+	}
+	return words
 }

@@ -42,7 +42,7 @@ func rewriteCanonArgsWith(t *canonTableT, root *cobra.Command, args []string, v1
 	for end < len(args) && !strings.HasPrefix(args[end], "-") {
 		end++
 	}
-	words := args[start:end]
+	words := breakoutWords(args[start:end])
 	if v15 {
 		// compat.V15(P7-CANON-21): old spellings run unchanged -> rewritten to the canonical path with one warning (removed rows fail with E410)
 		return rewriteOldToNew(t, root, args, start, words)
