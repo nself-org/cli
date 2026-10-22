@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -89,6 +90,11 @@ func TestMountIgnoresOverride(t *testing.T) {
 }
 
 func TestMountEmptyFileE125(t *testing.T) {
+	// The empty-cache case must not renew a key inherited from other fixtures.
+	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", " ") // empty after trimming; also bypass the saved key file
+	for i := 1; i <= 10; i++ {
+		t.Setenv(fmt.Sprintf("NSELF_LICENSE_KEY_%d", i), "")
+	}
 	compattest.Set(t, true)
 	t.Setenv("LICENSE_CACHE_PATH", filepath.Join(t.TempDir(), "missing"))
 	t.Setenv("LICENSE_PUBLIC_KEY_OVERRIDE", "")

@@ -81,7 +81,16 @@ func renderPluginConfigDir(workdir, configsDir string, vars map[string]string) (
 		}
 
 		// Render ${VAR} substitutions.
-		output := renderTemplate(string(content), vars)
+		templateVars := vars
+		if isComposeConfig(relPath) {
+			templateVars = make(map[string]string, len(vars))
+			for key, value := range vars {
+				templateVars[key] = value
+			}
+			templateVars["POSTGRES_PASSWORD"] = "${POSTGRES_PASSWORD}"
+			content = []byte(strings.ReplaceAll(string(content), ":${POSTGRES_PASSWORD}@", ":${POSTGRES_PASSWORD_URLENC:-${POSTGRES_PASSWORD}}@"))
+		}
+		output := renderTemplate(string(content), templateVars)
 
 		// Write rendered file to workdir, preserving directory structure.
 		destPath := filepath.Join(workdir, relPath)
@@ -190,4 +199,11 @@ func expandHomeDir(dir string) string {
 		return dir
 	}
 	return filepath.Join(home, strings.TrimPrefix(dir, "~"))
+}
+
+// Compose config templates must leave password interpolation to Compose.
+// Other configs (for example database clients) consume the literal at runtime.
+func isComposeConfig(name string) bool {
+	name = filepath.Base(name)
+	return (strings.HasPrefix(name, "docker-compose") || strings.HasPrefix(name, "compose.")) && (strings.HasSuffix(name, ".yml") || strings.HasSuffix(name, ".yaml"))
 }

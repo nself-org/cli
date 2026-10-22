@@ -109,6 +109,16 @@ func (st *buildState) generateCompose() error {
 		}
 		st.entitlementErr = err
 	}
+	// Plugin overlays share the base compose interpolation environment.
+	for _, path := range pluginComposeFiles {
+		data, err := st.sink.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("reading plugin overlay: %w", err)
+		}
+		if err := st.sink.WriteFile(path, TemplateSecrets(data, st.secretMap), 0600); err != nil {
+			return fmt.Errorf("templating plugin overlay: %w", err)
+		}
+	}
 	st.pluginComposeFiles = pluginComposeFiles
 
 	// Write the compose manifest so start/stop/restart know which files
