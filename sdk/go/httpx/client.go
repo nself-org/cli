@@ -77,7 +77,8 @@ func (c *Client) Do(ctx context.Context, req *http.Request) (*http.Response, err
 		req.Header.Set("User-Agent", c.opts.UserAgent)
 	}
 
-	getBody, buffered, err := bodySource(req, c.opts.MaxRetries > 0)
+	sourceReq := req.Clone(ctx)
+	getBody, buffered, err := bodySource(sourceReq, c.opts.MaxRetries > 0)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +101,7 @@ func (c *Client) Do(ctx context.Context, req *http.Request) (*http.Response, err
 			case <-time.After(wait):
 			}
 		}
-		reqClone := req.Clone(ctx)
+		reqClone := sourceReq.Clone(ctx)
 		if getBody != nil {
 			reqClone.GetBody = getBody
 			// The first attempt can send the caller's own body unless Do
@@ -137,7 +138,7 @@ func (c *Client) Do(ctx context.Context, req *http.Request) (*http.Response, err
 // maxBufferedBody (req.Body is then rebuilt so the one attempt still sends it
 // whole). buffered reports that req.Body was read into memory and closed, so
 // even the first attempt must use the copy; req.ContentLength is set to the
-// buffered length.
+// buffered length on this private request clone.
 func bodySource(req *http.Request, retries bool) (getBody func() (io.ReadCloser, error), buffered bool, err error) {
 	if !retries || req.Body == nil || req.Body == http.NoBody {
 		return nil, false, nil
@@ -159,7 +160,12 @@ func bodySource(req *http.Request, retries bool) (getBody func() (io.ReadCloser,
 		return nil, false, nil
 	}
 	_ = orig.Close()
-	req.ContentLength = int64(len(data))
+	if req.ContentLength > 0 && req.ContentLength != int64(len(data)) {
+		return nil, false, fmt.Errorf("httpx: request content length %d differs from buffered length %d", req.ContentLength, len(data))
+	}
+	if len(req.Trailer) == 0 {
+		req.ContentLength = int64(len(data))
+	}
 	return func() (io.ReadCloser, error) {
 		return io.NopCloser(bytes.NewReader(data)), nil
 	}, true, nil
