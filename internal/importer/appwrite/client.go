@@ -8,6 +8,7 @@ package appwrite
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -20,6 +21,8 @@ import (
 	"github.com/nself-org/cli/internal/httptimeout"
 )
 
+var errPageTooLarge = errs.New("E517", "source page exceeds import size limit")
+
 const (
 	pageSize     = 100
 	maxPageBytes = 64 << 20
@@ -29,6 +32,7 @@ const (
 type client struct {
 	base, project, key string
 	http, dl           *http.Client
+	pageBytes          int64 // zero uses maxPageBytes
 }
 
 func newClient(endpoint, project, key string) (*client, error) {
@@ -78,6 +82,9 @@ func (c *client) do(ctx context.Context, hc *http.Client, path string, q url.Val
 	}
 	if resp.StatusCode != http.StatusOK {
 		_ = resp.Body.Close()
+		if resp.StatusCode == http.StatusRequestEntityTooLarge {
+			return nil, errPageTooLarge
+		}
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 			return nil, errs.New("E517", "source connection configuration invalid")
 		}
@@ -92,7 +99,18 @@ func (c *client) getJSON(ctx context.Context, path string, q url.Values, out any
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if json.NewDecoder(io.LimitReader(resp.Body, maxPageBytes)).Decode(out) != nil {
+	limit := c.pageBytes
+	if limit <= 0 {
+		limit = maxPageBytes
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	if err != nil {
+		return errs.New("E517", "source schema lookup failed")
+	}
+	if int64(len(data)) > limit {
+		return errPageTooLarge
+	}
+	if json.Unmarshal(data, out) != nil {
 		return errs.New("E517", "source schema lookup failed")
 	}
 	return nil
@@ -106,6 +124,7 @@ func queryJSON(method string, values ...any) string {
 
 // page is a list response: the server-side total plus the raw items under key.
 type page struct {
+	Limit int
 	Total int64
 	Items []json.RawMessage
 }
@@ -113,8 +132,12 @@ type page struct {
 // listPage fetches one page of the collection under key. A non-empty after is a $id cursor;
 // a positive offset pages by position instead (attribute documents carry no $id).
 func (c *client) listPage(ctx context.Context, path, key, after string, offset int) (page, error) {
+	return c.listPageLimit(ctx, path, key, after, offset, pageSize)
+}
+
+func (c *client) listPageLimit(ctx context.Context, path, key, after string, offset, limit int) (page, error) {
 	q := url.Values{}
-	q.Add("queries[]", queryJSON("limit", pageSize))
+	q.Add("queries[]", queryJSON("limit", limit))
 	if after != "" {
 		q.Add("queries[]", queryJSON("cursorAfter", after))
 	}
@@ -122,10 +145,25 @@ func (c *client) listPage(ctx context.Context, path, key, after string, offset i
 		q.Add("queries[]", queryJSON("offset", offset))
 	}
 	var raw map[string]json.RawMessage
-	if err := c.getJSON(ctx, path, q, &raw); err != nil {
-		return page{}, err
+	for {
+		err := c.getJSON(ctx, path, q, &raw)
+		if errors.Is(err, errPageTooLarge) && limit > 1 {
+			limit /= 2
+			q.Set("queries[]", queryJSON("limit", limit))
+			if after != "" {
+				q.Add("queries[]", queryJSON("cursorAfter", after))
+			}
+			if offset > 0 {
+				q.Add("queries[]", queryJSON("offset", offset))
+			}
+			continue
+		}
+		if err != nil {
+			return page{}, err
+		}
+		break
 	}
-	var p page
+	p := page{Limit: limit}
 	if t, ok := raw["total"]; ok && json.Unmarshal(t, &p.Total) != nil {
 		return page{}, errs.New("E517", "source schema lookup failed")
 	}
@@ -144,15 +182,17 @@ func (c *client) each(ctx context.Context, path, key string, fn func(json.RawMes
 // walk is each with a choice of cursor ($id) or offset paging.
 func (c *client) walk(ctx context.Context, path, key string, cursor bool, fn func(json.RawMessage) error) (int64, error) {
 	after, total, seen := "", int64(0), 0
+	limit := pageSize
 	for first := true; ; first = false {
 		offset, prev := 0, after
 		if !cursor {
 			offset = seen
 		}
-		p, err := c.listPage(ctx, path, key, after, offset)
+		p, err := c.listPageLimit(ctx, path, key, after, offset, limit)
 		if err != nil {
 			return 0, err
 		}
+		limit = p.Limit
 		if first {
 			total = p.Total
 		}
@@ -178,7 +218,7 @@ func (c *client) walk(ctx context.Context, path, key string, cursor bool, fn fun
 		if !cursor && int64(seen) > total+pageSize {
 			return 0, errs.New("E517", "source schema lookup failed")
 		}
-		if len(p.Items) < pageSize {
+		if len(p.Items) < p.Limit {
 			return total, nil
 		}
 	}

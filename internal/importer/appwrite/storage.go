@@ -6,8 +6,11 @@ package appwrite
 // be valid S3 names after lowercasing and a collision is an error, never a silent merge.
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"regexp"
 	"strings"
@@ -78,10 +81,11 @@ func (c *client) exportStorage(ctx context.Context, w *portable.Writer) (storage
 		var filePerms int64
 		total, e := c.each(ctx, "/storage/buckets/"+url.PathEscape(b.ID)+"/files", "files", func(raw json.RawMessage) error {
 			var f struct {
-				ID    string   `json:"$id"`
-				Name  string   `json:"name"`
-				Size  int64    `json:"sizeOriginal"`
-				Perms []string `json:"$permissions"`
+				ID        string   `json:"$id"`
+				Name      string   `json:"name"`
+				Signature string   `json:"signature"`
+				Size      int64    `json:"sizeOriginal"`
+				Perms     []string `json:"$permissions"`
 			}
 			if json.Unmarshal(raw, &f) != nil || f.ID == "" {
 				return errs.New("E520", "source tables unavailable")
@@ -101,13 +105,15 @@ func (c *client) exportStorage(ctx context.Context, w *portable.Writer) (storage
 			if e != nil {
 				return errs.New("E520", "source tables unavailable")
 			}
-			file, e := w.WriteFile(member, body)
+			// Appwrite exposes an MD5 signature; it detects changed or truncated downloads.
+			hash := md5.New()
+			file, e := w.WriteFile(member, io.TeeReader(body, hash))
 			_ = body.Close()
 			if e != nil {
 				return errs.New("E520", "dump member write failed")
 			}
 			obj, e := portable.NewObject(name, key, file)
-			if e != nil || (f.Size > 0 && f.Size != file.Bytes) {
+			if e != nil || (f.Size > 0 && f.Size != file.Bytes) || (f.Signature != "" && !strings.EqualFold(f.Signature, hex.EncodeToString(hash.Sum(nil)))) {
 				return errs.New("E520", "dump member write failed")
 			}
 			res.Storage.Objects = append(res.Storage.Objects, obj)

@@ -69,7 +69,7 @@ func (Source) Detect(ctx context.Context, in importer.Input) (importer.Detection
 		return d, err
 	}
 	var users page
-	if users, err = c.listPage(ctx, "/users", "users", "", 0); err != nil {
+	if users, err = c.listPageLimit(ctx, "/users", "users", "", 0, 1); err != nil {
 		return d, errs.New("E517", "source auth lookup failed")
 	}
 	d.SourceUsers = int(users.Total)
