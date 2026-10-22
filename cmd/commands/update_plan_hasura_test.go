@@ -19,7 +19,7 @@ func TestUpdatePlanHasuraRow(t *testing.T) {
 		t.Fatal("image lock needs hasura and hasura-v14")
 	}
 	older := "hasura/graphql-engine:v2.43.0"
-	newer := "docker.io/hasura/graphql-engine:v2.99.0@sha256:" + strings.Repeat("ab", 32)
+	newer := "docker.io/hasura/graphql-engine:v2.99.0"
 	for _, tc := range []struct {
 		name       string
 		v15        bool
@@ -34,6 +34,7 @@ func TestUpdatePlanHasuraRow(t *testing.T) {
 		{"v1.5 moves an older tag with a note", true, older, cur.String(), "one-way"},
 		{"v1.5 keeps v2.51.0 without a note", true, cur.String(), cur.String(), ""},
 		{"v1.5 never moves a newer pin back", true, newer, "", "backup restored"},
+		{"v1.5 leaves a newer tag with an unknown digest alone", true, newer + "@sha256:" + strings.Repeat("ab", 32), "", "does not know"},
 		{"v1.5 digest-only v2.44.0 pin moves with a one-way note", true, "docker.io/hasura/graphql-engine@" + v14.IndexDigest, cur.String(), "one-way"},
 		{"v1.4 digest-only v2.44.0 pin stays", false, "docker.io/hasura/graphql-engine@" + v14.IndexDigest, v14.String(), ""},
 		{"v1.5 unknown digest-only pin is left as is", true, "docker.io/hasura/graphql-engine@sha256:" + strings.Repeat("cd", 32), "", "does not know"},
