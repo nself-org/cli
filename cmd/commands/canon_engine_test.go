@@ -783,6 +783,10 @@ func TestCanonEnginePrepare(t *testing.T) {
 				ci.Annotations = map[string]string{"nself.plugin": "ci"}
 				r.AddCommand(ci)
 			}
+		} else {
+			// The default would scan the real ~/.nself/plugins, so a host that has the ci plugin installed
+			// (a dev Mac, a CI Mac that ran `nself ci` once) changes the answer. No plugin is mounted here.
+			mountInstalledPlugins = func(*cobra.Command) {}
 		}
 		os.Args = append([]string{"nself"}, argv...)
 		resetCanonWarning()
