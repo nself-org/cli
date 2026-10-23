@@ -3,7 +3,7 @@
 #
 # Verifies all lockstep version files carry the same version string.
 # Per nSelf PPI Hard Rule: CLI and Admin ship identical version numbers.
-# Extended from 2-file check in P98 S98-02; Flutter SDK entry retired
+# Extended from 2-file check in P98 S98-02; retired Dart SDK entry removed
 # 2026-06-30 (#159, ASI Policy 2).
 #
 # Lockstep files (10 in this repo or adjacent repos + 1 optional homebrew):
@@ -193,9 +193,6 @@ if [ -f "${FILE5}" ]; then
 else
   log_warn "cli/sdk/py/pyproject.toml" "(missing)"
 fi
-
-# 6. cli/sdk/flutter/pubspec.yaml — RETIRED. Flutter SDK removed 2026-06-30
-#    (#159, ASI Policy 2); no check, no warning.
 
 # 7. admin/package.json
 if [ -n "${ADMIN_ROOT}" ] && [ -f "${ADMIN_ROOT}/package.json" ]; then

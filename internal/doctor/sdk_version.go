@@ -6,7 +6,7 @@ package doctor
 // against the local CLI version. A drift of more than one patch segment is
 // a warn; a major or minor mismatch is a fail. Registry errors are warn-only
 // (network is best-effort in doctor --deep).
-// Flutter SDK removed 2026-06-30 — migrating to RN/Tauri per ASI Policy 2.
+// The retired Dart SDK was removed 2026-06-30 per ASI Policy 2.
 
 import (
 	"context"

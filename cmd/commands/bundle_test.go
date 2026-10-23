@@ -26,7 +26,7 @@ const fixtureBundlesJSON = `{
     "claw":   {"display": "ɳClaw",   "tier": "paid", "price_monthly": 0.99, "price_yearly": 9.99, "plugins": ["ai","claw","mux","voice","browser","google","notify","cron"]},
     "family": {"display": "ɳFamily", "tier": "paid", "price_monthly": 0.99, "price_yearly": 9.99, "plugins": ["social","photos"]},
     "sentry": {"display": "ɳSentry", "tier": "paid", "price_monthly": 0.99, "price_yearly": 9.99, "plugins": ["nself-uptime-monitor","nself-status-page"]},
-    "tv":     {"display": "ɳTV",     "tier": "paid", "price_monthly": 0.99, "price_yearly": 9.99, "plugins": ["streaming","epg"]},
+    "tv":     {"display": "Media Bundle", "tier": "paid", "price_monthly": 0.99, "price_yearly": 9.99, "plugins": ["streaming","epg"]},
     "clawde": {"display": "ClawDE",  "tier": "paid", "price_monthly": 0.99, "price_yearly": 9.99, "plugins": ["auth","cms","realtime"]}
   }
 }`

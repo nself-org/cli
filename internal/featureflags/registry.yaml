@@ -55,7 +55,7 @@ flags:
   - key: ntv-platform-binaries
     type: release
     surface: ntv
-    description: Enable Roku/AppleTV/AndroidTV/Samsung/LG platform binary builds in ɳTV release cascade.
+    description: Legacy gate for Roku/AppleTV/AndroidTV/Samsung/LG platform binary builds for the cancelled TV app.
     default: false
     introduced: "1.1.0"
     owner: ntv-team

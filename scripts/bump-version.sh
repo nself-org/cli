@@ -19,7 +19,7 @@
 #   cli/internal/reconcile/testdata/fixtures/dev-minimal/golden-tree.txt
 # Skipped with a note when the golden tests are absent (fixture trees).
 #
-# Files updated (11 + 1 optional homebrew) — Flutter SDK removed 2026-06-30 (#159);
+# Files updated (11 + 1 optional homebrew) — retired Dart SDK removed 2026-06-30 (#159);
 # sdk/ts-sdk added 2026-07-06 (was missing, causing @nself/sdk version lag):
 #   1.  cli/.github/VERSION
 #   2.  cli/internal/version/version.go       Version string = "x.y.z" (type-annotated)
@@ -305,8 +305,6 @@ update_toml_version() {
 update_sdk_py_pyproject() {
   update_toml_version "${SDK_PY}" project
 }
-
-# Flutter SDK removed 2026-06-30 (#159, ASI Policy 2) — pubspec updater retired.
 
 update_admin_pkg() {
   update_json_version "${ADMIN_PKG}"

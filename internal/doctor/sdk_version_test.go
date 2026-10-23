@@ -180,7 +180,7 @@ func TestCheckOneSDK_NetworkError(t *testing.T) {
 }
 
 // TestCheckSDKVersions_Smoke ensures CheckSDKVersions returns exactly 3 results
-// (go, py, ts — Flutter SDK removed 2026-06-30 per ASI Policy 2) and that all
+// (go, py, ts; the retired Dart SDK was removed 2026-06-30) and that all
 // names start with "SDK-VERSION-01/".
 // In pre-publication state all 3 SDKs return warn (404); that is expected.
 func TestCheckSDKVersions_Smoke(t *testing.T) {
