@@ -121,3 +121,26 @@ func TestServedDirs_ExactMessage(t *testing.T) {
 		t.Errorf("message mismatch:\n got %v\nwant %s", err, want)
 	}
 }
+
+// TestSharedOwnerRegistered covers the three states of a served root: no
+// nginx/shared directory, the directory without the owner file, and the owner
+// file present.
+func TestSharedOwnerRegistered(t *testing.T) {
+	root := t.TempDir()
+	if SharedOwnerRegistered(root) {
+		t.Fatal("a root with no nginx/shared reported a shared-proxy owner")
+	}
+	shared := filepath.Join(root, "nginx", SharedDir)
+	if err := os.MkdirAll(shared, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if SharedOwnerRegistered(root) {
+		t.Fatal("nginx/shared without " + SharedOwnerFile + " reported a shared-proxy owner")
+	}
+	if err := os.WriteFile(filepath.Join(shared, SharedOwnerFile), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !SharedOwnerRegistered(root) {
+		t.Fatal("nginx/shared/" + SharedOwnerFile + " present but no owner reported")
+	}
+}

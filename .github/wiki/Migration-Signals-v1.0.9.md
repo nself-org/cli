@@ -55,17 +55,13 @@ import "github.com/nself-org/nself_plugin_sdk"
 import sdk "github.com/nself-org/plugin-sdk-go"
 ```
 
-### nMedia bundle renamed to ɳTV
+### Historical nMedia bundle migration
 
-Users who installed the `nMedia` bundle should reinstall using the new name:
+In v1.0.9, the `nMedia` bundle was renamed for the now-cancelled TV app.
 
-```bash
-nself plugin uninstall nMedia   # if installed by bundle slug
-nself plugin install nTV        # reinstall under new name
-```
-
-The underlying plugins (media-processing, streaming, epg, tmdb, podcast, recording,
-game-metadata, file-processing, subtitle-manager, vpn) are unchanged.
+At the time, the underlying plugins (media-processing, streaming, epg, tmdb,
+podcast, recording, game-metadata, file-processing, subtitle-manager, vpn)
+were unchanged.
 
 ### nself_sessions.user_agent deprecation (Hasura / GraphQL only)
 

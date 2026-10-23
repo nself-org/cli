@@ -15,7 +15,6 @@ name: Version Lockstep
 #
 # This workflow is the single comprehensive gate that covers ALL 11 files.
 # It runs the lockstep check script directly rather than reimplementing logic.
-# Flutter SDK removed 2026-06-30 — migrating to RN/Tauri per ASI Policy 2.
 #
 # Authority: P98 S98-02 T04; bump-version.md
 

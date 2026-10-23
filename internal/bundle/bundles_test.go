@@ -19,7 +19,7 @@ const fixtureBundlesJSON = `{
     "claw":   {"display": "ɳClaw",         "tier": "paid", "price_monthly": 0.99, "price_yearly": 9.99,  "plugins": ["ai","claw","claw-web"]},
     "family": {"display": "ɳFamily",       "tier": "paid", "price_monthly": 0.99, "price_yearly": 9.99,  "plugins": ["social","photos"]},
     "sentry": {"display": "ɳSentry",       "tier": "paid", "price_monthly": 0.99, "price_yearly": 9.99,  "plugins": ["nself-uptime-monitor","nself-status-page","nself-incident-mgmt","nself-alert-router","nself-slo-tracker","nself-synthetic-monitor","nself-rum","nself-errors","nself-cron-monitor","nself-oncall","nself-crash","nself-anomaly","nself-audit","nself-stripe"]},
-    "tv":     {"display": "ɳTV",           "tier": "paid", "price_monthly": 0.99, "price_yearly": 9.99,  "plugins": ["streaming","epg"]},
+    "tv":     {"display": "Media Bundle",  "tier": "paid", "price_monthly": 0.99, "price_yearly": 9.99,  "plugins": ["streaming","epg"]},
     "clawde": {"display": "ClawDE",        "tier": "paid", "price_monthly": 0.99, "price_yearly": 9.99,  "plugins": ["auth","cms","realtime"]}
   }
 }`

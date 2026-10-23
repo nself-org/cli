@@ -17,7 +17,7 @@ import (
 func TestResolveBundlesUnlocked_PlusUnion(t *testing.T) {
 	pp := &license.ProductPrefix{Prefix: "nself_plus_", Product: "plus", DisplayName: "ɳSelf+"}
 	got := resolveBundlesUnlocked(context.Background(), pp)
-	want := []string{"ɳChat", "ɳClaw", "ɳFamily", "ɳSentry", "ɳTV", "ClawDE"}
+	want := []string{"ɳChat", "ɳClaw", "ɳFamily", "ɳSentry", "Media Bundle", "ClawDE"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("plus key bundles_unlocked = %v, want %v (union of every paid bundle, DisplayOrder)", got, want)
 	}
@@ -29,7 +29,7 @@ func TestResolveBundlesUnlocked_PlusUnion(t *testing.T) {
 func TestResolveBundlesUnlocked_OwnerUnion(t *testing.T) {
 	pp := &license.ProductPrefix{Prefix: "nself_owner_", Product: "owner", DisplayName: "ɳSelf Owner"}
 	got := resolveBundlesUnlocked(context.Background(), pp)
-	want := []string{"ɳChat", "ɳClaw", "ɳFamily", "ɳSentry", "ɳTV", "ClawDE"}
+	want := []string{"ɳChat", "ɳClaw", "ɳFamily", "ɳSentry", "Media Bundle", "ClawDE"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("owner key bundles_unlocked = %v, want %v", got, want)
 	}
@@ -48,7 +48,7 @@ func TestResolveBundlesUnlocked_SingleBundle(t *testing.T) {
 		{"claw", "ɳClaw"},
 		{"clawde", "ClawDE"},
 		{"family", "ɳFamily"},
-		{"media", "ɳTV"}, // nself_media_ prefix predates the "tv" bundles.json slug
+		{"media", "Media Bundle"}, // nself_media_ prefix predates the "tv" bundles.json slug
 	}
 	for _, c := range cases {
 		pp := &license.ProductPrefix{Prefix: "nself_" + c.product + "_", Product: c.product, DisplayName: "irrelevant"}
