@@ -12,7 +12,6 @@ name: SDK Version Sync
 #   sdk/ts/package.json                  ("version": "X.Y.Z")
 #   sdk/ts-sdk/package.json              ("version": "X.Y.Z")
 #   sdk/ts-cli-api/package.json          ("version": "X.Y.Z")
-# Flutter SDK removed 2026-06-30 — migrating to RN/Tauri per ASI Policy 2.
 
 on:
   push:

@@ -8,7 +8,6 @@ name: SDK Version Coherence
 # mapping lives in sdk/go/scripts/sdk-tag.sh).
 # @nself/plugin-sdk (sdk/ts) is intentionally NOT covered by this check —
 # see sdk-version-sync.yml for that lockstep gate instead.
-# Flutter SDK removed 2026-06-30 — migrating to RN/Tauri per ASI Policy 2.
 #
 # Fails when any SDK lags the master version OR is ahead of it.
 # Also runnable on workflow_dispatch for ad-hoc verification.

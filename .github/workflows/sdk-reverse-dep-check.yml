@@ -116,5 +116,3 @@ jobs:
           sed -i "s#../../sdk/ts#${GITHUB_WORKSPACE}/sdk/ts#" package.json
           npm install --no-audit --no-fund
           node -e "const sdk = require('@nself/plugin-sdk'); console.log('TS SDK loaded keys:', Object.keys(sdk).slice(0,5))"
-
-  # Flutter SDK removed 2026-06-30 — migrating to RN/Tauri per ASI Policy 2.

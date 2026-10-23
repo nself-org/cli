@@ -193,7 +193,6 @@ jobs:
         run: |
           # Sanity check: canonical SDK dirs must exist under cli/sdk/
           # Canonical location per P96 S33: sdk/{go,py,ts}
-          # sdk/flutter removed with the Flutter SDK elimination (ASI Policy 2, PR #159)
           MISSING_SDK=()
           for lang in go py ts; do
             if [ ! -d "sdk/$lang" ]; then
