@@ -1,8 +1,8 @@
 {
-  "network_ms": 314,
+  "network_ms": 298,
   "search_ms": 39,
-  "single_ms": 108,
+  "single_ms": 89,
   "bundle_ms": 0,
-  "parse_ms": .17,
-  "timestamp": "2026-10-22T07:25:14Z"
+  "parse_ms": .21,
+  "timestamp": "2026-10-23T07:19:14Z"
 }
