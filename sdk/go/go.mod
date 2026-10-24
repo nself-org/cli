@@ -3,7 +3,7 @@ module github.com/nself-org/cli/sdk/go/v2
 go 1.25.0
 
 require (
-	github.com/go-chi/chi/v5 v5.2.4
+	github.com/go-chi/chi/v5 v5.4.0
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/prometheus/client_golang v1.20.5
 	golang.org/x/mod v0.32.0

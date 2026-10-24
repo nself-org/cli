@@ -9,6 +9,7 @@ overrides:
   brace-expansion@>=5.0.0 <5.0.12: '>=5.0.12 <6.0.0'
   proxy-addr@<2.0.8: '>=2.0.8 <3.0.0'
   handlebars@<4.7.10: '>=4.7.10 <5.0.0'
+  body-parser@<1.20.9: '>=1.20.9 <2.0.0'
 
 importers:
 
@@ -649,8 +650,8 @@ packages:
     engines: {node: '>=6.0.0'}
     hasBin: true
 
-  body-parser@1.20.8:
-    resolution: {integrity: sha512-JNcyFQ64OiijEkPzUBTCe+hyPXUD/3LEldGQ6iF5LR1w00mx9o7xtDWHXBY2iItjdCFGoilOLNQbH943ut7pHA==}
+  body-parser@1.20.9:
+    resolution: {integrity: sha512-FISIQxV5u91Y9gvuFq3q/tA/qTqLJn3AhRcEvyozyhJTh5OBFFtv827AdHU7Rbyct4r+Ba1/99oFa1Y3yuFsdw==}
     engines: {node: '>= 0.8', npm: 1.2.8000 || >= 1.4.16}
 
   brace-expansion@1.1.21:
@@ -2765,7 +2766,7 @@ snapshots:
 
   baseline-browser-mapping@2.11.23: {}
 
-  body-parser@1.20.8:
+  body-parser@1.20.9:
     dependencies:
       bytes: 3.1.2
       content-type: 1.0.5
@@ -3055,7 +3056,7 @@ snapshots:
     dependencies:
       accepts: 1.3.8
       array-flatten: 1.1.1
-      body-parser: 1.20.8
+      body-parser: 1.20.9
       content-disposition: 0.5.4
       content-type: 1.0.5
       cookie: 0.7.2
