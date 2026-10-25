@@ -57,8 +57,12 @@ func readCache(dir string) (*cached, *Catalog, bool) {
 	if dir == "" {
 		return nil, nil, false
 	}
-	// Best effort: with no lock (dir missing, read-only) the read goes ahead.
+	// Without the lock the body can still be read (it is replaced atomically)
+	// but the ETag cannot be trusted to belong to it, so it is dropped: the
+	// next fetch is unconditional, never a 304 against the wrong body (D-0875).
+	locked := false
 	if unlock, err := lockCache(dir); err == nil {
+		locked = true
 		defer unlock()
 	}
 	path := filepath.Join(dir, bodyFile)
@@ -74,7 +78,10 @@ func readCache(dir string) (*cached, *Catalog, bool) {
 	if err != nil {
 		return nil, nil, false
 	}
-	etag, _ := os.ReadFile(filepath.Join(dir, etagFile))
+	var etag []byte
+	if locked {
+		etag, _ = os.ReadFile(filepath.Join(dir, etagFile))
+	}
 	return &cached{body: body, etag: strings.TrimSpace(string(etag)), at: info.ModTime()}, cat, true
 }
 
