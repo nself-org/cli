@@ -1,7 +1,7 @@
 package database
 
 // Purpose: reads one variable from the RUNNING Hasura container's environment
-// (`docker inspect`), for checks that must know what Hasura actually runs with
+// (via the docker funnel), for checks that must know what Hasura actually runs with
 // rather than what the project config would give it on the next recreate.
 // Inputs: context, *config.Config, variable name.
 // Outputs: the value and whether the container defines it, or an error when
@@ -11,25 +11,19 @@ package database
 import (
 	"context"
 	"fmt"
-	"os/exec"
-	"strings"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/docker"
 )
 
 // HasuraContainerEnvValue returns the value of key in the running Hasura
 // container's environment. found is false when the container does not define it.
 func HasuraContainerEnvValue(ctx context.Context, cfg *config.Config, key string) (value string, found bool, err error) {
 	container := hasuraContainer(cfg)
-	out, err := exec.CommandContext(ctx, "docker", "inspect", container,
-		"--format", "{{range .Config.Env}}{{println .}}{{end}}").Output()
+	info, err := docker.InspectContainer(ctx, container)
 	if err != nil {
-		return "", false, fmt.Errorf("docker inspect %s (is the stack running?): %w", container, err)
+		return "", false, fmt.Errorf("inspect %s (is the stack running?): %w", container, err)
 	}
-	for _, line := range strings.Split(string(out), "\n") {
-		if v, ok := strings.CutPrefix(strings.TrimRight(line, "\r"), key+"="); ok {
-			return v, true, nil
-		}
-	}
-	return "", false, nil
+	value, found = info.Env[key]
+	return value, found, nil
 }
