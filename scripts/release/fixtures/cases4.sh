@@ -13,6 +13,8 @@ NEWH=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 # mk_bump_env: a nself/{cli,admin} tree at 1.4.13 with the golden tests present and a stub go.
 mk_bump_env() {
   B=$(mktemp -d "$BASE/bump.XXXXXX"); C=$B/nself/cli; A=$B/nself/admin
+  # mk_env's TMPDIR was deleted with its env; bump-version.sh's `mktemp -d` needs a live one (GNU mktemp fails without).
+  mkdir -p "$BASE/tmp"; export TMPDIR=$BASE/tmp
   mkdir -p "$C/scripts" "$C/internal/version" "$C/sdk/go" "$C/sdk/ts" "$C/sdk/ts-sdk" "$C/sdk/py" "$C/.github" \
     "$C/internal/build" "$C/cmd/commands" "$A/src/lib" "$B/bin"
   cp "$ROOT/scripts/bump-version.sh" "$C/scripts/"
@@ -55,6 +57,7 @@ gold_all() { local g; for g in $GOLD_PATHS; do grep -q "$1" "$C/$g" || return 1;
 # 13. bump regenerates the goldens, then re-runs the tests plain -------------------------
 mk_bump_env
 run_bump 9.9.9
+check "bump runs with a TMPDIR that exists" test -d "$TMPDIR"
 check "bump exits 0" test "$RC" -eq 0
 check "bump updated version.go" grep -q '"9.9.9"' "$C/internal/version/version.go"
 check "bump regenerated all four goldens" gold_all "build-version $NEWH"
