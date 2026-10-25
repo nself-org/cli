@@ -100,8 +100,9 @@ var certbotUserConfigs = func() (own, root []string) {
 }
 
 // userCertbotConfs returns the per-user cli.ini files that exist. Only absence
-// is tolerated, except that a non-root caller who may not enter root's home
-// cannot be the one that wrote there, so that denial is skipped.
+// is tolerated: a denied stat (a non-root caller and root's home) is returned,
+// so the caller refuses; root's cli.ini may hold the hook a root certbot
+// scheduler replays and cannot be shown clean.
 func userCertbotConfs() ([]string, error) {
 	var found []string
 	own, root := certbotUserConfigs()
@@ -109,7 +110,6 @@ func userCertbotConfs() ([]string, error) {
 		st, err := os.Stat(p)
 		switch {
 		case errors.Is(err, os.ErrNotExist):
-		case errors.Is(err, os.ErrPermission) && slices.Contains(root, p) && os.Geteuid() != 0:
 		case err != nil:
 			return nil, err
 		case st.Mode().IsRegular():

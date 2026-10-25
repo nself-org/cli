@@ -326,3 +326,27 @@ func TestCertbotHooksPerUserConfig(t *testing.T) {
 		t.Fatalf("unrelated hook: hits=%v err=%v", hits, err)
 	}
 }
+
+// D-0595: root's cli.ini may hold the copy hook a root scheduler replays. A
+// caller that may not enter root's home cannot show it clean, so the scan
+// returns the permission error (the caller refuses with E151) instead of
+// skipping the file.
+func TestCertbotHooksRootConfigDenied(t *testing.T) {
+	if os.Geteuid() == 0 || runtime.GOOS == "windows" {
+		t.Skip("permission bits do not deny root or windows")
+	}
+	sslDir := filepath.Join(t.TempDir(), "proj", "ssl")
+	rootHome := t.TempDir()
+	cfg := filepath.Join(rootHome, ".config", "letsencrypt", "cli.ini")
+	acmeWriteFile(t, cfg, []byte("deploy-hook = cp x "+sslDir+"/\n"))
+	if err := os.Chmod(rootHome, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(rootHome, 0o700) })
+	old := certbotUserConfigs
+	t.Cleanup(func() { certbotUserConfigs = old })
+	certbotUserConfigs = func() ([]string, []string) { return nil, []string{cfg} }
+	if hits, err := certbotHooks(t.TempDir(), sslDir); !errors.Is(err, os.ErrPermission) {
+		t.Fatalf("denied root cli.ini: hits=%v err=%v, want permission error", hits, err)
+	}
+}
