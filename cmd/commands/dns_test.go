@@ -77,3 +77,17 @@ func TestRerunWithOsascript_NonInteractiveReturnsEarly(t *testing.T) {
 		t.Error("expected error for cancelled context, got nil")
 	}
 }
+
+// TestDNSSetupHeadlessSkipEnvelope: under headless the /etc/hosts write is
+// skipped, the command still exits 0 (start_config.go continues), but the v1.5
+// envelope must say ok:false instead of claiming success (D-0830).
+func TestDNSSetupHeadlessSkipEnvelope(t *testing.T) {
+	run := runPilot(t, cfgFixtureProject(t), true, []string{"NSELF_HEADLESS=1"}, "config", "trust", "dns", "--json")
+	if run.code != 0 {
+		t.Fatalf("headless skip must exit 0, got %d\n%s", run.code, run.stderr)
+	}
+	data := validateEnvelope(t, run.stdout, "config trust dns")
+	if data["ok"] != false {
+		t.Errorf("headless-skipped dns setup: data = %v, want ok:false", data)
+	}
+}
