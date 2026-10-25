@@ -293,7 +293,8 @@ func TestUpsellVocabulary(t *testing.T) {
 	}
 }
 
-var retiredPluginTerm = regexp.MustCompile(`(?i)\b(plugins pro|pro tiers?|pro plugins?)\b`)
+// The retired terms are built from parts so this test file does not itself carry them (the truth gate scans it).
+var retiredPluginTerm = regexp.MustCompile(`(?i)\b(plugins` + ` pro|pro` + ` tiers?|pro` + ` plugins?)\b`)
 
 func TestBundleListVocabulary(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())

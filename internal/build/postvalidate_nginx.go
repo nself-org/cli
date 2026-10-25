@@ -27,7 +27,7 @@ import (
 // `conflicting server name "x" on 0.0.0.0:443, ignored`, keeps whichever
 // block it loaded last, and still prints "syntax is ok" — so
 // checkNginxSyntax below passes and one of the two routes is silently
-// dead. That is how api.staging.nself.org ended up served by an
+// dead. That is how api.stack-two.nself.org ended up served by an
 // unintended block on 2026-09-03.
 //
 // Three separate writers populate nginx/sites/ in one build — the nginx

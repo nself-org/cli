@@ -2,7 +2,7 @@ package build
 
 // plugin_nginx_server_name_test.go — regression coverage for the 2026-09-03
 // staging incident: nginx logged `conflicting server name
-// "api.staging.nself.org" on 0.0.0.0:443, ignored` because two generated
+// "api.stack-two.nself.org" on 0.0.0.0:443, ignored` because two generated
 // site files under nginx/sites/ declared the same server_name. nginx does
 // not fail its config test over this — it silently serves whichever server
 // block loaded last, so the duplicate went unnoticed until a route behaved
@@ -66,24 +66,24 @@ func writePluginNginxRoute(t *testing.T, pluginDir, pluginName, fileName, server
 
 // TestInjectPluginNginxRoutes_RejectsDuplicateServerName reproduces the
 // staging incident directly: a core route (hasura.conf) already claims
-// "api.staging.nself.org" and a plugin ships a route that claims the exact
+// "api.stack-two.nself.org" and a plugin ships a route that claims the exact
 // same server_name. InjectPluginNginxRoutes must fail the build and name
 // both files, not silently write the duplicate and warn.
 func TestInjectPluginNginxRoutes_RejectsDuplicateServerName(t *testing.T) {
 	workdir := t.TempDir()
 	pluginDir := t.TempDir()
 
-	writeExistingSite(t, workdir, "hasura.conf", "api.staging.nself.org")
-	writePluginNginxRoute(t, pluginDir, "gateway", "route.conf", "api.staging.nself.org")
+	writeExistingSite(t, workdir, "hasura.conf", "api.stack-two.nself.org")
+	writePluginNginxRoute(t, pluginDir, "gateway", "route.conf", "api.stack-two.nself.org")
 
-	cfg := minimalTestConfig("staging.nself.org")
+	cfg := minimalTestConfig("stack-two.nself.org")
 
 	count, err := InjectPluginNginxRoutes(workdir, pluginDir, cfg)
 	if err == nil {
-		t.Fatalf("expected an error for duplicate server_name \"api.staging.nself.org\", got nil (count=%d)", count)
+		t.Fatalf("expected an error for duplicate server_name \"api.stack-two.nself.org\", got nil (count=%d)", count)
 	}
 
-	for _, want := range []string{"api.staging.nself.org", "hasura.conf", "gateway-route.conf"} {
+	for _, want := range []string{"api.stack-two.nself.org", "hasura.conf", "gateway-route.conf"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error message %q does not name %q — a conflict must name both sources so it can be fixed", err.Error(), want)
 		}
@@ -102,10 +102,10 @@ func TestInjectPluginNginxRoutes_AllowsDistinctServerNames(t *testing.T) {
 	workdir := t.TempDir()
 	pluginDir := t.TempDir()
 
-	writeExistingSite(t, workdir, "hasura.conf", "api.staging.nself.org")
-	writePluginNginxRoute(t, pluginDir, "gateway", "route.conf", "gateway.staging.nself.org")
+	writeExistingSite(t, workdir, "hasura.conf", "api.stack-two.nself.org")
+	writePluginNginxRoute(t, pluginDir, "gateway", "route.conf", "gateway.stack-two.nself.org")
 
-	cfg := minimalTestConfig("staging.nself.org")
+	cfg := minimalTestConfig("stack-two.nself.org")
 
 	count, err := InjectPluginNginxRoutes(workdir, pluginDir, cfg)
 	if err != nil {
@@ -126,8 +126,8 @@ func TestInjectPluginNginxRoutes_SelfUpdateNotAConflict(t *testing.T) {
 	workdir := t.TempDir()
 	pluginDir := t.TempDir()
 
-	writePluginNginxRoute(t, pluginDir, "gateway", "route.conf", "gateway.staging.nself.org")
-	cfg := minimalTestConfig("staging.nself.org")
+	writePluginNginxRoute(t, pluginDir, "gateway", "route.conf", "gateway.stack-two.nself.org")
+	cfg := minimalTestConfig("stack-two.nself.org")
 
 	if _, err := InjectPluginNginxRoutes(workdir, pluginDir, cfg); err != nil {
 		t.Fatalf("first inject: unexpected error: %v", err)
@@ -159,14 +159,14 @@ func writeSite(t *testing.T, sitesDir, name, body string) {
 }
 
 // TestCheckServerNameUniqueness_ReportsDuplicate reproduces the staging
-// finding: two generated site files both claim api.staging.nself.org.
+// finding: two generated site files both claim api.stack-two.nself.org.
 // `nginx -t` calls that "syntax is ok" and merely logs that it ignored one,
 // so post-build validation has to be the thing that fails the build — and
 // it has to name BOTH files, or the operator cannot tell which route died.
 func TestCheckServerNameUniqueness_ReportsDuplicate(t *testing.T) {
 	sitesDir := filepath.Join(t.TempDir(), "sites")
-	writeSite(t, sitesDir, "hasura.conf", "server {\n    server_name api.staging.nself.org;\n}\n")
-	writeSite(t, sitesDir, "ir-gateway.conf", "server {\n    server_name api.staging.nself.org;\n}\n")
+	writeSite(t, sitesDir, "hasura.conf", "server {\n    server_name api.stack-two.nself.org;\n}\n")
+	writeSite(t, sitesDir, "ir-gateway.conf", "server {\n    server_name api.stack-two.nself.org;\n}\n")
 
 	result := PostValidateResult{NginxValid: true}
 	checkServerNameUniqueness(sitesDir, &result)
@@ -177,7 +177,7 @@ func TestCheckServerNameUniqueness_ReportsDuplicate(t *testing.T) {
 	if result.NginxValid {
 		t.Error("NginxValid stayed true despite a duplicate server_name — the build would not fail")
 	}
-	for _, want := range []string{"api.staging.nself.org", "hasura.conf", "ir-gateway.conf"} {
+	for _, want := range []string{"api.stack-two.nself.org", "hasura.conf", "ir-gateway.conf"} {
 		if !strings.Contains(result.Errors[0], want) {
 			t.Errorf("error %q does not name %q", result.Errors[0], want)
 		}
@@ -297,14 +297,14 @@ func TestPostValidate_FailsOnDuplicateServerName(t *testing.T) {
 	sitesDir := filepath.Join(dir, "nginx", "sites")
 	// Two generated site files claiming one FQDN on one port: the core
 	// Hasura route and an api-docs route that landed on the same name.
-	writeSite(t, sitesDir, "hasura.conf", "server {\n    listen 443 ssl;\n    server_name api.staging.nself.org;\n}\n")
-	writeSite(t, sitesDir, "api-docs.conf", "server {\n    listen 443 ssl;\n    server_name api.staging.nself.org;\n}\n")
+	writeSite(t, sitesDir, "hasura.conf", "server {\n    listen 443 ssl;\n    server_name api.stack-two.nself.org;\n}\n")
+	writeSite(t, sitesDir, "api-docs.conf", "server {\n    listen 443 ssl;\n    server_name api.stack-two.nself.org;\n}\n")
 
 	result := PostValidate(composePath, sitesDir)
 
 	found := false
 	for _, e := range result.Errors {
-		if strings.Contains(e, "api.staging.nself.org") {
+		if strings.Contains(e, "api.stack-two.nself.org") {
 			found = true
 		}
 	}

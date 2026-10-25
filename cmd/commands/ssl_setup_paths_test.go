@@ -33,7 +33,7 @@ func TestDomainToFilesafe_MatchesInternalSSLConvention(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]string{
-		"staging.nself.org":     "staging-nself-org",
+		"stack-two.nself.org":   "stack-two-nself-org",
 		"nself.org":             "nself-org",
 		"api.task.nself.org":    "api-task-nself-org",
 		"localhost:8443":        "localhost-8443",
@@ -61,7 +61,7 @@ func TestDomainToFilesafe_MatchesInternalSSLConvention(t *testing.T) {
 func TestWriteCustomDomainConf_CertPathMatchesHostLayout(t *testing.T) {
 	t.Parallel()
 
-	const domain = "staging.nself.org"
+	const domain = "stack-two.nself.org"
 	safe := domainToFilesafe(domain)
 	workdir := t.TempDir()
 
@@ -99,7 +99,7 @@ func TestWriteCustomDomainConf_CertPathMatchesHostLayout(t *testing.T) {
 func TestWriteCustomDomainConf_ServerNameStaysDotted(t *testing.T) {
 	t.Parallel()
 
-	const domain = "staging.nself.org"
+	const domain = "stack-two.nself.org"
 	workdir := t.TempDir()
 
 	if err := writeCustomDomainConf(workdir, domain, ""); err != nil {
@@ -150,7 +150,7 @@ func TestWriteCustomDomainConf_UpstreamProxies(t *testing.T) {
 // and ignores --cert-path, so the certificate has to be copied into the tree
 // nginx reads or `ssl add` is a silent no-op.
 func TestInstallIssuedCert_CopiesFromLetsEncryptLive(t *testing.T) {
-	const domain = "staging.nself.org"
+	const domain = "stack-two.nself.org"
 
 	root := t.TempDir()
 	live := filepath.Join(root, "live", domain)

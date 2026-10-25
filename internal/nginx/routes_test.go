@@ -130,14 +130,14 @@ func TestCoreRoutes_NoAppName_BareScheme(t *testing.T) {
 // produces app-prefixed routes ("api.task", "auth.task") so the final
 // server_name is "api.task.{BASE_DOMAIN}" instead of "api.{BASE_DOMAIN}".
 func TestCoreRoutes_AppName_PrefixesSubdomains(t *testing.T) {
-	cfg := &config.Config{BaseDomain: "staging.nself.org", AppName: "task"}
+	cfg := &config.Config{BaseDomain: "stack-two.nself.org", AppName: "task"}
 	cfg, err := config.ApplyDefaults(cfg)
 	if err != nil {
 		t.Fatalf("ApplyDefaults() error: %v", err)
 	}
 
 	g := &Generator{cfg: cfg}
-	entries := g.coreRoutes(cfg.BaseDomain, "staging-nself-org")
+	entries := g.coreRoutes(cfg.BaseDomain, "stack-two-nself-org")
 
 	routesByFile := make(map[string]string)
 	for _, e := range entries {

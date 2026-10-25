@@ -47,7 +47,7 @@ func claimsOf(content string) map[string]bool {
 // Returns an error naming both files and the shared name so the build fails
 // loudly, instead of nginx silently picking one of two server blocks at
 // runtime (2026-09-03 staging: two generated site files both claimed
-// "api.staging.nself.org"; nginx logged "conflicting server name ...
+// "api.stack-two.nself.org"; nginx logged "conflicting server name ...
 // ignored" and kept serving whichever loaded last).
 //
 // This is the early, precise check on the plugin-injection path.

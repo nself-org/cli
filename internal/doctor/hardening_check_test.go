@@ -312,7 +312,7 @@ func TestCheckHardeningNginxRateZones_ServiceIdentity(t *testing.T) {
 				"auth.conf": `
 server {
     listen 443 ssl;
-    server_name auth.staging.nself.org;
+    server_name auth.stack-two.nself.org;
     location / {
         limit_req zone=auth burst=5 nodelay;
         set $up_auth auth:4000;
@@ -323,7 +323,7 @@ server {
 				"hasura.conf": `
 server {
     listen 443 ssl;
-    server_name api.staging.nself.org;
+    server_name api.stack-two.nself.org;
     location / {
         limit_req zone=graphql_api burst=20 nodelay;
         set $up_hasura hasura:8080;
@@ -366,7 +366,7 @@ location /api/ { limit_req zone=api; }
 				"static.conf": `
 server {
     listen 443 ssl;
-    server_name static.staging.nself.org;
+    server_name static.stack-two.nself.org;
     location / {
         limit_req zone=static burst=10 nodelay;
         set $up_static frontend:3000;
@@ -384,7 +384,7 @@ server {
 			files: map[string]string{
 				"auth.conf": `
 server {
-    server_name auth.staging.nself.org;
+    server_name auth.stack-two.nself.org;
     location / {
         limit_req zone=auth burst=5 nodelay;
         proxy_pass http://auth:4000;
@@ -393,7 +393,7 @@ server {
 `,
 				"hasura.conf": `
 server {
-    server_name api.staging.nself.org;
+    server_name api.stack-two.nself.org;
     location / {
         proxy_pass http://hasura:8080;
     }
