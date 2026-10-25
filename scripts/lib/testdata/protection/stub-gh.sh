@@ -7,7 +7,10 @@
 # fail (`pr merge` exits 1); STUB_MERGE_LAG=N (with auto: OPEN for the first N
 # `pr view` calls, then MERGED; `pr merge --disable-auto` stops that, and with
 # STUB_LATE_MERGE=1 it merges just then), STUB_VIEW=CLOSED|NONE (`pr view` says
-# CLOSED | fails). Default: `pr merge` merges at once.
+# CLOSED | fails). STUB_FAIL_ARMED=1 (with fail: the failed call armed auto-merge first),
+# STUB_DISABLE_FAIL=1: `pr merge --disable-auto` exits 1 and
+# auto-merge stays armed. `pr view --json autoMergeRequest` prints true while
+# armed and not disabled, else false. Default: `pr merge` merges at once.
 # PUT bodies are checked against the documented schema (422 when invalid, incl.
 # `contexts` and `checks` sent together).
 D="${STUB_DIR:?}"
@@ -20,10 +23,22 @@ case "$1" in
   pr)
     echo "pr $2" >> "${D}/calls"
     if [ "$2" = merge ] && [ "${STUB_KILL_PARENT:-0}" = 1 ]; then kill -9 "${PPID}"; fi
-    if [ "$2" = merge ] && [ "${STUB_MERGE_MODE:-}" = fail ]; then echo "stub: merge failed" >&2; exit 1; fi
-    if [ "$2" = merge ] && [ "${STUB_MERGE_MODE:-}" = auto ]; then
-      if [ "$*" = "${*/--disable-auto/}" ]; then touch "${D}/armed"; echo "will be automatically merged"
-      else touch "${D}/disabled"; [ "${STUB_LATE_MERGE:-0}" != 1 ] || touch "${D}/merged"; fi
+    if [ "$2" = merge ]; then
+      if [ "$*" != "${*/--disable-auto/}" ]; then
+        if [ "${STUB_DISABLE_FAIL:-0}" = 1 ]; then echo "stub: disable failed" >&2; exit 1; fi
+        touch "${D}/disabled"
+        if [ "${STUB_MERGE_MODE:-}" = auto ] && [ "${STUB_LATE_MERGE:-0}" = 1 ]; then touch "${D}/merged"; fi
+      elif [ "${STUB_MERGE_MODE:-}" = fail ]; then
+        # STUB_FAIL_ARMED=1: the call armed auto-merge, then the connection dropped.
+        if [ "${STUB_FAIL_ARMED:-0}" = 1 ]; then touch "${D}/armed"; fi
+        echo "stub: merge failed" >&2; exit 1
+      elif [ "${STUB_MERGE_MODE:-}" = auto ]; then
+        touch "${D}/armed"; echo "will be automatically merged"
+      fi
+    fi
+    if [ "$2" = view ] && [ "$*" != "${*/autoMergeRequest/}" ]; then
+      if [ -f "${D}/armed" ] && [ ! -f "${D}/disabled" ]; then echo true; else echo false; fi
+      exit 0
     fi
     if [ "$2" = view ]; then
       n=$(cat "${D}/viewcount" 2>/dev/null || echo 0); echo $((n + 1)) > "${D}/viewcount"

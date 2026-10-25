@@ -192,6 +192,15 @@ case_merge_flow() {
   check "merge: done marker written, DONE audited" bash -c 'ls "$1"/nself-admin-merge-*.done && grep -q "DONE" "$2"' _ "${TMPDIR}" "${AUDIT_LOG}"
   wait_watchdog || true
 
+  # A zero-padded deadline is read as decimal (08 is not an octal number).
+  export WATCHDOG_DEADLINE=08
+  setup cli-like; rc=0
+  run_am > "${TMP}/am.out" 2>&1 || rc=$?
+  check "merge (WATCHDOG_DEADLINE=08): exits 0" test "${rc}" -eq 0
+  check "merge (WATCHDOG_DEADLINE=08): deadline audited as 8" audit_has 'WATCHDOG_SPAWN .*deadline=8 '
+  wait_watchdog || true
+  export WATCHDOG_DEADLINE=2
+
   setup checks-app-ids
   export STUB_DROP=enforce_admins; rc=0
   run_am > "${TMP}/am.out" 2>&1 || rc=$?
@@ -257,8 +266,36 @@ case_merge_verify() {
     state-unreadable  auto  999 2 NONE 1 no  auto_merge_only
     merged-late       auto  999 2 late 0 yes success
     bad-verify-secs   auto  1 abc open 0 yes success
+    zero-pad-secs-08  auto  999 08 open 1 no  auto_merge_only
+    zero-pad-secs-09  auto  999 09 open 1 no  auto_merge_only
 TABLE
   unset WATCHDOG_DEADLINE MERGE_POLL_SECONDS CI_POLL_SECONDS MERGE_VERIFY_SECONDS
+
+  # Disarming auto-merge is confirmed (autoMergeRequest reads null) before the
+  # script says it is off; the failed-merge branch disarms too. Table: mode,
+  # whether the failed call armed auto-merge, whether --disable-auto fails |
+  # disable attempted?, still-armed audited?, "disabled again" claimed?
+  local armed dfail want_disable want_armed want_claim
+  export WATCHDOG_DEADLINE=30 MERGE_POLL_SECONDS=1 CI_POLL_SECONDS=1 MERGE_VERIFY_SECONDS=2 STUB_MERGE_LAG=999
+  while read -r d mode armed dfail want_disable want_armed want_claim; do
+    [ -n "${d}" ] || continue
+    setup cli-like
+    export STUB_MERGE_MODE="${mode}" STUB_FAIL_ARMED="${armed}" STUB_DISABLE_FAIL="${dfail}"; rc=0
+    printf 'y\n' | bash "${AM}" --repo "${REPO}" --branch feat --pr 7 --wait-minutes 1 > "${TMP}/am.out" 2>&1 || rc=$?
+    check "${d}: exit 1" test "${rc}" -eq 1
+    check "${d}: disable-auto attempted=${want_disable}" bash -c '[ "$(grep -c "^pr merge" "$1")" -ge 2 ] && w=yes || w=no; [ "$w" = "$2" ]' _ "${STUB_DIR}/calls" "${want_disable}"
+    check "${d}: auto_merge_still_armed audited=${want_armed}" bash -c 'grep -q auto_merge_still_armed "$1" && w=yes || w=no; [ "$w" = "$2" ]' _ "${AUDIT_LOG}" "${want_armed}"
+    check "${d}: 'disabled again' claimed=${want_claim}" bash -c 'grep -q "Auto-merge was disabled again" "$1" && w=yes || w=no; [ "$w" = "$2" ]' _ "${TMP}/am.out" "${want_claim}"
+    check "${d}: protection restored and equals the snapshot" compare "$(cat "${FX}/cli-like.json")" "$(server)"
+    unset STUB_MERGE_MODE STUB_FAIL_ARMED STUB_DISABLE_FAIL
+    wait_watchdog || true
+  done <<'TABLE'
+    auto-disarmed       auto 0 0 yes no  yes
+    auto-disarm-fails   auto 0 1 yes yes no
+    failed-armed        fail 1 0 yes no  no
+    failed-armed-stuck  fail 1 1 yes yes no
+TABLE
+  unset WATCHDOG_DEADLINE MERGE_POLL_SECONDS CI_POLL_SECONDS MERGE_VERIFY_SECONDS STUB_MERGE_LAG
 }
 
 case_relax_ambiguous() {
