@@ -167,6 +167,29 @@ func TestHealthGateHealthTimeout(t *testing.T) {
 	}
 }
 
+// TestGateLimit pins the wait HealthGate applies per service kind; the deploy
+// progress line prints this value (D-0469), so it must not drift from the gate.
+func TestGateLimit(t *testing.T) {
+	for name, tc := range map[string]struct {
+		spec ServiceSpec
+		want time.Duration
+	}{
+		"plain service":                {ServiceSpec{Name: "web"}, RunningTimeout},
+		"one-shot":                     {ServiceSpec{Name: "init", Restart: "no"}, HealthyTimeout},
+		"healthcheck, no timing":       {ServiceSpec{Name: "pg", HasHealthcheck: true}, HealthyTimeout},
+		"healthcheck, short timing":    {ServiceSpec{Name: "pg", HasHealthcheck: true, HealthTimeout: 10 * time.Second}, HealthyTimeout},
+		"healthcheck, declared 105s":   {ServiceSpec{Name: "pg", HasHealthcheck: true, HealthTimeout: 105 * time.Second}, 105 * time.Second},
+		"healthcheck, capped at 10min": {ServiceSpec{Name: "pg", HasHealthcheck: true, HealthTimeout: MaxHealthTimeout}, MaxHealthTimeout},
+		"timing without healthcheck":   {ServiceSpec{Name: "web", HealthTimeout: 3 * time.Minute}, RunningTimeout},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := GateLimit(tc.spec); got != tc.want {
+				t.Errorf("GateLimit = %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestParseServiceSpecsHealthTiming(t *testing.T) {
 	hcOf := func(hc string) string { return `{"services":{"s":{"healthcheck":` + hc + `}}}` }
 	for name, tc := range map[string]struct {

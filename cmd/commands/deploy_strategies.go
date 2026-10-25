@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/docker"
@@ -66,7 +67,8 @@ type rollingPlan struct {
 // services last), never a hardcoded list: a fixed list restarted a service
 // that did not exist and aborted a real deploy half way (production incident
 // 2026-09-20). Each service is brought up with `up -d --no-deps` and then
-// gated by kind: healthcheck declared -> healthy within 60s; restart "no"
+// gated by kind: healthcheck declared -> healthy within 60s (longer when the
+// healthcheck's own timing needs it, up to 10m); restart "no"
 // without a healthcheck (one-shot) -> a new run that exited 0; otherwise
 // running within 30s and still the same run a poll later. Any kind fails at
 // once on a container that exited non-zero or keeps restarting. The deploy
@@ -114,9 +116,8 @@ func rollingRestart(ctx context.Context, plan rollingPlan) ([]deployStep, error)
 		if err != nil {
 			return addStep(ctx, steps, deployStep{Name: stepName, Status: "failed"}), gateError(svc, markErr(ctx, err))
 		}
-		if err := plan.compose.ComposeUpNoDeps(ctx, plan.workdir, svc); err != nil {
-			steps = addStep(ctx, steps, deployStep{Name: stepName, Status: "failed"})
-			return steps, fmt.Errorf("rolling restart: service %s restart failed: %w\nRun 'nself logs %s' for details", svc, err, svc)
+		if err := rollingUp(ctx, plan, svc); err != nil {
+			return addStep(ctx, steps, deployStep{Name: stepName, Status: "failed"}), err
 		}
 		if !plan.jsonOut {
 			fmt.Printf("  [waiting] Waiting for %s (%s)\n", svc, gateKind(spec))
@@ -181,15 +182,17 @@ func markErr(ctx context.Context, err error) error {
 	return fmt.Errorf("%w: %w", docker.ErrStateRead, err)
 }
 
-// gateKind names what the gate waits for, for the progress line.
+// gateKind names what the gate waits for, for the progress line, with the
+// limit HealthGate really applies (a slow healthcheck waits longer than 60s).
 func gateKind(sp docker.ServiceSpec) string {
+	limit := fmt.Sprintf("max %ds", int(docker.GateLimit(sp)/time.Second))
 	switch {
 	case sp.OneShot():
-		return "one-shot: exit 0, max 60s"
+		return "one-shot: exit 0, " + limit
 	case sp.HasHealthcheck:
-		return "healthy, max 60s"
+		return "healthy, " + limit
 	default:
-		return "running, max 30s"
+		return "running, " + limit
 	}
 }
 
