@@ -390,7 +390,8 @@ if [[ $MODE != add && $MODE != renew ]]; then
     wait "$build_pid" 2>/dev/null || true
     build_pid=''
     printf 'traefik gone: %s\nbuild still running at kill: %s\n' "$gone" "$alive" | tee "$W/evidence/kill-mid-remove.txt"
-    [[ $alive == yes ]] || echo 'WARN: the build had already exited when killed; this run proves the recovery path only, not a mid-build kill' >&2
+    # A build that exited before the kill proves only the recovery path, never an interrupted remove.
+    [[ $alive == yes ]] || { echo 'FAIL: the build had already exited when killed; the kill-mid-remove interruption was not exercised' >&2; exit 1; }
     [[ $gone == 1 ]] || { echo 'FAIL: the traefik container never stopped' >&2; exit 1; }
     # Recovery re-runs the interrupted step: build is idempotent and removes the orphans the kill left
     # (start never removes orphans, DEPL EPIC 2026-10-11 ruling 2), then start brings nginx back.
