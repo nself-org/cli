@@ -1,7 +1,7 @@
 package nginx
 
 // dynamic_resolve_test.go — regression coverage for the 2026-09-03 staging
-// outage (auth.task.staging.nself.org 502 after ntask_auth was recreated).
+// outage (auth.task.stack-two.nself.org 502 after ntask_auth was recreated).
 //
 // Purpose: prove every generated service route resolves its proxy target at
 // request time (via the Docker embedded DNS resolver) instead of caching a
@@ -34,9 +34,9 @@ var staticUpstreamBlock = regexp.MustCompile(`(?m)^\s*upstream\s+\S+\s*\{`)
 // the worker process, so a container recreate (nself restart, OOM, `docker
 // system prune`, a plain rebuild) 502s every request through that route
 // until someone notices and runs `nginx -s reload` by hand — exactly what
-// happened to auth.task.staging.nself.org on 2026-09-03.
+// happened to auth.task.stack-two.nself.org on 2026-09-03.
 func TestServiceRoutesResolveUpstreamDynamically(t *testing.T) {
-	cfg := &config.Config{BaseDomain: "staging.nself.org"}
+	cfg := &config.Config{BaseDomain: "stack-two.nself.org"}
 	cfg, err := config.ApplyDefaults(cfg)
 	if err != nil {
 		t.Fatalf("ApplyDefaults() error: %v", err)
@@ -117,7 +117,7 @@ var proxyVarAssignment = regexp.MustCompile(`(?m)^\s*set\s+\$\S+\s+(\S+);`)
 // then fails every request against the host "http" — the same
 // silent-until-traffic failure class as the stale-IP bug this file covers.
 func TestProxyTargetsHaveExactlyOneScheme(t *testing.T) {
-	cfg := &config.Config{BaseDomain: "staging.nself.org"}
+	cfg := &config.Config{BaseDomain: "stack-two.nself.org"}
 	cfg, err := config.ApplyDefaults(cfg)
 	if err != nil {
 		t.Fatalf("ApplyDefaults() error: %v", err)

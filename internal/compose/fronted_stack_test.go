@@ -4,7 +4,7 @@ package compose
 // incident: `nself start` in /opt/nself-ntask failed with "port 80/443 held
 // by docker-proxy" because the generated docker-compose.yml always defines
 // an nginx service, even for a stack whose domains are actually served by
-// ANOTHER stack's nginx (nself-web fronted task.staging.nself.org). That
+// ANOTHER stack's nginx (nself-web fronted task.stack-two.nself.org). That
 // nginx container can never bind 80/443 — the fronting stack's nginx
 // already holds them — so it sits forever as one unhealthy container
 // `nself status` can never clear (reported "6/7").
@@ -28,7 +28,7 @@ func frontedTestConfig(t *testing.T) *config.Config {
 	t.Helper()
 	cfg := &config.Config{
 		ProjectName:   "ntask",
-		BaseDomain:    "task.staging.nself.org",
+		BaseDomain:    "task.stack-two.nself.org",
 		Env:           "dev",
 		DockerNetwork: "ntask_network",
 		Postgres: config.PostgresConfig{

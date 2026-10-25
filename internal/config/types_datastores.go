@@ -117,7 +117,7 @@ type NginxConfig struct {
 	// wire this project's containers onto the fronting stack's Docker
 	// network — the fronting nginx's `resolver 127.0.0.11` can only reach
 	// container names on a network it is attached to, so making
-	// auth.task.staging.nself.org resolve ntask_auth still requires the
+	// auth.task.stack-two.nself.org resolve ntask_auth still requires the
 	// operator to attach the two projects' networks (or declare one as
 	// external in both compose files) by hand. That is a bigger, riskier
 	// change — automatically rewriting a Docker network topology from a

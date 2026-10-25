@@ -251,7 +251,7 @@ func TestSSLAdd_CertDirMatchesNginxMountLayout(t *testing.T) {
 	t.Parallel()
 
 	domains := []string{
-		"staging.nself.org",
+		"stack-two.nself.org",
 		"nself.org",
 		"api.task.nself.org",
 	}

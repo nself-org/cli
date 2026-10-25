@@ -135,7 +135,7 @@ func extractNginxServerBlocks(content string) []nginxServerBlock {
 }
 
 // nginxHostnameFirstLabel returns the lowercased first dot-separated label
-// of a server_name hostname, e.g. "auth.myapp.staging.nself.org" -> "auth".
+// of a server_name hostname, e.g. "auth.myapp.stack-two.nself.org" -> "auth".
 func nginxHostnameFirstLabel(hostname string) string {
 	if i := strings.IndexByte(hostname, '.'); i >= 0 {
 		return hostname[:i]
