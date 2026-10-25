@@ -69,31 +69,57 @@ func mountBuiltinFamiliesFromList(root *cobra.Command) {
 		if !builtinEnabled(f.slug) {
 			continue
 		}
-		alreadyMounted := false
-		for _, existing := range root.Commands() {
-			if existing.Annotations[mount.AnnSource] == sourceBuiltin && existing.Annotations[mount.AnnPlugin] == f.slug {
-				alreadyMounted = true
-				break
-			}
+		mountBuiltinFamily(root, f)
+	}
+}
+
+// mountBuiltinFamily mounts one family on root and returns its node, or nil
+// when the family is already mounted or builds nothing.
+func mountBuiltinFamily(root *cobra.Command, f builtinFamily) *cobra.Command {
+	for _, existing := range root.Commands() {
+		if existing.Annotations[mount.AnnSource] == sourceBuiltin && existing.Annotations[mount.AnnPlugin] == f.slug {
+			return nil
 		}
-		if alreadyMounted {
-			continue
+	}
+	node := f.build()
+	if node == nil {
+		return nil
+	}
+	annotateBuiltin(node, f.slug)
+	if node.GroupID == "" {
+		// compat.V15(P7-CANON-19): account group -> plugin commands group
+		if compat.V15() {
+			node.GroupID = groupPlugins
+		} else {
+			node.GroupID = groupAccount
 		}
-		node := f.build()
-		if node == nil {
-			continue
+	}
+	ensureBuiltinGroups(root, node)
+	root.AddCommand(node)
+	return node
+}
+
+// mountDisabledBuiltinFamilies mounts the builtin families whose disable
+// marker exists, for the duration of a registry build only, and returns the
+// undo that removes them again. The canon entries, data types and v1.5-only
+// envelope paths of a family are declared whether or not it is installed, so
+// the registry (and everything generated from it) must not depend on the
+// developer's plugin directory; the runtime tree keeps the family unmounted
+// (`nself <slug>` still exits E407) (D-0863).
+func mountDisabledBuiltinFamilies(root *cobra.Command) func() {
+	var added []*cobra.Command
+	for _, f := range builtinFamilies {
+		if builtinEnabled(f.slug) {
+			continue // prepareTree mounts it
 		}
-		annotateBuiltin(node, f.slug)
-		if node.GroupID == "" {
-			// compat.V15(P7-CANON-19): account group -> plugin commands group
-			if compat.V15() {
-				node.GroupID = groupPlugins
-			} else {
-				node.GroupID = groupAccount
-			}
+		if node := mountBuiltinFamily(root, f); node != nil {
+			added = append(added, node)
 		}
-		ensureBuiltinGroups(root, node)
-		root.AddCommand(node)
+	}
+	return func() {
+		for _, c := range added {
+			root.RemoveCommand(c)
+		}
 	}
 }
 
