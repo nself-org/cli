@@ -366,6 +366,39 @@ func TestScratchAllowlistedMarkedFileIsCopiedAndShipped(t *testing.T) {
 	}
 }
 
+func TestScratchAllowlistedMarkedSiteSurvivesBuildPrune(t *testing.T) {
+	proj := nginxProject(t, "NSELF_DEPLOY_NGINX_INCLUDE=sites/stale.conf,sites/api.conf\n")
+	wf(t, filepath.Join(proj, "nginx", "sites", "api.conf"), testBuildMarker+"# old API\n")
+	wf(t, filepath.Join(proj, "nginx", "sites", "other.conf"), testBuildMarker+"# not allowlisted\n")
+	ran := 0
+	stub := scratchBuildStub(t, &ran, nil)
+	useScratchBuild(t, func(ctx context.Context, root string, remote bool, steps []deployStep) ([]deployStep, error) {
+		// Reproduce the real build's marked-site prune before it regenerates api.conf.
+		if err := os.Remove(filepath.Join(root, "nginx", "sites", "stale.conf")); err != nil {
+			t.Fatal(err)
+		}
+		return stub(ctx, root, remote, steps)
+	})
+	scratch, err := runScratchBuild(context.Background(), proj, "staging", deploy.TargetSnapshot{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := v15Params{workdir: proj, target: "staging", srv: controlplane.Server{Name: "s1", RemotePath: "/opt/nself"}}
+	set, err := stageScratch(p, scratch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(set.Files, "nginx/sites/stale.conf") || contains(set.Files, "nginx/sites/other.conf") {
+		t.Errorf("staged sites = %v", set.Files)
+	}
+	for name, want := range map[string]string{"stale.conf": testBuildMarker + "# stale generated output\n", "api.conf": testBuildMarker + "server { listen 80; }\n"} {
+		got, err := os.ReadFile(filepath.Join(scratch, "nginx", "sites", name))
+		if err != nil || string(got) != want {
+			t.Errorf("%s = %q, %v; want %q", name, got, err, want)
+		}
+	}
+}
+
 func TestScratchReportsSymlinksUnderNginx(t *testing.T) {
 	proj := nginxProject(t, "NSELF_DEPLOY_NGINX_INCLUDE=sites/link.conf\n")
 	if err := os.Symlink("hand.conf", filepath.Join(proj, "nginx", "sites", "link.conf")); err != nil {

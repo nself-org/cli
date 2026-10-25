@@ -47,7 +47,8 @@ import (
 )
 
 // deployNginxIncludeEnv is the operator allowlist: comma-separated globs
-// relative to nginx/ for unmarked files that should ship.
+// relative to nginx/ for files that should ship, including marked sites that
+// the scratch build's stale-site prune would otherwise remove.
 const deployNginxIncludeEnv = "NSELF_DEPLOY_NGINX_INCLUDE"
 
 // scratchLeavesGenerated reports whether the scratch copy must leave out the

@@ -92,8 +92,15 @@ func runScratchBuild(ctx context.Context, workdir, env string, snap deploy.Targe
 	if err := writeFrontStubSSL(scratch, frontedBy, snap.FrontSSL); err != nil {
 		return "", fmt.Errorf("deploy: writing the stub ssl tree: %w", err)
 	}
+	restoreSites, err := preserveScratchNginxSites(scratch, policy)
+	if err != nil {
+		return "", fmt.Errorf("deploy: preserving allowlisted nginx sites: %w", err)
+	}
 	if _, err := deployScratchBuildFn(ctx, scratch, true, nil); err != nil {
 		return "", fmt.Errorf("deploy: scratch build failed, nothing was sent: %w", err)
+	}
+	if err := restoreSites(); err != nil {
+		return "", fmt.Errorf("deploy: restoring allowlisted nginx sites: %w", err)
 	}
 	return scratch, nil
 }
