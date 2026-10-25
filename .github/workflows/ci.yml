@@ -199,6 +199,15 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: bash scripts/ci/vendor-sync-check.sh
 
+      # D-0117: CONSTITUTION §4 rule 2 (no panics outside main). The ratchet
+      # fails when a library file gains a raw panic() site; the _test.sh run is
+      # the positive control.
+      - name: Panic ratchet
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          bash scripts/ci/panic-ratchet_test.sh
+          bash scripts/ci/panic-ratchet.sh
+
       # P7-REG-10: the machine-contract gate. Linux legs only (Windows has no
       # POSIX shell here and macOS legs add nothing the Linux proof lacks).
       # jq and make ship on the GitHub-hosted ubuntu images.
