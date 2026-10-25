@@ -59,6 +59,20 @@ expect nested-sites 1 "internal/a/a.go has 2"
 printf 'package a\n\nfunc F() error { return nil }\n' > "${T}/internal/a/a.go"
 expect below-baseline 0 "has no raw panic() left"
 
+# A panic-free file scanned after a baselined one must not fail the scan:
+# --print succeeds and the baselined file is not reported stale. find order is
+# filesystem-dependent, so many clean files make a clean last file near-certain.
+printf 'package a\n\nfunc F() { panic("boom") }\n' > "${T}/internal/a/a.go"
+for i in 1 2 3 4 5 6 7 8 9 10 11 12; do printf 'package a\n\nfunc C%s() error { return nil }\n' "${i}" > "${T}/internal/a/clean${i}.go"; done
+got=0; bash "${HERE}/panic-ratchet.sh" --print "${T}" > "${WORK}/print.out" 2>&1 || got=$?
+[ "${got}" -eq 0 ] || { echo "FAIL print-clean-last: exit ${got}, want 0" >&2; cat "${WORK}/print.out" >&2; exit 1; }
+grep -qx '1 internal/a/a.go' "${WORK}/print.out" || { echo "FAIL print-clean-last: missing site" >&2; cat "${WORK}/print.out" >&2; exit 1; }
+echo "ok print-clean-last"
+expect clean-last-not-stale 0 "ok (1 site(s))"
+if grep -q "no raw panic() left" "${WORK}/clean-last-not-stale.out"; then
+  echo "FAIL clean-last-not-stale: baselined file with a panic reported stale" >&2; cat "${WORK}/clean-last-not-stale.out" >&2; exit 1
+fi
+
 # A missing baseline is a usage error.
 got=0; PANIC_BASELINE="${WORK}/missing.txt" bash "${HERE}/panic-ratchet.sh" "${T}" >/dev/null 2>&1 || got=$?
 [ "${got}" -eq 2 ] || { echo "FAIL missing-baseline: exit ${got}, want 2" >&2; exit 1; }

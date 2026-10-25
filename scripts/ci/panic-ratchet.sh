@@ -48,9 +48,10 @@ current() {
       -type f -name '*.go' ! -name '*_test.go' -print) \
   | while IFS= read -r path; do
       path="${path#./}"
-      grep -q '^package main$' "${ROOT}/${path}" && continue
+      if grep -q '^package main$' "${ROOT}/${path}"; then continue; fi
       n="$(count_sites "${ROOT}/${path}")"
-      [ "${n:-0}" -gt 0 ] && printf '%s %s\n' "${n}" "${path}"
+      # if, not &&: a panic-free last file must not make the loop (and so current) exit 1.
+      if [ "${n:-0}" -gt 0 ]; then printf '%s %s\n' "${n}" "${path}"; fi
     done | LC_ALL=C sort -k2
 }
 
