@@ -10,10 +10,12 @@ package bundle
 // the plugins that were on disk before the install (name -> version).
 // Outputs: nil, or E135 (v1.5) / a printed warning (v1.4) for a failed step.
 // Constraints: a ledger write failure does NOT roll the install back (the plugins
-// are on disk); the error says so. Hooks nil: only the ledger step runs.
+// are on disk); the error says so. A failed reconcile undoes fresh members and
+// restores ledger ownership. Hooks nil: only the ledger step runs.
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -73,6 +75,7 @@ func finishInstall(ctx context.Context, rn *appready.Runner, store *ledger.Store
 		out = os.Stderr
 	}
 	var names []string
+	var prior ledger.Ledger
 	_ = rn.Step(appready.StepLedger, func() (string, error) {
 		members, err := installedMembers(pluginDir, planned)
 		if err != nil {
@@ -82,6 +85,7 @@ func finishInstall(ctx context.Context, rn *appready.Runner, store *ledger.Store
 			return "no installed members to record", nil
 		}
 		if err := store.Locked(func(tx *ledger.Tx, l ledger.Ledger) error {
+			prior = l.Clone()
 			// A member that was on disk before this install and has no ledger
 			// record was installed on its own: record it explicit so a later
 			// bundle remove keeps it. (Errs toward keeping the plugin.)
@@ -123,7 +127,12 @@ func finishInstall(ctx context.Context, rn *appready.Runner, store *ledger.Store
 		appready.Render(out, rep)
 	}
 	if f := rn.Failure(); f != nil {
-		return appReadyVerdict(out, result.Bundle, f)
+		verdict := appReadyVerdict(out, result.Bundle, f)
+		if f.Step == appready.StepReconcile {
+			undoErr := undoFreshMembers(ctx, store, pluginDir, planned, prior, result, before, out)
+			return errors.Join(verdict, undoErr)
+		}
+		return verdict
 	}
 	return nil
 }
