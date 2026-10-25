@@ -32,8 +32,10 @@ func revalidateKeys(ctx context.Context) (map[string]bool, []string) {
 		result, err := license.Validate(ctx, key, &license.ValidatorOptions{HTTPClient: remote})
 		if err == nil && explicitRejection(remote, result) {
 			rejected[license.HashKey(key)] = true
+			recordVerdict(license.HashKey(key), true)
 		}
 		if err == nil && result != nil && result.CanProceed && !result.FromCache && result.Status == license.StatusValid {
+			recordVerdict(license.HashKey(key), false)
 			if token, err := cachedToken(); err == nil {
 				renewed = append(renewed, token)
 			}

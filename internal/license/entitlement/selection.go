@@ -8,7 +8,8 @@ import (
 
 // Purpose: select the newest signed covering token among configured subjects.
 // Inputs: candidates/slugs/rejected subjects. Outputs: token/policy error.
-// Constraints: rejected keys grant no authority; signed exp orders candidates.
+// Constraints: rejected keys (this run, persisted, or on the revocation list) grant
+// no authority; signed exp orders candidates.
 // SPORT: single-token multi-key continuity.
 func selectToken(candidates []string, names []string, rejected map[string]bool) (string, error) {
 	best, fallback := "", ""
@@ -17,9 +18,11 @@ func selectToken(candidates []string, names []string, rejected map[string]bool) 
 	for _, key := range license.CollectLicenseKeys() {
 		configured[license.HashKey(key)] = true
 	}
+	persisted := loadRejected()
 	for _, token := range candidates {
 		claims, err := license.ParseLicenseJWT(token)
-		if err != nil || claims.Exp <= 0 || !configured[claims.Sub] || rejected[claims.Sub] {
+		if err != nil || claims.Exp <= 0 || !configured[claims.Sub] || rejected[claims.Sub] || persisted[claims.Sub] ||
+			license.IsRecordRevoked(license.LicenseRecord{KeyHash: claims.Sub}) {
 			continue
 		}
 		if claims.Exp > fallbackExp {

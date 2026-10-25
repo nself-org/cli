@@ -105,12 +105,14 @@ func validateNewKey(ctx context.Context, projectDir, key string) error {
 	// 403, or a signed rejection revoke this runtime entitlement.
 	rejected := explicitRejection(remote, result)
 	if result.CanProceed && !rejected {
+		recordVerdict(license.HashKey(key), false)
 		return nil
 	}
 	// FromCache alone cannot distinguish an absent cache from an auth rejection.
 	if !rejected {
 		return ErrValidationUnavailable
 	}
+	recordVerdict(license.HashKey(key), true)
 	if projectDir != "" {
 		if writeErr := publishAfterKeyRejection(projectDir, key); writeErr != nil {
 			return writeErr

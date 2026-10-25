@@ -253,7 +253,9 @@ func revalidateClassified(ctx context.Context) (renewed []string, rejected map[s
 		switch {
 		case err == nil && explicitRejection(remote, result):
 			rejected[license.HashKey(key)], class = true, ClassRejected
+			recordVerdict(license.HashKey(key), true)
 		case err == nil && result != nil && result.CanProceed && !result.FromCache && result.Status == license.StatusValid:
+			recordVerdict(license.HashKey(key), false)
 			entry, _ := license.ReadCache()
 			token, terr := cachedToken()
 			switch {
