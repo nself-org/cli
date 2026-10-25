@@ -54,8 +54,12 @@ func (s *GeneratedState) HandEdited(path string, current []byte) bool {
 // resolves each display path to its location on disk and reads the file's
 // current bytes. A nil record (no state yet) answers false for everything:
 // the first run on an existing project records and never blocks.
+// "@plugins/" paths resolve under the plugin directory the project's env
+// cascade names (NSELF_PLUGIN_DIR in .env wins over the shell), the directory
+// a build resolves after config.Load, so a caller outside a build (doctor)
+// judges the same files the build records (D-0644).
 func (s *GeneratedState) HandEditedFn(projectDir string) func(path string) bool {
-	return s.handEditedFnWith(projectDir, nil, "")
+	return s.handEditedFnWith(projectDir, nil, strings.TrimSpace(cascadeValue(projectDir, nil, "NSELF_PLUGIN_DIR")))
 }
 
 // handEditedFnWith is HandEditedFn with the env files a pending change will
