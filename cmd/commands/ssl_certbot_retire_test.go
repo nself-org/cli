@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -26,6 +27,7 @@ var realSystemctlRun = systemctlRun
 func init() {
 	systemctlRun = func(context.Context, ...string) (string, error) { return "", errNoSystemctl }
 	certbotDir = filepath.Join(os.TempDir(), "nself-test-no-letsencrypt")
+	certbotUserConfigs = func() ([]string, []string) { return nil, nil } // never the real home
 }
 
 // useCertbotDir points certbotDir at a fresh tree for the test.
@@ -290,5 +292,37 @@ func TestRetireCertbotSystemdDownHint(t *testing.T) {
 	sd.load = ""
 	if _, err := r.retireCertbot(); err == nil || codeOf(err) != "E151" || !strings.Contains(err.Error(), "with systemctl on PATH") {
 		t.Fatalf("no systemctl: err = %v", err)
+	}
+}
+
+// D-0595: a copy hook in the per-user cli.ini (XDG_CONFIG_HOME, the caller's
+// ~/.config, root's ~/.config) is found; the scan names the file and line.
+func TestCertbotHooksPerUserConfig(t *testing.T) {
+	sslDir := filepath.Join(t.TempDir(), "proj", "ssl")
+	le := t.TempDir() // an empty certbot tree: only the per-user files can hit
+	xdg, home, rootHome := t.TempDir(), t.TempDir(), t.TempDir()
+	conf := func(base string) string { return filepath.Join(base, "letsencrypt", "cli.ini") }
+	old := certbotUserConfigs
+	t.Cleanup(func() { certbotUserConfigs = old })
+	certbotUserConfigs = func() ([]string, []string) {
+		return []string{conf(xdg), conf(filepath.Join(home, ".config"))}, []string{conf(filepath.Join(rootHome, ".config"))}
+	}
+	if hits, err := certbotHooks(le, sslDir); err != nil || len(hits) != 0 {
+		t.Fatalf("no per-user files: hits=%v err=%v", hits, err)
+	}
+	for _, p := range []string{conf(xdg), conf(filepath.Join(home, ".config")), conf(filepath.Join(rootHome, ".config"))} {
+		acmeWriteFile(t, p, []byte("email = a@example.test\ndeploy-hook = cp x "+sslDir+"/\n"))
+		hits, err := certbotHooks(le, sslDir)
+		if want := p + ":2"; err != nil || !slices.Contains(hits, want) {
+			t.Fatalf("%s: hits=%v err=%v, want %s", p, hits, err, want)
+		}
+		if err := os.Remove(p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A per-user hook that names another dir is not a hit.
+	acmeWriteFile(t, conf(xdg), []byte("deploy-hook = cp x /srv/other/ssl/\n"))
+	if hits, err := certbotHooks(le, sslDir); err != nil || len(hits) != 0 {
+		t.Fatalf("unrelated hook: hits=%v err=%v", hits, err)
 	}
 }
