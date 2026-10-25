@@ -33,7 +33,7 @@ With `--json` in v1.5 mode an applied change prints the envelope with `applied: 
 
 **Rotating a live secret.** Put the new value in `.env.secrets` and let the regeneration carry it: `nself config set HASURA_GRAPHQL_ADMIN_SECRET <new> --env secrets --yes` on a prod-class env. The generated env and compose files are updated; the running containers keep the old value until they are recreated (`nself start`). `nself secrets rotate` is a different tool: it rotates the encrypted secret store (`.secrets/<env>.age`), which the build does not read, so it does not regenerate anything. Its schedule tracks `HASURA_GRAPHQL_ADMIN_SECRET`, the name the stack reads.
 
-The `validate` subcommand runs all registered configuration validators and reports pass/fail per rule. It is automatically run during `nself build`, but you can run it independently to check config without rebuilding.
+The `validate` subcommand runs all registered configuration validators and reports pass/fail per rule. It is automatically run during `nself build`, but you can run it independently to check config without rebuilding. It also warns, on stderr, about each env-file value whose unquoted or double-quoted `$` the loader would expand (`.env.secrets:12: KEY holds an unquoted '$' ...`): the warning gives the file, line and key only, never the value; a `${NAME}` reference is not flagged; and warnings do not change the exit code or the `--json` document. Single-quote the value if the `$` is literal.
 
 ### JSON output
 
