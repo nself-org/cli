@@ -12,7 +12,7 @@ func init() {
 	ovs := []Override{
 		{Pointer: "/properties/_generated", Set: map[string]any{"const": sharedproxy.Generated}},
 		{Pointer: "/properties/schema_version", Set: map[string]any{"const": sharedproxy.SchemaVersion}},
-		{Pointer: "/properties/files/items", Set: map[string]any{"pattern": `^(nginx/sites/[^/]+|ssl/certificates/[^/]+/(fullchain|privkey)\\.pem)$`}},
+		{Pointer: "/properties/files/items", Set: map[string]any{"pattern": `^(nginx/sites/[^/]+|ssl/certificates/[^/]+/(fullchain|privkey)\.pem)$`}},
 	}
 	for _, p := range []string{"/properties/files", "/properties/server_names", "/properties/service_names", "/properties/verbatim_upstream_hosts"} {
 		ovs = append(ovs, Override{Pointer: p, Set: map[string]any{"type": "array"}})
