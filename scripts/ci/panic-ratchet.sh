@@ -24,17 +24,32 @@ BASELINE="${PANIC_BASELINE:-${HERE}/panic-baseline.txt}"
 [ -d "${ROOT}" ] || { echo "panic-ratchet: no such directory: ${ROOT}" >&2; exit 2; }
 [ "${PRINT}" -eq 1 ] || [ -f "${BASELINE}" ] || { echo "panic-ratchet: baseline not found: ${BASELINE}" >&2; exit 2; }
 
+# count_sites prints how many raw panic( calls a file has. Calls are counted
+# individually, not per line, so two calls on one gofmt-legal line count twice.
+# Comment-only lines are skipped. After each hit the scan resumes at the "(" so
+# a nested panic(panic(x)) still counts both.
+count_sites() {
+  awk '
+    /^[[:space:]]*\/\// { next }
+    {
+      s = $0
+      while (match(s, /(^|[^A-Za-z0-9_."])panic\(/)) {
+        n++
+        s = substr(s, RSTART + RLENGTH - 1)
+      }
+    }
+    END { print n + 0 }
+  ' "$1"
+}
+
 # current prints "<count> <path>" per first-party library file with a raw panic(.
 current() {
   (cd "${ROOT}" && find . \( -name vendor -o -name testdata -o -name .claude -o -name node_modules -o -name .git \) -prune -o \
-      -type f -name '*.go' ! -name '*_test.go' -print0 \
-    | xargs -0 grep -c -E '(^|[^A-Za-z0-9_."])panic\(' 2>/dev/null || true) \
-  | while IFS=: read -r path n; do
-      [ "${n:-0}" -gt 0 ] || continue
+      -type f -name '*.go' ! -name '*_test.go' -print) \
+  | while IFS= read -r path; do
       path="${path#./}"
       grep -q '^package main$' "${ROOT}/${path}" && continue
-      # Recount without comment-only lines.
-      n="$(grep -E '(^|[^A-Za-z0-9_."])panic\(' "${ROOT}/${path}" | grep -c -v -E '^[[:space:]]*//' || true)"
+      n="$(count_sites "${ROOT}/${path}")"
       [ "${n:-0}" -gt 0 ] && printf '%s %s\n' "${n}" "${path}"
     done | LC_ALL=C sort -k2
 }

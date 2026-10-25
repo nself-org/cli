@@ -45,8 +45,17 @@ printf 'package a\n\nfunc F() { panic("boom") }\n' > "${T}/internal/a/a.go"
 printf 'package a\n\nfunc N() { panic("new") }\n' > "${T}/internal/a/new.go"
 expect new-file 1 "internal/a/new.go has 1"
 
-# Removing a site only notes that the baseline can drop.
 rm "${T}/internal/a/new.go"
+
+# Two calls on one gofmt-legal line are two sites, not one.
+printf 'package a\n\nvar Hooks = []func(){func() { panic("one") }, func() { panic("two") }}\n' > "${T}/internal/a/a.go"
+expect two-sites-one-line 1 "internal/a/a.go has 2"
+
+# A nested panic(panic(x)) is two sites.
+printf 'package a\n\nfunc F() { panic(panic("x")) }\n' > "${T}/internal/a/a.go"
+expect nested-sites 1 "internal/a/a.go has 2"
+
+# Removing a site only notes that the baseline can drop.
 printf 'package a\n\nfunc F() error { return nil }\n' > "${T}/internal/a/a.go"
 expect below-baseline 0 "has no raw panic() left"
 
