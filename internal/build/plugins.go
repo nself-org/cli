@@ -21,6 +21,7 @@ import (
 	"sync"
 
 	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/license/entitlement"
@@ -44,16 +45,7 @@ var refreshPluginEntitlement = entitlement.RefreshForPlugins
 // (~/.nself/plugins). The NSELF_PLUGIN_DIR environment variable overrides the
 // default — used for per-project plugin sets, hermetic tests, and CI. Falls
 // back to /tmp/.nself/plugins when the home directory cannot be determined.
-func DefaultPluginDir() string {
-	if dir := strings.TrimSpace(os.Getenv("NSELF_PLUGIN_DIR")); dir != "" {
-		return dir
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return filepath.Join("/tmp", ".nself", "plugins")
-	}
-	return filepath.Join(home, ".nself", "plugins")
-}
+func DefaultPluginDir() string { return config.DefaultPluginDir() }
 
 // DiscoverPluginComposeFiles scans pluginDir for installed plugins that
 // contain a docker-compose.plugin.yml file. It returns absolute paths to

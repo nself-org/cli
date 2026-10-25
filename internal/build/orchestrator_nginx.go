@@ -168,10 +168,7 @@ func (s *snippetSet) parse() {
 // skipped (pluginSnippetSkip, hasSSL = the model's TLS) the same way; a
 // skipped snippet is recorded in global, not dropped. Read errors are left to the injection step, which reports them.
 func (s *snippetSet) plugins(workdir string, cfg *config.Config, hasSSL bool) {
-	pluginDir, err := resolvePluginNginxDir("", cfg)
-	if err != nil {
-		return
-	}
+	pluginDir := resolvePluginNginxDir("", cfg)
 	entries, err := os.ReadDir(pluginDir)
 	if err != nil {
 		return

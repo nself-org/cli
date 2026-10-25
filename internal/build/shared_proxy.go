@@ -199,12 +199,11 @@ func (st *buildState) sharedServices() map[string]string {
 	for _, svc := range DetectServices(st.cfg) {
 		out[svc] = st.cfg.ServiceContainerName(svc)
 	}
-	if dir, err := resolvePluginNginxDir("", st.cfg); err == nil {
-		entries, _ := os.ReadDir(dir)
-		for _, e := range entries {
-			if _, err := os.Stat(filepath.Join(dir, e.Name(), pluginComposeFilename)); err == nil && e.IsDir() {
-				out[e.Name()] = st.cfg.ServiceContainerName(e.Name())
-			}
+	dir := resolvePluginNginxDir("", st.cfg)
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if _, err := os.Stat(filepath.Join(dir, e.Name(), pluginComposeFilename)); err == nil && e.IsDir() {
+			out[e.Name()] = st.cfg.ServiceContainerName(e.Name())
 		}
 	}
 	return out

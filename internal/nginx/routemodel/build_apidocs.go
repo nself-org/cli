@@ -3,9 +3,9 @@ package routemodel
 import (
 	"fmt"
 	"regexp"
-	"strings"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/nginxtopo"
 )
 
 // apiDocsPathRE is the set of API_DOCS_PATH values safe to write raw into an
@@ -51,7 +51,7 @@ func APIDocs(cfg *config.Config) (*Route, error) {
 	return &Route{
 		ID: "core:api-docs", Source: "core", File: "nginx/sites/api-docs.conf",
 		ServerNames: []string{name}, Listen: Listen{HTTP: false, HTTPS: true},
-		TLS: &RouteTLS{SSLDir: strings.ReplaceAll(base, ".", "-"),
+		TLS: &RouteTLS{SSLDir: nginxtopo.CertDirName(base),
 			Protocols: []string{"TLSv1.2", "TLSv1.3"}, Ciphers: ptr(ciphers)},
 		SecurityHeaders: map[string]string{}, BlockedPaths: []BlockedPath{},
 		Locations: []Location{

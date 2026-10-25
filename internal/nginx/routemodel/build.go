@@ -50,10 +50,7 @@ func Build(cfg *config.Config, workdir string, hasSSL bool) (*Model, error) {
 			TLS: TLSDefaults{Protocols: []string{"TLSv1.2", "TLSv1.3"}, Ciphers: ptr(ciphers)}},
 		DefaultServer: DefaultServer{HTTP: DefaultHTTP{ACMEWebroot: &webroot, HealthPath: &health, RedirectHTTPS: hasSSL}, HTTPS: DefaultHTTPS{Action: "close"}},
 		Zones:         buildZones(cfg)}
-	sslDir := strings.ReplaceAll(cfg.BaseDomain, ".", "-")
-	if sslDir == "" {
-		sslDir = "localhost"
-	}
+	sslDir := nginxtopo.CertDirNameOrLocalhost(cfg.BaseDomain)
 	var specs []routeSpec
 	add := func(id, source, owner, file, name, legacy, upstream, zone string, burst, conn int, websocket bool) {
 		specs = append(specs, routeSpec{id, source, owner, file, name, legacy, upstream, zone, burst, conn, websocket})
@@ -169,10 +166,7 @@ func ptr(s string) *string { return &s }
 // SetSSL refreshes TLS facts after the build's certificate phase.
 func SetSSL(m *Model, hasSSL bool) {
 	m.DefaultServer.HTTP.RedirectHTTPS = hasSSL
-	sslDir := strings.ReplaceAll(m.BaseDomain, ".", "-")
-	if sslDir == "" {
-		sslDir = "localhost"
-	}
+	sslDir := nginxtopo.CertDirNameOrLocalhost(m.BaseDomain)
 	for i := range m.Routes {
 		r := &m.Routes[i]
 		r.Listen = Listen{HTTP: !hasSSL, HTTPS: hasSSL}
