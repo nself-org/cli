@@ -223,7 +223,10 @@ func RunScheduled(ctx context.Context, projectDir string) (Outcome, error) {
 		}
 		return Outcome{Removed: res.Removed, RootRequired: res.RootRequired, Reason: reason}, nil
 	}
-	renewed, rejected, class := revalidateClassified(ctx)
+	renewed, rejected, class, recordErr := revalidateClassified(ctx)
+	if recordErr != nil { // a rejection that cannot be remembered must not publish anything
+		return Outcome{}, &RefreshError{Class: ClassWriteFailed, Err: recordErr}
+	}
 	if len(renewed) == 0 {
 		return Outcome{}, &RefreshError{Class: class}
 	}
@@ -242,7 +245,7 @@ func RunScheduled(ctx context.Context, projectDir string) (Outcome, error) {
 }
 
 // revalidateClassified renews every configured key once and names why nothing was renewed.
-func revalidateClassified(ctx context.Context) (renewed []string, rejected map[string]bool, class string) {
+func revalidateClassified(ctx context.Context) (renewed []string, rejected map[string]bool, class string, recordErr error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	rejected, class = map[string]bool{}, ClassNoLicence
@@ -253,9 +256,11 @@ func revalidateClassified(ctx context.Context) (renewed []string, rejected map[s
 		switch {
 		case err == nil && explicitRejection(remote, result):
 			rejected[license.HashKey(key)], class = true, ClassRejected
-			recordVerdict(license.HashKey(key), true)
+			if err := recordVerdict(license.HashKey(key), true); err != nil {
+				recordErr = err
+			}
 		case err == nil && result != nil && result.CanProceed && !result.FromCache && result.Status == license.StatusValid:
-			recordVerdict(license.HashKey(key), false)
+			_ = recordVerdict(license.HashKey(key), false) // a stale rejection only fails closed
 			entry, _ := license.ReadCache()
 			token, terr := cachedToken()
 			switch {
@@ -272,7 +277,7 @@ func revalidateClassified(ctx context.Context) (renewed []string, rejected map[s
 			class = ClassPingUnavailable
 		}
 	}
-	return renewed, rejected, class
+	return renewed, rejected, class, recordErr
 }
 
 // PublishFromCache rewrites the entitlement file from the verified licence cache without

@@ -18,7 +18,10 @@ func selectToken(candidates []string, names []string, rejected map[string]bool) 
 	for _, key := range license.CollectLicenseKeys() {
 		configured[license.HashKey(key)] = true
 	}
-	persisted := loadRejected()
+	persisted, err := loadRejected()
+	if err != nil {
+		return "", fmt.Errorf("the persisted licence rejection record is unreadable: %w", err)
+	}
 	for _, token := range candidates {
 		claims, err := license.ParseLicenseJWT(token)
 		if err != nil || claims.Exp <= 0 || !configured[claims.Sub] || rejected[claims.Sub] || persisted[claims.Sub] ||

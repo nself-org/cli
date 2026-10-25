@@ -52,12 +52,19 @@ func RefreshForPlugins(ctx context.Context, projectDir, pluginDir string) error 
 	token, _ := cachedToken()
 	candidates := []string{token, retainedToken(Path(projectDir))}
 	var rejected map[string]bool
+	var recordErr error
 	if len(names) > 0 {
 		var renewed []string
-		rejected, renewed = revalidateKeys(ctx)
+		rejected, renewed, recordErr = revalidateKeys(ctx)
 		candidates = append(candidates, renewed...)
 	}
-	return publishCandidates(projectDir, names, rejected, candidates)
+	if err := publishCandidates(projectDir, names, rejected, candidates); err != nil {
+		return err
+	}
+	if recordErr != nil {
+		return errs.Wrap("E125", "the licence rejection could not be recorded and may not hold offline", recordErr)
+	}
+	return nil
 }
 
 // Purpose: select and publish without repeating online validation.

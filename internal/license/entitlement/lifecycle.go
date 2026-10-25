@@ -16,14 +16,15 @@ import (
 )
 
 // Purpose: renew configured keys once each without blocking offline starts.
-// Inputs: context/keys. Outputs: rejected subjects/renewed tokens. Constraints: five seconds
+// Inputs: context/keys. Outputs: rejected subjects/renewed tokens/rejection persistence error. Constraints: five seconds
 // overall, existing HTTP timeouts, no cache changes on transient failures.
 // SPORT: online entitlement renewal.
-func revalidateKeys(ctx context.Context) (map[string]bool, []string) {
+func revalidateKeys(ctx context.Context) (map[string]bool, []string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	rejected := make(map[string]bool)
 	var renewed []string
+	var recordErr error
 	for _, key := range license.CollectLicenseKeys() {
 		if ctx.Err() != nil {
 			break
@@ -32,16 +33,18 @@ func revalidateKeys(ctx context.Context) (map[string]bool, []string) {
 		result, err := license.Validate(ctx, key, &license.ValidatorOptions{HTTPClient: remote})
 		if err == nil && explicitRejection(remote, result) {
 			rejected[license.HashKey(key)] = true
-			recordVerdict(license.HashKey(key), true)
+			if err := recordVerdict(license.HashKey(key), true); err != nil {
+				recordErr = err
+			}
 		}
 		if err == nil && result != nil && result.CanProceed && !result.FromCache && result.Status == license.StatusValid {
-			recordVerdict(license.HashKey(key), false)
+			_ = recordVerdict(license.HashKey(key), false) // a stale rejection only fails closed
 			if token, err := cachedToken(); err == nil {
 				renewed = append(renewed, token)
 			}
 		}
 	}
-	return rejected, renewed
+	return rejected, renewed, recordErr
 }
 
 // Purpose: distinguish revocation from transport and unrelated HTTP failures.
