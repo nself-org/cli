@@ -645,6 +645,24 @@ func TestRollbackWithoutBackupHostTar(t *testing.T) {
 	}
 }
 
+// D-0541: a rollback whose record cannot be saved must say so, not exit 0.
+func TestRollbackReportsUnsavedRecord(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	proj, _, _, _ := twoHostProd(t)
+	rollbackRecord(t, proj, "deploy@app.example.test", "deploy@app2.example.test")
+	dir := filepath.Dir(filepath.Join(proj, deploy.DeployStateFile))
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	handled, err := rollbackRemoteV15(yesCmd(), proj, "prod")
+	if !handled || err == nil || !strings.Contains(err.Error(), "rolled back but the record was not saved") {
+		t.Fatalf("handled=%v err=%v, want the unsaved record reported", handled, err)
+	}
+}
+
 const rollbackSignalEnv = "NSELF_DEPLOY_ROLLBACK_SIGNAL_HELPER"
 
 // TestRollbackInterruptHelper is the child process; it does nothing unless re-executed.
