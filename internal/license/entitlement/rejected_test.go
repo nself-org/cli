@@ -146,3 +146,36 @@ func TestCorruptRecordKeepsOtherKeysRejectedUntilFreshlyAccepted(t *testing.T) {
 		t.Fatalf("after accepting A: %v, %v; want only B rejected", set, err)
 	}
 }
+
+// A cache directory whose name holds glob metacharacters must still yield its markers.
+func TestLoadRejectedReadsMarkersInDirectoryWithGlobMetacharacters(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "cache[x")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LICENSE_CACHE_PATH", filepath.Join(dir, "license.json"))
+	if err := os.Mkdir(filepath.Join(dir, rejectedLockFile), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := recordVerdict("h1", true); err != nil {
+		t.Fatal(err)
+	}
+	if set, err := loadRejected(); err != nil || !set["h1"] {
+		t.Fatalf("marker in a bracketed directory was not loaded: %v, %v", set, err)
+	}
+}
+
+// A cache directory that cannot be listed is unknown state: fail closed, never "no markers".
+func TestLoadRejectedFailsClosedWhenDirectoryCannotBeListed(t *testing.T) {
+	dir := useRejectedDir(t)
+	if err := os.Chmod(dir, 0300); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0700) })
+	if _, err := os.ReadDir(dir); err == nil {
+		t.Skip("directory listing is not denied for this user (root)")
+	}
+	if _, err := loadRejected(); err == nil {
+		t.Fatal("an unlistable cache directory was read as having no rejection markers")
+	}
+}

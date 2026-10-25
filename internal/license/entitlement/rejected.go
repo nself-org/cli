@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/nself-org/cli/internal/license"
@@ -71,10 +72,19 @@ func loadRejected() (map[string]bool, error) {
 		return nil, err
 	}
 	// Marker files are the lock-free fallback written when the record could not be updated.
-	marks, _ := filepath.Glob(filepath.Join(filepath.Dir(path), markerPrefix+"*"+markerSuffix))
-	for _, m := range marks {
-		base := filepath.Base(m)
-		set[base[len(markerPrefix):len(base)-len(markerSuffix)]] = true
+	// Enumerate literally (no glob: a cache path holding [ or * would match nothing) and
+	// fail closed when the directory cannot be listed.
+	entries, err := os.ReadDir(filepath.Dir(path))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("list rejection markers: %w", err)
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || len(name) <= len(markerPrefix)+len(markerSuffix) ||
+			!strings.HasPrefix(name, markerPrefix) || !strings.HasSuffix(name, markerSuffix) {
+			continue
+		}
+		set[name[len(markerPrefix):len(name)-len(markerSuffix)]] = true
 	}
 	return set, nil
 }
