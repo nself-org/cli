@@ -76,7 +76,7 @@ func cleanupOutputDir(sink Sink, workdir, dir string) error {
 	if why := unwritableIn(filepath.Dir(dir), dir); why != "" {
 		return proxyKeep(dir, "it is owned by root (the traefik-config container wrote it): "+why+" is not writable; run `sudo rm -rf "+dir+"` or chown it to your user, then build again")
 	}
-	err = removeTree(sink, dir)
+	err = removeTree(sink, dir, info)
 	if errors.Is(err, fs.ErrPermission) {
 		// The one-shot runs as root and Docker creates its bind directories
 		// root-owned, so an unprivileged build cannot unlink inside them. The
@@ -151,10 +151,25 @@ func proxyOwnedDir(workdir, dir string) (bool, string) {
 	return true, ""
 }
 
+// errTreeSwapped is returned when a directory being emptied stopped being the
+// directory the walk found: something replaced it (for example with a symlink)
+// between the check and the deletion.
+var errTreeSwapped = errors.New("a directory was replaced while it was being removed")
+
+// stillSameDir reports whether dir is still the real directory identified by want.
+// An Lstat never follows a final symlink, so a link swapped in for dir fails.
+func stillSameDir(dir string, want fs.FileInfo) bool {
+	fi, err := os.Lstat(dir)
+	return err == nil && fi.IsDir() && os.SameFile(want, fi)
+}
+
 // removeTree deletes dir's files and then dir, through the sink. A symlink
 // entry is removed as a link, never followed. The marker goes last, so an
 // interrupted cleanup still leaves a directory the next build recognises.
-func removeTree(sink Sink, dir string) error {
+// want is dir's Lstat from the caller's check: the walk re-checks it after the
+// listing and before every removal, so a directory swapped for a symlink to
+// somewhere else stops the cleanup instead of deleting through the link.
+func removeTree(sink Sink, dir string, want fs.FileInfo) error {
 	entries, err := sink.ReadDir(dir)
 	if err != nil {
 		return err
@@ -164,9 +179,12 @@ func removeTree(sink Sink, dir string) error {
 		if e.Name() == proxyGeneratedMarker {
 			continue
 		}
+		if !stillSameDir(dir, want) {
+			return fmt.Errorf("%s: %w", dir, errTreeSwapped)
+		}
 		// The listing may be stale: only a directory that is still one is entered.
 		if fi, err := os.Lstat(p); e.IsDir() && err == nil && fi.IsDir() {
-			if err := removeTree(sink, p); err != nil {
+			if err := removeTree(sink, p, fi); err != nil {
 				return err
 			}
 			continue
@@ -175,6 +193,9 @@ func removeTree(sink Sink, dir string) error {
 		if err := sink.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
+	}
+	if !stillSameDir(dir, want) {
+		return fmt.Errorf("%s: %w", dir, errTreeSwapped)
 	}
 	if err := sink.Remove(filepath.Join(dir, proxyGeneratedMarker)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err

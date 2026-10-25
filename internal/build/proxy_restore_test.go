@@ -4,6 +4,8 @@ package build
 // wrote (EPIC DEPL D4) and never anything else.
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -195,5 +197,49 @@ func TestProxyRestoreRootOwnedPlansNoRemoval(t *testing.T) {
 	// A planned removal that apply cannot do fails the build (E452), so plan none.
 	if len(sink.removed) != 0 {
 		t.Fatalf("plan recorded removals for a directory apply cannot clean: %v", sink.removed)
+	}
+}
+
+// swapSink replaces a directory with a symlink to victim the moment the walk
+// lists it, the window between the walk's Lstat and its deletions.
+type swapSink struct {
+	Sink
+	target, victim string
+	done           bool
+}
+
+func (s *swapSink) ReadDir(p string) ([]fs.DirEntry, error) {
+	if p == s.target && !s.done {
+		s.done = true
+		entries, err := s.Sink.ReadDir(p)
+		if err != nil {
+			return nil, err
+		}
+		if err := os.RemoveAll(p); err != nil {
+			return nil, err
+		}
+		if err := os.Symlink(s.victim, p); err != nil {
+			return nil, err
+		}
+		return entries, nil
+	}
+	return s.Sink.ReadDir(p)
+}
+
+func TestProxyRestoreDirSwappedForSymlinkMidWalk(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on windows")
+	}
+	workdir, dir := restoreProject(t, testRendererMarker)
+	victim := t.TempDir()
+	writeFixtureFile(t, filepath.Join(victim, "static.yml"), "precious\n", 0644)
+	writeFixtureFile(t, filepath.Join(victim, proxyGeneratedMarker), testRendererMarker, 0644)
+	sink := &swapSink{Sink: newDiskSink(workdir), target: filepath.Join(dir, "sub"), victim: victim}
+	err := cleanupProviderOutput(sink, workdir, ProviderNginx)
+	if !errors.Is(err, errTreeSwapped) {
+		t.Fatalf("a swapped directory must stop the cleanup, got %v", err)
+	}
+	if !exists(filepath.Join(victim, "static.yml")) || !exists(filepath.Join(victim, proxyGeneratedMarker)) {
+		t.Fatal("the cleanup deleted through a symlink swapped in mid-walk")
 	}
 }
