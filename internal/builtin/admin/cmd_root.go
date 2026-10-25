@@ -34,7 +34,7 @@ func (r runner) adminContainerID() string {
 	if err != nil || cfg.ProjectName == "" {
 		return "nself_admin"
 	}
-	return fmt.Sprintf("%s_admin", cfg.ProjectName)
+	return cfg.ServiceContainerName("admin")
 }
 
 func rootCommand(r runner) *cobra.Command {

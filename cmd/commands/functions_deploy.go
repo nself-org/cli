@@ -114,7 +114,7 @@ func runFunctionsDeploy(cmd *cobra.Command, args []string) error {
 	// Signal container reload.
 	cfg, _, loadErr := loadHealthConfig()
 	if loadErr == nil {
-		containerID := fmt.Sprintf("%s_functions", cfg.ProjectName)
+		containerID := cfg.ServiceContainerName("functions")
 		reloadCtx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
 		defer cancel()
 		// nhost/functions watches for a .reload file touch.

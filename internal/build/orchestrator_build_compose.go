@@ -54,7 +54,7 @@ func (st *buildState) generateCompose() error {
 	// ── Step 8.1: Warn if this regen would swap a running postgres image ──
 	// (cli#384 — advisory only, never blocks the build; see
 	// PostgresImageChangeWarning for the data-loss scenario this guards.)
-	postgresContainer := fmt.Sprintf("%s_postgres", st.cfg.ProjectName)
+	postgresContainer := st.cfg.ServiceContainerName("postgres")
 	generatedPostgresImage := compose.ResolveImage("postgres", compose.ResolvePostgresImage(st.cfg.Postgres))
 	// Plan mode skips it: the check runs `docker inspect`, a host effect.
 	if !st.planning() {

@@ -184,7 +184,7 @@ func (g *Generator) buildSeaweedService() (ServiceConfig, error) {
 	}
 	return ServiceConfig{
 		Image:         ResolveImage("seaweedfs", ImageRef("seaweedfs", os.Getenv("SEAWEEDFS_VERSION"))),
-		ContainerName: g.cfg.ProjectName + "_seaweedfs", Restart: "unless-stopped",
+		ContainerName: g.cfg.ServiceContainerName("seaweedfs"), Restart: "unless-stopped",
 		Networks: []string{g.cfg.DockerNetwork},
 		// The image's seaweed user (uid 1000) owns /data. CapDrop ALL removes root's
 		// DAC_OVERRIDE, so root could not write a fresh volume; run as that user.
@@ -224,7 +224,7 @@ func objectStorageKeyProblem(value string) string {
 func (g *Generator) buildSeaweedInit() ServiceConfig {
 	return ServiceConfig{
 		Image:         ResolveImage("seaweedfs", ImageRef("seaweedfs", os.Getenv("SEAWEEDFS_VERSION"))),
-		ContainerName: g.cfg.ProjectName + "_seaweedfs_init", Restart: "no",
+		ContainerName: g.cfg.ServiceContainerName("seaweedfs_init"), Restart: "no",
 		// Shares the server's network namespace: it reaches the master on 127.0.0.1 and
 		// needs no network or port of its own (the master and filer stay closed to the network).
 		NetworkMode: "service:seaweedfs",

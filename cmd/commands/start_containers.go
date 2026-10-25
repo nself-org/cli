@@ -182,7 +182,7 @@ func startPostgresPhase(ctx context.Context, opts startOpts, cfg *config.Config,
 	// Skip ComposeUp for an already healthy postgres unless a clean/fresh
 	// start cleared it. Compose may otherwise recreate it after config drift.
 	if !opts.cleanStart && !opts.fresh {
-		containerName := fmt.Sprintf("%s_postgres", cfg.ProjectName)
+		containerName := cfg.ServiceContainerName("postgres")
 		health, healthErr := docker.GetHealthStatus(ctx, containerName)
 		if healthErr == nil && postgresAlreadyRunning(health) {
 			sp.Success("PostgreSQL container already running and healthy")
