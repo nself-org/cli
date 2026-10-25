@@ -77,7 +77,10 @@ func ScheduleStream(cfg *config.Config, opts ScheduleOptions) error {
 	// The ENV selector the nightly run needs: the one that picked the cascade
 	// when this schedule was made (see scheduleEnvSelector). It is written into
 	// the unit as a bare word, so it is checked before anything is rendered.
-	envSelector := scheduleEnvSelector(projectDir)
+	envSelector, err := scheduleEnvSelector(projectDir)
+	if err != nil {
+		return err
+	}
 	if err := checkScheduleEnv(envSelector); err != nil {
 		return err
 	}

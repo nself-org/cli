@@ -360,3 +360,26 @@ func TestScheduleStreamRefusesLineBreakInPaths(t *testing.T) {
 		}
 	}
 }
+
+// TestScheduleStreamMalformedDotEnv: an unparseable .env and no process ENV is
+// an error, not a unit written for ENV=dev; a missing .env still means dev.
+func TestScheduleStreamMalformedDotEnv(t *testing.T) {
+	skipUnitTestOnWindows(t)
+	setScheduleProcessEnv(t, "")
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("ENV=\"unterminated\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	err := ScheduleStream(minimalConfig(), ScheduleOptions{Cron: "0 3 * * *", To: "r2:b", ProjectDir: dir, BinaryPath: "/bin/sh", DryRun: true, Out: &out})
+	if err == nil || !strings.Contains(err.Error(), ".env") {
+		t.Fatalf("err = %v, want a .env read error", err)
+	}
+	if out.Len() != 0 {
+		t.Errorf("nothing may be printed, got %q", out.String())
+	}
+	got := scheduleDryRun(t, ScheduleOptions{Cron: "0 3 * * *", To: "r2:b", ProjectDir: t.TempDir(), BinaryPath: "/bin/sh"})
+	if !strings.Contains(got, "Environment=ENV=dev") {
+		t.Errorf("a missing .env must still default to dev:\n%s", got)
+	}
+}

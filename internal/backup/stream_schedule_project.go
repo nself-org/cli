@@ -9,8 +9,10 @@ package backup
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -70,15 +72,24 @@ func composeHasGeneratedHeader(path string) bool {
 // projectDir, in the order config.ResolveEnv uses: the ENV the process was
 // started with, else the ENV key of <projectDir>/.env, else "dev". The raw
 // value is returned; the loader normalises it again when the unit runs.
-// godotenv.Read does not touch os.Environ.
-func scheduleEnvSelector(projectDir string) string {
+// godotenv.Read does not touch os.Environ. A missing .env falls through to
+// "dev"; an unreadable or unparseable one is an error, because the unit would
+// otherwise be written for "dev" while the nightly run fails on the same file.
+func scheduleEnvSelector(projectDir string) (string, error) {
 	if scheduleProcessEnv != "" {
-		return scheduleProcessEnv
+		return scheduleProcessEnv, nil
 	}
-	if m, err := godotenv.Read(filepath.Join(projectDir, ".env")); err == nil && m["ENV"] != "" {
-		return m["ENV"]
+	m, err := godotenv.Read(filepath.Join(projectDir, ".env"))
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return "dev", nil
+		}
+		return "", fmt.Errorf("read the ENV selector from %s: %w", filepath.Join(projectDir, ".env"), err)
 	}
-	return "dev"
+	if m["ENV"] != "" {
+		return m["ENV"], nil
+	}
+	return "dev", nil
 }
 
 // checkScheduleEnv refuses a selector that could add a directive or expand in
