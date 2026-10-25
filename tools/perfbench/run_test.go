@@ -66,8 +66,11 @@ func TestUnknownScenarioAndSubcommand(t *testing.T) {
 	}
 }
 
+// Registered in init, not in the test, so go test -count=N does not hit the
+// registry's duplicate-name panic.
+func init() { scenarios.Register(mixedScenario{}) }
+
 func TestMixedUnitsFailTheRun(t *testing.T) {
-	scenarios.Register(mixedScenario{})
 	var out, errb bytes.Buffer
 	code := dispatch([]string{"run", "-scenario", "test-mixed", "-bin", "x", "-runs", "2"}, &out, &errb)
 	if code != 1 || !strings.Contains(errb.String(), "mixed units") {
