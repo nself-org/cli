@@ -2,7 +2,8 @@ package routemodel
 
 // snippet_tls_test.go — D-0505: the nested certificate path internal/ssl
 // writes (and a plugin's /etc/nginx/ssl/${SSL_DIR}/ renders to) maps to the
-// route's ssl_dir, the flat shape keeps mapping, mixed shapes do not.
+// route's ssl_dir; the flat shape names a different file than the renderer's
+// certificates/<dir> and is unmodelled (D-0571), as are mixed shapes.
 
 import (
 	"reflect"
@@ -14,8 +15,8 @@ func TestSnippetCertDirShapes(t *testing.T) {
 		name, cert, key, want string
 	}{
 		{"nested", "/etc/nginx/ssl/certificates/local-nself-org/fullchain.pem", "/etc/nginx/ssl/certificates/local-nself-org/privkey.pem", "local-nself-org"},
-		{"flat", "/etc/nginx/ssl/local-nself-org/fullchain.pem", "/etc/nginx/ssl/local-nself-org/privkey.pem", "local-nself-org"},
-		{"flat dir named certificates", "/etc/nginx/ssl/certificates/fullchain.pem", "/etc/nginx/ssl/certificates/privkey.pem", "certificates"},
+		{"flat", "/etc/nginx/ssl/local-nself-org/fullchain.pem", "/etc/nginx/ssl/local-nself-org/privkey.pem", ""},
+		{"flat dir named certificates", "/etc/nginx/ssl/certificates/fullchain.pem", "/etc/nginx/ssl/certificates/privkey.pem", ""},
 		{"mixed shapes", "/etc/nginx/ssl/certificates/a/fullchain.pem", "/etc/nginx/ssl/a/privkey.pem", ""},
 		{"nested two dirs", "/etc/nginx/ssl/certificates/a/fullchain.pem", "/etc/nginx/ssl/certificates/b/privkey.pem", ""},
 		{"nested dot dir", "/etc/nginx/ssl/certificates/.x/fullchain.pem", "/etc/nginx/ssl/certificates/.x/privkey.pem", ""},

@@ -62,7 +62,7 @@
         "https": true
       },
       "tls": {
-        "ssl_dir": "example.test",
+        "ssl_dir": "",
         "protocols": [
           "TLSv1.2",
           "TLSv1.3"
@@ -129,6 +129,8 @@
       ],
       "shadowed_by": null,
       "unmodelled": [
+        "ssl_certificate /etc/nginx/ssl/example.test/fullchain.pem;",
+        "ssl_certificate_key /etc/nginx/ssl/example.test/privkey.pem;",
         "proxy_pass http://compliance_backend/health;",
         "proxy_set_header Host $host;"
       ]
