@@ -166,7 +166,8 @@ func TestMarshalOmitsNewFields(t *testing.T) {
 }
 
 // TestValidateTarget checks the targets nginx cannot use or the model cannot
-// represent: fragments, user info, and any byte outside printable ASCII.
+// represent: fragments, user info, nginx variables ($) and any byte outside
+// printable ASCII.
 func TestValidateTarget(t *testing.T) {
 	for _, tc := range []struct {
 		target  string
@@ -185,6 +186,11 @@ func TestValidateTarget(t *testing.T) {
 		{"http://h/café", "non-ASCII"},
 		{"http://h/\x7f", "non-ASCII"},
 		{"http://h;x", "forbidden character"},
+		{"http://h/$uri", "variable"},
+		{"http://h/p?a=$arg_b", "variable"},
+		{"http://$host:8080", "variable"},
+		{"http://h/${x}", "forbidden character"},
+		{"http://h/cost%24", ""},
 		{"ftp://h", "scheme"},
 		{"http://", "host"},
 	} {
