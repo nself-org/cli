@@ -49,18 +49,25 @@ func verifyFile(path, slug string, now time.Time) error {
 	return verifyToken(strings.TrimSpace(string(data)), slug, now)
 }
 
+// beforeTokenOpen is a test seam run just before the token file is opened.
+var beforeTokenOpen func()
+
 // Purpose: bound reads of mounted files. Inputs: path. Outputs: bytes or rejection.
 // Constraints: oversized files never allocate unbounded memory. SPORT: plugin.entitlement-token.
 func readTokenFile(path string) ([]byte, error) {
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, ErrEntitlementExpired
+	if beforeTokenOpen != nil {
+		beforeTokenOpen()
 	}
-	f, err := os.Open(path)
+	f, err := openTokenFile(path)
 	if err != nil {
 		return nil, ErrEntitlementExpired
 	}
 	defer func() { _ = f.Close() }()
+	// Check the opened descriptor, not the path: a path check followed by an
+	// open leaves a window to swap in a FIFO or symlink.
+	if info, err := f.Stat(); err != nil || !info.Mode().IsRegular() {
+		return nil, ErrEntitlementExpired
+	}
 	data, err := io.ReadAll(io.LimitReader(f, maxTokenBytes+1))
 	if len(data) > maxTokenBytes {
 		return nil, errTokenTooLarge
