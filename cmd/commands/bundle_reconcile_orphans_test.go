@@ -7,12 +7,14 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/bundle/appready"
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/docker"
@@ -147,4 +149,55 @@ func TestExtensionComposeUsesProjectManifest(t *testing.T) {
 	if !reflect.DeepEqual(c.EnvFiles, wantEnv) {
 		t.Fatalf("env files must follow the project: %v", c.EnvFiles)
 	}
+}
+
+// A failed container swap happens after Apply wrote the generated files, so the
+// error must say so (appready.ErrCommitted): the bundle install keeps its
+// plugins then. A refused apply wrote nothing and must not carry the mark.
+func TestExtensionReconcileSwapFailureIsCommitted(t *testing.T) {
+	trigger := reconcile.Trigger{Kind: reconcile.TriggerBundle, Subject: "zzfixture"}
+	running := fakeSwapRuntime{running: []reconcile.RunningContainer{
+		{Name: "proj_oldproxy", Service: "oldproxy", State: "running", ConfigHash: "x"},
+	}}
+	cases := map[string]func(){
+		"remove": func() {
+			extensionRemoveOrphans = func(context.Context, []docker.OrphanContainer) []error {
+				return []error{errors.New("docker rm failed")}
+			}
+		},
+		"start": func() {
+			extensionStartServices = func(context.Context, string, []string) error { return errors.New("compose up failed") }
+		},
+	}
+	for name, fail := range cases {
+		t.Run(name, func(t *testing.T) {
+			compattest.Both(t, func(t *testing.T) {
+				if !compat.V15() {
+					return
+				}
+				extensionFixture(t, "")
+				localPluginRegistry(t)
+				swapSeams(t, running)
+				fail()
+				err := reconcileAfterExtension(pluginInstallCmd, trigger)
+				if err == nil || !errors.Is(err, appready.ErrCommitted) {
+					t.Fatalf("err = %v, want a post-commit failure", err)
+				}
+			})
+		})
+	}
+	t.Run("refused", func(t *testing.T) {
+		compattest.Both(t, func(t *testing.T) {
+			if !compat.V15() {
+				return
+			}
+			extensionFixture(t, "prod")
+			localPluginRegistry(t)
+			swapSeams(t, running)
+			err := reconcileAfterExtension(pluginInstallCmd, trigger)
+			if err == nil || errors.Is(err, appready.ErrCommitted) {
+				t.Fatalf("err = %v, want a pre-commit refusal", err)
+			}
+		})
+	})
 }

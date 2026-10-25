@@ -128,7 +128,9 @@ func finishInstall(ctx context.Context, rn *appready.Runner, store *ledger.Store
 	}
 	if f := rn.Failure(); f != nil {
 		verdict := appReadyVerdict(out, result.Bundle, f)
-		if f.Step == appready.StepReconcile {
+		// A failure after the generated files were written keeps the plugins:
+		// that configuration references them.
+		if f.Step == appready.StepReconcile && !errors.Is(f.Err, appready.ErrCommitted) {
 			undoErr := undoFreshMembers(ctx, store, pluginDir, planned, prior, result, before, out)
 			return errors.Join(verdict, undoErr)
 		}

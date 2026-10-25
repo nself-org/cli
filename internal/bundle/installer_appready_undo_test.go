@@ -172,3 +172,36 @@ func TestBundleInstallRefusedReconcileKeepsPreexistingMember(t *testing.T) {
 		t.Error("notifications is still in the ledger")
 	}
 }
+
+// A reconcile that fails after Apply wrote the generated files (a container
+// swap error) must keep the plugins and their ledger records: the committed
+// configuration references them. Only a pre-commit failure is undone.
+func TestBundleInstallPostCommitReconcileFailureKeepsMembers(t *testing.T) {
+	pluginDir := isolate(t)
+	setupOfflineRegistry(t, mockTaskRegistry())
+	var out bytes.Buffer
+	opts := freeOpts(t, pluginDir, &out, func(name string) error {
+		writeMember(t, pluginDir, name, 1, []string{"np_kept_data"})
+		return nil
+	})
+	cause := errors.New("orphaned containers were removed but the new services did not start")
+	opts.Hooks = refusedHooks(t)
+	opts.Hooks.Reconcile = func(context.Context) error { return appready.Committed(cause) }
+
+	res, err := Install(context.Background(), "task", opts)
+	if err == nil || !errors.Is(err, cause) || !strings.Contains(err.Error(), "reconcile failed after install") {
+		t.Fatalf("err = %v, want the reconcile error", err)
+	}
+	for _, name := range []string{"notifications", "jobs"} {
+		if _, statErr := os.Stat(filepath.Join(pluginDir, name)); statErr != nil {
+			t.Errorf("member %q was removed after the files were committed: %v", name, statErr)
+		}
+	}
+	l, _, lerr := ledger.NewStore(pluginDir).Load()
+	if lerr != nil || len(l.Bundles) != 1 || len(l.Plugins) != 2 {
+		t.Errorf("ledger after a post-commit failure: err=%v bundles=%v plugins=%v", lerr, l.Bundles, l.Plugins)
+	}
+	if len(res.RolledBack) != 0 || !res.Changed {
+		t.Errorf("RolledBack=%v Changed=%v, want nothing rolled back and the change kept", res.RolledBack, res.Changed)
+	}
+}
