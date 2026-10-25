@@ -18,6 +18,8 @@ import (
 	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -216,5 +218,82 @@ func assertGotPastVerification(t *testing.T, err error) {
 		if strings.Contains(err.Error(), stage.token) {
 			t.Errorf("install failed at %s, which should have passed: %v", stage.what, err)
 		}
+	}
+}
+
+// TestInstallFromURL_TablesAndRoutesIntoEmptyPluginDir is the D-0740
+// regression: the dot-prefixed staging folder InstallFromURL extracts into
+// lives inside pluginDir, and the table-prefix, table and route scanners read
+// it as an installed plugin that collides with the one being installed. A
+// plugin declaring tables or API routes therefore failed on an empty plugin
+// directory. The install may still stop at schema creation (no Docker here),
+// but never at a conflict.
+func TestInstallFromURL_TablesAndRoutesIntoEmptyPluginDir(t *testing.T) {
+	manifest := `{
+		"name": "stage-demo",
+		"version": "1.0.0",
+		"description": "A third-party plugin with tables and routes",
+		"category": "utility",
+		"license": "MIT",
+		"tables": ["np_stage_items"],
+		"apiEndpoints": ["https://stage-demo.local/api/health"]
+	}`
+	tarball := buildThirdPartyTarball(t, manifest)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(tarball)
+	}))
+	defer srv.Close()
+
+	pluginDir := t.TempDir()
+	cfg := &config.Config{}
+
+	err := InstallFromURL(context.Background(), cfg, srv.URL+"/plugin.tar.gz", pluginDir, "")
+	if err != nil && (strings.Contains(err.Error(), "conflict") || strings.Contains(err.Error(), "already")) {
+		t.Fatalf("install into an empty plugin dir reported a conflict with itself: %v", err)
+	}
+}
+
+// TestScannersSkipStagingFolders pins the three scanners directly: a
+// dot-prefixed staging folder holding the incoming plugin's own manifest is
+// not an installed plugin, while a real second plugin with the same tables
+// still conflicts.
+func TestScannersSkipStagingFolders(t *testing.T) {
+	const manifest = `{"name":"stage-demo","version":"1.0.0","description":"d","category":"utility","license":"MIT","tables":["np_stage_items"],"apiEndpoints":["https://stage-demo.local/api/health"]}`
+	pluginDir := t.TempDir()
+	for _, dir := range []string{".staging-thirdparty-123", ".staging-bundle-9"} {
+		if err := os.MkdirAll(filepath.Join(pluginDir, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(pluginDir, dir, "plugin.json"), []byte(manifest), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := &PluginManifest{Name: "stage-demo", Tables: []string{"np_stage_items"}}
+
+	if err := checkTablePrefixConflict(pluginDir, m.Name, m.Tables); err != nil {
+		t.Errorf("checkTablePrefixConflict read a staging folder as installed: %v", err)
+	}
+	if err := checkTableConflicts(pluginDir, m); err != nil {
+		t.Errorf("checkTableConflicts read a staging folder as installed: %v", err)
+	}
+	for _, r := range collectInstalledPluginRoutes(pluginDir, m.Name) {
+		if r.PluginName == "stage-demo" {
+			t.Errorf("collectInstalledPluginRoutes read a staging folder as installed: %+v", r)
+		}
+	}
+
+	// A genuinely installed other plugin still conflicts.
+	other := filepath.Join(pluginDir, "other")
+	if err := os.MkdirAll(other, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	otherManifest := strings.Replace(manifest, `"stage-demo"`, `"other"`, 1)
+	if err := os.WriteFile(filepath.Join(other, "plugin.json"), []byte(otherManifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkTablePrefixConflict(pluginDir, m.Name, m.Tables); err == nil {
+		t.Error("a real installed plugin with the same table prefix must still conflict")
 	}
 }
