@@ -11,6 +11,7 @@ import (
 
 	"github.com/nself-org/cli/internal/canon"
 	"github.com/nself-org/cli/internal/oplock"
+	"github.com/nself-org/cli/internal/output"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/plugin/mount"
 	"github.com/spf13/cobra"
@@ -307,5 +308,41 @@ func TestDoctorPluginMount(t *testing.T) {
 	results := checkPluginMount(&cobra.Command{Use: "nself"}, false)
 	if len(results) == 0 || results[0].Status != "warn" || !strings.Contains(results[0].Message, "E405") {
 		t.Fatalf("doctor: %+v", results)
+	}
+}
+
+// TestMountProxyFailureKeepsJSONIntent: an installed plugin command parses no
+// flags, so the --json it was given must still be recorded as the invocation's
+// JSON mode; otherwise a proxy that cannot start fails as plain text (D-0614).
+func TestMountProxyFailureKeepsJSONIntent(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	cases := []struct {
+		args []string
+		json bool
+	}{
+		{[]string{"demo", "--json"}, true},
+		{[]string{"demo", "sub", "--json=true"}, true},
+		{[]string{"demo", "--json=false"}, false},
+		{[]string{"demo", "--", "--json"}, false},
+		{[]string{"demo"}, false},
+	}
+	for _, c := range cases {
+		r := &cobra.Command{Use: "nself", SilenceUsage: true, SilenceErrors: true}
+		r.AddGroup(&cobra.Group{ID: groupPlugins, Title: pluginsGroupTitle})
+		r.AddCommand(installedNode(mount.Spec{
+			Slug: "demo", Command: "demo", Binary: "nself-demo",
+			BinaryPath:  filepath.Join(t.TempDir(), "missing", "nself-demo"),
+			Subcommands: []mount.Sub{{Path: []string{"sub"}}},
+		}))
+		installInvocationDecorator(r)
+		output.SetInvocation("", false)
+		r.SetArgs(c.args)
+		if err := r.Execute(); err == nil {
+			t.Fatalf("%v: the missing plugin binary must fail", c.args)
+		}
+		command, on, known := output.Invocation()
+		if !known || on != c.json || !strings.HasPrefix(command, "demo") {
+			t.Errorf("%v: invocation = (%q, json=%v, known=%v), want json=%v", c.args, command, on, known, c.json)
+		}
 	}
 }
