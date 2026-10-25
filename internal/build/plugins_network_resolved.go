@@ -32,12 +32,15 @@ type resolvedNetwork struct {
 type resolvedService struct {
 	Networks    any `yaml:"networks"`
 	NetworkMode any `yaml:"network_mode"`
+	Extends     any `yaml:"extends"`
+	Build       any `yaml:"build"`
 }
 
 // resolvedFragment is a fragment with aliases and merge keys expanded.
 type resolvedFragment struct {
 	Services map[string]resolvedService `yaml:"services"`
 	Networks map[string]resolvedNetwork `yaml:"networks"`
+	Include  any                        `yaml:"include"`
 }
 
 // resolveFragment decodes content; an error means it cannot be decoded.

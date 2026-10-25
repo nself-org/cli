@@ -578,11 +578,11 @@ func TestLockUsesRediscoveredComposeFiles(t *testing.T) {
 	lockBuild(t, f)
 	frag := filepath.Join(f.plugins, "tweak")
 	writeFixtureFile(t, filepath.Join(frag, "plugin.json"), `{"name":"tweak","port":3999,"language":"go"}`, 0o644)
-	writeFixtureFile(t, filepath.Join(frag, pluginComposeFilename), "services:\n  hasura:\n    image: hasura/graphql-engine:v2.51.0\n", 0o644)
+	writeFixtureFile(t, filepath.Join(frag, pluginComposeFilename), "services:\n  redis:\n    image: redis:7.4.1\n", 0o644)
 	lockBuild(t, f)
 	l := readLock(t, f)
-	if got := l.Unpinned["hasura"] + l.Images["hasura"]; got != "hasura/graphql-engine:v2.51.0" {
-		t.Fatalf("a fragment added in this build is missing from the lock: hasura %q", got)
+	if got := l.Unpinned["redis"] + l.Images["redis"]; got != "redis:7.4.1" {
+		t.Fatalf("a fragment added in this build is missing from the lock: redis %q", got)
 	}
 	cur, err := CurrentLock(f.workdir)
 	if err != nil {
