@@ -195,6 +195,12 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: bash scripts/ci/vendor-sync-check_test.sh
 
+      # D-1152: the hasura upgrade smoke's switch start must skip the metadata
+      # re-apply, or its preservation checks cannot fail. Static, no Docker.
+      - name: Hasura upgrade smoke guard
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/ci/hasura-upgrade-smoke_test.sh
+
       - name: Vendor sync check (vendor/ matches go mod vendor)
         if: matrix.os == 'ubuntu-latest'
         run: bash scripts/ci/vendor-sync-check.sh

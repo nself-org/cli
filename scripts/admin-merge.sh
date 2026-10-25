@@ -73,22 +73,31 @@ set -euo pipefail
 # WATCHDOG_DEADLINE >= 3x RELAX_WINDOW_SECONDS to allow CI startup overhead.
 RELAX_WINDOW_SECONDS=60
 WATCHDOG_MAX=$(( RELAX_WINDOW_SECONDS * 3 ))  # 180s
+# Every number below is checked as digits only (at most 6) and then read as
+# DECIMAL with `$((10#...))`: a bare 08 or 09 is an invalid octal number in
+# `$(( ))`, which aborts the script (and bash 3.2 then exits 0 under an EXIT trap).
 case "${WATCHDOG_DEADLINE:-}" in
-  ''|*[!0-9]*) WATCHDOG_DEADLINE="${WATCHDOG_MAX}" ;;
-  *) [ "${WATCHDOG_DEADLINE}" -le "${WATCHDOG_MAX}" ] || WATCHDOG_DEADLINE="${WATCHDOG_MAX}" ;;
+  ''|*[!0-9]*|???????*) WATCHDOG_DEADLINE="${WATCHDOG_MAX}" ;;
+  *)
+    WATCHDOG_DEADLINE=$(( 10#${WATCHDOG_DEADLINE} ))
+    [ "${WATCHDOG_DEADLINE}" -le "${WATCHDOG_MAX}" ] || WATCHDOG_DEADLINE="${WATCHDOG_MAX}" ;;
 esac
 DEFAULT_WAIT_MINUTES=20
 CI_POLL_SECONDS="${CI_POLL_SECONDS:-30}"
 # After `gh pr merge` the PR must read state MERGED within MERGE_VERIFY_SECONDS
-# (polled every MERGE_POLL_SECONDS); both may be lowered through the environment.
-# Bash 3.2 exits 0 when arithmetic on a non-number fails with an EXIT trap armed,
-# so both are checked here (digits only, poll >= 1, verify capped at the relax window).
+# (polled every MERGE_POLL_SECONDS); both may be lowered through the environment
+# (digits only, poll >= 1, verify capped at the relax window).
 case "${MERGE_VERIFY_SECONDS:-}" in
-  ''|*[!0-9]*) MERGE_VERIFY_SECONDS="${RELAX_WINDOW_SECONDS}" ;;
-  *) [ "${MERGE_VERIFY_SECONDS}" -le "${RELAX_WINDOW_SECONDS}" ] || MERGE_VERIFY_SECONDS="${RELAX_WINDOW_SECONDS}" ;;
+  ''|*[!0-9]*|???????*) MERGE_VERIFY_SECONDS="${RELAX_WINDOW_SECONDS}" ;;
+  *)
+    MERGE_VERIFY_SECONDS=$(( 10#${MERGE_VERIFY_SECONDS} ))
+    [ "${MERGE_VERIFY_SECONDS}" -le "${RELAX_WINDOW_SECONDS}" ] || MERGE_VERIFY_SECONDS="${RELAX_WINDOW_SECONDS}" ;;
 esac
 case "${MERGE_POLL_SECONDS:-}" in
-  ''|*[!0-9]*|0|00*) MERGE_POLL_SECONDS=5 ;;
+  ''|*[!0-9]*|???????*) MERGE_POLL_SECONDS=5 ;;
+  *)
+    MERGE_POLL_SECONDS=$(( 10#${MERGE_POLL_SECONDS} ))
+    [ "${MERGE_POLL_SECONDS}" -ge 1 ] || MERGE_POLL_SECONDS=5 ;;
 esac
 AUDIT_LOG="${HOME}/.nself/admin-merge-audit.log"
 export AUDIT_LOG
@@ -128,8 +137,9 @@ while [ $# -gt 0 ]; do
 done
 
 case "${WAIT_MINUTES}" in
-  ''|*[!0-9]*) printf 'ERROR: --wait-minutes needs a whole number, got: %s\n' "${WAIT_MINUTES}" >&2; exit 1 ;;
+  ''|*[!0-9]*|???????*) printf 'ERROR: --wait-minutes needs a whole number (up to 6 digits), got: %s\n' "${WAIT_MINUTES}" >&2; exit 1 ;;
 esac
+WAIT_MINUTES=$(( 10#${WAIT_MINUTES} ))
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
 TS() { date '+%Y-%m-%dT%H:%M:%S%z'; }
@@ -414,6 +424,18 @@ MERGE_SUCCESS=0
 MERGE_RESULT=merged   # merged | failed | closed | auto_merge_only (decides the exit code)
 # pr_state <n>: prints the PR state (OPEN, MERGED, CLOSED), or nothing when unreadable.
 pr_state() { gh pr view "$1" --repo "${TARGET_REPO}" --json state --jq .state 2>/dev/null || true; }
+# disarm_auto_merge <n>: turns auto-merge off and reads autoMergeRequest back.
+# Returns 0 only when it reads null; a failed call or an unreadable PR is "not confirmed".
+# When it is not confirmed, say so and audit auto_merge_still_armed.
+disarm_auto_merge() {
+  local armed
+  gh pr merge "$1" --repo "${TARGET_REPO}" --disable-auto >/dev/null 2>&1 || true
+  armed=$(gh pr view "$1" --repo "${TARGET_REPO}" --json autoMergeRequest --jq '.autoMergeRequest != null' 2>/dev/null || true)
+  [ "${armed}" = "false" ] && return 0
+  error "Could not confirm that auto-merge on PR #$1 is off (autoMergeRequest: ${armed:-unreadable}). It may still merge after protection is restored: check the PR and run: gh pr merge $1 --repo ${TARGET_REPO} --disable-auto"
+  audit "MERGE  pr=$1  result=auto_merge_still_armed"
+  return 1
+}
 if [ "${DRY_RUN}" -eq 0 ]; then
   info "Merging PR #${PR_NUMBER}..."
   if gh pr merge "${PR_NUMBER}" \
@@ -434,7 +456,8 @@ if [ "${DRY_RUN}" -eq 0 ]; then
     if [ "${MERGE_SUCCESS}" -eq 0 ]; then
       # Do not leave auto-merge armed behind a restored protection, then look once
       # more: it may have fired between the last read and now.
-      gh pr merge "${PR_NUMBER}" --repo "${TARGET_REPO}" --disable-auto >/dev/null 2>&1 || true
+      AUTO_NOTE=""
+      if disarm_auto_merge "${PR_NUMBER}"; then AUTO_NOTE=" Auto-merge was disabled again."; fi
       PR_STATE=$(pr_state "${PR_NUMBER}")
       if [ "${PR_STATE}" = "MERGED" ]; then MERGE_SUCCESS=1; fi
     fi
@@ -447,7 +470,7 @@ if [ "${DRY_RUN}" -eq 0 ]; then
       audit "MERGE  pr=${PR_NUMBER}  result=closed"
     else
       MERGE_RESULT=auto_merge_only
-      error "PR #${PR_NUMBER} is ${PR_STATE:-unreadable}, not MERGED, ${MERGE_VERIFY_SECONDS}s after the merge call: GitHub only set auto-merge (non-required checks still pending?). Auto-merge was disabled again."
+      error "PR #${PR_NUMBER} is ${PR_STATE:-unreadable}, not MERGED, ${MERGE_VERIFY_SECONDS}s after the merge call: GitHub only set auto-merge (non-required checks still pending?).${AUTO_NOTE}"
       error "Not waiting for CI. Protection is restored below."
       audit "MERGE  pr=${PR_NUMBER}  result=auto_merge_only  state=${PR_STATE:-unreadable}"
     fi
@@ -461,7 +484,9 @@ if [ "${DRY_RUN}" -eq 0 ]; then
       MERGE_RESULT=failed
       error "PR merge failed."
       audit "MERGE  pr=${PR_NUMBER}  result=failed"
-      # Still restore even on failure
+      # The failed call may have armed auto-merge before it dropped: disarm it,
+      # then still restore protection even on failure.
+      disarm_auto_merge "${PR_NUMBER}" || true
     fi
   fi
 else
