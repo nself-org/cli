@@ -73,6 +73,13 @@ func TestBundleInstallRefusedUpgradeRestoresOwnership(t *testing.T) {
 		t.Run(fmt.Sprint(recorded), func(t *testing.T) {
 			pluginDir := isolate(t)
 			setupOfflineRegistry(t, mockTaskRegistry())
+			// Persist an empty ledger before any member exists: otherwise the
+			// first Update bootstraps from the members on disk and infers a
+			// "task" record, which hides a missing ownership restore.
+			store := newLedgerStore(pluginDir)
+			if err := store.Update(func(*ledger.Ledger) error { return nil }); err != nil {
+				t.Fatal(err)
+			}
 			for _, name := range []string{"notifications", "jobs"} {
 				writeMember(t, pluginDir, name, 1, nil)
 				path := filepath.Join(pluginDir, name, "plugin.json")
@@ -84,7 +91,6 @@ func TestBundleInstallRefusedUpgradeRestoresOwnership(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			store := newLedgerStore(pluginDir)
 			if err := store.Update(func(l *ledger.Ledger) error {
 				members := []ledger.InstalledPlugin{{Name: "jobs", Version: "0.9.0"}, {Name: "notifications", Version: "0.9.0"}}
 				l.AddBundle("existing", members, time.Now())
@@ -96,6 +102,19 @@ func TestBundleInstallRefusedUpgradeRestoresOwnership(t *testing.T) {
 				t.Fatal(err)
 			}
 			prior := loadLedger(t, pluginDir)
+			wantBy := []string{"existing"}
+			if recorded {
+				wantBy = []string{"existing", "task"}
+			}
+			_, hasTask := prior.Bundles["task"]
+			if hasTask != recorded {
+				t.Fatalf("prior task bundle recorded = %v, want %v", hasTask, recorded)
+			}
+			for _, name := range []string{"jobs", "notifications"} {
+				if got := prior.Plugins[name].InstalledBy; !reflect.DeepEqual(got, wantBy) {
+					t.Fatalf("prior %s installed_by = %v, want %v", name, got, wantBy)
+				}
+			}
 			var out bytes.Buffer
 			opts := freeOpts(t, pluginDir, &out, func(name string) error { writeMember(t, pluginDir, name, 1, nil); return nil })
 			opts.Hooks = refusedHooks(t)
