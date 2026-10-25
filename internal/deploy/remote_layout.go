@@ -186,7 +186,8 @@ type KeptConfD struct {
 // deploy must not ship (D-0424): the path exists as a regular file with no line
 // in its first 5 starting with BuildNginxMarker, or is a symlink or anything that
 // is not a regular file. Also, when nginx/conf.d/default.conf is absent on the
-// host and any other regular file under nginx/conf.d*/ or nginx/sites/ has a
+// host and any other regular *.conf file (the only names nginx.conf.tmpl includes,
+// so default.conf.bak does not count) under nginx/conf.d*/ or nginx/sites/ has a
 // listen line with default_server, our default.conf is kept out (reason
 // DefaultServerIn), since two default servers fail nginx -t. The previous
 // deploy's record and the host's shipped list are ignored for conf.d: the host
@@ -217,7 +218,7 @@ for f in %s; do
 if [ -L "$f" ]; then printf 'KEEP %%s\n' "$f"
 elif [ -f "$f" ]; then if ! head -n 5 -- "$f" 2>/dev/null | grep -q %s; then printf 'KEEP %%s\n' "$f"; fi
 elif [ -e "$f" ]; then printf 'KEEP %%s\n' "$f"
-elif [ "$f" = %s ]; then for g in nginx/conf.d*/* nginx/sites/*; do if [ -f "$g" ] && grep -Eq '(^|[{;])[[:space:]]*listen[[:space:]][^#;]*default_server' -- "$g" 2>/dev/null; then printf 'DSRV %%s\t%%s\n' "$f" "$(san "$g")"; break; fi; done
+elif [ "$f" = %s ]; then for g in nginx/conf.d*/*.conf nginx/sites/*.conf; do if [ -f "$g" ] && grep -Eq '(^|[{;])[[:space:]]*listen[[:space:]][^#;]*default_server' -- "$g" 2>/dev/null; then printf 'DSRV %%s\t%%s\n' "$f" "$(san "$g")"; break; fi; done
 fi
 done; exit 0`, q(remotePath), strings.Join(quoteAll(cand), " "), q("^"+strings.ReplaceAll(BuildNginxMarker, " ", "[ ]")), q(defaultServerConf))
 	out, err := r.Run(ctx, shScript(script))
