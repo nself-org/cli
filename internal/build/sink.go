@@ -48,6 +48,8 @@ type Sink interface {
 	// WriteAtomic writes via temp file + rename; the final mode is exactly perm.
 	WriteAtomic(path string, data []byte, perm fs.FileMode) error
 	Remove(path string) error
+	// RemoveWithin confines an unlink to an already opened cleanup directory.
+	RemoveWithin(root *os.Root, relative, path string) error
 	Chmod(path string, perm fs.FileMode) error
 	MkdirAll(path string, perm fs.FileMode) error
 	ReadFile(path string) ([]byte, error)
@@ -69,7 +71,10 @@ func (d *diskSink) WriteFile(p string, data []byte, perm fs.FileMode) error {
 func (d *diskSink) WriteAtomic(p string, data []byte, perm fs.FileMode) error {
 	return atomicWrite(d.abs(p), data, perm)
 }
-func (d *diskSink) Remove(p string) error                     { return os.Remove(d.abs(p)) }
+func (d *diskSink) Remove(p string) error { return os.Remove(d.abs(p)) }
+func (d *diskSink) RemoveWithin(root *os.Root, relative, _ string) error {
+	return root.Remove(relative)
+}
 func (d *diskSink) Chmod(p string, perm fs.FileMode) error    { return os.Chmod(d.abs(p), perm) }
 func (d *diskSink) MkdirAll(p string, perm fs.FileMode) error { return os.MkdirAll(d.abs(p), perm) }
 func (d *diskSink) ReadFile(p string) ([]byte, error)         { return os.ReadFile(d.abs(p)) }
@@ -158,7 +163,7 @@ func (m *memSink) Remove(p string) error {
 	if _, planned := m.files[k]; planned {
 		delete(m.files, k)
 		// Removing a planned file also hides an older on-disk copy, if any.
-		if _, err := os.Stat(m.abs(p)); err == nil {
+		if _, err := os.Lstat(m.abs(p)); err == nil {
 			m.removed[k] = true
 		}
 		return nil
@@ -166,11 +171,15 @@ func (m *memSink) Remove(p string) error {
 	if m.removed[k] {
 		return &fs.PathError{Op: "remove", Path: p, Err: fs.ErrNotExist}
 	}
-	if _, err := os.Stat(m.abs(p)); err != nil {
+	if _, err := os.Lstat(m.abs(p)); err != nil {
 		return err
 	}
 	m.removed[k] = true
 	return nil
+}
+
+func (m *memSink) RemoveWithin(_ *os.Root, _ string, p string) error {
+	return m.Remove(p)
 }
 
 func (m *memSink) Chmod(p string, perm fs.FileMode) error {

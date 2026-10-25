@@ -18,6 +18,7 @@ package build
 
 import (
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -105,6 +106,10 @@ func (w *sharedSink) Remove(p string) error {
 		p = w.target(p)
 	}
 	return w.Sink.Remove(p)
+}
+
+func (w *sharedSink) RemoveWithin(root *os.Root, relative, p string) error {
+	return w.Sink.RemoveWithin(root, relative, p)
 }
 
 func (w *sharedSink) ReadDir(p string) ([]fs.DirEntry, error) {

@@ -74,6 +74,11 @@ The add writes files through reconcile, then, in the same apply, removes the ngi
 
 ### Returning to nginx
 
+Cleanup records dangling symlinks in the confirmed removal plan and unlinks
+them without following their targets. Directory traversal and deletion stay
+inside each generated output directory, including when a directory is replaced
+by a symlink during cleanup or before the confirmed plan is published.
+
 ```bash
 nself remove traefik --yes
 ```

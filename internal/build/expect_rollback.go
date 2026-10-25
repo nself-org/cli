@@ -83,7 +83,10 @@ func (p *artifactPublisher) restore(before artifactBefore) error {
 		if err := root.Mkdir(rel, before.info.Mode().Perm()); err != nil && !errors.Is(err, fs.ErrExist) {
 			return err
 		}
-		return root.Chmod(rel, before.info.Mode().Perm())
+		if err := root.Chmod(rel, before.info.Mode().Perm()); err != nil {
+			return err
+		}
+		return p.refreshCleanupRoot(before.path, root, rel)
 	}
 	if before.link != "" {
 		if err := root.Remove(rel); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -102,4 +105,31 @@ func (p *artifactPublisher) restore(before artifactBefore) error {
 		return err
 	}
 	return p.write(before.path, data, before.info.Mode().Perm())
+}
+
+// refreshCleanupRoot rebinds rollback's descendants to the directory rollback
+// just recreated, rather than the cached descriptor for its unlinked predecessor.
+func (p *artifactPublisher) refreshCleanupRoot(path string, parent *os.Root, rel string) error {
+	abs, err := filepath.Abs(p.sink.abs(path))
+	if err != nil {
+		return err
+	}
+	if _, tracked := p.sink.cleanupRoots[abs]; !tracked {
+		return nil
+	}
+	root, err := parent.OpenRoot(rel)
+	if err != nil {
+		return err
+	}
+	info, err := root.Stat(".")
+	if err != nil {
+		_ = root.Close()
+		return err
+	}
+	if previous := p.roots[abs]; previous != nil {
+		_ = previous.Close()
+	}
+	p.roots[abs] = root
+	p.sink.cleanupRoots[abs] = info
+	return nil
 }

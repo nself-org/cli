@@ -20,6 +20,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 )
 
 // proxyGeneratedMarker is the file the traefik renderer writes beside its output;
@@ -151,56 +152,75 @@ func proxyOwnedDir(workdir, dir string) (bool, string) {
 	return true, ""
 }
 
-// errTreeSwapped is returned when a directory being emptied stopped being the
-// directory the walk found: something replaced it (for example with a symlink)
-// between the check and the deletion.
-var errTreeSwapped = errors.New("a directory was replaced while it was being removed")
-
-// stillSameDir reports whether dir is still the real directory identified by want.
-// An Lstat never follows a final symlink, so a link swapped in for dir fails.
-func stillSameDir(dir string, want fs.FileInfo) bool {
-	fi, err := os.Lstat(dir)
-	return err == nil && fi.IsDir() && os.SameFile(want, fi)
-}
-
 // removeTree deletes dir's files and then dir, through the sink. A symlink
 // entry is removed as a link, never followed. The marker goes last, so an
 // interrupted cleanup still leaves a directory the next build recognises.
-// want is dir's Lstat from the caller's check: the walk re-checks it after the
-// listing and before every removal, so a directory swapped for a symlink to
-// somewhere else stops the cleanup instead of deleting through the link.
-func removeTree(sink Sink, dir string, want fs.FileInfo) error {
-	entries, err := sink.ReadDir(dir)
+func removeTree(sink Sink, dir string, before fs.FileInfo) error {
+	if !before.IsDir() {
+		return fmt.Errorf("cleanup directory %s was replaced", dir)
+	}
+	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return err
 	}
+	defer func() { _ = root.Close() }()
+	after, err := root.Stat(".")
+	if err != nil {
+		return err
+	}
+	if !os.SameFile(before, after) {
+		return fmt.Errorf("cleanup directory %s was replaced", dir)
+	}
+	if err := removeTreeIn(sink, root, dir, "."); err != nil {
+		return err
+	}
+	return sink.Remove(dir)
+}
+
+// removeTreeIn anchors both traversal and disk unlinks to the generated output
+// directory. A swapped symlink cannot redirect either operation to a sibling.
+func removeTreeIn(sink Sink, root *os.Root, dir, relative string) error {
+	f, err := root.Open(relative)
+	if err != nil {
+		return err
+	}
+	entries, err := f.ReadDir(-1)
+	_ = f.Close()
+	if err != nil {
+		return err
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
 	for _, e := range entries {
-		p := filepath.Join(dir, e.Name())
+		rel := filepath.Join(relative, e.Name())
+		p := filepath.Join(dir, rel)
 		if e.Name() == proxyGeneratedMarker {
 			continue
 		}
-		if !stillSameDir(dir, want) {
-			return fmt.Errorf("%s: %w", dir, errTreeSwapped)
-		}
 		// The listing may be stale: only a directory that is still one is entered.
-		if fi, err := os.Lstat(p); e.IsDir() && err == nil && fi.IsDir() {
-			if err := removeTree(sink, p, fi); err != nil {
+		if fi, err := root.Lstat(rel); e.IsDir() && err == nil && fi.IsDir() {
+			if err := removeTreeIn(sink, root, dir, rel); err != nil {
+				return err
+			}
+			if err := sink.RemoveWithin(root, rel, p); err != nil {
 				return err
 			}
 			continue
 		}
-		// A dangling symlink reports not-exist through a stat-based sink.
-		if err := sink.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		if err := sink.RemoveWithin(root, rel, p); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
 	}
-	if !stillSameDir(dir, want) {
-		return fmt.Errorf("%s: %w", dir, errTreeSwapped)
-	}
-	if err := sink.Remove(filepath.Join(dir, proxyGeneratedMarker)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	marker := filepath.Join(relative, proxyGeneratedMarker)
+	if _, err := root.Lstat(marker); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
 		return err
 	}
-	return sink.Remove(dir)
+	if err := sink.RemoveWithin(root, marker, filepath.Join(dir, marker)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 // emptyPrecreatedDir reports whether dir is exactly <workdir>/.nself/generated/<name>,

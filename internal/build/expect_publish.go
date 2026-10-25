@@ -92,6 +92,24 @@ func (p *artifactPublisher) target(path string) (*os.Root, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	for scope, expected := range p.sink.cleanupRoots {
+		if rel, inside := under(scope, abs); inside {
+			root := p.roots[scope]
+			if root == nil {
+				root, err = os.OpenRoot(scope)
+				if err != nil {
+					return nil, "", err
+				}
+				info, statErr := root.Stat(".")
+				if statErr != nil || !os.SameFile(expected, info) {
+					_ = root.Close()
+					return nil, "", errDeviated(scope, "cleanup directory was replaced")
+				}
+				p.roots[scope] = root
+			}
+			return root, filepath.FromSlash(rel), nil
+		}
+	}
 	base := filepath.VolumeName(abs) + string(filepath.Separator)
 	rel, inside := under(p.sink.root, abs)
 	if inside {

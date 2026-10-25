@@ -42,12 +42,13 @@ func errDeviated(path, why string) error {
 // expectSink is the checking disk sink.
 type expectSink struct {
 	*diskSink
-	exp        *PlannedBuild
-	keyr       *memSink // canonicalises paths exactly as plan mode did
-	dirs       map[string]fs.FileMode
-	atomic     map[string]bool
-	chmods     map[string]fs.FileMode
-	writeModes map[string]fs.FileMode
+	exp          *PlannedBuild
+	keyr         *memSink // canonicalises paths exactly as plan mode did
+	dirs         map[string]fs.FileMode
+	atomic       map[string]bool
+	chmods       map[string]fs.FileMode
+	writeModes   map[string]fs.FileMode
+	cleanupRoots map[string]fs.FileInfo
 }
 
 func newExpectSink(root string, exp *PlannedBuild) *expectSink {
@@ -102,6 +103,20 @@ func (e *expectSink) Remove(p string) error {
 		return errDeviated(k, "would be removed but the plan does not remove it")
 	}
 	return e.keyr.Remove(p)
+}
+
+// RemoveWithin stages an unlink and remembers the cleanup directory identity
+// so deferred publication cannot be redirected to a different directory.
+func (e *expectSink) RemoveWithin(root *os.Root, _ string, p string) error {
+	info, err := root.Stat(".")
+	if err != nil {
+		return err
+	}
+	if e.cleanupRoots == nil {
+		e.cleanupRoots = map[string]fs.FileInfo{}
+	}
+	e.cleanupRoots[root.Name()] = info
+	return e.Remove(p)
 }
 
 func (e *expectSink) Chmod(p string, perm fs.FileMode) error {
