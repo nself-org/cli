@@ -302,7 +302,7 @@ If `nself migrate run` fails partway through:
 nself migrate rollback --list
 
 # Restore the last backup
-nself migrate rollback
+nself migrate rollback --yes
 ```
 
 The rollback restores all files that were backed up before the failure.
@@ -329,11 +329,13 @@ If you need to revert to v0.9 after migrating:
 nself migrate rollback --list
 
 # Restore the most recent backup
-nself migrate rollback
+nself migrate rollback --yes
 
 # Or restore a specific backup by timestamp
-nself migrate rollback --backup 20260420-143022
+nself migrate rollback --backup 20260420-143022 --yes
 ```
+
+`--yes` confirms the restore without a prompt. From v1.5 a rollback without `--yes` asks on a terminal and is refused with E403 anywhere else (scripts, CI); in v1.4 it still runs but prints a deprecation warning (under `--json`, in `meta.deprecations`).
 
 After rollback, reinstall the v0.9 CLI (use the Homebrew formula version pin or download from GitHub releases).
 

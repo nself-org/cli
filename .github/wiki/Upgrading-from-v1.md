@@ -108,14 +108,16 @@ Then restore your data: `nself db restore /path/to/backup.sql`
 If migration fails, roll back to v1 state:
 
 ```bash
-nself migrate rollback
+nself migrate rollback --yes
 ```
 
 Or restore a specific backup:
 
 ```bash
-nself migrate rollback --backup 20260328-143022
+nself migrate rollback --backup 20260328-143022 --yes
 ```
+
+`--yes` confirms the restore without a prompt. From v1.5 a rollback without `--yes` asks on a terminal and is refused with E403 anywhere else (scripts, CI); in v1.4 it still runs but prints a deprecation warning (under `--json`, in `meta.deprecations`).
 
 ---
 

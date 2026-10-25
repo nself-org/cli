@@ -10,7 +10,8 @@ package commands
 //
 // Behaviour (ADR 0021 compat switch):
 //   - --yes set: runs, silent.
-//   - v1.4 (default), no --yes: runs, with one stderr deprecation line.
+//   - v1.4 (default), no --yes: runs, with one stderr deprecation line (and,
+//     under --json, a meta.deprecations entry).
 //   - v1.5 (NSELF_V15=1), no --yes: asks on a terminal, otherwise refuses
 //     with E403 before any side effect.
 //   - a read-only or preview flag (--dry-run, --list) skips the gate entirely.
@@ -22,8 +23,12 @@ import (
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/output"
 	"github.com/spf13/cobra"
 )
+
+// consentRefusedFrom is the release from which a bare data-loss command is refused.
+const consentRefusedFrom = "v1.5.0"
 
 // consentFlagUsage is the help text of the --yes flag on the gated commands.
 const consentFlagUsage = "Confirm the data loss without a prompt (required from v1.5 unless you answer a terminal prompt)"
@@ -90,8 +95,13 @@ func requireDataLossConsent(cmd *cobra.Command, what string) error {
 		return errs.New("E403", fmt.Sprintf("%s %s and was not confirmed", cmd.CommandPath(), what)).
 			WithFix("pass --yes to confirm, or run it on a terminal and answer y")
 	}
+	path := strings.TrimPrefix(cmd.CommandPath(), "nself ")
+	// A --json caller gets the notice in meta.deprecations like a canon move
+	// notice (D-0762), even when the stderr line is silenced.
+	if output.JSONRequestedFromArgs(os.Args) {
+		output.AddDeprecation("nself "+path+" without --yes", "nself "+path+" --yes", consentRefusedFrom)
+	}
 	if !warningsSilenced(os.Args) {
-		path := strings.TrimPrefix(cmd.CommandPath(), "nself ")
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: nself %s without --yes is deprecated (%s); from v1.5 it needs --yes or a terminal confirmation. Pass --yes now.\n", path, what)
 	}
 	return nil
