@@ -207,6 +207,18 @@ func runPilot(t *testing.T, proj string, v15 bool, extra []string, args ...strin
 	return pilotRun{code: code, stdout: o.String(), stderr: e.String()}
 }
 
+// skipLiveUnderV15Guard skips a subprocess ("live") subtest when it runs inside
+// TestPilotJSONUnderV15Guard. runPilot rebuilds the child environment without
+// any NSELF_ variable and sets NSELF_V15 itself, so the guard's t.Setenv changes
+// nothing for a live run: the standalone test already covers it, and running it
+// twice doubled the slowest tests of the package (D-0735).
+func skipLiveUnderV15Guard(t *testing.T) {
+	t.Helper()
+	if strings.HasPrefix(t.Name(), "TestPilotJSONUnderV15Guard/") {
+		t.Skip("live runs rebuild the child environment; the standalone test covers them")
+	}
+}
+
 // ---- status ----------------------------------------------------------------
 
 func statusReport(results ...health.HealthResult) *health.HealthReport {
@@ -281,6 +293,7 @@ func TestPilotJSONStatus(t *testing.T) {
 	})
 
 	t.Run("live", func(t *testing.T) {
+		skipLiveUnderV15Guard(t)
 		proj := pilotProject(t)
 		r := runPilot(t, proj, true, nil, "status", "--json")
 		data := validateEnvelope(t, r.stdout, "status")
@@ -408,6 +421,7 @@ func TestPilotJSONDoctor(t *testing.T) {
 	})
 
 	t.Run("live", func(t *testing.T) {
+		skipLiveUnderV15Guard(t)
 		proj := pilotProject(t)
 		for _, args := range [][]string{{"doctor", "--json"}, {"doctor", "--format", "json"}, {"doctor", "--json", "--deep"}} {
 			r := runPilot(t, proj, true, nil, args...)
@@ -561,6 +575,7 @@ func TestPilotJSONConfig(t *testing.T) {
 	})
 
 	t.Run("live", func(t *testing.T) {
+		skipLiveUnderV15Guard(t)
 		p := pilotProject(t)
 		// v1.5: schema-valid envelopes, secrets masked, --reveal honoured.
 		for _, tc := range []struct {
