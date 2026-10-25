@@ -1,4 +1,4 @@
 {
-  "free": {"ci": "1.2.7", "minio": "v1.2.9-rc.1", "tokens": "1.2.9"},
+  "free": {"ci": "1.2.7", "minio": "v1.2.9-rc.1", "rcmix": "1.4.0-1", "rcnum": "1.3.0-rc.2", "tokens": "1.2.9"},
   "licensed": {"ai": "1.1.2", "claw": "2.0.0+build7"}
 }

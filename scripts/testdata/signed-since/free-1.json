@@ -22,6 +22,22 @@
   },
   "tokens": {
    "version": "1.2.6"
+  },
+  "rcnum": {
+   "version": "1.3.0-rc.10",
+   "release_signature": {
+    "key_id": "plugins-0123456789abcdef",
+    "alg": "ed25519",
+    "sig": "AAAA"
+   }
+  },
+  "rcmix": {
+   "version": "1.4.0-alpha",
+   "release_signature": {
+    "key_id": "plugins-0123456789abcdef",
+    "alg": "ed25519",
+    "sig": "AAAA"
+   }
   }
  },
  "history": [
