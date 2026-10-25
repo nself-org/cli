@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -296,5 +297,29 @@ func TestPrunePreDeployTarsDropsFrontTarsWithTheirMain(t *testing.T) {
 	}
 	if readFile(t, outside) != "must survive" {
 		t.Error("a symlinked front tar was followed")
+	}
+}
+
+// D-1148: the removing loop's exit status was the last iteration's, so an rm that
+// failed early was hidden by a later success and the prune reported nothing.
+func TestPrunePreDeployTarsReportsAnEarlierRmFailure(t *testing.T) {
+	needTools(t)
+	realRm, err := exec.LookPath("rm")
+	if err != nil {
+		t.Skip("no rm on PATH")
+	}
+	stubs := t.TempDir()
+	// Fails for the tar dated 03 only; every other rm is the real one.
+	writeFile(t, filepath.Join(stubs, "rm"), "#!/bin/sh\nfor a in \"$@\"; do case \"$a\" in *"+tarName("03")+") exit 1;; esac; done\nexec "+realRm+" \"$@\"\n", 0o755)
+	t.Setenv("PATH", stubs+string(os.PathListSeparator)+os.Getenv("PATH"))
+	f := newFakeRemote(t)
+	rp := t.TempDir()
+	seedTars(t, rp, "01", "02", "03", "04", "05", "06", "07", "08")
+	// Newest first, the drop order is 03, 02, 01: the failure comes first, then two successes.
+	if _, err := PrunePreDeployTars(context.Background(), f, rp, 5); err == nil {
+		t.Fatal("a failed rm was reported as a clean prune")
+	}
+	if !exists(filepath.Join(rp, ".nself", "backups", tarName("03"))) {
+		t.Error("the stub should have kept tar 03; the test did not exercise a failure")
 	}
 }
