@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/nself-org/cli/internal/nginxtopo"
 )
 
 // applyTrustAndHosts performs the mkcert CA trust and /etc/hosts steps.
@@ -116,11 +118,10 @@ func hostsManualNote(hostnames []string) string {
 }
 
 // DomainToDirName converts a domain to a directory-safe name by replacing dots with dashes.
-// Exported so callers outside this package (cmd/commands' ssl_add.go) can assert
-// their own domain-to-directory conversion agrees with this one instead of
-// duplicating the literal replacement rule, which could silently diverge.
+// It is nginxtopo.CertDirName, kept here for the callers that already import
+// this package: one rule for the writer and every reader of the cert dir.
 func DomainToDirName(domain string) string {
-	return strings.ReplaceAll(domain, ".", "-")
+	return nginxtopo.CertDirName(domain)
 }
 
 // fileExists returns true if the path exists and is a regular file.

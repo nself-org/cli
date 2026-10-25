@@ -477,3 +477,25 @@ func TestMigrationsDir_LegacyBeatsPostgres(t *testing.T) {
 		t.Errorf("expected migrations to win over postgres/migrations, got %q", got)
 	}
 }
+
+// TestMigrationsDir_PluginHomeExpansion: a plugin's migrations come from the
+// shared plugin dir rule (D-0573): the default config's literal
+// "~/.nself/plugins" is expanded under v1.5, and kept as written under v1.4.
+func TestMigrationsDir_PluginHomeExpansion(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("NSELF_PLUGIN_DIR", "")
+	cfg := &config.Config{}
+	cfg.PluginSystem.Dir = "~/.nself/plugins"
+
+	t.Setenv("NSELF_V15", "1")
+	want := filepath.Join(home, ".nself", "plugins", "ai", "migrations")
+	if got := migrationsDir(cfg, "ai"); got != want {
+		t.Errorf("v1.5: %q, want %q", got, want)
+	}
+	t.Setenv("NSELF_V15", "")
+	if got, w := migrationsDir(cfg, "ai"), filepath.Join("~/.nself/plugins", "ai", "migrations"); got != w {
+		t.Errorf("v1.4: %q, want %q", got, w)
+	}
+}

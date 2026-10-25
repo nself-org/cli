@@ -7,23 +7,17 @@ package routemodel
 // Outputs: the dir name, or "" with every certificate line recorded.
 // Constraints: a renderer joins ssl_dir into a path, so `.`, `..` and dot
 // dirs never match, and a half match (one line elsewhere) maps nothing.
-// Two path shapes map: the nested one internal/ssl.Generator writes and the
+// Only the nested shape maps: the one internal/ssl.Generator writes and the
 // CLI's own templates read (/etc/nginx/ssl/certificates/<dir>/, which is what
-// a plugin snippet's /etc/nginx/ssl/${SSL_DIR}/ renders to), and the older
-// flat /etc/nginx/ssl/<dir>/. Both lines must use the same shape.
+// a plugin snippet's /etc/nginx/ssl/${SSL_DIR}/ renders to). The older flat
+// /etc/nginx/ssl/<dir>/ names a different file than the renderer's
+// certificates/<dir>, so it is recorded as unmodelled (D-0571).
 
-import (
-	"regexp"
-	"strings"
-)
+import "regexp"
 
-// certSubdir is the level internal/ssl.Generator writes certificate dirs
-// under, inside the nginx ssl mount.
-const certSubdir = "certificates/"
+var certRE = regexp.MustCompile(`^/etc/nginx/ssl/certificates/([A-Za-z0-9][A-Za-z0-9._-]*)/(fullchain|privkey)\.pem$`)
 
-var certRE = regexp.MustCompile(`^/etc/nginx/ssl/((?:certificates/)?[A-Za-z0-9][A-Za-z0-9._-]*)/(fullchain|privkey)\.pem$`)
-
-// certDir maps exactly one ssl_certificate /etc/nginx/ssl/[certificates/]<dir>/fullchain.pem
+// certDir maps exactly one ssl_certificate /etc/nginx/ssl/certificates/<dir>/fullchain.pem
 // and one ssl_certificate_key .../<dir>/privkey.pem with the same path to the
 // route's ssl_dir <dir>. Anything else (another path or file name, two dirs,
 // mixed shapes, a missing half) records every certificate line and leaves
@@ -48,5 +42,5 @@ func (s *srv) certDir() string {
 	if !ok {
 		return ""
 	}
-	return strings.TrimPrefix(dir, certSubdir)
+	return dir
 }

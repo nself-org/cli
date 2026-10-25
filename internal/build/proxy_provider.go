@@ -238,10 +238,7 @@ func proxyRouteLimitations(m *routemodel.Model) ([]string, map[string]bool) {
 
 // proxyPluginSiteNames matches injection's directory resolution and filenames.
 func proxyPluginSiteNames(cfg *config.Config, names map[string]bool) error {
-	dir, err := resolvePluginNginxDir("", cfg)
-	if err != nil {
-		return err
-	}
+	dir := resolvePluginNginxDir("", cfg)
 	entries, err := os.ReadDir(dir)
 	if err != nil && !os.IsNotExist(err) {
 		return err

@@ -25,8 +25,8 @@ server { listen 80; server_name idme.${BASE_DOMAIN}; return 301 https://$host$re
 server {
     listen 443 ssl http2;
     server_name idme.${BASE_DOMAIN};
-    ssl_certificate /etc/nginx/ssl/${BASE_DOMAIN}/fullchain.pem;
-    ssl_certificate_key /etc/nginx/ssl/${BASE_DOMAIN}/privkey.pem;
+    ssl_certificate /etc/nginx/ssl/certificates/${BASE_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/certificates/${BASE_DOMAIN}/privkey.pem;
     location / { proxy_pass http://idme_backend; proxy_read_timeout 60s; weird_thing on; }
 }
 `

@@ -152,20 +152,12 @@ func pluginSnippetSkip(rendered string, vars map[string]string, hasSSL bool) str
 
 // resolvePluginNginxDir returns the plugin directory the nginx snippets are
 // read from: pluginDir, else the configured one, else ~/.nself/plugins. A
-// leading "~" is expanded under v1.5 only (expandPluginDir, D-0634).
-func resolvePluginNginxDir(pluginDir string, cfg *config.Config) (string, error) {
+// leading "~" is expanded under v1.5 only (config.ExpandPluginDir, D-0634).
+func resolvePluginNginxDir(pluginDir string, cfg *config.Config) string {
 	if pluginDir == "" {
 		pluginDir = cfg.PluginSystem.Dir
 	}
-	pluginDir = expandPluginDir(pluginDir)
-	if pluginDir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("resolving home directory: %w", err)
-		}
-		pluginDir = filepath.Join(home, ".nself", "plugins")
-	}
-	return pluginDir, nil
+	return config.ResolvePluginDir(pluginDir)
 }
 
 // pluginConfPaths lists a plugin's nginx/*.conf files (none when it ships no
@@ -203,10 +195,7 @@ func renderPluginSnippet(content string, vars map[string]string) string {
 
 // injectPluginNginxRoutesVia is InjectPluginNginxRoutes writing through sink.
 func injectPluginNginxRoutesVia(sink Sink, workdir, pluginDir string, cfg *config.Config, hasSSL bool) (int, error) {
-	pluginDir, err := resolvePluginNginxDir(pluginDir, cfg)
-	if err != nil {
-		return 0, err
-	}
+	pluginDir = resolvePluginNginxDir(pluginDir, cfg)
 
 	// If the plugin directory does not exist, there is nothing to inject.
 	if _, err := os.Stat(pluginDir); os.IsNotExist(err) {

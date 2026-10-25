@@ -78,8 +78,8 @@ func TestExpandHomeDir(t *testing.T) {
 		"":                 "",
 	}
 	for in, want := range cases {
-		if got := expandHomeDir(in); got != want {
-			t.Errorf("expandHomeDir(%q) = %q, want %q", in, got, want)
+		if got := config.ExpandHomeDir(in); got != want {
+			t.Errorf("ExpandHomeDir(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

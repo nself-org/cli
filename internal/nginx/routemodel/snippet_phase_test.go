@@ -123,14 +123,14 @@ func TestSnippetWebSocketNeedsHTTP11(t *testing.T) {
 
 func TestSnippetCertDirRejectsDots(t *testing.T) {
 	for _, dir := range []string{".", "..", ".hidden", "-x"} {
-		cert := "ssl_certificate /etc/nginx/ssl/" + dir + "/fullchain.pem;"
-		key := "ssl_certificate_key /etc/nginx/ssl/" + dir + "/privkey.pem;"
+		cert := "ssl_certificate /etc/nginx/ssl/certificates/" + dir + "/fullchain.pem;"
+		key := "ssl_certificate_key /etc/nginx/ssl/certificates/" + dir + "/privkey.pem;"
 		r := route(t, "server { listen 443 ssl; server_name a.test; "+cert+" "+key+" }")
 		if r.TLS == nil || r.TLS.SSLDir != "" || !reflect.DeepEqual(r.Unmodelled, []string{cert, key}) {
 			t.Errorf("%s: tls=%+v unmodelled=%q", dir, r.TLS, r.Unmodelled)
 		}
 	}
-	r := route(t, "server { listen 443 ssl; server_name a.test; ssl_certificate /etc/nginx/ssl/a.test_1/fullchain.pem; ssl_certificate_key /etc/nginx/ssl/a.test_1/privkey.pem; }")
+	r := route(t, "server { listen 443 ssl; server_name a.test; ssl_certificate /etc/nginx/ssl/certificates/a.test_1/fullchain.pem; ssl_certificate_key /etc/nginx/ssl/certificates/a.test_1/privkey.pem; }")
 	if r.TLS == nil || r.TLS.SSLDir != "a.test_1" || len(r.Unmodelled) != 0 {
 		t.Errorf("valid dir: tls=%+v unmodelled=%q", r.TLS, r.Unmodelled)
 	}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/nself-org/cli/internal/config"
@@ -189,16 +188,7 @@ func init() {
 // --- helpers ---
 
 // resolvePluginDir returns the plugin directory from config or a sensible default.
-func resolvePluginDir() string {
-	if d := os.Getenv("NSELF_PLUGIN_DIR"); d != "" {
-		return d
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return filepath.Join("/tmp", ".nself", "plugins")
-	}
-	return filepath.Join(home, ".nself", "plugins")
-}
+func resolvePluginDir() string { return config.DefaultPluginDir() }
 
 // loadConfig loads the project config from the current working directory.
 func loadConfig() (*config.Config, error) {

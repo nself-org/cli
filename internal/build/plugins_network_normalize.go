@@ -136,6 +136,14 @@ func normalizeComposeNetworks(content []byte, pluginName string) ([]byte, error)
 		}
 		warnOnce(msg)
 	}
+	if bad := res.isolationViolations(); len(bad) > 0 {
+		msg := fmt.Sprintf("plugin %q reaches outside its own fragment (%s)", pluginName, strings.Join(bad, ", "))
+		// compat.V15(D-0490): a fragment may include another file, extend a service of one, build on the host network, join a network it does not declare or redefine a core service (warning) -> E129 fails the build
+		if compat.V15() {
+			return content, policyError(msg, "include, extends of another file, build.network, a network the fragment does not declare and a core service name each pull in or merge with something outside the plugin's own stack, past the network policy.", "Keep the fragment to its own services and networks, or ask the plugin author to.")
+		}
+		warnOnce(msg)
+	}
 	// compat.V15(P7-PLUG-17): fragments keep their own networks and ${DOCKER_NETWORK:-x} -> missing networks attached, ${DOCKER_NETWORK:-x} written as ${DOCKER_NETWORK}
 	if !compat.V15() {
 		return content, nil

@@ -25,7 +25,6 @@ var acceptedBasis = acceptedEntries([]edgeEntry{
 	{From: "internal/doctor", To: "internal/plugin"},
 	{From: "internal/hasura", To: "internal/database"},
 	{From: "internal/runner", To: "internal/deploy"},
-	{From: "internal/nginx", To: "internal/ssl"},
 	{From: "internal/trust", To: "internal/ssl"},
 	{From: "internal/ssl", To: "internal/compose"},
 	{From: "internal/reconcile", To: "internal/build"},

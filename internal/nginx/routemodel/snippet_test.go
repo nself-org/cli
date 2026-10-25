@@ -23,7 +23,7 @@ var update = flag.Bool("update", false, "rewrite snippet goldens")
 
 // renderVars stands in for the build's template variables.
 var renderVars = strings.NewReplacer("${BASE_DOMAIN}", "example.test", "${DOMAIN}", "example.test",
-	"${NSELF_DOMAIN}", "example.test", "${SSL_DIR}", "example-test", "${GRAFANA_ROUTE}", "grafana",
+	"${NSELF_DOMAIN}", "example.test", "${SSL_DIR}", "certificates/example-test", "${GRAFANA_ROUTE}", "grafana",
 	"${PROMETHEUS_ROUTE}", "prometheus", "${ALERTMANAGER_ROUTE}", "alertmanager")
 
 type corpusFile struct{ slug, name, path string }
@@ -229,7 +229,7 @@ server { listen 443 ssl; server_name a.test; weird_directive 1 2 3; if ($x) { re
 }
 
 func TestSnippetMapping(t *testing.T) {
-	const head = "server { listen 443 ssl http2; server_name a.test; ssl_certificate /etc/nginx/ssl/d/fullchain.pem; ssl_certificate_key /etc/nginx/ssl/d/privkey.pem; "
+	const head = "server { listen 443 ssl http2; server_name a.test; ssl_certificate /etc/nginx/ssl/certificates/d/fullchain.pem; ssl_certificate_key /etc/nginx/ssl/certificates/d/privkey.pem; "
 	loc := func(body string) Location {
 		r := route(t, head+"location / { "+body+" } }")
 		if len(r.Unmodelled) != 0 {
@@ -444,7 +444,7 @@ func TestTokenizeAdapter(t *testing.T) {
 
 func TestHandManagedRoutes(t *testing.T) {
 	text := "server { listen 80; server_name a.example.test; location / { proxy_pass http://a:80; } }\n" +
-		"server { listen 443 ssl; server_name b.example.test; ssl_certificate /etc/nginx/ssl/d/fullchain.pem; ssl_certificate_key /etc/nginx/ssl/d/privkey.pem; location /x { proxy_pass https://b.example.test; } }\n"
+		"server { listen 443 ssl; server_name b.example.test; ssl_certificate /etc/nginx/ssl/certificates/d/fullchain.pem; ssl_certificate_key /etc/nginx/ssl/certificates/d/privkey.pem; location /x { proxy_pass https://b.example.test; } }\n"
 	rs, err := FromSnippet("hand_managed", "", "custom.conf", text)
 	if err != nil || len(rs) != 2 {
 		t.Fatalf("routes=%d err=%v", len(rs), err)
