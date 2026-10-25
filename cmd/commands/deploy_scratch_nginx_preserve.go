@@ -6,6 +6,7 @@ import (
 
 	"github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/deploy"
+	"github.com/nself-org/cli/internal/nginxtopo"
 )
 
 type preservedNginxSite struct {
@@ -21,7 +22,11 @@ type preservedNginxSite struct {
 // SPORT: D-1147, NSELF_DEPLOY_NGINX_INCLUDE preservation during remote deploy.
 func preserveScratchNginxSites(scratch string, policy *deploy.NginxPolicy) (func() error, error) {
 	var saved []preservedNginxSite
-	dir := filepath.Join(scratch, "nginx", "sites")
+	nginxDir, err := nginxtopo.ServedNginxDir(scratch, "") // the scratch project's own tree, as scratchCopyProject lays it
+	if err != nil {
+		return nil, err
+	}
+	dir := filepath.Join(nginxDir, "sites")
 	entries, err := os.ReadDir(dir)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
