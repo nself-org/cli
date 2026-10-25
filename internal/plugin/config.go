@@ -92,7 +92,18 @@ func IsDisabled(name, pluginDir string) bool {
 // conflict with a DIFFERENT plugin's directory is unaffected: this only
 // skips the entry whose name matches newPluginName itself, with or without
 // the ".prev" suffix.
+//
+// It also skips every dot-prefixed folder. A plugin name starts with a
+// lowercase letter (pluginSlugRe), so a folder whose name starts with '.' is
+// never an installed plugin: it is install machinery such as the
+// ".staging-thirdparty-*" extraction folder InstallFromURL creates inside
+// pluginDir, whose manifest is the incoming plugin's own. Reading it as an
+// installed plugin made every third-party install that declared tables or
+// routes conflict with itself (D-0740).
 func isOwnPluginDir(dirName, newPluginName string) bool {
+	if strings.HasPrefix(dirName, ".") {
+		return true
+	}
 	if strings.EqualFold(dirName, newPluginName) {
 		return true
 	}
