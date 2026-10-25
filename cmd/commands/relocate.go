@@ -37,6 +37,7 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/lock"
 	"github.com/nself-org/cli/internal/plugin"
+	"github.com/nself-org/cli/internal/plugin/mount"
 )
 
 // envNoAutoAdd turns the break-out auto-add off: the command fails with E404.
@@ -77,6 +78,14 @@ func relocateBreakout(cmdName string, args []string) (handled bool, err error) {
 	row, pluginArgs, ok := breakoutRow(cmdName, args)
 	if !ok || mountedBy(walkNames(RootCmd, row.To[:1]), row.Plugin) {
 		return false, nil
+	}
+	// Leading root flags skip mounting, but a validated installed plugin can
+	// still run without auto-add (including when NSELF_NO_AUTO_ADD=1).
+	specs, _ := mount.Discover(resolvePluginDir(), canonTable.Verbs)
+	for _, spec := range specs {
+		if spec.Slug == row.Plugin && spec.Command == row.To[0] {
+			return true, plugin.ProxyBinaryAt(spec.BinaryPath, resolvePluginDir(), row.Plugin, pluginArgs)
+		}
 	}
 	old := cmdName
 	if hasPrefix(append([]string{cmdName}, args...), row.From) {
