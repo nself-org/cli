@@ -136,15 +136,16 @@ The restored v2.44.0 pin survives in both compatibility modes.
 
 #### Without a saved lock
 
-This fallback applies only to a genuinely lockless project with no existing Hasura pin. If an upgraded lock or a pin recovered from the generated Compose file exists, recover the saved pre-upgrade lock instead. Clearing `HASURA_VERSION`, or setting it to `v2.44.0`, selects the mode default: v2.51.0 under `NSELF_V15=1`. After clearing the file overrides in step 3, select v1.4 behavior for both commands:
+This fallback is for a project with no saved lock. A lockless project that was upgraded still has a generated `docker-compose.yml` naming `hasura/graphql-engine:v2.51.0`, and the build reads that file as the pin source, so clearing `HASURA_VERSION` alone keeps v2.51.0. Move the file aside first: `nself build` regenerates it. Without the file the build has no pin to keep and takes the mode default, and `--write-lock` saves that pin. Every CLI-owned service then takes the mode default instead of the version in the old file, so review the generated Compose diff before starting. If a saved pre-upgrade lock exists, use the route above instead. Clearing `HASURA_VERSION`, or setting it to `v2.44.0`, selects the mode default: v2.51.0 under `NSELF_V15=1`. After clearing the file overrides in step 3, select v1.4 behavior for both build and start:
 
 ```bash
 unset HASURA_VERSION
+mv docker-compose.yml docker-compose.yml.pre-rollback
 NSELF_V15=0 IMAGE_PINNING=lock nself build --write-lock
 NSELF_V15=0 IMAGE_PINNING=lock nself start
 ```
 
-This selects v2.44.0; `--write-lock` saves its pin even in v1.4 mode. The v1.4 compatibility switch also affects other services and generated configuration, so review the generated Compose diff before starting. Prefer the saved-lock route when retaining v1.5 behavior is required.
+This selects v2.44.0; `--write-lock` saves its pin even in v1.4 mode. The v1.4 compatibility switch also affects other generated configuration. Prefer the saved-lock route when retaining v1.5 behavior is required.
 
 Pinning back without the restore is unsupported: the CLI does not check the catalog version, so a future pair of releases may refuse to start. For this pair the smoke observed that v2.44.0 starts on a v2.51.0 database (catalog version 48 on both) and passes every functional check, but rows written on v2.51.0 stay in the database and nothing restores the pre-switch state. The smoke proves both paths on Linux (`NSELF_V15=1 bash scripts/ci/hasura-upgrade-smoke.sh`; without `NSELF_V15` it runs the same functional checks on v2.44.0 as the baseline; it needs Docker, curl, python3, openssl and free ports 80, 443, 5432 and 8080).
 

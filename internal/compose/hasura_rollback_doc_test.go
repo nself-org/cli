@@ -39,6 +39,8 @@ func TestHasuraRollbackDocumentation(t *testing.T) {
 		pins    map[string]string
 	}{
 		{"#### With a saved lock", map[string]string{"hasura": old.String()}},
+		// nil pins model the route's state after the documented mv of
+		// docker-compose.yml; internal/build covers the recovered-pin case.
 		{"#### Without a saved lock", nil},
 	} {
 		t.Run(route.heading, func(t *testing.T) {
