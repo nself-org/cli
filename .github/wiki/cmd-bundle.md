@@ -166,7 +166,9 @@ An interrupted remove is resumed by running the same command again (the
 progress is kept in `.nself-state/remove-intent.json` in the plugin directory).
 A remove interrupted after the ledger file was deleted cannot resume: the
 leftover plugins are kept as explicit, and `nself plugin remove` removes them.
-A member that a kept plugin depends on is kept and recorded as explicit.
+A member that a plugin outside the plan depends on is kept and recorded as explicit.
+If such a plugin's `plugin.json` cannot be read, the remove refuses before removing
+anything. `nself bundle install` clears the bundle's old remove intent.
 
 ```
 nself bundle remove <name> [--dry-run] [--keep-data]
