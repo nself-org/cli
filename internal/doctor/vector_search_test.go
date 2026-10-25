@@ -69,6 +69,14 @@ func stubExport(t *testing.T, live []byte, err error) {
 	exportLiveMetadata = func(context.Context, *config.Config) ([]byte, error) { return live, err }
 }
 
+// stubLiveInfer replaces the running-container read of the inference flag.
+func stubLiveInfer(t *testing.T, value string, found bool, err error) {
+	t.Helper()
+	saved := liveHasuraEnv
+	t.Cleanup(func() { liveHasuraEnv = saved })
+	liveHasuraEnv = func(context.Context, *config.Config, string) (string, bool, error) { return value, found, err }
+}
+
 // TestVectorSearchChecksLive: no project gives nothing; an unreachable Hasura
 // is a skip only when disk names a search function (never a silent pass where
 // one is known), and silent otherwise; a reachable one is audited; the
@@ -102,8 +110,22 @@ func TestVectorSearchChecksLive(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("PROJECT_NAME=fx\nENV=dev\n"+inferFunctionPerms+"=false\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	stubLiveInfer(t, "false", true, nil)
 	if res := VectorSearchChecks(context.Background(), dir); len(res) != 1 || res[0].Status != "pass" {
-		t.Fatalf("inference off in the project env: %+v", res)
+		t.Fatalf("inference off in the project env and in the running Hasura: %+v", res)
+	}
+	// The config says false but the running Hasura has not been recreated
+	// (still infers, or does not report the flag, or cannot be inspected): the
+	// desired flag must not be trusted (D-0614).
+	for name, stub := range map[string]func(){
+		"container still infers":  func() { stubLiveInfer(t, "true", true, nil) },
+		"container has no flag":   func() { stubLiveInfer(t, "", false, nil) },
+		"container not inspected": func() { stubLiveInfer(t, "", false, errors.New("no such container")) },
+	} {
+		stub()
+		if res := VectorSearchChecks(context.Background(), dir); len(res) != 1 || res[0].Status != "fail" {
+			t.Fatalf("%s: unconfirmed false must audit as inferred: %+v", name, res)
+		}
 	}
 	if v, ok := os.LookupEnv(inferFunctionPerms); ok && v != "" {
 		t.Errorf("the check leaked %s=%q into the process environment", inferFunctionPerms, v)

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/database"
 	"github.com/nself-org/cli/internal/database/vectorsearch"
 )
@@ -41,6 +42,10 @@ const (
 // test touches the network.
 var exportLiveMetadata = database.HasuraExportMetadata
 
+// liveHasuraEnv reads one variable from the running Hasura container; tests
+// replace it so no unit test touches docker.
+var liveHasuraEnv = database.HasuraContainerEnvValue
+
 // VectorSearchChecks is the DeepChecks entry point.
 func VectorSearchChecks(ctx context.Context, projectDir string) []CheckResult {
 	if projectDir == "" {
@@ -56,7 +61,24 @@ func VectorSearchChecks(ctx context.Context, projectDir string) []CheckResult {
 	if err != nil {
 		return vectorSearchUnread(projectDir, fmt.Sprintf("live Hasura metadata unreadable (is the stack running?): %v", err))
 	}
-	return vectorSearchResults(live, !strings.EqualFold(strings.TrimSpace(env[inferFunctionPerms]), "false"))
+	return vectorSearchResults(live, functionPermsInferred(ctx, cfg, env[inferFunctionPerms]))
+}
+
+// functionPermsInferred reports whether Hasura infers function permissions.
+// The project config only says what the NEXT recreate will run with: a Hasura
+// that has not been recreated since the flag was set to "false" still infers.
+// So "false" counts only when the running container confirms it; a config of
+// "false" the container does not show (older container, docker unreadable) is
+// audited as inferred, the fail-closed side (D-0614).
+func functionPermsInferred(ctx context.Context, cfg *config.Config, desired string) bool {
+	if !strings.EqualFold(strings.TrimSpace(desired), "false") {
+		return true
+	}
+	live, found, err := liveHasuraEnv(ctx, cfg, inferFunctionPerms)
+	if err != nil || !found {
+		return true
+	}
+	return !strings.EqualFold(strings.TrimSpace(live), "false")
 }
 
 // vectorSearchResults turns an export_metadata document into check results.
