@@ -17,6 +17,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 
@@ -193,6 +194,13 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (applied *Pl
 	wopts.Force = wopts.Force || !p.Empty
 	res, err := buildWithEnv(req.ProjectDir, wopts, req.resolvedEnv, buildBuild)
 	if err != nil {
+		// An entitlement refresh (E125) failure comes back after Build wrote and
+		// committed every generated file, so unless the caller's Rollback
+		// restores them the failure is post-publication.
+		var refresh *nbuild.EntitlementRefreshError
+		if res != nil && opt.Rollback == nil && errors.As(err, &refresh) {
+			err = published(err)
+		}
 		return nil, nil, err
 	}
 	// P7-LIVE-04 (EPIC D5): the record is written only now that the whole
