@@ -90,7 +90,15 @@ func CheckCLITargets(plugin string, targets []CLITarget) error {
 
 // CLITargetsOf is CLITargets over a parsed manifest through its compatibility
 // projection, which is what a released CLI reads from a v2 plugin.json.
+//
+// A manifest without a commands block publishes no binary: the projection
+// carries cliCommands but cannot carry a v1 non-cli pluginType, so reading
+// cliCommands alone would build nself-<command> for a service plugin that the
+// installer's v1 path gives none (D-0669).
 func CLITargetsOf(m *Manifest) []CLITarget {
+	if m.Commands == nil {
+		return nil
+	}
 	p := Projection(m)
 	names := make([]string, 0, len(p.CLICommands))
 	for _, c := range p.CLICommands {
