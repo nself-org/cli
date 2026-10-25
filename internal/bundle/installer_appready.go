@@ -81,7 +81,7 @@ func finishInstall(ctx context.Context, rn *appready.Runner, store *ledger.Store
 		if len(members) == 0 {
 			return "no installed members to record", nil
 		}
-		if err := store.Update(func(l *ledger.Ledger) error {
+		if err := store.Locked(func(tx *ledger.Tx, l ledger.Ledger) error {
 			// A member that was on disk before this install and has no ledger
 			// record was installed on its own: record it explicit so a later
 			// bundle remove keeps it. (Errs toward keeping the plugin.)
@@ -95,7 +95,16 @@ func finishInstall(ctx context.Context, rn *appready.Runner, store *ledger.Store
 				}
 			}
 			l.AddBundle(result.Bundle, members, time.Now())
-			addCatalogHolders(l, result.Bundle, members, time.Now())
+			addCatalogHolders(&l, result.Bundle, members, time.Now())
+			if err := tx.Write(l); err != nil {
+				return err
+			}
+			// A remove that was interrupted before this install is superseded: the
+			// bundle is installed again, so a later remove must not "resume" it
+			// (D-0662). A failed clear is a warning, never a failed install.
+			if err := tx.ClearRemoveIntent(result.Bundle); err != nil {
+				_, _ = fmt.Fprintf(out, "warning: could not clear the old remove intent of bundle %s: %v\n", result.Bundle, err)
+			}
 			return nil
 		}); err != nil {
 			return "", fmt.Errorf("the plugins are installed (not rolled back) but recording them in %s failed: %w", store.Path(), err)

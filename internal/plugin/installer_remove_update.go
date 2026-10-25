@@ -9,9 +9,11 @@ package plugin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/nself-org/cli/internal/config"
@@ -31,9 +33,28 @@ func logDangerousPermissions(pluginName string, permissions []string) {
 	}
 }
 
+// UnreadableManifestsError reports installed plugin directories whose
+// plugin.json exists but cannot be read or parsed (D-0662). Such a plugin might
+// depend on the plugin being removed, so a reverse-dependency scan cannot rule
+// it out. The scan still returns every dependent it could read alongside it.
+type UnreadableManifestsError struct {
+	// Dirs lists the plugin directory names (sorted).
+	Dirs []string
+}
+
+func (e *UnreadableManifestsError) Error() string {
+	return fmt.Sprintf("plugin.json of %s cannot be read, so it cannot be ruled out as a dependent",
+		strings.Join(e.Dirs, ", "))
+}
+
 // checkReverseDependencies scans all installed plugins in pluginDir and returns
-// the names of any that declare name as a dependency. This prevents silently
-// breaking dependent plugins during uninstall.
+// the directory names of any that declare name as a dependency. This prevents
+// silently breaking dependent plugins during uninstall.
+//
+// A directory without a plugin.json is not a plugin and is skipped, as are
+// dot-prefixed folders (install staging, .nself-state) and ".prev" backups. A
+// plugin.json that exists but cannot be read or parsed is reported through an
+// *UnreadableManifestsError (the dependents found so far are still returned).
 func checkReverseDependencies(pluginDir, name string) ([]string, error) {
 	entries, err := os.ReadDir(pluginDir)
 	if err != nil {
@@ -43,22 +64,32 @@ func checkReverseDependencies(pluginDir, name string) ([]string, error) {
 		return nil, fmt.Errorf("reading plugin directory: %w", err)
 	}
 
-	var dependents []string
+	var dependents, unreadable []string
 	for _, entry := range entries {
-		if !entry.IsDir() || entry.Name() == name {
+		if !entry.IsDir() || entry.Name() == name || strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
 		manifestPath := filepath.Join(pluginDir, entry.Name(), "plugin.json")
+		if _, statErr := os.Lstat(manifestPath); os.IsNotExist(statErr) {
+			continue
+		}
 		m, err := parseManifest(manifestPath)
 		if err != nil {
-			continue // skip directories without valid manifests
+			if !strings.HasSuffix(entry.Name(), ".prev") {
+				unreadable = append(unreadable, entry.Name())
+			}
+			continue
 		}
 		for _, dep := range m.Dependencies {
 			if strings.EqualFold(dep, name) {
-				dependents = append(dependents, m.Name)
+				dependents = append(dependents, entry.Name())
 				break
 			}
 		}
+	}
+	if len(unreadable) > 0 {
+		sort.Strings(unreadable)
+		return dependents, &UnreadableManifestsError{Dirs: unreadable}
 	}
 	return dependents, nil
 }
@@ -87,6 +118,10 @@ func Remove(ctx context.Context, cfg *config.Config, name string, pluginDir stri
 	// Check for reverse dependencies before doing anything destructive.
 	if !force {
 		dependents, err := checkReverseDependencies(pluginDir, name)
+		var unreadable *UnreadableManifestsError
+		if errors.As(err, &unreadable) {
+			return fmt.Errorf("checking reverse dependencies: %w. Fix or remove it, or use --force to remove anyway", err)
+		}
 		if err != nil {
 			return fmt.Errorf("checking reverse dependencies: %w", err)
 		}

@@ -9,11 +9,15 @@
 // "needed by <plugins>; recorded explicit") and their records in plan.work
 // restored as explicit, so a later bundle remove keeps them too.
 // Constraints: iterates to a fixpoint (a kept plugin is itself an outside
-// dependent of what it needs). A scan error refuses the plan: nothing is
-// removed. No I/O beyond the scan.
+// dependent of what it needs). Dependents are plugin directory names, the same
+// names the plan holds. A scan error refuses the plan: nothing is removed. So
+// does an outside plugin whose plugin.json cannot be read (it may depend on a
+// member); an unreadable manifest of a planned member is no obstacle (D-0662).
+// No I/O beyond the scan.
 package bundle
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -43,6 +47,15 @@ func keepDependedOn(plan *removePlan, orig ledger.Ledger, pluginDir string, scan
 				continue
 			}
 			deps, err := scan(pluginDir, name)
+			var unreadable *plugin.UnreadableManifestsError
+			if errors.As(err, &unreadable) {
+				if outside := outsidePlan(unreadable.Dirs, planned); len(outside) == 0 {
+					err = nil // only planned members are unreadable: they go anyway
+				} else {
+					return fmt.Errorf("checking which installed plugins depend on %s: %w; nothing was removed, fix or remove it and rerun",
+						name, &plugin.UnreadableManifestsError{Dirs: outside})
+				}
+			}
 			if err != nil {
 				return fmt.Errorf("checking which installed plugins depend on %s: %w", name, err)
 			}

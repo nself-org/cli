@@ -246,16 +246,9 @@ func TestInstalledBinaryEmitsDeprecationWarning(t *testing.T) {
 		t.Skip("binary staging in this test is POSIX-only")
 	}
 
-	root := findRepoRootForTest(t)
-	installDir := t.TempDir()
-	binPath := filepath.Join(installDir, "nself")
-
-	build := exec.Command("go", "build", "-mod=vendor", "-o", binPath, "./cmd/nself/")
-	build.Dir = root
-	build.Env = append(os.Environ(), "CGO_ENABLED=0")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build failed: %v\n%s", err, out)
-	}
+	// pilotBinary is one shared build of ./cmd/nself in a directory of its own,
+	// with no source tree next to it (D-0735: no second compile and link).
+	binPath := pilotBinary(t)
 
 	// Run from a *different* empty directory so neither the binary's own
 	// directory nor the working directory contains a source tree.

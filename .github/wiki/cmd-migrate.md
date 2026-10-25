@@ -93,14 +93,16 @@ nself migrate detect
 nself migrate run
 
 # Restore from the most recent backup
-nself migrate rollback
+nself migrate rollback --yes
 
 # List available backups
 nself migrate rollback --list
 
 # Restore from a specific backup
-nself migrate rollback --backup 20260417-143022
+nself migrate rollback --backup 20260417-143022 --yes
 ```
+
+`--yes` confirms the restore without a prompt. From v1.5 a rollback without `--yes` asks on a terminal and is refused with E403 anywhere else (scripts, CI); in v1.4 it still runs but prints a deprecation warning (under `--json`, in `meta.deprecations`).
 
 See [[Upgrade-From-v0.9]] for the full step-by-step migration guide.
 <!-- END PROSE:examples -->

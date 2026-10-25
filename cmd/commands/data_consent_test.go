@@ -7,11 +7,13 @@ package commands
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/output"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -165,5 +167,55 @@ func TestDataLossGateSkipFlagsExist(t *testing.T) {
 	}
 	if migrateRollbackCmd.Flags().Lookup("list") == nil {
 		t.Fatal("rollback lost its --list flag")
+	}
+}
+
+// TestDataLossGateJSONDeprecation: a v1.4 --json caller sees the consent
+// warning in meta.deprecations, even when the stderr line is silenced, and a
+// run with --yes or without --json records nothing (D-0762).
+func TestDataLossGateJSONDeprecation(t *testing.T) {
+	cases := []struct {
+		name string
+		argv []string
+		yes  bool
+		want bool
+	}{
+		{"json bare", []string{"nself", "backup", "prune", "--json"}, false, true},
+		{"json bare silenced", []string{"nself", "backup", "prune", "--json", "--quiet"}, false, true},
+		{"json yes", []string{"nself", "backup", "prune", "--json", "--yes"}, true, false},
+		{"text bare", []string{"nself", "backup", "prune"}, false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("NSELF_V15", "0")
+			output.ResetState()
+			t.Cleanup(output.ResetState)
+			withArgs(t, tc.argv...)
+			var buf bytes.Buffer
+			c := gateCmd(&buf)
+			if tc.yes {
+				if err := c.Flags().Set("yes", "true"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := requireDataLossConsent(c, "deletes old backups"); err != nil {
+				t.Fatal(err)
+			}
+			var doc bytes.Buffer
+			if err := output.EmitData(output.Writer{Out: &doc, Err: io.Discard}, "backup prune", map[string]string{"ok": "1"}); err != nil {
+				t.Fatal(err)
+			}
+			got := strings.Contains(doc.String(), `"deprecations"`)
+			if got != tc.want {
+				t.Fatalf("meta.deprecations present = %v, want %v:\n%s", got, tc.want, doc.String())
+			}
+			if tc.want {
+				for _, w := range []string{`"old": "nself backup prune without --yes"`, `"new": "nself backup prune --yes"`, `"removal_at": "v1.5.0"`} {
+					if !strings.Contains(doc.String(), w) {
+						t.Errorf("meta lacks %s:\n%s", w, doc.String())
+					}
+				}
+			}
+		})
 	}
 }

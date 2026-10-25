@@ -32,20 +32,14 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// buildNSelfBinary compiles ./cmd/nself into dir and returns its path. Used
-// so mcpExecSelf's re-exec has a real binary to invoke — os.Executable()
-// inside `go test` resolves to the test harness, which doesn't understand
-// "build"/"start" as subcommands, hence the NSELF_MCP_EXEC_OVERRIDE hook.
-func buildNSelfBinary(t *testing.T, dir string) string {
+// buildNSelfBinary returns the nself binary the suite builds once per test
+// process (pilotBinary), so mcpExecSelf's re-exec has a real binary to invoke:
+// os.Executable() inside `go test` resolves to the test harness, which doesn't
+// understand "build"/"start" as subcommands, hence the NSELF_MCP_EXEC_OVERRIDE
+// hook. Reusing it spares a second ./cmd/nself compile and link (D-0735).
+func buildNSelfBinary(t *testing.T) string {
 	t.Helper()
-	bin := filepath.Join(dir, "nself")
-	cmd := exec.Command("go", "build", "-mod=vendor", "-o", bin, "../../cmd/nself")
-	cmd.Dir = mustGetwd(t)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("building nself for integration test: %v\n%s", err, out)
-	}
-	return bin
+	return pilotBinary(t)
 }
 
 func mustGetwd(t *testing.T) string {
@@ -64,8 +58,7 @@ func TestMCPIntegration_InitBuildVerify(t *testing.T) {
 		t.Skip("skipping binary-build integration test in -short mode")
 	}
 
-	binDir := t.TempDir()
-	bin := buildNSelfBinary(t, binDir)
+	bin := buildNSelfBinary(t)
 
 	projectDir := t.TempDir()
 	t.Setenv("NSELF_ALLOW_SOURCE_DIR", "1")
@@ -138,8 +131,7 @@ func TestMCPIntegration_StartStatusStop(t *testing.T) {
 		t.Skip("skipping in -short mode")
 	}
 
-	binDir := t.TempDir()
-	bin := buildNSelfBinary(t, binDir)
+	bin := buildNSelfBinary(t)
 
 	projectDir := t.TempDir()
 	t.Setenv(mcpSelfExecOverrideEnv, bin)
