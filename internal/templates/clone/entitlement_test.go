@@ -54,7 +54,40 @@ func required(t *testing.T, template string) []string {
 	return m.RequiredPlugins
 }
 
+// sandboxEntries points the working directory, HOME and TMPDIR at one fresh
+// directory and returns a function that lists what was created in it since.
+// Check takes no target path, so "writes nothing" can only be observed in the
+// places a stray write would land.
+func sandboxEntries(t *testing.T) func() []os.DirEntry {
+	t.Helper()
+	dir := t.TempDir()
+	t.Chdir(dir)
+	t.Setenv("HOME", dir)
+	t.Setenv("TMPDIR", dir)
+	return func() []os.DirEntry {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return entries
+	}
+}
+
+// TestTemplateEntitlementNoWriteControl proves the sandbox sees a write made
+// from the licence callback, so the assertion in the E110 test can fail.
+func TestTemplateEntitlementNoWriteControl(t *testing.T) {
+	entries := sandboxEntries(t)
+	writer := func(_ context.Context, _ string) (bool, error) {
+		return false, os.WriteFile("stray", []byte("x"), 0o600)
+	}
+	Check(context.Background(), "discord-clone", required(t, "discord-clone"), fixtureCatalog(), writer)
+	if len(entries()) == 0 {
+		t.Fatal("sandbox missed a file written into the working directory")
+	}
+}
+
 func TestTemplateEntitlementE110NoWrite(t *testing.T) {
+	entries := sandboxEntries(t)
 	s := &spy{err: errors.New("no license key configured")}
 	rep := Check(context.Background(), "discord-clone", required(t, "discord-clone"), fixtureCatalog(), s.lic)
 	if len(rep.MissingLicence) != 4 || len(rep.Unknown) != 0 || len(rep.Unchecked) != 0 {
@@ -77,10 +110,9 @@ func TestTemplateEntitlementE110NoWrite(t *testing.T) {
 	if got := strings.Join(s.asked, ","); got != "family,clawde,claw" {
 		t.Errorf("bundles asked = %s, want family, clawde and claw once each", got)
 	}
-	// Check does no I/O: the scaffold target stays untouched.
-	dir := t.TempDir()
-	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
-		t.Errorf("target not empty: %v", entries)
+	// Check does no I/O: nothing lands in the working directory, HOME or TMPDIR.
+	if got := entries(); len(got) != 0 {
+		t.Errorf("Check wrote %v", got)
 	}
 }
 

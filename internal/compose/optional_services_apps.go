@@ -57,7 +57,7 @@ func (g *Generator) buildAdminService() ServiceConfig {
 
 	return ServiceConfig{
 		Image:         ResolveImage("admin", ImageRef("admin", version)),
-		ContainerName: fmt.Sprintf("%s_admin", g.cfg.ProjectName),
+		ContainerName: g.cfg.ServiceContainerName("admin"),
 		Restart:       "unless-stopped",
 		User:          adminUser,
 		GroupAdd:      groupAdd,
@@ -145,7 +145,7 @@ func (g *Generator) buildFunctionsService() ServiceConfig {
 
 	svc := ServiceConfig{
 		Image:         image,
-		ContainerName: fmt.Sprintf("%s_functions", g.cfg.ProjectName),
+		ContainerName: g.cfg.ServiceContainerName("functions"),
 		Restart:       "unless-stopped",
 		Networks:      []string{g.cfg.DockerNetwork},
 		DependsOn: map[string]DepOn{

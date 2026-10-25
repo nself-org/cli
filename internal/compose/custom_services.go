@@ -207,7 +207,7 @@ func (g *Generator) buildCustomService(cs config.CustomService) (ServiceConfig, 
 	}
 
 	svc := ServiceConfig{
-		ContainerName: fmt.Sprintf("%s_%s", cfg.ProjectName, cs.Name),
+		ContainerName: cfg.ServiceContainerName(cs.Name),
 		Restart:       "unless-stopped",
 		Networks:      []string{cfg.DockerNetwork},
 		DependsOn: map[string]DepOn{

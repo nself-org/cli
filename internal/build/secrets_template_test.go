@@ -154,7 +154,7 @@ func TestTemplateSecrets_CommandAndHealthcheckLiteralsRewritten(t *testing.T) {
 	}
 	for _, ref := range []string{
 		"REDISCLI_AUTH: ${REDIS_PASSWORD}",
-		`--requirepass "$$REDISCLI_AUTH"`,
+		`requirepass "$$esc"`,
 		"TYPESENSE_API_KEY: ${TYPESENSE_API_KEY}",
 	} {
 		if !strings.Contains(doc, ref) {

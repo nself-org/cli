@@ -116,7 +116,24 @@ while IFS= read -r raw || [ -n "$raw" ]; do
       diff -u "$left" "$right" >&2 || true
     fi
   fi
-  if [[ "$tags" != *no-json=* ]]; then
+  if [[ "$tags" == *error-json=* ]]; then
+    # The row fails by design on the fixture: v1.5 --json must exit non-zero
+    # and print exactly one error envelope carrying the tagged code.
+    want_code="${tags#*error-json=}"; want_code="${want_code%%[[:space:]]*}"
+    run_one "$head_bin" 1 "--json" "$tmp/head-error" "${argv[@]}"
+    if ! [[ "$want_code" =~ ^E[0-9]{3}$ ]]; then
+      echo "FAIL $label: error-json tag needs a code like E004, got '$want_code'"; bad=1
+    elif [ "$(cat "$tmp/head-error.rc")" -eq 0 ]; then
+      echo "FAIL $label: v1.5 --json exited zero, want a failure with code $want_code"; bad=1
+    elif ! jq -e -s 'length == 1 and (.[0] | type == "object" and has("error") and (has("data") | not))' "$tmp/head-error.out" >/dev/null 2>&1; then
+      echo "FAIL $label: stdout is not exactly one error envelope"; bad=1
+    elif ! (cd "$repo_root" && "$tmp/jsonvalidate" -schema envelope.v1.schema.json "$tmp/head-error.out") >"$tmp/validator.out" 2>&1; then
+      echo "FAIL $label: error envelope invalid"; bad=1
+      cat "$tmp/validator.out" >&2
+    elif [ "$(jq -r '.error.code' "$tmp/head-error.out")" != "$want_code" ]; then
+      echo "FAIL $label: error code is $(jq -r '.error.code' "$tmp/head-error.out"), want $want_code"; bad=1
+    fi
+  elif [[ "$tags" != *no-json=* ]]; then
     run_one "$head_bin" 1 "--json" "$tmp/head-json" "${argv[@]}"
     if [ "$(cat "$tmp/head-json.rc")" -ne 0 ]; then
       echo "FAIL $label: v1.5 --json exited non-zero"; bad=1

@@ -55,7 +55,7 @@ func runFunctionsLogs(cmd *cobra.Command, args []string) error {
 	cfg, _, cfgErr := loadHealthConfig()
 	containerID := "functions"
 	if cfgErr == nil {
-		containerID = fmt.Sprintf("%s_functions", cfg.ProjectName)
+		containerID = cfg.ServiceContainerName("functions")
 	}
 
 	dockerArgs := []string{"logs"}

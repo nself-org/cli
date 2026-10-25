@@ -21,7 +21,7 @@ var inspectContainer = docker.InspectContainer
 // Purpose: run project-major Postgres tools without password argv.
 // Inputs: private stage, args, snapshot. Outputs: tool files. Constraints: uid:gid.
 func tool(ctx context.Context, cfg *config.Config, stage string, args []string) error {
-	container, err := inspectContainer(ctx, cfg.ProjectName+"_postgres")
+	container, err := inspectContainer(ctx, cfg.ServiceContainerName("postgres"))
 	if err != nil {
 		return safeFailure("resolve postgres image")
 	}

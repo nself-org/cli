@@ -16,7 +16,7 @@ import (
 func (g *Generator) buildMeiliInitService() ServiceConfig {
 	return ServiceConfig{
 		Image:         ResolveImage("meilisearch-init", ImageRef("meilisearch-init", "")),
-		ContainerName: fmt.Sprintf("%s_meilisearch_init", g.cfg.ProjectName),
+		ContainerName: g.cfg.ServiceContainerName("meilisearch_init"),
 		Restart:       "no",
 		User:          "root",
 		Networks:      []string{g.cfg.DockerNetwork},
@@ -51,7 +51,7 @@ func (g *Generator) buildMeiliService() ServiceConfig {
 
 	return ServiceConfig{
 		Image:         ResolveImage("meilisearch", ImageRef("meilisearch", version)),
-		ContainerName: fmt.Sprintf("%s_meilisearch", g.cfg.ProjectName),
+		ContainerName: g.cfg.ServiceContainerName("meilisearch"),
 		Restart:       "unless-stopped",
 		User:          "1000:1000",
 		Networks:      []string{g.cfg.DockerNetwork},
@@ -101,7 +101,7 @@ func (g *Generator) buildTypesenseService() ServiceConfig {
 
 	return ServiceConfig{
 		Image:         ResolveImage("typesense", ImageRef("typesense", version)),
-		ContainerName: fmt.Sprintf("%s_typesense", g.cfg.ProjectName),
+		ContainerName: g.cfg.ServiceContainerName("typesense"),
 		Restart:       "unless-stopped",
 		Networks:      []string{g.cfg.DockerNetwork},
 		Environment: map[string]string{
