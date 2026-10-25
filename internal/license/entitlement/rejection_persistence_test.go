@@ -157,3 +157,30 @@ func TestRefreshUnwritableRejectionRecordStaysFailClosed(t *testing.T) {
 		t.Fatal("offline refresh republished the cached token of a key whose rejection could not be recorded")
 	}
 }
+
+// A lock that cannot be taken is a persistence failure; it must not revive the rejected token offline.
+func TestRefreshLockFailureStaysFailClosedOffline(t *testing.T) {
+	compattest.Set(t, true)
+	entry, _ := signedFixture(t, "synthetic-license-key", []string{"chat"}, time.Now().Add(time.Hour))
+	installLicensed(t, "chat")
+	// A directory at the lock path makes the lock file unopenable, as root or not.
+	if err := os.MkdirAll(filepath.Join(filepath.Dir(rejectionRecordPath(t)), "entitlement-rejected.lock"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Setenv("NSELF_PING_API_URL", server.URL)
+	dir := t.TempDir()
+	if err := entitlement.Refresh(context.Background(), dir); errs.ExitCodeFor(err) != 3 {
+		t.Fatalf("online rejection must fail closed: %v", err)
+	}
+	server.Close()
+	t.Setenv("NSELF_PING_API_URL", "http://127.0.0.1:1")
+	if err := entitlement.Refresh(context.Background(), dir); errs.ExitCodeFor(err) != 3 {
+		t.Fatalf("offline refresh must stay fail-closed after a lock failure: %v", err)
+	}
+	if data, _ := os.ReadFile(entitlement.Path(dir)); len(data) != 0 || string(data) == entry.JWT {
+		t.Fatal("offline refresh republished the cached token of a rejected key")
+	}
+}

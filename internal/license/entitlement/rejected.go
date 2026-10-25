@@ -16,6 +16,8 @@ import (
 const (
 	rejectedFile     = "entitlement-rejected.json"
 	rejectedLockFile = "entitlement-rejected.lock"
+	markerPrefix     = "entitlement-rejected-"
+	markerSuffix     = ".mark"
 )
 
 // rejectedMu serialises this process; the flock on rejectedLockFile serialises the rest.
@@ -64,16 +66,40 @@ func loadRejected() (map[string]bool, error) {
 	if err != nil {
 		return nil, err
 	}
-	return readRejected(path)
+	set, err := readRejected(path)
+	if err != nil {
+		return nil, err
+	}
+	// Marker files are the lock-free fallback written when the record could not be updated.
+	marks, _ := filepath.Glob(filepath.Join(filepath.Dir(path), markerPrefix+"*"+markerSuffix))
+	for _, m := range marks {
+		base := filepath.Base(m)
+		set[base[len(markerPrefix):len(base)-len(markerSuffix)]] = true
+	}
+	return set, nil
+}
+
+// Purpose: remember a rejection when the shared record cannot be updated (lock or
+// record unwritable). Inputs: key hash, record path. Outputs: persistence error.
+// Constraints: one file per key, no read-modify-write, no lock; loadRejected unions
+// the markers, so a failed record update cannot revive the rejected key offline.
+// SPORT: durable per-key rejection.
+func writeMarker(path, hash string) error {
+	f, err := os.OpenFile(filepath.Join(filepath.Dir(path), markerPrefix+hash+markerSuffix), os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	return f.Close()
 }
 
 // Purpose: persist a server verdict for one configured key.
 // Inputs: key hash and whether the server refused it. Outputs: persistence error.
 // Constraints: the whole read-modify-write runs under a process mutex and a file
 // lock, so concurrent refreshes never drop each other's rejections. Only an explicit
-// refusal adds, only a fresh online acceptance clears. A corrupt record is replaced
-// by this verdict (an online refresh re-records every configured key). A failed
-// rejection write is returned: the caller must not treat the key as remembered.
+// refusal adds, only a fresh online acceptance clears. A corrupt record is unknown
+// state: it is rebuilt with every configured key rejected, so only a fresh acceptance
+// of a key lifts it. When the record cannot be updated, a rejection falls back to a
+// per-key marker; an error is returned only if the key is not remembered at all.
 // SPORT: durable per-key rejection.
 func recordVerdict(hash string, rejected bool) error {
 	path, err := rejectedPath()
@@ -83,6 +109,22 @@ func recordVerdict(hash string, rejected bool) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
+	if !rejected {
+		_ = os.Remove(filepath.Join(filepath.Dir(path), markerPrefix+hash+markerSuffix))
+	}
+	err = updateRecord(path, hash, rejected)
+	if err != nil && rejected {
+		if merr := writeMarker(path, hash); merr == nil {
+			return nil
+		}
+	}
+	return err
+}
+
+// Purpose: read-modify-write the shared record under the process mutex and file lock.
+// Inputs: record path, key hash, verdict. Outputs: persistence error.
+// SPORT: durable per-key rejection.
+func updateRecord(path, hash string, rejected bool) error {
 	rejectedMu.Lock()
 	defer rejectedMu.Unlock()
 	lock, err := os.OpenFile(filepath.Join(filepath.Dir(path), rejectedLockFile), os.O_CREATE|os.O_RDWR, 0600)
@@ -96,6 +138,9 @@ func recordVerdict(hash string, rejected bool) error {
 	set, readErr := readRejected(path)
 	if readErr != nil {
 		set = make(map[string]bool)
+		for _, key := range license.CollectLicenseKeys() {
+			set[license.HashKey(key)] = true
+		}
 	} else if set[hash] == rejected {
 		return nil
 	}

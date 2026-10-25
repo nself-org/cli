@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
+
+	"github.com/nself-org/cli/internal/license"
 )
 
 const rejectedHelperEnv = "NSELF_REJECTED_HELPER"
@@ -86,7 +88,61 @@ func TestRecordVerdictReportsWriteFailure(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(dir, rejectedFile), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := recordVerdict("h1", true); err == nil {
+	// The marker fallback holds the rejection, so success is honest.
+	if err := recordVerdict("h1", true); err != nil {
+		t.Fatalf("marker fallback should remember the rejection: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, markerPrefix+"h1"+markerSuffix)); err != nil {
+		t.Fatalf("no marker written: %v", err)
+	}
+	// With the marker path blocked too, nothing remembers the key: the error must surface.
+	if err := os.Mkdir(filepath.Join(dir, markerPrefix+"h2"+markerSuffix), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := recordVerdict("h2", true); err == nil {
 		t.Fatal("a rejection that was not persisted reported success")
+	}
+}
+
+// A lock that cannot be taken must not lose the rejection: the marker is loaded, and a
+// fresh acceptance clears it.
+func TestRecordVerdictLockFailureFallsBackToMarker(t *testing.T) {
+	dir := useRejectedDir(t)
+	if err := os.Mkdir(filepath.Join(dir, rejectedLockFile), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := recordVerdict("h1", true); err != nil {
+		t.Fatal(err)
+	}
+	if set, err := loadRejected(); err != nil || !set["h1"] {
+		t.Fatalf("rejection lost after lock failure: %v, %v", set, err)
+	}
+	if err := recordVerdict("h1", false); err == nil {
+		t.Log("acceptance recorded despite the lock") // lock failure may surface; marker must still clear
+	}
+	if set, _ := loadRejected(); set["h1"] {
+		t.Fatal("fresh acceptance did not clear the marker")
+	}
+}
+
+// Recovering from a corrupt record must not forgive the other configured keys.
+func TestCorruptRecordKeepsOtherKeysRejectedUntilFreshlyAccepted(t *testing.T) {
+	dir := useRejectedDir(t)
+	keyA, keyB := "synthetic-key-a", "synthetic-key-b"
+	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", keyA)
+	t.Setenv("NSELF_LICENSE_KEY_1", keyB)
+	hA, hB := license.HashKey(keyA), license.HashKey(keyB)
+	if err := recordVerdict(hB, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, rejectedFile), []byte("{not json"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := recordVerdict(hA, false); err != nil {
+		t.Fatal(err)
+	}
+	set, err := loadRejected()
+	if err != nil || set[hA] || !set[hB] {
+		t.Fatalf("after accepting A: %v, %v; want only B rejected", set, err)
 	}
 }
