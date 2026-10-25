@@ -31,3 +31,20 @@ func TestDisabledBuiltinFamilyKeepsJSONSurface(t *testing.T) {
 		t.Fatalf("admin --json after remove admin: exit %d, want E407\n%s%s", adm.code, adm.stdout, adm.stderr)
 	}
 }
+
+// The machine registry (nself mcp, nself invoke) is built apart from the
+// runtime one; it must mount a disabled family too (D-0863), or the family's
+// canon entries are all unresolved and mcp exits before serving.
+func TestDisabledBuiltinFamilyKeepsMachineRegistry(t *testing.T) {
+	proj := cfgFixtureProject(t)
+	rm := runPilot(t, proj, true, nil, "remove", "admin")
+	if rm.code != 0 {
+		t.Fatalf("remove admin: exit %d\n%s%s", rm.code, rm.stdout, rm.stderr)
+	}
+	// stdin is closed, so a server that built its tools exits cleanly.
+	mcp := runPilot(t, proj, true, nil, "mcp")
+	out := mcp.stdout + mcp.stderr
+	if mcp.code != 0 || strings.Contains(out, "machine registry") || strings.Contains(out, "unresolved") {
+		t.Fatalf("mcp after remove admin: exit %d, want a clean start\n%s", mcp.code, out)
+	}
+}

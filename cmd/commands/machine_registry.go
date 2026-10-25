@@ -88,6 +88,10 @@ func buildMachineRegistry() (*cmdregistry.Registry, error) {
 	// installed plugins) were mounted under the process's own mode, which sets
 	// their group; lift them off and mount afresh under v1.5.
 	lifted := detachMounts(RootCmd)
+	// A disabled builtin family keeps its canon entries, so it is mounted for
+	// the build as in buildRegistry (D-0863); the detachMounts after the build
+	// removes it again.
+	mountDisabledBuiltinFamilies(RootCmd)
 	undo := prepareTree(RootCmd, true, false)
 	specs, problems := mount.Discover(resolvePluginDir(), canonTable.Verbs)
 	mountInstalled(RootCmd, specs, problems)
