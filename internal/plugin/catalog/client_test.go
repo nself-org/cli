@@ -3,12 +3,14 @@ package catalog
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -190,5 +192,43 @@ func TestCommandHintReadsCacheOnly(t *testing.T) {
 	}
 	if _, ok := CommandHint("nope"); ok {
 		t.Fatal("unknown command offered as a hint")
+	}
+}
+
+// TestWriteCacheConcurrentKeepsPair proves racing writers and readers never see
+// one response's body with another's ETag (D-0875). Without the cache lock a
+// later 304 would keep the wrong body.
+func TestWriteCacheConcurrentKeepsPair(t *testing.T) {
+	dir := t.TempDir()
+	const writers, rounds = 8, 60
+	pairOK := func(c *cached) bool {
+		if c.etag == "" {
+			return true // a body with no ETag is a safe crash window
+		}
+		for n := 0; n < writers; n++ {
+			if c.etag == fmt.Sprintf(`"e%d"`, n) {
+				return strings.Contains(string(c.body), fmt.Sprintf("Reverse proxy %d", n))
+			}
+		}
+		return false
+	}
+	var wg sync.WaitGroup
+	var bad atomic.Int32
+	for w := 0; w < writers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < rounds; i++ {
+				writeCache(dir, sampleCatalog(w), fmt.Sprintf(`"e%d"`, w))
+				if c, _, ok := readCache(dir); ok && !pairOK(c) {
+					bad.Add(1)
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	c, _, ok := readCache(dir)
+	if !ok || !pairOK(c) || bad.Load() != 0 {
+		t.Fatalf("body and ETag diverged: final ok=%v pair=%v, %d bad reads", ok, ok && pairOK(c), bad.Load())
 	}
 }

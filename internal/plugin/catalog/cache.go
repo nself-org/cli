@@ -8,7 +8,9 @@ package catalog
 // catalog.etag beside it, both mode 0600.
 // Constraints: the ETag file is removed before the body is replaced and
 // written after it, so a crash between the two leaves a body with no ETag
-// (an unconditional refetch), never a new body paired with an old ETag.
+// (an unconditional refetch), never a new body paired with an old ETag. Both
+// files are read and written under one lock (cache_lock.go), so concurrent
+// processes cannot pair one response's body with another's ETag (D-0875).
 // Writes are best effort: a read-only cache dir never fails a command.
 
 import (
@@ -55,6 +57,10 @@ func readCache(dir string) (*cached, *Catalog, bool) {
 	if dir == "" {
 		return nil, nil, false
 	}
+	// Best effort: with no lock (dir missing, read-only) the read goes ahead.
+	if unlock, err := lockCache(dir); err == nil {
+		defer unlock()
+	}
 	path := filepath.Join(dir, bodyFile)
 	info, err := os.Stat(path)
 	if err != nil || !info.Mode().IsRegular() || info.Size() > maxBody {
@@ -77,6 +83,13 @@ func writeCache(dir string, body []byte, etag string) {
 	if dir == "" || os.MkdirAll(dir, 0o755) != nil {
 		return
 	}
+	// No lock, no write: an unserialised write is what pairs a body with the
+	// wrong ETag, and the cache is optional.
+	unlock, err := lockCache(dir)
+	if err != nil {
+		return
+	}
+	defer unlock()
 	if err := os.Remove(filepath.Join(dir, etagFile)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return
 	}
