@@ -442,3 +442,27 @@ func TestAddPluginCoreEnvVars_Populated(t *testing.T) {
 		t.Errorf("empty NotifySecret must not be written, got: %v", vars["NOTIFY_INTERNAL_SECRET"])
 	}
 }
+
+// TestNormalizeComposePluginCoreEnv_NoMatchWarningListsManifestNames: when
+// plugin.json's name differs from the directory name, the no-match warning
+// lists the manifest-name candidates the lookup also tried (D-0604).
+func TestNormalizeComposePluginCoreEnv_NoMatchWarningListsManifestNames(t *testing.T) {
+	resetWarnOnce()
+	pluginDir := t.TempDir()
+	dir := filepath.Join(pluginDir, "dirname")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "plugin.json"), []byte(`{"name":"manifestname","port":3100}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	in := "services:\n  a:\n    image: x\n  b:\n    image: y\n"
+	stderr := captureStderr(t, func() {
+		normalizeComposePluginCoreEnv([]byte(in), pluginDir, "dirname")
+	})
+	for _, want := range []string{"dirname", "nself-dirname", "plugin-dirname", "manifestname", "nself-manifestname", "plugin-manifestname"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("warning must name candidate %q, got: %q", want, stderr)
+		}
+	}
+}

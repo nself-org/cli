@@ -30,6 +30,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/compose"
@@ -188,9 +189,7 @@ func normalizeComposePluginCoreEnv(content []byte, pluginDir, pluginName string)
 		// A pure third-party stack has no port (free/monitoring): nothing to
 		// inject by design, so no warning.
 		if port > 0 {
-			warnOnce(fmt.Sprintf(
-				"plugin %q: %s has several services and none is named %s, nself-%s or plugin-%s, so the core env vars were not injected",
-				pluginName, filepath.Join(pluginDir, pluginName, pluginComposeFilename), pluginName, pluginName, pluginName))
+			warnOnce(noMatchServiceWarning(pluginDir, pluginName, manifestName))
 		}
 		return content
 	}
@@ -215,6 +214,17 @@ func normalizeComposePluginCoreEnv(content []byte, pluginDir, pluginName string)
 	out = append(out, content[:start]...)
 	out = append(out, seg...)
 	return append(out, content[end:]...)
+}
+
+// noMatchServiceWarning names every service name the lookup tried, built from
+// pluginServiceCandidates so the message cannot drift from the lookup (D-0604):
+// the manifest-name forms appear when plugin.json's name differs from the
+// directory name.
+func noMatchServiceWarning(pluginDir, pluginName, manifestName string) string {
+	return fmt.Sprintf(
+		"plugin %q: %s has several services and none is named one of %s, so the core env vars were not injected",
+		pluginName, filepath.Join(pluginDir, pluginName, pluginComposeFilename),
+		strings.Join(pluginServiceCandidates(pluginName, manifestName), ", "))
 }
 
 // warnUnrecognisedEnvBlock reports a plugin compose fragment whose
