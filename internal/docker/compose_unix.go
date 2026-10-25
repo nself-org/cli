@@ -21,3 +21,13 @@ func killProcessGroup(cmd *exec.Cmd) {
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	}
 }
+
+// termProcessGroup sends SIGTERM to the entire process group of cmd: the docker
+// CLI and the compose plugin it runs as a child both get it, so neither is
+// orphaned when a stream is stopped.
+func termProcessGroup(cmd *exec.Cmd) error {
+	if cmd.Process == nil {
+		return nil
+	}
+	return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+}

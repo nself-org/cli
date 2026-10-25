@@ -11,12 +11,10 @@ package commands
 // functionsCmd (parent) remain in functions.go.
 
 import (
-	"bufio"
 	"fmt"
-	"io"
-	"os/exec"
 	"strings"
 
+	"github.com/nself-org/cli/internal/docker"
 	"github.com/spf13/cobra"
 )
 
@@ -68,33 +66,12 @@ func runFunctionsLogs(cmd *cobra.Command, args []string) error {
 	dockerArgs = append(dockerArgs, fmt.Sprintf("--tail=%d", functionsLogsFlags.tail))
 	dockerArgs = append(dockerArgs, containerID)
 
-	logsCmd := exec.CommandContext(cmd.Context(), "docker", dockerArgs...)
-	stdout, err := logsCmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("pipe: %w", err)
-	}
-	stderr, err := logsCmd.StderrPipe()
-	if err != nil {
-		return fmt.Errorf("stderr pipe: %w", err)
-	}
-
-	if err := logsCmd.Start(); err != nil {
-		return fmt.Errorf("starting docker logs: %w", err)
-	}
-
-	// Filter lines containing the function name and print.
-	filterAndPrint := func(r io.Reader) {
-		scanner := bufio.NewScanner(r)
-		for scanner.Scan() {
-			line := scanner.Text()
-			if strings.Contains(line, name) || strings.Contains(line, "/v1/"+name) {
-				fmt.Println(line)
-			}
+	// Both docker streams carry function output; keep the lines that mention
+	// the function.
+	return docker.StreamLines(cmd.Context(), "", dockerArgs, nil, true, maxLogLineBytes, func(line string) error {
+		if strings.Contains(line, name) || strings.Contains(line, "/v1/"+name) {
+			fmt.Println(line)
 		}
-	}
-
-	go filterAndPrint(stderr)
-	filterAndPrint(stdout)
-
-	return logsCmd.Wait()
+		return nil
+	})
 }

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/controlplane"
+	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/ui"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 	"github.com/spf13/cobra"
@@ -31,11 +32,8 @@ func followDeployLogs(cmd *cobra.Command, workdir, target, strategy string, star
 	host := legacyDeployHost(target)
 	if host == "" {
 		// Local host: stream logs directly.
-		lc := exec.CommandContext(cmd.Context(), "docker", "compose", "logs", "-f", "--tail=50")
-		lc.Dir = workdir
-		lc.Stdout = os.Stdout
-		lc.Stderr = os.Stderr
-		_ = lc.Run()
+		// Ctrl-C and a non-zero exit of the tail are not errors.
+		_ = docker.Stream(cmd.Context(), workdir, []string{"compose", "logs", "-f", "--tail=50"}, os.Stdout, os.Stderr)
 		return nil
 	}
 	// Remote follow: tail logs on the remote host via SSH.
