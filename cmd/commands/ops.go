@@ -187,9 +187,8 @@ func opsPreflight(ctx context.Context, workdir, host, composePath string) error 
 	inv := &controlplane.Inventory{Environments: map[string]controlplane.Environment{
 		opsEnvName: {Name: opsEnvName, Kind: "remote", Servers: []controlplane.Server{server}},
 	}}
-	files, err := controlplane.ComposeFilesForDeploy(composePath)
-	if err != nil {
-		return err
-	}
-	return opsControlplaneCheck(ctx, inv, opsEnvName, files)
+	// The ops push ships only composePath (deploy.DeployViaSsh), so that is the
+	// only file whose images the host must be able to run; plugin fragments of
+	// the project are not deployed here (D-0614).
+	return opsControlplaneCheck(ctx, inv, opsEnvName, []string{composePath})
 }

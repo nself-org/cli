@@ -23,6 +23,19 @@ type archEntry struct {
 
 var archCaches sync.Map // project root and host -> archEntry
 
+// archProbeKey is the identity the arch probe offers: the server's own key
+// reference first, then the key the deploy itself uses (remote.DefaultKeyPath:
+// NSELF_DEPLOY_KEY_PATH, NSELF_DEPLOY_SSH_KEY, ~/.ssh/id_ed25519), so the
+// preflight never fails on a key the deploy would have accepted (D-0614).
+func archProbeKey(s Server) string {
+	if s.SSHKeyRef != "" {
+		if key := os.Getenv(s.SSHKeyRef); key != "" {
+			return key
+		}
+	}
+	return remote.DefaultKeyPath()
+}
+
 // Architecture returns the inventory architecture or one cached SSH uname -m.
 func (sp *SSHProber) Architecture(ctx context.Context, s Server) (string, error) {
 	if s.Arch != "" {
@@ -44,14 +57,7 @@ func (sp *SSHProber) Architecture(ctx context.Context, s Server) (string, error)
 	if err != nil {
 		return "", err
 	}
-	key := os.Getenv(s.SSHKeyRef)
-	if key == "" {
-		key = os.Getenv("NSELF_DEPLOY_SSH_KEY")
-	}
-	if key == "" {
-		home, _ := os.UserHomeDir()
-		key = home + "/.ssh/id_ed25519"
-	}
+	key := archProbeKey(s)
 	tier, envName := probeTier(sp.projectRoot, s)
 	policy, err := HostKeyOptions(ctx, envName, s.Name, tier, s.Host, sp.shipping.on())
 	if err != nil {

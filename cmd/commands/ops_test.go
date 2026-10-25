@@ -8,6 +8,8 @@ package commands
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -127,5 +129,33 @@ func TestOpsPreflight_RejectsBadHost(t *testing.T) {
 	t.Chdir(t.TempDir())
 	if err := opsPreflight(context.Background(), ".", "not a host spec; rm", "docker-compose.yml"); err == nil {
 		t.Fatal("want error for an invalid host spec")
+	}
+}
+
+// TestOpsPreflight_ChecksOnlyShippedCompose: the ops push ships the one built
+// compose file, so plugin fragments listed in the project manifest are not
+// handed to the arch guard (D-0614).
+func TestOpsPreflight_ChecksOnlyShippedCompose(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	if err := os.MkdirAll(filepath.Join(dir, ".nself"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".nself", "compose-files.txt"), []byte("docker-compose.yml\ndocker-compose.plugin-x.yml\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	orig := opsControlplaneCheck
+	opsControlplaneCheck = func(_ context.Context, _ *controlplane.Inventory, _ string, files []string) error {
+		got = files
+		return nil
+	}
+	t.Cleanup(func() { opsControlplaneCheck = orig })
+	compose := filepath.Join(dir, "docker-compose.yml")
+	if err := opsPreflight(context.Background(), dir, "deploy@ops.example.com:/opt/nself", compose); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != compose {
+		t.Fatalf("arch guard files = %v, want only %s", got, compose)
 	}
 }
