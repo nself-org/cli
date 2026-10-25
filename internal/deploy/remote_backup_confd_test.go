@@ -128,6 +128,8 @@ func TestKeptHostConfDDefaultServerCollision(t *testing.T) {
 		"conf.d sibling":      {"nginx/conf.d/other.conf", "server {\n  listen [::]:80 default_server;\n}\n", "", "nginx/conf.d/other.conf", true},
 		"commented out":       {"nginx/sites/other.conf", "# listen 80 default_server;\nserver { listen 80; }\n", "", "", false},
 		"no default_server":   {"nginx/sites/other.conf", "server { listen 80; }\n", "", "", false},
+		"backup file":         {"nginx/conf.d/default.conf.bak", "server { listen 80 default_server; }\n", "", "", false},
+		"sites backup file":   {"nginx/sites/other.conf.orig", "server { listen 80 default_server; }\n", "", "", false},
 		"word only":           {"nginx/sites/other.conf", "server { server_name default_server; }\n", "", "", false},
 		"ours exists, marked": {"nginx/sites/other.conf", "server { listen 80 default_server; }\n", buildMarker, "", false},
 		"ours exists, hand":   {"nginx/sites/other.conf", "server { listen 80 default_server; }\n", "# hand\n", "", true},
