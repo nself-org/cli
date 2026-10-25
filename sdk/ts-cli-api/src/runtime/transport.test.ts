@@ -5,6 +5,7 @@
 import { createClient } from "../index";
 import { ConfirmationRequired, NselfError } from "./errors";
 import { readLines } from "./ndjson";
+import { createTransport } from "./transport";
 import type { FetchLike } from "./transport";
 
 interface Sent {
@@ -121,6 +122,18 @@ describe("confirmation", () => {
     expect(m.sent).toHaveLength(2);
     expect(JSON.parse(m.sent[1].body ?? "")).toEqual({ ...JSON.parse(m.sent[0].body ?? ""), confirm });
     expect(m.sent[1].url).toBe(m.sent[0].url);
+  });
+
+  it("replays the request as first sent even if the caller mutates it afterwards", async () => {
+    const m = mock([needs, json(200, { schema_version: "1", command: "config secrets set", data: { ok: true } })]);
+    const t = createTransport({ token: TOKEN, fetch: m.fetch });
+    const req = { args: ["K", "v"], flags: { force: false } };
+    const err = (await t.call("/v1/config/secrets/set", req).catch((e: unknown) => e)) as ConfirmationRequired;
+    expect(err).toBeInstanceOf(ConfirmationRequired);
+    req.args.push("extra");
+    req.flags.force = true;
+    await err.confirm();
+    expect(JSON.parse(m.sent[1].body ?? "")).toEqual({ args: ["K", "v"], flags: { force: false }, confirm });
   });
 
   it("surfaces a failure of the confirmed request as NselfError", async () => {
@@ -268,5 +281,19 @@ describe("openapi", () => {
     expect(await createClient({ token: TOKEN, fetch: m.fetch }).openapi()).toEqual({ openapi: "3.1.0" });
     expect(m.sent[0]).toMatchObject({ method: "GET", url: "http://127.0.0.1:3857/openapi.json" });
     expect(m.sent[0].headers.Authorization).toBe(`Bearer ${TOKEN}`);
+  });
+
+  it("reports the response to onResponse", async () => {
+    const m = mock([json(200, { openapi: "3.1.0" }, { "x-nself-request-id": "r1" })]);
+    let seen: unknown;
+    await createClient({ token: TOKEN, fetch: m.fetch }).openapi({ onResponse: (i) => (seen = i) });
+    expect(seen).toEqual({ httpStatus: 200, exitCode: undefined, requestId: "r1", warnings: [] });
+  });
+
+  it("throws a CLIENT_PROTOCOL NselfError, not a SyntaxError, on malformed JSON", async () => {
+    const m = mock([() => new Response("<html>not json", { status: 200 })]);
+    const e = (await createClient({ token: TOKEN, fetch: m.fetch }).openapi().catch((x: unknown) => x)) as NselfError;
+    expect(e).toBeInstanceOf(NselfError);
+    expect([e.code, e.httpStatus]).toEqual(["CLIENT_PROTOCOL", 200]);
   });
 });

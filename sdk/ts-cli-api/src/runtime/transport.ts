@@ -115,15 +115,17 @@ export function createTransport(options: ClientOptions): Transport {
     ...(json ? { "Content-Type": "application/json" } : {}),
   });
 
-  const post = (path: string, request: CommandRequest | undefined, accept: string, signal?: AbortSignal) =>
-    doFetch(base + path, { method: "POST", headers: headers(accept, true), body: JSON.stringify(request ?? {}), signal });
+  const post = (path: string, body: string, accept: string, signal?: AbortSignal) =>
+    doFetch(base + path, { method: "POST", headers: headers(accept, true), body, signal });
 
   async function call<T>(path: string, request: CommandRequest | undefined, opts: CallOptions = {}): Promise<T> {
-    const res = await post(path, request, "application/json", opts.signal);
+    // Snapshot before the first send: the confirmation replay must carry the bytes the nonce was bound to, even if the caller mutates `request` meanwhile.
+    const sent = JSON.stringify(request ?? {});
+    const res = await post(path, sent, "application/json", opts.signal);
     const env = decode(await res.text(), res);
     opts.onResponse?.(infoOf(res, env));
     if (res.status === 428 && env.data) {
-      const resend = (confirm: string) => call<T>(path, { ...request, confirm }, opts);
+      const resend = (confirm: string) => call<T>(path, { ...(JSON.parse(sent) as CommandRequest), confirm }, opts);
       throw new ConfirmationRequired<T>(env.data as unknown as Confirmation, resend, env.command);
     }
     if (res.status >= 400 || env.error) throw fail(env, res);
@@ -132,7 +134,7 @@ export function createTransport(options: ClientOptions): Transport {
   }
 
   async function* stream(path: string, request?: CommandRequest, opts: CallOptions = {}): AsyncGenerator<StreamItem, void, undefined> {
-    const res = await post(path, request, NDJSON, opts.signal);
+    const res = await post(path, JSON.stringify(request ?? {}), NDJSON, opts.signal);
     const type = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
     opts.onResponse?.(infoOf(res));
     if (type !== NDJSON) {
@@ -157,8 +159,13 @@ export function createTransport(options: ClientOptions): Transport {
   async function openapi(opts: CallOptions = {}): Promise<unknown> {
     const res = await doFetch(base + "/openapi.json", { method: "GET", headers: headers("application/json", false), signal: opts.signal });
     const text = await res.text();
+    opts.onResponse?.(infoOf(res));
     if (res.status >= 400) throw fail(decode(text, res), res);
-    return JSON.parse(text);
+    try {
+      return JSON.parse(text) as unknown;
+    } catch {
+      throw clientError(`response is not valid JSON (HTTP ${res.status})`, res.status);
+    }
   }
 
   return { call, stream, openapi };
