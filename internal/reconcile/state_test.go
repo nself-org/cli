@@ -503,3 +503,38 @@ func TestStateApplyRecordWriteFails(t *testing.T) {
 		t.Fatalf("the old record must stay in place (%v)", err)
 	}
 }
+
+// A record that cannot be written fails the apply after the generated files are
+// published and kept: the error must match ErrPublished so a caller that
+// installed plugins for this apply keeps them. A failure before the write must not.
+func TestApplyRecordWriteFailureIsPublished(t *testing.T) {
+	f := loadFixture(t, "dev-minimal")
+	_ = os.RemoveAll(filepath.Join(f.project, ".nself", "state"))
+	oldBuild := buildBuild
+	t.Cleanup(func() { buildBuild = oldBuild })
+	buildBuild = func(projectDir string, opts nbuild.BuildOptions) (*nbuild.BuildResult, error) {
+		if err := os.WriteFile(filepath.Join(projectDir, "docker-compose.yml"), []byte("published"), 0o644); err != nil {
+			return nil, err
+		}
+		// The record path now holds a non-empty directory: the rename fails.
+		if err := os.MkdirAll(filepath.Join(GeneratedStatePath(projectDir), "occupied"), 0o755); err != nil {
+			return nil, err
+		}
+		return &nbuild.BuildResult{}, nil
+	}
+	req := Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, Seed: []byte("seed")}
+	_, err := Apply(context.Background(), req, ApplyOptions{Yes: true})
+	if err == nil || !errors.Is(err, ErrPublished) {
+		t.Fatalf("err = %v, want an error matching ErrPublished", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(f.project, "docker-compose.yml")); statErr != nil {
+		t.Fatalf("the published file is gone: %v", statErr)
+	}
+
+	// A write build that fails publishes nothing the caller must keep.
+	buildBuild = func(string, nbuild.BuildOptions) (*nbuild.BuildResult, error) { return nil, errors.New("write failed") }
+	_ = os.RemoveAll(filepath.Join(f.project, ".nself", "state"))
+	if _, err := Apply(context.Background(), req, ApplyOptions{Yes: true}); err == nil || errors.Is(err, ErrPublished) {
+		t.Fatalf("err = %v, want a failure without ErrPublished", err)
+	}
+}

@@ -67,7 +67,12 @@ func reconcileAfterExtension(cmd *cobra.Command, trigger reconcile.Trigger) erro
 			return errs.New("E403", "extension files changed but regeneration needs confirmation").
 				WithWhy(err.Error()).WithFix("review the pending change with 'nself build --plan', then rerun with --yes (and --force for hand-edited files)")
 		}
-		return fmt.Errorf("regenerating %s:%s: %w", trigger.Kind, trigger.Subject, err)
+		wrapped := fmt.Errorf("regenerating %s:%s: %w", trigger.Kind, trigger.Subject, err)
+		if errors.Is(err, reconcile.ErrPublished) {
+			// The files were written and kept: a bundle install keeps its plugins.
+			return appready.Committed(wrapped)
+		}
+		return wrapped
 	}
 	// Apply wrote the generated files: from here a failure is post-commit, and
 	// a bundle install must keep its plugins (the files reference them).

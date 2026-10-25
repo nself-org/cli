@@ -203,6 +203,11 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (applied *Pl
 	// the record artifact, so plan == apply holds for the record too.
 	firstRecorded := state == nil
 	if err := writeRecord(req.ProjectDir, c.record); err != nil {
+		// The files stay unless the caller's Rollback (run by the deferred
+		// rollbackOnFailure) restores them; only then is the failure not post-publication.
+		if opt.Rollback == nil {
+			err = published(err)
+		}
 		return nil, nil, err
 	}
 	if firstRecorded && req.Stderr != nil {

@@ -201,3 +201,36 @@ func TestExtensionReconcileSwapFailureIsCommitted(t *testing.T) {
 		})
 	})
 }
+
+// Apply publishes the generated files and then fails to write its state record:
+// the files stay, so the error must carry the commit mark and a bundle install
+// keeps its plugins (the review finding on D-0760).
+func TestExtensionReconcileRecordFailureIsCommitted(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	trigger := reconcile.Trigger{Kind: reconcile.TriggerBundle, Subject: "zzfixture"}
+	compattest.Both(t, func(t *testing.T) {
+		if !compat.V15() {
+			return
+		}
+		p := extensionFixture(t, "")
+		localPluginRegistry(t)
+		swapSeams(t, fakeSwapRuntime{})
+		stateDir := filepath.Dir(reconcile.GeneratedStatePath(p.project))
+		if err := os.MkdirAll(stateDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(stateDir, 0o555); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(stateDir, 0o755) })
+		err := reconcileAfterExtension(pluginInstallCmd, trigger)
+		if err == nil || !errors.Is(err, appready.ErrCommitted) {
+			t.Fatalf("err = %v, want a post-commit failure", err)
+		}
+		if _, statErr := os.Stat(filepath.Join(p.project, "docker-compose.yml")); statErr != nil {
+			t.Fatalf("the published compose file is missing: %v", statErr)
+		}
+	})
+}
