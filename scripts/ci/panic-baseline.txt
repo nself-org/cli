@@ -1,0 +1,12 @@
+1 cmd/commands/registry_types.go
+1 cmd/commands/registry_types_io.go
+1 internal/canon/gotable.go
+1 internal/database/identifiers.go
+5 internal/embedded/emscripten_abi_runtime.go
+1 internal/embedded/pg_wasi.go
+1 internal/plugin/verify/signature/keys.go
+1 internal/reconcile/overlay.go
+1 internal/sysexec/guard.go
+1 internal/testwatch/testwatch.go
+1 sdk/go/simharness/fleet.go
+2 tools/perfbench/scenarios/scenarios.go
