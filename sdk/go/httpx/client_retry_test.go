@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -236,5 +237,92 @@ func TestDo_RedirectReplaysBufferedBody(t *testing.T) {
 	defer mu.Unlock()
 	if final != payload {
 		t.Errorf("body at redirect target = %q, want %q", final, payload)
+	}
+}
+
+// TestDo_ContentLengthMismatchErrors verifies that an explicit ContentLength
+// that differs from the buffered body is rejected, not sent truncated.
+func TestDo_ContentLengthMismatchErrors(t *testing.T) {
+	var hits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := New(ClientOptions{MaxRetries: 1, RetryDelay: time.Millisecond, Timeout: 5 * time.Second})
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, srv.URL,
+		onlyReader{strings.NewReader(strings.Repeat("x", 100))})
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.ContentLength = 10
+	resp, err := c.Do(context.Background(), req)
+	if err == nil {
+		resp.Body.Close()
+		t.Fatal("Do accepted ContentLength 10 for a 100 byte body")
+	}
+	if atomic.LoadInt32(&hits) != 0 {
+		t.Errorf("server was contacted %d times, want 0", hits)
+	}
+}
+
+// TestDo_DoesNotMutateCallerContentLength verifies the inferred length lands
+// on the per-attempt clone only.
+func TestDo_DoesNotMutateCallerContentLength(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := New(ClientOptions{MaxRetries: 1, RetryDelay: time.Millisecond, Timeout: 5 * time.Second})
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, srv.URL,
+		onlyReader{strings.NewReader("12345")})
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	resp, err := c.Do(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	resp.Body.Close()
+	if req.ContentLength != 0 {
+		t.Errorf("caller ContentLength = %d, want it untouched (0)", req.ContentLength)
+	}
+}
+
+// TestDo_TrailerKeepsChunkedEncoding verifies that a request with Trailer set
+// is not given a Content-Length, so its trailers still go out.
+func TestDo_TrailerKeepsChunkedEncoding(t *testing.T) {
+	var mu sync.Mutex
+	var gotLen int64
+	var gotTrailer string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		mu.Lock()
+		gotLen = r.ContentLength
+		gotTrailer = r.Trailer.Get("X-Sum")
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := New(ClientOptions{MaxRetries: 1, RetryDelay: time.Millisecond, Timeout: 5 * time.Second})
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, srv.URL,
+		onlyReader{strings.NewReader("12345")})
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Trailer = http.Header{"X-Sum": {"abc"}}
+	resp, err := c.Do(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	resp.Body.Close()
+	mu.Lock()
+	defer mu.Unlock()
+	if gotLen != -1 || gotTrailer != "abc" {
+		t.Errorf("server saw ContentLength %d trailer %q, want -1 and %q", gotLen, gotTrailer, "abc")
 	}
 }
