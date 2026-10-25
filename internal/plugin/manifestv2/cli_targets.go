@@ -1,6 +1,7 @@
 package manifestv2
 
 import (
+	"encoding/json"
 	"strings"
 
 	"github.com/nself-org/cli/internal/errs"
@@ -88,21 +89,28 @@ func CheckCLITargets(plugin string, targets []CLITarget) error {
 	return nil
 }
 
-// CLITargetsOf is CLITargets over a parsed manifest through its compatibility
-// projection, which is what a released CLI reads from a v2 plugin.json.
+// CLITargetsOf is CLITargets over the compatibility keys of a plugin.json, the
+// ones a released CLI's installer reads: name, pluginType, binaryName and
+// cliCommands. A v1 file carries them as written and a v2 file carries them
+// derived (Projection), so both give what the installer publishes.
 //
-// A manifest without a commands block publishes no binary: the projection
-// carries cliCommands but cannot carry a v1 non-cli pluginType, so reading
-// cliCommands alone would build nself-<command> for a service plugin that the
-// installer's v1 path gives none (D-0669).
-func CLITargetsOf(m *Manifest) []CLITarget {
-	if m.Commands == nil {
-		return nil
+// It reads the file rather than a parsed Manifest because normalizing a v1 file
+// drops a non-cli pluginType, and a service plugin that lists cliCommands has no
+// binary on the installer's v1 path while a file with cliCommands and no
+// pluginType has one per command (D-0669).
+func CLITargetsOf(data []byte) ([]CLITarget, error) {
+	var v struct {
+		Name        string       `json:"name"`
+		PluginType  string       `json:"pluginType"`
+		BinaryName  string       `json:"binaryName"`
+		CLICommands []CLICommand `json:"cliCommands"`
 	}
-	p := Projection(m)
-	names := make([]string, 0, len(p.CLICommands))
-	for _, c := range p.CLICommands {
+	if err := json.Unmarshal(data, &v); err != nil {
+		return nil, invalid("plugin.json", err.Error())
+	}
+	names := make([]string, 0, len(v.CLICommands))
+	for _, c := range v.CLICommands {
 		names = append(names, c.Name)
 	}
-	return CLITargets(m.Name, p.PluginType, p.BinaryName, names)
+	return CLITargets(v.Name, v.PluginType, v.BinaryName, names), nil
 }

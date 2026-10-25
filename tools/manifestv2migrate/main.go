@@ -193,12 +193,16 @@ func runCheck(path string, data []byte, stderr io.Writer) int {
 }
 
 func runTargets(data []byte, stdout, stderr io.Writer) int {
-	m, err := manifestv2.ParseQuiet(data)
+	if _, err := manifestv2.ParseQuiet(data); err != nil {
+		say(stderr, "manifestv2migrate: %v\n", err)
+		return 1
+	}
+	targets, err := manifestv2.CLITargetsOf(data)
 	if err != nil {
 		say(stderr, "manifestv2migrate: %v\n", err)
 		return 1
 	}
-	for _, t := range manifestv2.CLITargetsOf(m) {
+	for _, t := range targets {
 		say(stdout, "%s\t%s\n", t.Binary, t.Command)
 	}
 	return 0

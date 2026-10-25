@@ -45,3 +45,23 @@ func TestTargetsSingleCommandV2(t *testing.T) {
 		t.Errorf("single v2: %d %q %s", code, out, e)
 	}
 }
+
+// TestTargetsPluginTypeParity proves -targets follows the installer's v1 rule
+// on the file as written: cliCommands without a pluginType publish one binary
+// each, and a service plugin's cliCommands publish none (D-0669).
+func TestTargetsPluginTypeParity(t *testing.T) {
+	const meta = `"version":"1.0.0","description":"d","category":"infrastructure"`
+	cases := []struct{ name, doc, want string }{
+		{"no pluginType", `{"name":"tenant",` + meta + `,"cliCommands":[{"name":"tenant","description":"d"},{"name":"billing","description":"d"}]}`, "nself-tenant\ttenant\nnself-billing\tbilling\n"},
+		{"service", `{"name":"retro",` + meta + `,"pluginType":"service","cliCommands":[{"name":"server","description":"d"}]}`, ""},
+	}
+	for _, c := range cases {
+		in := filepath.Join(t.TempDir(), "plugin.json")
+		if err := os.WriteFile(in, []byte(c.doc), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if code, out, e := runTool(t, "-in", in, "-targets"); code != 0 || out != c.want {
+			t.Errorf("%s: %d %q %s want %q", c.name, code, out, e, c.want)
+		}
+	}
+}
