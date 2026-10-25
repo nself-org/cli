@@ -161,8 +161,8 @@ func TestNoSecretOnGeneratedArgv(t *testing.T) {
 			if got := argv["redis healthcheck.test"]; strings.Join(got, " ") != "CMD "+cache+"-cli ping" {
 				t.Errorf("%s/%s: redis healthcheck = %q, want %s-cli reading REDISCLI_AUTH", engine, cache, got, cache)
 			}
-			if got := strings.Join(argv["redis command"], " "); !strings.Contains(got, `exec `+cache+`-server `) || !strings.Contains(got, `--requirepass "$$REDISCLI_AUTH"`) {
-				t.Errorf("%s/%s: redis command = %q, want %s-server reading $$REDISCLI_AUTH", engine, cache, got, cache)
+			if got := strings.Join(argv["redis command"], " "); !strings.Contains(got, `exec `+cache+`-server `) || !strings.Contains(got, `requirepass "$$esc"`) || strings.Contains(got, "--requirepass") {
+				t.Errorf("%s/%s: redis command = %q, want %s-server reading the password from stdin", engine, cache, got, cache)
 			}
 		}
 	}

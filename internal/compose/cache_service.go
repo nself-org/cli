@@ -141,6 +141,17 @@ func (g *Generator) cacheImage(engine string) string {
 	return ResolveImage("redis", ImageRef("redis", version))
 }
 
+// redisPasswordScript is the `sh -c` body that starts the cache server with the
+// password from $REDISCLI_AUTH on stdin as a `requirepass` config line. The
+// value is escaped for the config parser (backslash and double quote), so any
+// password round-trips. exec keeps the server as PID 1 for signal handling;
+// $$ survives compose interpolation as $.
+func redisPasswordScript(server string, poolSize int) string {
+	return fmt.Sprintf(`esc=$$(printf '%%s' "$$REDISCLI_AUTH" | sed 's/[\\"]/\\&/g'); `+
+		"exec %s --appendonly yes --protected-mode yes --maxclients %d - <<EOT\nrequirepass \"$$esc\"\nEOT\n",
+		server, poolSize)
+}
+
 // buildRedisService returns the cache/queue service configuration for the
 // engine. Command and health check depend on whether a password is set; the
 // valkey-* binaries are used by name (no reliance on redis-* symlinks).
@@ -173,16 +184,14 @@ func (g *Generator) buildRedisService() ServiceConfig {
 	var env map[string]string
 
 	if rc.Password != "" {
-		// D-0282: no argv carries the password. It reaches the container as
-		// REDISCLI_AUTH (Env, like every other secret), which the engine's CLI
-		// reads on its own (the health check needs no -a), and a shell expands it
-		// for the server ($$ survives compose interpolation as $). Valkey's CLI
-		// reads REDISCLI_AUTH too.
+		// D-0282, D-0587: no argv carries the password, not even the expanded
+		// one a host `ps` shows. It reaches the container as REDISCLI_AUTH (Env,
+		// like every other secret), which the engine's CLI reads on its own (the
+		// health check needs no -a). The server gets it as a config line on stdin
+		// (`-`), so it is never a process argument and never written to disk.
+		// Valkey's CLI and server behave the same.
 		env = map[string]string{"REDISCLI_AUTH": secretRef("REDIS_PASSWORD", rc.Password)}
-		command = []string{"sh", "-c", fmt.Sprintf(
-			`exec %s --appendonly yes --protected-mode yes --requirepass "$$REDISCLI_AUTH" --maxclients %d`,
-			server, poolSize,
-		)}
+		command = []string{"sh", "-c", redisPasswordScript(server, poolSize)}
 	} else {
 		command = fmt.Sprintf(
 			"%s --appendonly yes --protected-mode no --maxclients %d",

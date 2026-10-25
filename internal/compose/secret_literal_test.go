@@ -184,10 +184,10 @@ func TestOptionalServicesSecretRefsPerService(t *testing.T) {
 			"- http://localhost:8108/health",
 		}},
 		// Redis gets the password as REDISCLI_AUTH: redis-cli reads it itself
-		// and the shell expands $$REDISCLI_AUTH for redis-server (D-0282).
+		// and the shell feeds $$REDISCLI_AUTH to redis-server on stdin (D-0282, D-0587).
 		{"meilisearch", "redis", true, []string{
 			"REDISCLI_AUTH: ${REDIS_PASSWORD}",
-			`--requirepass "$$REDISCLI_AUTH"`,
+			`requirepass "$$esc"`,
 		}},
 		{"meilisearch", "minio", true, []string{"MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}"}},
 		{"meilisearch", "minio", false, []string{"MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-}"}},
