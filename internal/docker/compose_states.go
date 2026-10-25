@@ -164,8 +164,10 @@ func (c *Compose) startedAt(ctx context.Context, id string) (string, error) {
 
 // StartMarks maps container ID to StartedAt for each exited container of
 // service. Taken before `up`, it lets FreshStates tell a one-shot that ran
-// again (same container, new start time) from an old exit. The whole read
-// (ps and every inspect) shares one stateCallTimeout.
+// again (same container, new start time) from an old exit. A container removed
+// between the ps and its inspect is left out (it has no mark to compare, as in
+// FreshStates). The whole read (ps and every inspect) shares one
+// stateCallTimeout.
 func (c *Compose) StartMarks(ctx context.Context, workdir, service string) (map[string]string, error) {
 	marks := map[string]string{}
 	err := bounded(ctx, "docker state read for "+service, func(ctx context.Context) error {
@@ -175,9 +177,14 @@ func (c *Compose) StartMarks(ctx context.Context, workdir, service string) (map[
 		}
 		for _, s := range cs {
 			if s.State == "exited" && s.ID != "" {
-				if marks[s.ID], err = c.startedAt(ctx, s.ID); err != nil {
+				at, err := c.startedAt(ctx, s.ID)
+				if errors.Is(err, errContainerGone) {
+					continue
+				}
+				if err != nil {
 					return err
 				}
+				marks[s.ID] = at
 			}
 		}
 		return nil
