@@ -1,6 +1,6 @@
 CREATE SCHEMA app;
 CREATE SCHEMA auth;
-CREATE TABLE auth.users (id uuid PRIMARY KEY, email text, email_verified boolean, phone_number text, display_name text, created_at timestamptz, disabled boolean, password_hash text, metadata jsonb);
+CREATE TABLE auth.users (id uuid PRIMARY KEY, email text, email_verified boolean, phone_number text, display_name text, created_at timestamptz, disabled boolean, password_hash text, metadata jsonb, default_role text NOT NULL DEFAULT 'user');
 CREATE TABLE auth.user_roles (user_id uuid REFERENCES auth.users, role text);
 INSERT INTO auth.users VALUES ('11111111-1111-4111-8111-111111111111','fixture@example.invalid',false,NULL,'Fixture','2026-01-01',false,NULL,'{}');
 INSERT INTO auth.user_roles VALUES ('11111111-1111-4111-8111-111111111111','user');
