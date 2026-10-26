@@ -88,15 +88,21 @@ func runPluginLogs(cmd *cobra.Command, args []string) error {
 	}
 
 	// Wait for docker to finish, then grep will EOF.
-	_ = docker.Stream(cmd.Context(), "", dockerArgs, grepIn, os.Stderr)
+	streamErr := docker.Stream(cmd.Context(), "", dockerArgs, grepIn, os.Stderr)
 	_ = grepIn.Close()
 	// grep exits 1 on "no match" (normal) and 2+ on error. Only surface errors.
-	if err := grepCmd.Wait(); err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+	waitErr := grepCmd.Wait()
+	// A docker that failed to start or exited non-zero is the root cause; it
+	// outranks grep's "no match" exit.
+	if streamErr != nil {
+		return streamErr
+	}
+	if waitErr != nil {
+		if exitErr, ok := waitErr.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
 			// No lines matched — not an error.
 			return nil
 		}
-		return fmt.Errorf("grep error: %w", err)
+		return fmt.Errorf("grep error: %w", waitErr)
 	}
 	return nil
 }
