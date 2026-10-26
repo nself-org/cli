@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -76,19 +77,71 @@ func certbotHookFiles(dir string) (confs, scripts []string, err error) {
 	return confs, scripts, nil
 }
 
+// certbotUserConfigs lists the per-user cli.ini files certbot reads besides
+// <dir>/cli.ini: own is $XDG_CONFIG_HOME/letsencrypt and ~/.config/letsencrypt of
+// the user running nself, root is root's (a root certbot scheduler reads that
+// one). Missing ones are harmless. A variable so tests do not read the real home.
+var certbotUserConfigs = func() (own, root []string) {
+	add := func(list *[]string, base string) {
+		if p := filepath.Join(base, "letsencrypt", "cli.ini"); !slices.Contains(own, p) && !slices.Contains(root, p) {
+			*list = append(*list, p)
+		}
+	}
+	if x := os.Getenv("XDG_CONFIG_HOME"); filepath.IsAbs(x) {
+		add(&own, x)
+	}
+	if h, err := os.UserHomeDir(); err == nil {
+		add(&own, filepath.Join(h, ".config"))
+	}
+	if u, err := user.Lookup("root"); err == nil && u.HomeDir != "" {
+		add(&root, filepath.Join(u.HomeDir, ".config"))
+	}
+	return own, root
+}
+
+// userCertbotConfs returns the per-user cli.ini files that exist. Only absence
+// is tolerated: a denied stat (a non-root caller and root's home) is returned,
+// so the caller refuses; root's cli.ini may hold the hook a root certbot
+// scheduler replays and cannot be shown clean.
+func userCertbotConfs() ([]string, error) {
+	var found []string
+	own, root := certbotUserConfigs()
+	for _, p := range append(slices.Clone(own), root...) {
+		st, err := os.Stat(p)
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+		case err != nil:
+			return nil, err
+		case st.Mode().IsRegular():
+			found = append(found, p)
+		}
+	}
+	return found, nil
+}
+
 // certbotHooks lists the certbot hooks under dir that name one of sslDirs.
-// A missing tree has none.
+// A missing tree has none. The per-user cli.ini files (certbotUserConfigs) are
+// scanned too, whatever dir is (D-0595).
 func certbotHooks(dir string, sslDirs ...string) ([]string, error) {
+	confs, scripts, err := certbotHookFiles(dir)
+	if err != nil {
+		return nil, err
+	}
+	perUser, err := userCertbotConfs()
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range perUser {
+		if !slices.Contains(confs, p) {
+			confs = append(confs, p)
+		}
+	}
 	var needles []string
 	for _, d := range sslDirs {
 		needles = append(needles, filepath.Clean(d))
 		if real, err := filepath.EvalSymlinks(d); err == nil && real != filepath.Clean(d) {
 			needles = append(needles, real)
 		}
-	}
-	confs, scripts, err := certbotHookFiles(dir)
-	if err != nil {
-		return nil, err
 	}
 	var hits []string
 	for _, p := range append(confs, scripts...) {

@@ -282,7 +282,7 @@ func TestUpdatePlanRateLimited(t *testing.T) {
 	if err == nil {
 		t.Fatalf("a 429 produced a plan instead of an error:\n%s", out)
 	}
-	if d := errs.Describe(err); d == nil || d.Code != "E400" || errs.ExitCodeFor(err) == 0 {
+	if d := errs.Describe(err); d == nil || d.Code != "E457" || errs.ExitCodeFor(err) == 0 {
 		t.Fatalf("error is not coded and non-zero: %v (%+v)", err, d)
 	}
 	if !strings.Contains(err.Error(), "429") && !strings.Contains(fmt.Sprint(errs.Describe(err)), "429") {
@@ -302,8 +302,8 @@ func TestUpdatePlanRateLimited(t *testing.T) {
 		return d
 	}
 	t.Cleanup(func() { newUpdateDeps = old })
-	if _, _, err := runUpdate(t, "--plan"); err == nil || errs.Describe(err).Code != "E400" {
-		t.Fatalf("registry failure = %v, want E400", err)
+	if _, _, err := runUpdate(t, "--plan"); err == nil || errs.Describe(err).Code != "E457" {
+		t.Fatalf("registry failure = %v, want E457", err)
 	}
 }
 
@@ -446,5 +446,29 @@ func TestUpdatePlanRealPathIsReadOnly(t *testing.T) {
 	}
 	if after := hashTree(t, dir); after != before {
 		t.Fatal("update --plan created or changed a project file")
+	}
+}
+
+// D-0560: the code follows the typed status, not the words of the error text.
+func TestUpdatePlanSourceFailureCodes(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+		code string
+	}{
+		{"typed 429", &releaseStatusError{Status: 429}, "E457"},
+		{"wrapped typed 429", fmt.Errorf("lookup: %w", &releaseStatusError{Status: 429}), "E457"},
+		{"typed 500", &releaseStatusError{Status: 500}, "E456"},
+		{"typed 403 whose wording mentions 429", fmt.Errorf("x: %w (was status 429 once)", &releaseStatusError{Status: 403}), "E456"},
+		{"no status", errors.New("connection refused"), "E456"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if d := errs.Describe(sourceFailure("the CLI release lookup", tc.err)); d == nil || d.Code != tc.code {
+				t.Fatalf("code = %+v, want %s", d, tc.code)
+			}
+		})
+	}
+	if got := httpStatusOf(&releaseStatusError{Status: 404}); got != 404 {
+		t.Fatalf("httpStatusOf = %d, want 404", got)
 	}
 }

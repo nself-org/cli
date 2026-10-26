@@ -24,6 +24,14 @@ import (
 	"github.com/nself-org/cli/internal/ui"
 )
 
+// releaseStatusError is a release lookup the API answered with a non-200 status.
+// Callers read Status with errors.As; the text stays what it always was (D-0560).
+type releaseStatusError struct{ Status int }
+
+func (e *releaseStatusError) Error() string {
+	return fmt.Sprintf("GitHub API returned status %d", e.Status)
+}
+
 func fetchLatestRelease() (tag string, url string, err error) {
 	return fetchReleaseFromURL(githubLatestReleaseURL)
 }
@@ -43,7 +51,7 @@ func fetchReleaseFromURL(apiURL string) (tag string, htmlURL string, err error) 
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
+		return "", "", &releaseStatusError{Status: resp.StatusCode}
 	}
 
 	body, err := io.ReadAll(resp.Body)

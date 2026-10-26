@@ -9,8 +9,8 @@ package commands
 // Inputs: the project's nself.lock.yaml, the release lookup (GitHub), the
 // plugin registry, and the flags --plan, --yes, --cli, --version, --json.
 // Outputs: a table and step list, or the v1 envelope with UpdateResult.
-// Constraints: a source that cannot be reached (including HTTP 429) is a coded
-// error, never an empty plan; a pin the source no longer offers is a row with
+// Constraints: a source that cannot be reached is a coded error (E456; HTTP 429
+// is E457, update_source_failure.go), never an empty plan; a pin the source no longer offers is a row with
 // resolvable=false. The sources are reached through updateDeps so tests run on
 // fixtures. The steps that need a running stack belong to `update stack`.
 
@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"regexp"
 	"strings"
 
 	"github.com/nself-org/cli/internal/errs"
@@ -64,19 +63,6 @@ func runUpdatePlanMode(cmd *cobra.Command) (handled bool, err error) {
 		return true, runUpdatePlan(cmd, newUpdateDeps())
 	}
 	return true, runUpdateYes(cmd, newUpdateDeps())
-}
-
-// httpStatusRE pulls the status out of fetchReleaseFromURL's error text.
-var httpStatusRE = regexp.MustCompile(`status (\d{3})`)
-
-// sourceFailure codes a source that could not answer. 429 gets its own words.
-func sourceFailure(source string, err error) error {
-	why := "The source did not answer: " + err.Error()
-	if m := httpStatusRE.FindStringSubmatch(err.Error()); m != nil && m[1] == "429" {
-		why = "The source rate-limited this request (HTTP 429)."
-	}
-	return errs.Wrap("E400", "update plan: "+source+" is unavailable", err).
-		WithWhy(why).WithFix("Retry in a few minutes. Nothing was changed.")
 }
 
 // loadProjectLock returns the project dir and its lock.

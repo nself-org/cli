@@ -41,17 +41,20 @@ func hasuraCandidate(pin string) plan.Candidate {
 // hasuraPinOrder compares a hasura pin with the candidate entry: >0 when the pin is a
 // newer release, <0 when older, 0 when equal. known is false for a pin without a
 // parseable tag whose digest is neither lock entry's (the lock cannot name the release).
-// A digest-only pin of an entry orders as that entry's release.
+// A pin's digest is what the daemon runs, so a digest one of the entries owns
+// orders as that entry's release, whatever its tag says (a hand-edited
+// tag@digest pin that disagrees must not defeat the downgrade guard, D-1154);
+// the tag decides only when the digest is absent or not in the lock.
 func hasuraPinOrder(pin string, cand, v14, cur compose.Ref) (order int, known bool) {
 	base, digest, _ := strings.Cut(pin, "@")
-	if i := strings.LastIndex(base, ":"); i > strings.LastIndex(base, "/") {
-		if c, ok := compareHasuraVersion(base[i+1:], cand.Version); ok {
-			return c, true
-		}
-	}
 	for _, e := range []compose.Ref{v14, cur} {
 		if digest != "" && digest == e.IndexDigest {
 			return compareHasuraVersion(e.Version, cand.Version)
+		}
+	}
+	if i := strings.LastIndex(base, ":"); i > strings.LastIndex(base, "/") {
+		if c, ok := compareHasuraVersion(base[i+1:], cand.Version); ok {
+			return c, true
 		}
 	}
 	return 0, false

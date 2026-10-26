@@ -37,6 +37,9 @@ func TestUpdatePlanHasuraRow(t *testing.T) {
 		{"v1.5 digest-only v2.44.0 pin moves with a one-way note", true, "docker.io/hasura/graphql-engine@" + v14.IndexDigest, cur.String(), "one-way"},
 		{"v1.4 digest-only v2.44.0 pin stays", false, "docker.io/hasura/graphql-engine@" + v14.IndexDigest, v14.String(), ""},
 		{"v1.5 unknown digest-only pin is left as is", true, "docker.io/hasura/graphql-engine@sha256:" + strings.Repeat("cd", 32), "", "does not know"},
+		{"v1.4 trusts the v2.51.0 digest over a v2.44.0 tag", false, "docker.io/hasura/graphql-engine:" + v14.Version + "@" + cur.IndexDigest, "", "backup restored"},
+		{"v1.5 trusts the v2.44.0 digest over a v2.51.0 tag", true, "docker.io/hasura/graphql-engine:" + cur.Version + "@" + v14.IndexDigest, cur.String(), "one-way"},
+		{"v1.5 trusts the tag when the digest is unknown", true, newer, "", "backup restored"},
 		{"v1.4 unknown digest-only pin is left as is", false, "docker.io/hasura/graphql-engine@sha256:" + strings.Repeat("cd", 32), "", "does not know"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
