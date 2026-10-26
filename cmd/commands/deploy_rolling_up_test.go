@@ -69,7 +69,18 @@ func TestRollingUp(t *testing.T) {
 	t.Run("a cancelled context prints the recovery line", func(t *testing.T) {
 		s := stack(t, "uphang")
 		ctx, cancel := context.WithCancel(context.Background())
-		time.AfterFunc(300*time.Millisecond, cancel)
+		// Cancel once web's up is really hung, not after a fixed delay: on a loaded
+		// host 300ms can land while postgres is still being brought up.
+		go func() {
+			defer cancel()
+			deadline := time.Now().Add(30 * time.Second)
+			for time.Now().Before(deadline) {
+				if _, err := os.Stat(filepath.Join(s.fix, "uphanging")); err == nil {
+					return
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+		}()
 		_, err := runRollingRestart(ctx, s.dir, true)
 		if !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), "nself restart web") {
 			t.Fatalf("want an interrupt with the recovery line, got %v", err)
