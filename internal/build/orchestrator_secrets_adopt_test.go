@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/composeenv"
 	"github.com/nself-org/cli/internal/config"
 )
 
@@ -253,10 +254,10 @@ func TestPersistGeneratedSecrets_AdoptHonoursBuildEnvMarker(t *testing.T) {
 		name, header, env string
 		adopt             bool
 	}{
-		{"dev file, prod build", composeEnvMarker + "dev\n", "prod", false},
-		{"prod file, dev build", composeEnvMarker + "prod\n", "dev", false},
-		{"prod file, prod build", composeEnvMarker + "prod\n", "prod", true},
-		{"dev file, unset env is dev", composeEnvMarker + "dev\n", "", true},
+		{"dev file, prod build", composeenv.Marker + "dev\n", "prod", false},
+		{"prod file, dev build", composeenv.Marker + "prod\n", "dev", false},
+		{"prod file, prod build", composeenv.Marker + "prod\n", "prod", true},
+		{"dev file, unset env is dev", composeenv.Marker + "dev\n", "", true},
 		{"no marker", "", "prod", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

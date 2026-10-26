@@ -220,11 +220,7 @@ func postgresAlreadyRunning(healthStatus string) bool {
 	return healthStatus == "healthy"
 }
 
-// dbInitCredentialHints are the hints for a database init failure that is not an
-// invalid identifier. .env.secrets loads after .env and wins, and build persists
-// generated credentials there, so a hint to edit .env alone would do nothing
-// (D-0708).
-var dbInitCredentialHints = []string{
+var dbInitCredentialHints = []string{ // .env.secrets overrides .env; build persists credentials there (D-0708)
 	"Check PostgreSQL logs: nself logs postgres",
 	"Verify POSTGRES_USER and POSTGRES_PASSWORD in the file that defines them; .env.secrets overrides .env, so edit it there once build has persisted a value",
 	"Try restarting: nself restart",

@@ -15,6 +15,7 @@ import (
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/license"
 	clonetemplate "github.com/nself-org/cli/internal/templates/clone"
 )
 
@@ -249,7 +250,7 @@ func TestTemplateLicenseKeysOwnerFirst(t *testing.T) {
 	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "fake-key-alpha")
 	t.Setenv("NSELF_LICENSE_KEY_1", "fake-key-bravo")
 	t.Setenv("NSELF_LICENSE_KEY_2", "fake-key-charlie")
-	if got := strings.Join(templateLicenseKeys(), ","); got != "fake-key-bravo,fake-key-alpha,fake-key-charlie" {
+	if got := strings.Join(license.ConfiguredKeys(), ","); got != "fake-key-bravo,fake-key-alpha,fake-key-charlie" {
 		t.Errorf("keys = %s, want the owner key first, each once", got)
 	}
 }
@@ -268,7 +269,7 @@ func TestTemplateLicenseKeysStoredNumbered(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if got := strings.Join(templateLicenseKeys(), ","); got != "fake-key-one,fake-key-two,fake-key-ten" {
+	if got := strings.Join(license.ConfiguredKeys(), ","); got != "fake-key-one,fake-key-two,fake-key-ten" {
 		t.Errorf("keys = %q, want the primary then key.2 and key.10, each once", got)
 	}
 }
@@ -279,7 +280,7 @@ func TestTemplateLicenseKeysOwnerKeyTrimmed(t *testing.T) {
 	compattest.Set(t, true)
 	isolateSource(t, func(http.ResponseWriter, *http.Request) {})
 	t.Setenv("NSELF_PLUGIN_LICENSE_KEY_OWNER", "fake-key-bravo\n")
-	if got := strings.Join(templateLicenseKeys(), ","); got != "fake-key-bravo" {
+	if got := strings.Join(license.ConfiguredKeys(), ","); got != "fake-key-bravo" {
 		t.Errorf("keys = %q, want the trimmed owner key", got)
 	}
 }

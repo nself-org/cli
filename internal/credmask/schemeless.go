@@ -1,4 +1,4 @@
-package config
+package credmask
 
 // Purpose: mask credentials in values that carry no `scheme://` (D-0743): a Go
 // MySQL DSN (user:pass@tcp(host:3306)/db), a bare user:pass@host target and
@@ -7,7 +7,7 @@ package config
 // `****`.
 // Constraints: never touches plain user@host or an email (no colon before the
 // `@`). Linear in len(v) apart from the regexp, which is RE2. Over-masking is
-// the safe side, as in MaskURLCredentials.
+// the safe side, as in config.MaskURLCredentials.
 
 import (
 	"regexp"
@@ -30,9 +30,9 @@ var keywordPassword = regexp.MustCompile(`(?i)((?:^|[^A-Za-z0-9_])(?:ssl)?(?:pas
 // (already handled by the URL rules) stay readable.
 var urlKeywordPassword = regexp.MustCompile(`(?i)((?:^|[^A-Za-z0-9_])(?:ssl)?(?:password|passwd|pwd)[ \t]*=[ \t]*)('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|['"].*|[^\s'"&;#][^\s&;#]*)`)
 
-// maskSchemeless masks the credentials MaskURLCredentials' `://` rule cannot
+// Schemeless masks the credentials config.MaskURLCredentials' `://` rule cannot
 // see.
-func maskSchemeless(v string) string {
+func Schemeless(v string) string {
 	isURL := strings.Contains(v, "://")
 	v = maskDSNUserinfo(v)
 	if m := bareUserinfo.FindStringSubmatch(v); m != nil && !isURL {
