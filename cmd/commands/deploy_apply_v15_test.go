@@ -650,6 +650,9 @@ func TestRollbackReportsUnsavedRecord(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root ignores directory permissions")
 	}
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod 0500 does not make a Windows directory read-only, so the record save cannot be made to fail")
+	}
 	proj, _, _, _ := twoHostProd(t)
 	rollbackRecord(t, proj, "deploy@app.example.test", "deploy@app2.example.test")
 	dir := filepath.Dir(filepath.Join(proj, deploy.DeployStateFile))

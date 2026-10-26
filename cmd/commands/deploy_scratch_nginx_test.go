@@ -367,6 +367,7 @@ func TestScratchAllowlistedMarkedFileIsCopiedAndShipped(t *testing.T) {
 }
 
 func TestScratchAllowlistedMarkedSiteSurvivesBuildPrune(t *testing.T) {
+	isolateDeployConfigEnv(t)
 	proj := nginxProject(t, "NSELF_DEPLOY_NGINX_INCLUDE=sites/stale.conf,sites/api.conf\n")
 	wf(t, filepath.Join(proj, "nginx", "sites", "api.conf"), testBuildMarker+"# old API\n")
 	wf(t, filepath.Join(proj, "nginx", "sites", "other.conf"), testBuildMarker+"# not allowlisted\n")

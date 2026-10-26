@@ -165,7 +165,7 @@ func isolateSource(t *testing.T, ping http.HandlerFunc) {
 	srv := httptest.NewServer(ping)
 	t.Cleanup(cat.Close)
 	t.Cleanup(srv.Close)
-	t.Setenv("HOME", t.TempDir())
+	setHome(t)
 	t.Setenv("NSELF_PLUGIN_CACHE", t.TempDir())
 	t.Setenv("LICENSE_PING_URL", srv.URL)
 	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "")
@@ -260,7 +260,11 @@ func TestTemplateLicenseKeysOwnerFirst(t *testing.T) {
 func TestTemplateLicenseKeysStoredNumbered(t *testing.T) {
 	compattest.Set(t, true)
 	isolateSource(t, func(http.ResponseWriter, *http.Request) {})
-	dir := filepath.Join(os.Getenv("HOME"), ".nself", "license")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(home, ".nself", "license")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
