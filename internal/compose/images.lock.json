@@ -7,10 +7,10 @@
       "role": "optional",
       "repository": "docker.io/nself/nself-admin",
       "version": "latest",
-      "index_digest": "sha256:9f98f5f31affb6feb5cb8346aa33538c1de92da7315be314f0c3d4e6f08c0197",
+      "index_digest": "sha256:d002b5cff084eac661e147afd60e9d84e56a81dab35193d014e085b22354b5f6",
       "platforms": {
-        "linux/amd64": "sha256:038f25695bc1c380dd38720838eb888092537c4e744be953a34eb43601acb3ba",
-        "linux/arm64": "sha256:f36fc24e048c14826f1366bafcd2dfac8be985ef2ce92b87ac2b86bb956ba8c8"
+        "linux/amd64": "sha256:6633d020d7092d7d327e81e6743992515c3b2aa0a15fda321c51e2d3c4eb401d",
+        "linux/arm64": "sha256:dc802b6592bd7d5829cb4c7e37c95d9a8d89f2a2a06078b404b6c7497f788f60"
       },
       "legacy_ref": "nself/nself-admin:latest",
       "license": "MIT",
@@ -52,11 +52,11 @@
       "name": "auth-v14",
       "role": "core",
       "repository": "docker.io/nhost/auth",
-      "version": "0.36.0",
-      "index_digest": "sha256:2e0713ef06e9c3c0af086c81289e9efbd87e4fa5dcda26891e5977b1e096caaf",
+      "version": "0.36.1",
+      "index_digest": "sha256:9322ccbd562fbd105ead4c8d5044b4ad9969617849fc4f07dff01f38b7f870d3",
       "platforms": {
-        "linux/amd64": "sha256:12c62b5e62f71d1b3c894c1748edf74c8631fa61495fd573737312c6f9a207d7",
-        "linux/arm64": "sha256:4eb4a63373097c2ab14e2c08c806830f869a780c0b3cb19166f9684c4a2b7b65"
+        "linux/amd64": "sha256:c2b2cf23a6744999dd54ed17eea5308c2cfdae32f7cd20d58d1bbe7952272b15",
+        "linux/arm64": "sha256:f0a99127ee13eafd46ba7a751f35d337ea1a13238669dd371f4c9e9812b2d384"
       },
       "legacy_ref": "nhost/auth:0.36.0",
       "license": "MIT",
@@ -84,10 +84,10 @@
       "role": "optional",
       "repository": "docker.io/denoland/deno",
       "version": "alpine",
-      "index_digest": "sha256:8ce780168429c4bf5962652e6cbea3fd45254ae902069e90585fb33f74c56968",
+      "index_digest": "sha256:75749604f68aea01d39bead15fd1c86343639e44eb8c58ab051da8a924799d01",
       "platforms": {
-        "linux/amd64": "sha256:0a8753f9da5aafa65988f56af167700c055708a040df8bf154ce8ebe8e4adc75",
-        "linux/arm64": "sha256:68620c5e356d3c92330971753e54dd800c8ca9098a1d40f8614ced2eb587f53d"
+        "linux/amd64": "sha256:3dc638972caa62978182228a5a575e0498ae45129aa1c3ee8548663652ef7ab6",
+        "linux/arm64": "sha256:d81d8917f40a5bef3685abeb53d9e5aac5a7e1767343542587da1383dc33329a"
       },
       "legacy_ref": "denoland/deno:alpine",
       "license": "MIT",
@@ -144,11 +144,11 @@
       "name": "hasura",
       "role": "core",
       "repository": "docker.io/hasura/graphql-engine",
-      "version": "v2.51.0",
-      "index_digest": "sha256:5d435a6756de53709bf48c15b822cabab38d57acd22e656cf633cc2df67df150",
+      "version": "v2.51.2",
+      "index_digest": "sha256:9228f1b03a48e42d92dd8b53dd7530437ed10b6062599bb3dda5799526907701",
       "platforms": {
-        "linux/amd64": "sha256:9981434098fd81809f78706e0dfa212650f5cc53746e5454e92712762aa77464",
-        "linux/arm64": "sha256:3baef699d7b05bb5e4335acdcd6f94eea36bb215205ae4d1b36d4efece227a94"
+        "linux/amd64": "sha256:8bb5725a277bbba3e2a088762e5fc7605334583c9fc75a597f61a05eccccfb02",
+        "linux/arm64": "sha256:a2dc63e08e277f8e55d7c78752da5800b6bc0e93c6327cee611787497cab61ac"
       },
       "legacy_ref": "hasura/graphql-engine:v2.51.0",
       "license": "Apache-2.0",
@@ -159,11 +159,11 @@
       "name": "hasura-v14",
       "role": "core",
       "repository": "docker.io/hasura/graphql-engine",
-      "version": "v2.44.0",
-      "index_digest": "sha256:4d34476840601fa0c372bce9b1ed15aac6ffc3f0a0db677e81062764c08e1dc5",
+      "version": "v2.44.1",
+      "index_digest": "sha256:5a3383ade31f3ed3b36de8bbc6b6f7991e94cec2c606b9f7a8cd5204e0d81ffc",
       "platforms": {
-        "linux/amd64": "sha256:81c38723690396a424230b132c9b166c9da3b88f4f94b2835bc5a20e14723aab",
-        "linux/arm64": "sha256:0b501771f67d85b48b1ef5d7eff33c1ecff549b21114b029ffc8e927c58abf38"
+        "linux/amd64": "sha256:91036b7973279da95e3b313c0751445fc8a51fc271bbc718c3bde769929fc5a8",
+        "linux/arm64": "sha256:aa8584e4aa53c9723aaaed8bc4369e169bc1fa354e7ddc0b00bbf4f0650b5674"
       },
       "legacy_ref": "hasura/graphql-engine:v2.44.0",
       "license": "Apache-2.0",
@@ -207,10 +207,10 @@
       "role": "optional",
       "repository": "docker.io/axllent/mailpit",
       "version": "latest",
-      "index_digest": "sha256:b68349e3a014b90c5610bfb26b2ae36f3892d7b8cf25ee140c6c71c98d2fcf48",
+      "index_digest": "sha256:0790692be935ea4420d085694f7985b1f692ca6a8771ab0e0bd8ba75ac180498",
       "platforms": {
-        "linux/amd64": "sha256:c8e498023104710cd71a7bb1856a51f2183ff0dc1ea07675067a38ecda08428f",
-        "linux/arm64": "sha256:67004e8b8b9fc5cf4ac80ebd14b42d58178cdeb7b4df32edbd35bff49f416411"
+        "linux/amd64": "sha256:938ce54b7b946ef3f45a03e119952cf7e67a7969d61f45a3ed055442a77e00f4",
+        "linux/arm64": "sha256:846fbb9d54be56bc6c1ad0f592239452448fac958545578743a9683277f0082f"
       },
       "legacy_ref": "axllent/mailpit:latest",
       "license": "MIT",
@@ -283,11 +283,11 @@
       "role": "core",
       "repository": "docker.io/library/nginx",
       "version": "alpine",
-      "index_digest": "sha256:df221db836e1754089190208cee7eeda94f233197056426eda74a43ab1abeac2",
+      "index_digest": "sha256:a3554c0d0b48177b1413c26e01f695334428020d9df01243fbae3e11cfd17417",
       "platforms": {
-        "linux/amd64": "sha256:0530961ff0592b58c10f767535cc0abdfccf9e389ff7cc90f87320c1bc7e8506",
-        "linux/arm/v7": "sha256:68902b2f4ae0907a408269fe71aaab1eb4c535e71381002dc1189731ef7b2fac",
-        "linux/arm64": "sha256:84dd96a0337ae0f15be81afa8c6bd99d06a514a2ab71a1503aba91ce4392ecc2"
+        "linux/amd64": "sha256:2db7d28517d1fba17c2da3210395f7be11a11b419246ad0da2edf782af72f367",
+        "linux/arm/v7": "sha256:10eaf262ab53a512dda788555cd7d03c61262ee7a68e922ab59cb2ef574b3c12",
+        "linux/arm64": "sha256:41c8801e327f9c60c47aa700390ea5cf1862a6852bd27d103ba2cac41a7d6ec7"
       },
       "legacy_ref": "nginx:alpine",
       "license": "BSD-2-Clause",
@@ -315,11 +315,11 @@
       "role": "monitoring",
       "repository": "docker.io/otel/opentelemetry-collector-contrib",
       "version": "latest",
-      "index_digest": "sha256:39923a8e431bd1f57be82411999d389fcfe40857492e4365456d97a4c1f74be6",
+      "index_digest": "sha256:7f22d2a6748110ffb6a59bc0df448bccbf501cdb667d610ede4c61d3863d5849",
       "platforms": {
-        "linux/amd64": "sha256:340885ab6f46822374f00c58c067396b53b8d612559842e8821585567579d9e3",
-        "linux/arm/v7": "sha256:aedb2e660faac07e7e4dafa1f4073359cec1cee176e6ba366a221f3352ef3997",
-        "linux/arm64": "sha256:254638b0878b0ef56088f3d580bac163aa7131213c5f7eb6e0cc9d169805503f"
+        "linux/amd64": "sha256:989669581ee1f89184f3fd9dd5adfc6615ed6c9692c026aaea89e07a20dfb177",
+        "linux/arm/v7": "sha256:6e4636b3b1b1c01992362d3ed4b1640865418048a1537b208cb812d98e0c9308",
+        "linux/arm64": "sha256:36ec8a5b77a11cb6d359378ef6103ce852fd82becec77a3bf5bb92eab5a818bf"
       },
       "legacy_ref": "otel/opentelemetry-collector-contrib:latest",
       "license": "Apache-2.0",
@@ -362,11 +362,11 @@
       "role": "core",
       "repository": "docker.io/library/postgres",
       "version": "16-alpine",
-      "index_digest": "sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+      "index_digest": "sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab",
       "platforms": {
-        "linux/amd64": "sha256:1a66d744c1b459e13b05a8fca341da84cb63383e99ce262210efee5a319d4551",
-        "linux/arm/v7": "sha256:7bd770037070dd1f96232b7ee3eb971b7fa2f048c54f5872f13981c63ab0e207",
-        "linux/arm64": "sha256:2c942175a1255a9abe0366e48c1b401d9f50f835b04dfea13f111609b5530df7"
+        "linux/amd64": "sha256:cbf42f0edc946c0bc1b8eeed62403734e1f25dc67a3491455d07a92fdb558b28",
+        "linux/arm/v7": "sha256:e2e27f67864f29c226f4ddee6eefcf4a3eeb4785a66704db7c2401a566611b77",
+        "linux/arm64": "sha256:7a8050e52090c5f77effbe7e0cbed4a0587306776c3f26dc99933a63c619eaf1"
       },
       "legacy_ref": "postgres:16-alpine",
       "license": "PostgreSQL",
@@ -426,11 +426,11 @@
       "role": "optional",
       "repository": "docker.io/library/python",
       "version": "3.12-slim",
-      "index_digest": "sha256:05cda9777409a9c3ffddd94a4c476b79f0769a0b4857f0c7ed9226b6800b0d6f",
+      "index_digest": "sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704",
       "platforms": {
-        "linux/amd64": "sha256:2b4f19dae3a777dfc3b76730bda1e82e1f66ab2a2686fa93ca78edbfb4f04ffe",
-        "linux/arm/v7": "sha256:e77edeb4f25d58b6513c14a4147912c43f4d70860745cee2d1167d1832a4c513",
-        "linux/arm64": "sha256:16bf2b5c59a08523519d3c8589deca849285dee1d62a3653e124c3dba340f15e"
+        "linux/amd64": "sha256:e8a38829209aea82774882e5157e1f7c3e8c8393ff53a697b3580896e57f345c",
+        "linux/arm/v7": "sha256:0012af47717f7117ab8c027817b786c7abc133bcdf95f25c388b3c6d4deb1090",
+        "linux/arm64": "sha256:6c6ae3622772575c3ac02ecb2b02a06d05f19e1713a0cbff476ef37bca79e90f"
       },
       "legacy_ref": "python:3.12-slim",
       "license": "PSF-2.0",
@@ -442,11 +442,11 @@
       "role": "optional",
       "repository": "docker.io/library/redis",
       "version": "7-alpine",
-      "index_digest": "sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+      "index_digest": "sha256:57e4255cc971b1c8d6f8a6ca283ac01bc3ecdd914273ef6bfaede87aaecd6541",
       "platforms": {
-        "linux/amd64": "sha256:ca0acbb137c1dc3339c8b147a58fd6f42775d4599327b50e7b116c23de501af2",
-        "linux/arm/v7": "sha256:aed4e1c2814ee72969e6b71334b4edcc68613086a9474ea1cf509f699fb84d43",
-        "linux/arm64": "sha256:1f09a89a207d794a8c61d9edfc26e7c58427de10ccef7c5d18d638df79a63b85"
+        "linux/amd64": "sha256:8be847644e195abc4c10c8d9936cfa45332eccc6b714fa7b186ff43f1f4d5579",
+        "linux/arm/v7": "sha256:cec50de2d2b7302a86ccbb17e63a0b43c14c2e6e26e3815100bd66882ebe1a49",
+        "linux/arm64": "sha256:12bd99f4555ce357cbe0c950ad42c7a86f76e807244995f0ad0a6b8949c3518a"
       },
       "legacy_ref": "redis:7-alpine",
       "license": "RSALv2 OR SSPLv1 (7.4 and later)",
@@ -473,12 +473,12 @@
       "name": "seaweedfs",
       "role": "optional",
       "repository": "docker.io/chrislusf/seaweedfs",
-      "version": "4.48",
-      "index_digest": "sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d",
+      "version": "4.51",
+      "index_digest": "sha256:f7a49e3f3972ebed5be2ed4befa4a0c68eb7bdddba6e692d42729ceb545134b8",
       "platforms": {
-        "linux/amd64": "sha256:aba492e2a4e4c90bff795745e8e660affa1f09e7650f5981bd7bccd1a06cd931",
-        "linux/arm/v7": "sha256:eb1b81730aaed7369ee0a9535c039436565be67d58030ec981a2401e8620802b",
-        "linux/arm64": "sha256:f1f303474940e9e088edbd2c1658f7ac38cb0dd90f91a2b0a51916d74b8575a1"
+        "linux/amd64": "sha256:3a522c379599e163433a636e75022630848b63a74f08ea37bf06f8d776e9a707",
+        "linux/arm/v7": "sha256:a9f6a92567a1e66d6f813fdd60a88a0f92ddc68f98d8f0bb570f938645f60747",
+        "linux/arm64": "sha256:7e68a388de0806ed8d96f30cb7e927182a3d80d42920cb87d97d23311a7a1a77"
       },
       "legacy_ref": "chrislusf/seaweedfs:4.48",
       "license": "Apache-2.0",
