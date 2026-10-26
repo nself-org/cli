@@ -167,6 +167,7 @@ func scopeFixture(t *testing.T, unreachable bool) (string, *scopeProber) {
 // leaks into a fixture and a cascade load never leaks out.
 func isolateDeployEnv(t *testing.T) {
 	t.Helper()
+	isolateDeployConfigEnv(t)
 	for _, kv := range os.Environ() {
 		if k, _, ok := strings.Cut(kv, "="); ok && strings.HasPrefix(k, "NSELF_DEPLOY_HOST_") {
 			t.Setenv(k, "")
