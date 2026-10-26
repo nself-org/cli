@@ -133,19 +133,37 @@ func UseRandSource(r io.Reader) (restore func()) {
 // from the scoped source (crypto/rand by default, see UseRandSource). Used for
 // auto-generating JWT keys and other secrets in dev mode. The source is never
 // logged or included in an error.
+//
+// A generated secret must pass the validators it will later face: a random
+// string occasionally spells one of insecurePatterns ("test", "admin", ...) or
+// a placeholder, and in staging/prod the validator then rejects a value the
+// CLI itself just made (and build has already persisted it to .env.secrets, so
+// the project stays broken). Such a draw is discarded and the next bytes of the
+// source are used, so a seeded source (plan and apply) still yields one value.
 func generateSecureRandom(length int) (string, error) {
 	src := io.Reader(rand.Reader)
 	if p := randSource.Load(); p != nil {
 		src = *p
 	}
-	// Allocate enough bytes to guarantee the encoded output is >= length.
-	b := make([]byte, length)
-	if _, err := io.ReadFull(src, b); err != nil {
-		return "", fmt.Errorf("generating secret: %w", err)
+	for attempt := 0; attempt < secretAttempts; attempt++ {
+		// Allocate enough bytes to guarantee the encoded output is >= length.
+		b := make([]byte, length)
+		if _, err := io.ReadFull(src, b); err != nil {
+			return "", fmt.Errorf("generating secret: %w", err)
+		}
+		encoded := base64.RawURLEncoding.EncodeToString(b)
+		if len(encoded) >= length {
+			encoded = encoded[:length]
+		}
+		if !isInsecurePassword(encoded) && !isPlaceholderSecret(encoded) {
+			return encoded, nil
+		}
 	}
-	encoded := base64.RawURLEncoding.EncodeToString(b)
-	if len(encoded) < length {
-		return encoded, nil
-	}
-	return encoded[:length], nil
+	return "", fmt.Errorf("generating secret: %d draws in a row matched a blocked pattern", secretAttempts)
 }
+
+// secretAttempts bounds the resampling in generateSecureRandom. A fresh draw is
+// rejected with probability ~1e-4, so a second rejection is already a
+// one-in-100-million event; a source that keeps producing rejected values (a
+// stuck fixed reader) fails loudly instead of looping.
+const secretAttempts = 32
