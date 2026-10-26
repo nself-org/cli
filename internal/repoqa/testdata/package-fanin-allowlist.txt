@@ -1,0 +1,10 @@
+# Package fan-in ceilings (D-0033), checked by TestPackageFanInBudget.
+# "<dir> <importers>": distinct packages of this module that import the package
+# from non-test files. A package imported by more than 20 needs a line here and
+# may not gain importers past it. The list only shrinks: lower a line with
+# `go test ./internal/repoqa -update`, delete it once the count is 20 or less.
+internal/compat 25
+internal/config 37
+internal/docker 27
+internal/errs 58
+internal/httptimeout 25

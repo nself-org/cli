@@ -1,0 +1,13 @@
+# Package size ceilings (D-0033), checked by TestPackageSizeBudget.
+# "<dir> <lines>": non-test Go lines of the package. A package over 6000 lines
+# needs a line here and may not grow past it. The list only shrinks: lower a
+# line with `go test ./internal/repoqa -update`, delete it once the package is
+# under 6000. A new package over 6000 is split by domain, not added here.
+cmd/commands 65362
+internal/backup 6279
+internal/build 13575
+internal/config 7498
+internal/database 10048
+internal/deploy 6667
+internal/doctor 9414
+internal/plugin 10079

@@ -33,3 +33,15 @@ check that fails closed in CI; a syntactically valid ticket ID is insufficient.
 HQ overview section 4.2 is maintained separately. Its accepted-edge count and
 pending description must be reconciled with `acceptedBasis` by the HQ owner;
 the CLI tests do not depend on a private sibling checkout in public CI.
+
+## Package size and fan-in
+
+`TestPackageSizeBudget` and `TestPackageFanInBudget` (D-0033) cover what the
+300-line file cap cannot see. A package with more than 6000 non-test Go lines,
+or one imported by more than 20 other packages of the module, needs a line in
+`testdata/package-size-allowlist.txt` or `testdata/package-fanin-allowlist.txt`
+and may not grow past it. A new package over either threshold fails until it is
+split along domain lines. The lists are ceilings: a shrinking package passes,
+and `go test ./internal/repoqa -update` lowers the line or drops it once the
+package is under the threshold. The update never adds a line or raises a number.
+Fan-in counts distinct importing packages from non-test files only.
