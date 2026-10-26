@@ -90,6 +90,11 @@ func TestMountIgnoresOverride(t *testing.T) {
 
 func TestMountEmptyFileE125(t *testing.T) {
 	compattest.Set(t, true)
+	// No licence key from the host: a stored or env key would renew a real JWT online.
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "")
+	t.Setenv("NSELF_PLUGIN_LICENSE_KEY_OWNER", "")
 	t.Setenv("LICENSE_CACHE_PATH", filepath.Join(t.TempDir(), "missing"))
 	t.Setenv("LICENSE_PUBLIC_KEY_OVERRIDE", "")
 	dir, in := entitlementFixture(t, "licensed")
