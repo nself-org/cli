@@ -44,6 +44,7 @@ internal/compat 98  # measured 100.0 2026-10-05
 internal/compat/compattest 98  # measured 100.0 2026-10-05
 internal/compose 85  # measured 88.0 2026-10-05
 internal/compose/monitoring 56  # measured 58.8 2026-10-05
+internal/composeenv 95  # measured 95.2 2026-10-26
 internal/config 78  # measured 80.9 2026-10-05
 internal/config/bindings 92  # measured 94.7 2026-10-10
 internal/confirm 25  # measured 27.8 2026-10-05
@@ -52,6 +53,7 @@ internal/controlplane/promote 71  # measured 73.1 2026-10-11
 internal/controlplane/promote/verify 92  # measured 94.0 2026-10-23
 internal/controlplane/sim 0  # measured 0.0 2026-10-05
 internal/cost 38  # measured 40.8 2026-10-05
+internal/credmask 72  # measured 72.1 2026-10-26
 internal/database 21  # measured 23.1 2026-10-05
 internal/database/vectorsearch 94  # measured 96.9 2026-10-10
 internal/deploy 53  # measured 55.2 2026-10-05
