@@ -35,7 +35,9 @@
 #
 # Output:
 #   Human-readable step-by-step log to stdout
-#   JSON report written to /tmp/golden-path-report.json
+#   JSON report written to /tmp/golden-path-report.json, however the script ends:
+#   an abort outside a step (missing prerequisite, signal) is recorded against the
+#   first step that had not finished (see on_exit)
 #
 # Exit codes:
 #   0   all 13 steps passed within timing budgets
@@ -112,6 +114,10 @@ declare -A STEP_STATUS=()
 declare -A STEP_DURATION=()
 declare -A STEP_NOTE=()
 WORK_DIR=""
+# Set to the step number while run_step executes it, and to a reason when the
+# script aborts outside any step; the EXIT trap reads both (see on_exit).
+CURRENT_STEP=""
+ABORT_NOTE=""
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 log()  { printf "${CYAN_C}[golden-path]${RESET_C} %s\n" "$*"; }
@@ -268,6 +274,7 @@ run_step() {
   fail_limit=$(awk "BEGIN { printf \"%.0f\", ${baseline} * ${FAIL_MULT} }")
 
   log "Step ${step_num}/13: ${step_label}"
+  CURRENT_STEP="${step_num}"
 
   local t_start
   t_start=$(date +%s)
@@ -279,10 +286,12 @@ run_step() {
     STEP_DURATION[$step_num]=0
     STEP_NOTE[$step_num]="dry-run"
     PASS=$((PASS + 1))
+    CURRENT_STEP=""
     return 0
   fi
 
   "${cmd[@]}" 2>&1 || exit_code=$?
+  CURRENT_STEP=""
 
   local t_end
   t_end=$(date +%s)
@@ -430,7 +439,41 @@ cleanup() {
     rm -rf "${WORK_DIR}"
   fi
 }
-trap cleanup EXIT
+
+# on_exit: the report must exist however the script ends. Every deliberate
+# failure path writes it before `exit 1`, but an abort outside those paths (a
+# missing prerequisite, an unbound variable, a signal) left no report, so the
+# workflow summary could only say "no report was produced". When the exit status
+# is non-zero and no step has failed, the first step with no recorded status (or
+# the step in flight) is marked failed with the reason, and the report is
+# rewritten. A report that already names a failed step is left alone.
+on_exit() {
+  local rc=$?
+  trap - EXIT
+  if [ "${rc}" -ne 0 ] && [ "${FAIL}" -eq 0 ]; then
+    local s="${CURRENT_STEP}" i
+    if [ -z "${s}" ]; then
+      for i in $(seq 1 13); do
+        [ -z "${STEP_STATUS[$i]:-}" ] && { s="${i}"; break; }
+      done
+    fi
+    [ -z "${s}" ] && s=13
+    STEP_STATUS[$s]="fail"
+    STEP_NOTE[$s]="${ABORT_NOTE:-script exited ${rc} before this step finished}"
+    FAIL=$((FAIL + 1))
+    write_report
+  elif [ ! -f "${REPORT_FILE}" ]; then
+    write_report
+  fi
+  cleanup
+  exit "${rc}"
+}
+# A signal exits through the EXIT trap, so a cancelled or timed-out job still
+# leaves its report.
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap on_exit EXIT
 
 # ── Pre-flight ────────────────────────────────────────────────────────────────
 log "nSelf golden-path E2E smoke"
@@ -438,6 +481,7 @@ log "━━━━━━━━━━━━━━━━━━━━━━━━━
 
 if [ -z "${NSELF_PLUGIN_LICENSE_KEY_OWNER:-}" ]; then
   err "NSELF_PLUGIN_LICENSE_KEY_OWNER is not set — required for steps 10-13"
+  ABORT_NOTE="NSELF_PLUGIN_LICENSE_KEY_OWNER is not set"
   exit 1
 fi
 

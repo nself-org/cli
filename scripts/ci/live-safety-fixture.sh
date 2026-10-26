@@ -215,10 +215,12 @@ run_nself fresh 1 build --yes
 [ "$RC" = 0 ] && [ -f "$WORK/fresh/project/.env.secrets" ] || fail "the first build did not persist secrets"
 ok "first build: planned .env.secrets, --plan-id refused (E451), --yes applies"
 
-# A plugin compose fragment edited after the plan is E450.
+# A plugin compose fragment edited after the plan is E450. The build writes the
+# rewritten fragment to the project overlay (.nself/plugins/<name>/, D-0318), so
+# that is the plan artifact; the shared fragment under the plugin dir is an input.
 mkproj plug dev-plugin
 run_nself plug 1 build --plan --json
-[ "$(jget '"@plugins/nself-alpha/docker-compose.plugin.yml" in [a["path"] for a in d["artifacts"]]')" = True ] || fail "the rewritten plugin fragment is not a plan artifact"
+[ "$(jget '".nself/plugins/nself-alpha/docker-compose.plugin.yml" in [a["path"] for a in d["artifacts"]]')" = True ] || fail "the rewritten plugin fragment is not a plan artifact"
 PID="$(jget 'd["plan_id"]')"
 sed -i.bak 's/"3901:3901"/"0.0.0.0:22:3901"/' "$WORK/plug/plugins/nself-alpha/docker-compose.plugin.yml" && rm -f "$WORK/plug/plugins/nself-alpha/docker-compose.plugin.yml.bak"
 P0="$(tree plug)"
