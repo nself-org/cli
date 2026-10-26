@@ -34,13 +34,18 @@ services:
   postgres: {regex: '^(\d+)-alpine$', track: patch}
   python: {regex: '^(\d+)\.(\d+)-slim$', track: patch}
   redis: {regex: '^(\d+)-alpine$', track: patch}
+  valkey: {regex: '^(\d+)\.(\d+)-alpine$', track: patch}
   # --- exact versions: patch releases within the current minor ---
   alertmanager: {regex: '^v(\d+)\.(\d+)\.(\d+)$', track: patch}
   auth: {regex: '^(\d+)\.(\d+)\.(\d+)$', track: patch}
+  # auth-v14 / hasura-v14: the v1.4 line stays on its own minor (auth 0.36, hasura 2.44);
+  # only patch releases move. 0.43.0 and later auth need AUTH_ENCRYPTION_KEY.
+  auth-v14: {regex: '^(\d+)\.(\d+)\.(\d+)$', track: patch}
   cadvisor: {regex: '^v(\d+)\.(\d+)\.(\d+)$', track: patch}
   elasticsearch: {regex: '^(\d+)\.(\d+)\.(\d+)$', track: patch}
   grafana: {regex: '^(\d+)\.(\d+)\.(\d+)$', track: patch}
   hasura: {regex: '^v(\d+)\.(\d+)\.(\d+)$', track: patch}
+  hasura-v14: {regex: '^v(\d+)\.(\d+)\.(\d+)$', track: patch}
   lego: {regex: '^v(\d+)\.(\d+)\.(\d+)$', track: patch}
   loki: {regex: '^(\d+)\.(\d+)\.(\d+)$', track: patch}
   mlflow: {regex: '^v(\d+)\.(\d+)\.(\d+)$', track: patch}
