@@ -105,17 +105,25 @@ func validateNewKey(ctx context.Context, projectDir, key string) error {
 	// 403, or a signed rejection revoke this runtime entitlement.
 	rejected := explicitRejection(remote, result)
 	if result.CanProceed && !rejected {
+		_ = recordVerdict(license.HashKey(key), false) // a stale rejection only fails closed
 		return nil
 	}
 	// FromCache alone cannot distinguish an absent cache from an auth rejection.
 	if !rejected {
 		return ErrValidationUnavailable
 	}
+	recordErr := recordVerdict(license.HashKey(key), true)
 	if projectDir != "" {
 		if writeErr := publishAfterKeyRejection(projectDir, key); writeErr != nil {
 			return writeErr
 		}
+		if recordErr != nil {
+			return errs.Wrap("E125", "the licence rejection could not be recorded and may not hold offline", recordErr)
+		}
 		return errs.New("E125", "the new licence was rejected and could not obtain a verified entitlement")
+	}
+	if recordErr != nil {
+		return fmt.Errorf("the licence rejection could not be recorded and may not hold offline: %w", recordErr)
 	}
 	return errors.New("the new licence was rejected and could not obtain a verified entitlement")
 }

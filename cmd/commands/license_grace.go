@@ -151,9 +151,15 @@ every 6 hours. --remove-timer removes that timer by hand (--all: every project o
 				continue
 			}
 			if !result.Valid {
+				if err := entitlement.RecordRejected(key); err != nil { // the cached token stays on disk: an unrecorded rejection lets offline refresh republish it
+					fmt.Fprintf(os.Stderr, "%s: warning: could not record the licence rejection: %v\n", masked, err)
+				}
 				doc.Keys = append(doc.Keys, licenseRefreshKey{Key: masked, Error: "invalid: " + licenseScrub(result.Message)})
 				fmt.Fprintf(os.Stderr, "%s: invalid — %s\n", masked, result.Message)
 				continue
+			}
+			if err := entitlement.RecordAccepted(key); err != nil { // a stale rejection only fails closed
+				fmt.Fprintf(os.Stderr, "%s: warning: could not clear the recorded licence rejection: %v\n", masked, err)
 			}
 			row := licenseRefreshKey{Key: masked, Refreshed: true, Tier: licenseScrub(result.Tier)}
 			if !result.ExpiresAt.IsZero() {

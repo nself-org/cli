@@ -191,6 +191,51 @@ func TestLicenseRefreshRewritesFile(t *testing.T) {
 	}
 }
 
+// A scheduled refresh that the server rejects persists the rejection; a later interactive
+// refresh the server accepts must lift it and rewrite the entitlement file (deterministic
+// order: TestLicenseRefreshRewritesFile only hit this when its map iterated timer first).
+func TestLicenseRefreshInteractiveLiftsPersistedRejection(t *testing.T) {
+	f := newGraceFixture(t)
+	timer := map[string]string{"project": f.project, "quiet": "true"}
+	f.mode = "revoked"
+	if _, _, err := runRefresh(t, f.project, timer); err == nil {
+		t.Fatal("a revoked key must fail the scheduled refresh")
+	}
+	f.mode = "ok"
+	_ = os.Remove(entitlement.Path(f.project))
+	if _, _, err := runRefresh(t, f.project, nil); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(entitlement.Path(f.project)); string(data) != f.jwt {
+		t.Fatalf("interactive refresh accepted by the server did not rewrite the entitlement file (%d bytes)", len(data))
+	}
+	f.mode = "ok"
+	if _, _, err := runRefresh(t, f.project, timer); err != nil {
+		t.Fatalf("the lifted rejection still blocks the scheduled refresh: %v", err)
+	}
+}
+
+// An interactive refresh the server answers with a signed revocation must persist the
+// rejection: the cached token is untouched, so an offline refresh would otherwise republish it.
+func TestLicenseRefreshInteractiveRevocationBlocksOfflineRepublish(t *testing.T) {
+	f := newGraceFixture(t)
+	if _, _, err := runRefresh(t, f.project, nil); err != nil {
+		t.Fatal(err)
+	}
+	f.mode = "revoked"
+	if _, _, err := runRefresh(t, f.project, nil); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.Remove(entitlement.Path(f.project))
+	f.mode = "5xx"
+	if err := entitlement.Refresh(t.Context(), f.project); err == nil {
+		t.Fatal("an offline refresh must fail for a key the server revoked")
+	}
+	if data, err := os.ReadFile(entitlement.Path(f.project)); err == nil && len(data) > 0 { // a refusal leaves an empty file
+		t.Fatalf("offline refresh republished the token of a revoked key (%d bytes)", len(data))
+	}
+}
+
 func TestLicenseImportRewritesJWT(t *testing.T) {
 	f := newGraceFixture(t)
 	if _, _, err := runRefresh(t, f.project, nil); err != nil {
