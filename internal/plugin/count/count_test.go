@@ -25,24 +25,25 @@ func TestLoad_ParsesEmbeddedArtifact(t *testing.T) {
 }
 
 // TestLoad_AdvertisedMatchesMeasuredGroundTruth pins the vendored snapshot
-// to the ground truth of plugins main after PLUG-81 (2026-10-19): free
-// 131/124, pro 46/46, overlap {cron,notify}, totals 175/168, advertised
-// 168. If this ever fails after a legitimate resync, update the expected
-// values here to match the new vendored counts.json — never the reverse.
+// to the ground truth of plugins main after transactional-email left the
+// free non-installable list (2026-10-26): free 130/124, pro 46/46, overlap
+// {cron,notify}, totals 174/168, advertised 168. If this ever fails after a
+// legitimate resync, update the expected values here to match the new
+// vendored counts.json — never the reverse.
 func TestLoad_AdvertisedMatchesMeasuredGroundTruth(t *testing.T) {
 	a, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	if a.Free.Entries != 131 || a.Free.Installable != 124 {
-		t.Errorf("Free = %+v, want entries=131 installable=124", a.Free)
+	if a.Free.Entries != 130 || a.Free.Installable != 124 {
+		t.Errorf("Free = %+v, want entries=130 installable=124", a.Free)
 	}
 	if a.Pro.Entries != 46 || a.Pro.Installable != 46 {
 		t.Errorf("Pro = %+v, want entries=46 installable=46", a.Pro)
 	}
-	if a.Totals.Entries != 175 || a.Totals.Installable != 168 {
-		t.Errorf("Totals = %+v, want entries=175 installable=168", a.Totals)
+	if a.Totals.Entries != 174 || a.Totals.Installable != 168 {
+		t.Errorf("Totals = %+v, want entries=174 installable=168", a.Totals)
 	}
 	if a.Advertised != 168 {
 		t.Errorf("Advertised = %d, want 168", a.Advertised)
