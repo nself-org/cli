@@ -130,3 +130,45 @@ func TestDryRunWritesNothing(t *testing.T) {
 		t.Fatal("dry-run modified the file")
 	}
 }
+
+// TestRepoPoliciesCoverEveryPin guards D-1486: every non-plugin pin in the real
+// internal/compose/images.yaml needs an entry in the real policy, and its
+// current version must match that entry's regex (the weekly run exits 1 on
+// either gap).
+func TestRepoPoliciesCoverEveryPin(t *testing.T) {
+	praw, err := os.ReadFile("../../.github/image-bump-policy.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pol, err := loadPolicy(praw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lraw, err := os.ReadFile("../../internal/compose/images.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lf, err := parseLockFile(lraw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lf.Images) == 0 {
+		t.Fatal("images.yaml lists no images")
+	}
+	for _, img := range lf.Images {
+		if img.Role == "plugin" {
+			continue
+		}
+		r, ok := pol.rules[img.Name]
+		if !ok {
+			t.Errorf("%s: no entry in .github/image-bump-policy.yaml", img.Name)
+			continue
+		}
+		if r.track == "manual" {
+			continue
+		}
+		if _, matched, err := versionOf(r.re, img.Version); err != nil || !matched {
+			t.Errorf("%s: version %q does not match its policy regex %s (err %v)", img.Name, img.Version, r.re, err)
+		}
+	}
+}
