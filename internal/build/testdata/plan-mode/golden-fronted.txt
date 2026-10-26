@@ -19,7 +19,7 @@ d 0755 home
 d 0755 plugins
 f 0600 fronted-stack/backend/.env 779469afb28aab57a312a30294588741be9f1bae8794eaca9a5f2fc4630e45b5
 f 0600 fronted-stack/backend/.env.computed 11d69b678463f3b0ecff1c6a2036bd3ac6ac39c6f0ab75b775da0196f209ed55
-f 0600 fronted-stack/backend/.nself/compose.env fd68648754cf9a6c5f72298ef87d050aee49495249735d97bea75fbb09622caa
+f 0600 fronted-stack/backend/.nself/compose.env 2850ac3f38865ec99ae420df326ba1bc4cf199e09f705731d6f56caad5a55023
 f 0600 fronted-stack/backend/docker-compose.yml 680e12ec51abc9b8ab6443494c6f4d1e4bd79faee3e2be3a0b9795fd3132c3a3
 f 0644 fronted-stack/backend/.nself/build-profile a172cedcae47474b615c54d510a5d84a8dea3032e958587430b413538be3f333
 f 0644 fronted-stack/backend/.nself/build-version 8ceaa7b1b997a4743b4d5e74b2a46af8c5ebe7765abb07eca372441aa3cbf51e

@@ -243,3 +243,54 @@ func TestSecretScanList_FollowsCascadeRule(t *testing.T) {
 		}
 	}
 }
+
+// D-1149: compose.env written by a dev build must not hand its password to a
+// prod build; the same env still adopts, and a file without the marker (built
+// before it existed) keeps adopting.
+func TestPersistGeneratedSecrets_AdoptHonoursBuildEnvMarker(t *testing.T) {
+	const body = "POSTGRES_PASSWORD=fake-dev-pg-password\nHASURA_GRAPHQL_ADMIN_SECRET=fake-dev-admin-secret\n"
+	for _, tc := range []struct {
+		name, header, env string
+		adopt             bool
+	}{
+		{"dev file, prod build", composeEnvMarker + "dev\n", "prod", false},
+		{"prod file, dev build", composeEnvMarker + "prod\n", "dev", false},
+		{"prod file, prod build", composeEnvMarker + "prod\n", "prod", true},
+		{"dev file, unset env is dev", composeEnvMarker + "dev\n", "", true},
+		{"no marker", "", "prod", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := projectWithComposeEnv(t, tc.header+body)
+			cfg := genCfg()
+			cfg.Env = tc.env
+			if err := persistGeneratedSecrets(dir, cfg); err != nil {
+				t.Fatal(err)
+			}
+			adopted := cfg.Postgres.Password == "fake-dev-pg-password" && cfg.Hasura.AdminSecret == "fake-dev-admin-secret"
+			if adopted != tc.adopt {
+				t.Fatalf("adopted = %v, want %v", adopted, tc.adopt)
+			}
+			if !tc.adopt && !strings.Contains(readSecrets(t, dir), "POSTGRES_PASSWORD=fake-generated-pg-password\n") {
+				t.Error("a refused adoption must fall back to persisting the generated value")
+			}
+		})
+	}
+}
+
+// The writer records the ENV that the reader checks.
+func TestWriteComposeEnv_RecordsBuildEnv(t *testing.T) {
+	dir := t.TempDir()
+	cfg := genCfg()
+	cfg.Env = "prod"
+	cfg.ProjectName = "test"
+	sink := newDiskSink(dir)
+	if err := writeComposeEnvVia(sink, dir, cfg, map[string]string{"POSTGRES_PASSWORD": "fake-pg"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := adoptLiveCredential(sink, dir, "prod", "POSTGRES_PASSWORD"); !ok || got != "fake-pg" {
+		t.Errorf("same env: got %q, %v", got, ok)
+	}
+	if _, ok := adoptLiveCredential(sink, dir, "dev", "POSTGRES_PASSWORD"); ok {
+		t.Error("dev build adopted a prod compose.env")
+	}
+}
