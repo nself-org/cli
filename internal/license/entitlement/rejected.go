@@ -131,6 +131,15 @@ func recordVerdict(hash string, rejected bool) error {
 	return err
 }
 
+// Purpose: lift a persisted rejection after the server freshly accepted the key outside
+// the scheduled path (interactive `license refresh`). Inputs: the licence key.
+// Outputs: persistence error. Constraints: only call on a live, signed acceptance; a
+// failure leaves the rejection in place, which only fails closed.
+// SPORT: durable per-key rejection.
+func RecordAccepted(key string) error {
+	return recordVerdict(license.HashKey(key), false)
+}
+
 // Purpose: read-modify-write the shared record under the process mutex and file lock.
 // Inputs: record path, key hash, verdict. Outputs: persistence error.
 // SPORT: durable per-key rejection.

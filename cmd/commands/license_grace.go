@@ -155,6 +155,9 @@ every 6 hours. --remove-timer removes that timer by hand (--all: every project o
 				fmt.Fprintf(os.Stderr, "%s: invalid — %s\n", masked, result.Message)
 				continue
 			}
+			if err := entitlement.RecordAccepted(key); err != nil { // a stale rejection only fails closed
+				fmt.Fprintf(os.Stderr, "%s: warning: could not clear the recorded licence rejection: %v\n", masked, err)
+			}
 			row := licenseRefreshKey{Key: masked, Refreshed: true, Tier: licenseScrub(result.Tier)}
 			if !result.ExpiresAt.IsZero() {
 				row.ExpiresAt = result.ExpiresAt.Format("2006-01-02")
