@@ -44,7 +44,11 @@ var binaryNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 // ValidateName reports whether name is a plain plugin slug that is safe to join
 // to the plugin directory and is not a reserved infrastructure name.
 func ValidateName(name string) error {
-	return pluginname.Validate(name)
+	if reason := pluginname.Reason(name); reason != "" {
+		return errs.Newf("E401", "invalid plugin name %q: %s", name, reason).
+			WithFix("use the plugin name as shown by 'nself plugin list', for example 'nself plugin remove notify'")
+	}
+	return nil
 }
 
 // ValidateCommandName reports whether cmd is a plain command name: the part after

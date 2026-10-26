@@ -8,8 +8,9 @@
 // "status") exactly as the command layer does (D-0602, P7-PLUG-20).
 // Inputs: a plugin name exactly as the caller received it (CLI arg, MCP/admin
 // request, registry or bundle member name).
-// Outputs: nil for a plain plugin slug, or an E401 (invalid usage) error naming
-// the rule that failed.
+// Outputs: "" for a plain plugin slug, or the rule that failed. Callers wrap the
+// reason in their own E401 (invalid usage) error: this package imports nothing
+// from the module, so it adds no importer to internal/errs (fan-in ratchet).
 // Constraints: no I/O, no normalisation. The shape is exactly the one
 // plugin/manifest.go enforces on installed plugin names (lowercase letters,
 // digits and hyphen, starting with a letter). No '.' or '_': a dotted backup
@@ -21,8 +22,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-
-	"github.com/nself-org/cli/internal/errs"
 )
 
 // PgIdentMax is PostgreSQL's identifier limit in bytes (NAMEDATALEN-1). Longer
@@ -100,24 +99,19 @@ func SlugReason(name string) string {
 	return ""
 }
 
-// Validate reports whether name is a plain plugin slug that is safe to join to
-// the plugin directory and is not a reserved infrastructure name. It rejects
-// the empty string, ".", "..", any path separator (slash or backslash, and the
-// OS separator), absolute paths, a leading '-', NUL and other control
-// characters, whitespace, and anything filepath.Base would change.
-func Validate(name string) error {
-	reason := SlugReason(name)
-	if reason == "" {
-		reason = Reserved[name]
-		if reason != "" {
-			reason = "it is reserved: " + reason
-		}
+// Reason returns why name is not a plain plugin slug that is safe to join to
+// the plugin directory and not a reserved infrastructure name, or "" when it is.
+// It rejects the empty string, ".", "..", any path separator (slash or
+// backslash, and the OS separator), absolute paths, a leading '-', NUL and
+// other control characters, whitespace, and anything filepath.Base would change.
+func Reason(name string) string {
+	if reason := SlugReason(name); reason != "" {
+		return reason
 	}
-	if reason == "" {
-		return nil
+	if reason := Reserved[name]; reason != "" {
+		return "it is reserved: " + reason
 	}
-	return errs.Newf("E401", "invalid plugin name %q: %s", name, reason).
-		WithFix("use the plugin name as shown by 'nself plugin list', for example 'nself plugin remove notify'")
+	return ""
 }
 
 // HasControlChar reports whether s holds NUL, any other ASCII control
