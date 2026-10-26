@@ -108,8 +108,11 @@ func (emptyProbes) Run(context.Context, scenarios.Config) ([]scenarios.Sample, e
 }
 func (emptyProbes) Probes() []scenarios.Probe { return nil }
 
+// Registered in init, not in the test: the registry is global and Register
+// panics on a duplicate, so registering per test run broke go test -count=N.
+func init() { scenarios.Register(emptyProbes{}) }
+
 func TestABRefusesEmptyMetrics(t *testing.T) {
-	scenarios.Register(emptyProbes{})
 	bin := script(t, "nself", okScript)
 	for _, extra := range [][]string{{}, {"-json"}} {
 		var out, errb bytes.Buffer

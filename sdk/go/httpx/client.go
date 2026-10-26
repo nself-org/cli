@@ -77,7 +77,7 @@ func (c *Client) Do(ctx context.Context, req *http.Request) (*http.Response, err
 		req.Header.Set("User-Agent", c.opts.UserAgent)
 	}
 
-	getBody, buffered, err := bodySource(req, c.opts.MaxRetries > 0)
+	getBody, buffered, inferred, err := bodySource(req, c.opts.MaxRetries > 0)
 	if err != nil {
 		return nil, err
 	}
@@ -112,6 +112,9 @@ func (c *Client) Do(ctx context.Context, req *http.Request) (*http.Response, err
 				}
 				reqClone.Body = body
 			}
+			if buffered && inferred >= 0 {
+				reqClone.ContentLength = inferred
+			}
 		}
 		resp, lastErr = c.HTTP.Do(reqClone)
 		if lastErr != nil {
@@ -136,31 +139,41 @@ func (c *Client) Do(ctx context.Context, req *http.Request) (*http.Response, err
 // single attempt (retries false), or a body without GetBody larger than
 // maxBufferedBody (req.Body is then rebuilt so the one attempt still sends it
 // whole). buffered reports that req.Body was read into memory and closed, so
-// even the first attempt must use the copy; req.ContentLength is set to the
-// buffered length.
-func bodySource(req *http.Request, retries bool) (getBody func() (io.ReadCloser, error), buffered bool, err error) {
+// even the first attempt must use the copy. inferred is the buffered length
+// for Do to set on each attempt's clone, or -1 when the length must not be
+// inferred: a request with Trailer set stays chunked so its trailers are
+// sent. The caller's req.ContentLength is never changed; an explicit
+// ContentLength > 0 that differs from the buffered length is an error rather
+// than a silently truncated or padded body.
+func bodySource(req *http.Request, retries bool) (getBody func() (io.ReadCloser, error), buffered bool, inferred int64, err error) {
 	if !retries || req.Body == nil || req.Body == http.NoBody {
-		return nil, false, nil
+		return nil, false, -1, nil
 	}
 	if req.GetBody != nil {
-		return req.GetBody, false, nil
+		return req.GetBody, false, -1, nil
 	}
 	orig := req.Body
 	data, err := io.ReadAll(io.LimitReader(orig, maxBufferedBody+1))
 	if err != nil {
 		_ = orig.Close()
-		return nil, false, fmt.Errorf("httpx: read request body: %w", err)
+		return nil, false, -1, fmt.Errorf("httpx: read request body: %w", err)
 	}
 	if int64(len(data)) > maxBufferedBody {
 		req.Body = struct {
 			io.Reader
 			io.Closer
 		}{io.MultiReader(bytes.NewReader(data), orig), orig}
-		return nil, false, nil
+		return nil, false, -1, nil
 	}
 	_ = orig.Close()
-	req.ContentLength = int64(len(data))
+	if req.ContentLength > 0 && req.ContentLength != int64(len(data)) {
+		return nil, false, -1, fmt.Errorf("httpx: request ContentLength %d does not match body length %d", req.ContentLength, len(data))
+	}
+	inferred = int64(len(data))
+	if req.Trailer != nil {
+		inferred = -1
+	}
 	return func() (io.ReadCloser, error) {
 		return io.NopCloser(bytes.NewReader(data)), nil
-	}, true, nil
+	}, true, inferred, nil
 }
