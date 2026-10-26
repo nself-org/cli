@@ -91,6 +91,10 @@ func buildRegistry(v15 bool) (*cmdregistry.Registry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("command canon: %w", err)
 	}
+	// A disabled builtin family keeps its canon entries and data types, so the
+	// registry is built with every family mounted (D-0863).
+	undoFamilies := mountDisabledBuiltinFamilies(RootCmd)
+	defer undoFamilies()
 	undo := prepareTree(RootCmd, v15, false)
 	defer undo()
 	reg, err := cmdregistry.Build(RootCmd, c, jsonDataTypes, cmdregistry.BuildOptions{

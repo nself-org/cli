@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/build"
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/migration"
 	"github.com/nself-org/cli/internal/plugin"
@@ -70,12 +71,40 @@ func aiAutoInstallWanted(getenv func(string) string, pluginInstalled bool) bool 
 	return strings.EqualFold(v, "true") || v == "1"
 }
 
+// projectAIAutoInstallEnv returns the getenv aiAutoInstallWanted reads: the
+// process environment first (an operator, CI or --frozen that set
+// AI_AUTO_INSTALL wins), then the project's env cascade. The gate runs before
+// config.Load exports the cascade files, so without this read an
+// AI_AUTO_INSTALL=false that lives only in the project .env is ignored
+// (D-0614). Files are layered in cascade order, later over earlier; a file
+// that cannot be read or parsed is skipped (config.Load reports it later).
+func projectAIAutoInstallEnv(projectDir string) func(string) string {
+	var fromFiles string
+	env, _ := config.ResolveEnv(projectDir)
+	for _, name := range config.EnvCascadeOrder(env, config.LegacyOrderActive()) {
+		m, err := config.ReadEnvFile(filepath.Join(projectDir, name))
+		if err != nil {
+			continue
+		}
+		if v, ok := m["AI_AUTO_INSTALL"]; ok {
+			fromFiles = v
+		}
+	}
+	return func(key string) string {
+		if v := os.Getenv(key); v != "" || key != "AI_AUTO_INSTALL" {
+			return v
+		}
+		return fromFiles
+	}
+}
+
 // autoInstallAIIfNeeded runs `doctor --ai --yes --skip-pool` to get Ollama
 // running before the stack boots, when aiAutoInstallWanted says the user opted
 // in (AI_AUTO_INSTALL=true or the ai plugin installed) and Ollama is not
-// already healthy (T-05-05, D-0221).
-func autoInstallAIIfNeeded(ctx context.Context) {
-	if !aiAutoInstallWanted(os.Getenv, aiPluginInstalledFn()) {
+// already healthy (T-05-05, D-0221). projectDir supplies the project cascade
+// for AI_AUTO_INSTALL (D-0614).
+func autoInstallAIIfNeeded(ctx context.Context, projectDir string) {
+	if !aiAutoInstallWanted(projectAIAutoInstallEnv(projectDir), aiPluginInstalledFn()) {
 		return
 	}
 	if ollamaHealthyFn(ctx) {

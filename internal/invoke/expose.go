@@ -46,6 +46,11 @@ func Exposure(cmd *cmdregistry.Command, transport string, set map[string]bool) (
 	if cmd.JSON != canon.JSONEnvelope {
 		return false, "no JSON envelope"
 	}
+	// A set flag can override json to legacy or none (cmdregistry.EffectiveJSON):
+	// the command then would not answer with an envelope (D-0614).
+	if cmdregistry.EffectiveJSON(cmd, set) != canon.JSONEnvelope {
+		return false, "no JSON envelope with these flags"
+	}
 	side := cmdregistry.EffectiveSideEffect(cmd, set)
 	switch cmdregistry.EffectiveOutput(cmd, set) {
 	case canon.OutputDocument:

@@ -140,16 +140,6 @@ func locked(orig func(*cobra.Command, []string) error) func(*cobra.Command, []st
 	return oplockcmd.Wrap(func(c *cobra.Command) (*cmdregistry.Command, error) { return jsonEntryFor(c) }, orig)
 }
 
-// guardedPre checks before hooks can fetch, cache, or change directories.
-func guardedPre(orig func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
-	return func(cmd *cobra.Command, args []string) error {
-		if err := enterInvocation(cmd); err != nil {
-			return err
-		}
-		return orig(cmd, args)
-	}
-}
-
 // enterInvocation records the invocation and refuses unsupported --json. It is
 // idempotent: the pre-run hook and RunE both call it.
 func enterInvocation(cmd *cobra.Command) error {

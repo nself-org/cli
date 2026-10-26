@@ -7,6 +7,8 @@ package commands
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -69,7 +71,42 @@ func TestAutoInstallAIIfNeeded(t *testing.T) {
 			t.Setenv("NSELF_MASTER_SECRET", "fake-test-secret")
 			t.Setenv("AI_AUTO_INSTALL", tc.aiEnv) // "" behaves as unset
 			calls := stubAIInstall(t, tc.plugin, tc.ollamaUp)
-			autoInstallAIIfNeeded(context.Background())
+			autoInstallAIIfNeeded(context.Background(), t.TempDir())
+			if *calls != tc.wantInstall {
+				t.Fatalf("installer calls = %d, want %d", *calls, tc.wantInstall)
+			}
+		})
+	}
+}
+
+// TestAutoInstallAIIfNeededProjectEnv: AI_AUTO_INSTALL set only in the project
+// env cascade is honored by the gate, which runs before config.Load (D-0614).
+func TestAutoInstallAIIfNeededProjectEnv(t *testing.T) {
+	cases := []struct {
+		name        string
+		files       map[string]string
+		procEnv     string
+		plugin      bool
+		wantInstall int
+	}{
+		{"project .env opts out with plugin installed", map[string]string{".env": "AI_AUTO_INSTALL=false\n"}, "", true, 0},
+		{"project .env opts in", map[string]string{".env": "AI_AUTO_INSTALL=true\n"}, "", false, 1},
+		{"env layer overrides .env", map[string]string{".env": "AI_AUTO_INSTALL=true\n", ".env.dev": "AI_AUTO_INSTALL=false\n"}, "", false, 0},
+		{"process env wins over the project file", map[string]string{".env": "AI_AUTO_INSTALL=false\n"}, "true", false, 1},
+		{"no setting and plugin installed installs", map[string]string{".env": "PROJECT_NAME=x\n"}, "", true, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			for f, body := range tc.files {
+				if err := os.WriteFile(filepath.Join(dir, f), []byte(body), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			t.Setenv("ENV", "dev")
+			t.Setenv("AI_AUTO_INSTALL", tc.procEnv)
+			calls := stubAIInstall(t, tc.plugin, false)
+			autoInstallAIIfNeeded(context.Background(), dir)
 			if *calls != tc.wantInstall {
 				t.Fatalf("installer calls = %d, want %d", *calls, tc.wantInstall)
 			}

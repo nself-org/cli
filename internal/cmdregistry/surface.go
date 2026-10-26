@@ -94,6 +94,28 @@ func EffectiveSideEffect(cmd *Command, set map[string]bool) string {
 	return best
 }
 
+// EffectiveJSON is the command's JSON support after the flags in set: a set
+// flag with a json override replaces the command value, and several overrides
+// resolve none over legacy over envelope, the order the CLI itself uses when
+// it refuses --json (D-0614). A command whose JSON is not envelope can still
+// not become one through a flag.
+func EffectiveJSON(cmd *Command, set map[string]bool) string {
+	if cmd == nil {
+		return ""
+	}
+	rank := map[string]int{canon.JSONEnvelope: 0, canon.JSONLegacy: 1, canon.JSONNone: 2}
+	kind, best := cmd.JSON, -1
+	for _, flag := range cmd.Flags {
+		if !set[flag.Name] || flag.JSON == nil {
+			continue
+		}
+		if r := rank[*flag.JSON]; r > best {
+			best, kind = r, *flag.JSON
+		}
+	}
+	return kind
+}
+
 // EffectiveOutput selects stream when a set flag declares a stream override.
 func EffectiveOutput(cmd *Command, set map[string]bool) string {
 	if cmd == nil {

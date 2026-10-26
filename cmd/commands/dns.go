@@ -126,7 +126,10 @@ func runDNSSetup(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		if errors.Is(err, sysexec.ErrSkippedHeadless) {
 			ui.Warn("Headless mode (NSELF_HEADLESS=1 or CI=1): /etc/hosts not changed. Run `nself dns-setup` on a machine with admin rights, or set NSELF_HEADLESS=0.")
-			return nil
+			if jsonEnvelopeOn(cmd) {
+				setData(cmd, dataResult{OK: false}) // skipped: the envelope must not claim /etc/hosts was updated
+			}
+			return nil // start_config.go relies on skip-and-continue
 		}
 		if errors.Is(err, ssl.ErrSudoRequired) {
 			if runtime.GOOS == "darwin" {
