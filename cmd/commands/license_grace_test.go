@@ -215,6 +215,27 @@ func TestLicenseRefreshInteractiveLiftsPersistedRejection(t *testing.T) {
 	}
 }
 
+// An interactive refresh the server answers with a signed revocation must persist the
+// rejection: the cached token is untouched, so an offline refresh would otherwise republish it.
+func TestLicenseRefreshInteractiveRevocationBlocksOfflineRepublish(t *testing.T) {
+	f := newGraceFixture(t)
+	if _, _, err := runRefresh(t, f.project, nil); err != nil {
+		t.Fatal(err)
+	}
+	f.mode = "revoked"
+	if _, _, err := runRefresh(t, f.project, nil); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.Remove(entitlement.Path(f.project))
+	f.mode = "5xx"
+	if err := entitlement.Refresh(t.Context(), f.project); err == nil {
+		t.Fatal("an offline refresh must fail for a key the server revoked")
+	}
+	if data, err := os.ReadFile(entitlement.Path(f.project)); err == nil && len(data) > 0 { // a refusal leaves an empty file
+		t.Fatalf("offline refresh republished the token of a revoked key (%d bytes)", len(data))
+	}
+}
+
 func TestLicenseImportRewritesJWT(t *testing.T) {
 	f := newGraceFixture(t)
 	if _, _, err := runRefresh(t, f.project, nil); err != nil {
