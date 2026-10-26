@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -29,13 +30,19 @@ var (
 	bareNoticed  = map[string]bool{}
 )
 
+// inlineOptionRe is the `,key=` shape of an inline rclone option
+// ("myr,pass=x"). A relative value carrying it is a malformed remote, not a
+// directory, even when no ":" follows.
+var inlineOptionRe = regexp.MustCompile(`,[A-Za-z0-9_]+=`)
+
 // isBarePath reports whether rclone would have read uri as a local path: not
 // empty, not option-shaped, and no ":" before the first "/" (so no scheme, no
 // name:path remote and no :backend connection string). A value starting with
 // "/" is always a path (no rclone remote starts with "/"), commas included.
 // A value with padding whitespace or a control character, and a relative
 // value with an inline-credential shape (a "," before a ":", e.g.
-// "myr,pass=ab/cd:p"), are left to the parser, which refuses them without
+// "myr,pass=ab/cd:p", or a ",key=" option with no ":" at all, "myr,pass=ab/cd"; "./" and "../" always mean a path),
+// are left to the parser, which refuses them without
 // echoing them (D-0467).
 func isBarePath(uri string) bool {
 	if uri == "" || strings.HasPrefix(uri, "-") || uri != strings.TrimSpace(uri) {
@@ -48,6 +55,10 @@ func isBarePath(uri string) bool {
 		return true
 	}
 	if strings.Contains(uri, ":") && destinations.HasInlineCredentials(uri) {
+		return false
+	}
+	explicitPath := strings.HasPrefix(uri, "./") || strings.HasPrefix(uri, "../")
+	if !explicitPath && inlineOptionRe.MatchString(uri) {
 		return false
 	}
 	head, _, _ := strings.Cut(uri, "/")

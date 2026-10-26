@@ -47,6 +47,13 @@ var templateSource clonetemplate.Source = func(ctx context.Context) (clonetempla
 // coverage under any of them counts (multi-key support, as plugin install).
 func templateLicenseKeys() []string {
 	keys := license.CollectLicenseKeys()
+	// CollectLicenseKeys reads only the primary key file; key.2 to key.10 are
+	// stored keys too, and a covered second key must not read as E110.
+	for _, k := range license.GetAllStoredKeys() {
+		if k = strings.TrimSpace(k); k != "" && !slices.Contains(keys, k) {
+			keys = append(keys, k)
+		}
+	}
 	if k := strings.TrimSpace(license.CollectLicenseKey()); k != "" {
 		keys = append([]string{k}, slices.DeleteFunc(keys, func(x string) bool { return x == k })...)
 	}
