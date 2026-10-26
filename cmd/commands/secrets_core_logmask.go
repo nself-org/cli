@@ -25,15 +25,21 @@ import (
 	"github.com/spf13/pflag"
 )
 
+// restoredInvokeSecrets records the hand-off after its environment is consumed.
+// Mounted binaries cannot safely receive these values on their own argv.
+var restoredInvokeSecrets bool
+
 // restoreSecretArgv is the first step of Execute: a machine invoker hands the
 // secret values over the environment (D-0468); put them back into os.Args and
 // tell the command log to mask them (D-0473).
 func restoreSecretArgv() error {
+	restoredInvokeSecrets = false
 	restored, values, err := invoke.RestoreSecretArgv(os.Args)
 	if err != nil {
 		return err
 	}
 	os.Args = restored
+	restoredInvokeSecrets = len(values) > 0
 	cmdlog.MaskValues(values...)
 	return nil
 }

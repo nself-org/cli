@@ -2,6 +2,15 @@
 
 How the CLI decides a plugin download can be trusted, and how it decides a licence response and a cached licence can be trusted. Release signatures come first; licence verification starts at [What ping_api signs](#what-ping_api-signs).
 
+## Machine invocation
+
+Machine-invoked mounted plugin commands that restore secret arguments or flags
+are refused with E421 before the plugin binary starts. The CLI consumes
+`NSELF_INVOKE_SECRETS`, but the plugin protocol cannot pass those secrets onward
+without exposing them on the plugin process arguments. Calls without a secret
+hand-off continue to run. Free-form commands with no declared secret arguments
+or flags do not participate in the hand-off.
+
 ## Plugin release signatures
 
 Every plugin release is signed by the pipeline that builds it (free plugins: the `release-signing` environment of `nself-org/plugins`; licensed plugins: the owner release machine). The registry and catalog entry carries `release_signature: {key_id, alg: "ed25519", sig}`. The CLI checks it before it extracts a single file.

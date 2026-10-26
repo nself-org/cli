@@ -14,12 +14,11 @@ package invoke
 // grandchild inherits it, and ignores it unless InvokedByEnv is set. Any
 // mismatch (bad JSON, bad index, a value unused or used twice) is E421.
 // MaxSecretEnvBytes caps the bundle per OS (secretenv_limit_*.go).
-// Known boundary: a mounted plugin binary that the nself child proxies to
-// (internal/plugin/router.go) receives the restored secret values on its own
-// argv, where ps shows them. The plugin protocol has no hand-off for the bundle
-// yet; the gap is tracked in hq debt. A free-form plugin command (no declared
-// args or flags) is also not hidden: nothing marks its words secret, so
-// Request.Argv goes on the child argv as given (argv.go).
+// Mounted plugin commands refuse a hand-off containing restored secrets with
+// E421 before executing the binary: the plugin protocol cannot carry the bundle
+// without putting those values on the plugin argv. A free-form plugin command
+// (no declared args or flags) is also not hidden: nothing marks its words
+// secret, so Request.Argv goes on the child argv as given (argv.go).
 
 import (
 	"crypto/rand"

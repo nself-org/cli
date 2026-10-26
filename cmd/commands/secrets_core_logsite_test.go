@@ -58,7 +58,8 @@ func TestRootLogsNoSecretPositional(t *testing.T) {
 // restored value is on os.Args; a log line built from it must still hide it.
 func TestRestoreSecretArgvMasksRestoredValues(t *testing.T) {
 	saved := os.Args
-	t.Cleanup(func() { os.Args = saved })
+	savedSecrets := restoredInvokeSecrets
+	t.Cleanup(func() { os.Args, restoredInvokeSecrets = saved, savedSecrets })
 	ph := "nself-invoke-secret:abcd1234abcd1234:0"
 	os.Args = []string{"nself", "secrets", "set", "FAKEKEY", ph}
 	t.Setenv(invoke.InvokedByEnv, "mcp")
