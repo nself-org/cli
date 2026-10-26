@@ -36,6 +36,8 @@ rules:
   - {match: "schemas/**", layer: L0}
   # L0: shared kernel plus the P7-REG packages
   - {match: "internal/config/**", layer: L0}
+  - {match: "internal/composeenv/**", layer: L0}
+  - {match: "internal/credmask/**", layer: L0}
   - {match: "internal/errs/**", layer: L0}
   - {match: "internal/httptimeout/**", layer: L0}
   - {match: "internal/ui/**", layer: L0}

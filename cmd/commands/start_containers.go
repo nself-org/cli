@@ -220,6 +220,12 @@ func postgresAlreadyRunning(healthStatus string) bool {
 	return healthStatus == "healthy"
 }
 
+var dbInitCredentialHints = []string{ // .env.secrets overrides .env; build persists credentials there (D-0708)
+	"Check PostgreSQL logs: nself logs postgres",
+	"Verify POSTGRES_USER and POSTGRES_PASSWORD in the file that defines them; .env.secrets overrides .env, so edit it there once build has persisted a value",
+	"Try restarting: nself restart",
+}
+
 // initializeDatabasePhase runs database initialization (Step 5). Must run
 // BEFORE other services start: the auth service requires the auth schema to
 // exist in PostgreSQL, so schemas and extensions must be created while only
@@ -244,11 +250,7 @@ func initializeDatabasePhase(ctx context.Context, cfg *config.Config, opts start
 		// hyphenated project directory name) is a config problem, not a
 		// connectivity/credentials one — the generic hints below actively
 		// misdirect for this case, so name the real problem instead.
-		hints := []string{
-			"Check PostgreSQL logs: nself logs postgres",
-			"Verify POSTGRES_USER and POSTGRES_PASSWORD in .env",
-			"Try restarting: nself restart",
-		}
+		hints := dbInitCredentialHints
 		if errors.Is(err, database.ErrInvalidIdentifier) {
 			hints = []string{
 				"The name is not a valid SQL identifier: it must start with a letter or underscore and contain only letters, digits, and underscores",

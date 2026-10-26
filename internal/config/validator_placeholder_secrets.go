@@ -54,6 +54,11 @@ type placeholderSecretField struct {
 	value string
 }
 
+// secretFileHint tells where to fix a refused secret. .env.secrets loads after
+// .env and .env.<env> and wins, so editing .env does nothing for a key that
+// file already holds (build persists generated credentials there, D-0708).
+const secretFileHint = "in the file that defines it (.env.secrets overrides .env and .env.<env>)"
+
 // validateNoPlaceholderSecrets refuses to proceed when cfg.Env is not "dev"
 // and any critical secret is empty or matches a known placeholder value.
 // Dev is exempt: placeholders there are expected and must keep working
@@ -74,12 +79,12 @@ func validateNoPlaceholderSecrets(cfg *Config) error {
 	}
 	for _, f := range required {
 		if f.value == "" {
-			return fmt.Errorf("%s is empty in %s environment — set a unique value in .env: %w",
-				f.name, cfg.Env, errs.ErrPlaceholderSecret)
+			return fmt.Errorf("%s is empty in %s environment — set a unique value %s: %w",
+				f.name, cfg.Env, secretFileHint, errs.ErrPlaceholderSecret)
 		}
 		if isPlaceholderSecret(f.value) {
-			return fmt.Errorf("%s is a known placeholder value in %s environment — set a unique value in .env: %w",
-				f.name, cfg.Env, errs.ErrPlaceholderSecret)
+			return fmt.Errorf("%s is a known placeholder value in %s environment — set a unique value %s: %w",
+				f.name, cfg.Env, secretFileHint, errs.ErrPlaceholderSecret)
 		}
 	}
 
@@ -103,8 +108,8 @@ func validateNoPlaceholderSecrets(cfg *Config) error {
 	}
 	for _, f := range optional {
 		if isPlaceholderSecret(f.value) {
-			return fmt.Errorf("%s is a known placeholder value in %s environment — set a unique value in .env: %w",
-				f.name, cfg.Env, errs.ErrPlaceholderSecret)
+			return fmt.Errorf("%s is a known placeholder value in %s environment — set a unique value %s: %w",
+				f.name, cfg.Env, secretFileHint, errs.ErrPlaceholderSecret)
 		}
 	}
 

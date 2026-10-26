@@ -9,8 +9,6 @@ package commands
 
 import (
 	"context"
-	"slices"
-	"strings"
 
 	"github.com/nself-org/cli/internal/license"
 	"github.com/nself-org/cli/internal/plugin/catalog"
@@ -27,7 +25,7 @@ var templateSource clonetemplate.Source = func(ctx context.Context) (clonetempla
 		e, ok := res.Catalog.Lookup(slug)
 		return clonetemplate.PluginInfo{Slug: e.Slug, Tier: e.Tier, Bundles: e.Bundles}, ok
 	}
-	keys := templateLicenseKeys()
+	keys := license.ConfiguredKeys()
 	return find, func(ctx context.Context, bundle string) (bool, error) {
 		var firstErr error
 		for _, key := range keys {
@@ -41,21 +39,4 @@ var templateSource clonetemplate.Source = func(ctx context.Context) (clonetempla
 		}
 		return false, firstErr
 	}, nil
-}
-
-// templateLicenseKeys is every configured licence key, the owner key first, so
-// coverage under any of them counts (multi-key support, as plugin install).
-func templateLicenseKeys() []string {
-	keys := license.CollectLicenseKeys()
-	// CollectLicenseKeys reads only the primary key file; key.2 to key.10 are
-	// stored keys too, and a covered second key must not read as E110.
-	for _, k := range license.GetAllStoredKeys() {
-		if k = strings.TrimSpace(k); k != "" && !slices.Contains(keys, k) {
-			keys = append(keys, k)
-		}
-	}
-	if k := strings.TrimSpace(license.CollectLicenseKey()); k != "" {
-		keys = append([]string{k}, slices.DeleteFunc(keys, func(x string) bool { return x == k })...)
-	}
-	return keys
 }

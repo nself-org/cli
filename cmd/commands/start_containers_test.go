@@ -22,7 +22,10 @@ package commands
 //              value ("healthy", "unhealthy", "starting", "none",
 //              "not_found") plus an empty string for the zero value.
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestPostgresAlreadyRunning(t *testing.T) {
 	tests := []struct {
@@ -44,5 +47,13 @@ func TestPostgresAlreadyRunning(t *testing.T) {
 				t.Errorf("postgresAlreadyRunning(%q) = %v, want %v", tt.healthStatus, got, tt.want)
 			}
 		})
+	}
+}
+
+// D-0708: .env.secrets wins over .env, so the credential hint must name it.
+func TestDBInitCredentialHints_NameEnvSecrets(t *testing.T) {
+	joined := strings.Join(dbInitCredentialHints, "\n")
+	if !strings.Contains(joined, ".env.secrets") {
+		t.Errorf("hints must point at .env.secrets, got:\n%s", joined)
 	}
 }

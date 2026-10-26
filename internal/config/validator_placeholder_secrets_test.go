@@ -185,3 +185,17 @@ func TestValidateNoPlaceholderSecretsWiredIntoRunAll(t *testing.T) {
 		t.Errorf("runAll error %q does not name HASURA_GRAPHQL_ADMIN_SECRET", err.Error())
 	}
 }
+
+// D-0708: a persisted .env.secrets value beats .env, so the refusal must not
+// send the user to .env alone.
+func TestValidateNoPlaceholderSecrets_HintNamesEnvSecrets(t *testing.T) {
+	cfg := validPlaceholderTestConfig("prod")
+	cfg.Postgres.Password = ""
+	err := validateNoPlaceholderSecrets(cfg)
+	if err == nil {
+		t.Fatal("expected an error for an empty POSTGRES_PASSWORD")
+	}
+	if !strings.Contains(err.Error(), ".env.secrets") || strings.Contains(err.Error(), "value in .env:") {
+		t.Errorf("hint must name .env.secrets, not only .env: %v", err)
+	}
+}

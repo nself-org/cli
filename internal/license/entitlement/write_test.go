@@ -103,6 +103,11 @@ func TestEntitlementRefreshWrites(t *testing.T) {
 
 func TestBuildE125UnderV15(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
+		// No licence key from the host: a stored or env key would renew a real JWT online.
+		t.Setenv("HOME", t.TempDir())
+		t.Setenv("USERPROFILE", t.TempDir())
+		t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "")
+		t.Setenv("NSELF_PLUGIN_LICENSE_KEY_OWNER", "")
 		t.Setenv("LICENSE_CACHE_PATH", filepath.Join(t.TempDir(), "missing.json"))
 		dir, plugins := t.TempDir(), t.TempDir()
 		installed := filepath.Join(plugins, "fixture-licensed")

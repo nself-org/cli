@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nself-org/cli/internal/composeenv"
 	"github.com/nself-org/cli/internal/config"
 )
 
@@ -84,7 +85,7 @@ func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects, s
 		if *c.dst == "" || onDisk[c.key] || os.Getenv(c.key) != "" {
 			continue
 		}
-		if live, ok := adoptLiveCredential(sink, workdir, c.key); ok {
+		if live, ok := adoptLiveCredential(sink, workdir, composeenv.EnvName(cfg.Env), c.key); ok {
 			*c.dst = live
 			if !fx.Planning() {
 				slog.Warn("key is in no env file; reusing the value the running stack was built with. Pin it by adding the key to .env.secrets (or your env file)", "key", c.key)

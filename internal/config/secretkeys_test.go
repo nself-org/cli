@@ -141,6 +141,12 @@ func TestMaskURLCredentialsLinear(t *testing.T) {
 			t.Errorf("unit %q: 4 KB %v, 40 KB %v: not linear", unit, small, large)
 		}
 	}
+	for _, unit := range []string{"@a(", ":@a(", "a:b@c(", "password="} {
+		small, large := schemelessTimeOf(unit, 4000), schemelessTimeOf(unit, 40000)
+		if large > 30*small+250*time.Millisecond {
+			t.Errorf("schemeless unit %q: 4 KB %v, 40 KB %v: not linear", unit, small, large)
+		}
+	}
 	nested := "https://h/?r=" + strings.Repeat("x?a%3D", 20) + "%3Ftoken%3DFAKE36"
 	if got := MaskURLCredentials(nested); strings.Contains(got, "FAKE36") {
 		t.Errorf("over-nested value leaks: %q", got)
@@ -149,7 +155,8 @@ func TestMaskURLCredentialsLinear(t *testing.T) {
 
 // TestMaskURLCredentialsNoPanic feeds random strings over the separator and
 // escape alphabet; the scanner indexes by hand, so it must never panic, and a
-// value without :// must come back unchanged.
+// value without :// or an `@`/`=` (the schemeless rules, D-0743) must come
+// back unchanged.
 func TestMaskURLCredentialsNoPanic(t *testing.T) {
 	const alphabet = "?&;#=%3Dd2F5aFt@:/ x"
 	seed := uint32(7)
@@ -161,8 +168,15 @@ func TestMaskURLCredentialsNoPanic(t *testing.T) {
 		}
 		seed = seed*1664525 + 1013904223
 		_ = MaskURLCredentials(string(b))
-		if got := MaskURLCredentials(string(b[8:])); !strings.Contains(string(b[8:]), "://") && got != string(b[8:]) {
+		if got := MaskURLCredentials(string(b[8:])); !strings.ContainsAny(string(b[8:]), "@=") && got != string(b[8:]) {
 			t.Fatalf("schemeless %q changed to %q", b[8:], got)
 		}
 	}
+}
+
+func schemelessTimeOf(unit string, size int) time.Duration {
+	v := strings.Repeat(unit, size/len(unit))
+	start := time.Now()
+	_ = MaskURLCredentials(v)
+	return time.Since(start)
 }
