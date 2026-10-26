@@ -254,6 +254,25 @@ func TestTemplateLicenseKeysOwnerFirst(t *testing.T) {
 	}
 }
 
+// TestTemplateLicenseKeysStoredNumbered: stored key.2 to key.10 files count as
+// configured keys, after the primary key and each once (D-1170).
+func TestTemplateLicenseKeysStoredNumbered(t *testing.T) {
+	compattest.Set(t, true)
+	isolateSource(t, func(http.ResponseWriter, *http.Request) {})
+	dir := filepath.Join(os.Getenv("HOME"), ".nself", "license")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for name, key := range map[string]string{"key": "fake-key-one", "key.2": "fake-key-two\n", "key.10": "fake-key-ten", "key.3": "fake-key-one"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(key), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := strings.Join(templateLicenseKeys(), ","); got != "fake-key-one,fake-key-two,fake-key-ten" {
+		t.Errorf("keys = %q, want the primary then key.2 and key.10, each once", got)
+	}
+}
+
 // TestTemplateLicenseKeysOwnerKeyTrimmed: a trailing newline on the owner key
 // must not make the licence server read as unreachable.
 func TestTemplateLicenseKeysOwnerKeyTrimmed(t *testing.T) {
