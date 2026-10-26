@@ -82,7 +82,16 @@ declare -A STEP_BASELINE=(
   [7]=15    # doctor --quick
   [8]=5     # license set (must precede the licensed plugin installs below)
   [9]=30    # plugin install ai
-  [10]=30   # plugin install claw
+  # claw installs six licensed dependencies (notify, google, mux, cron, voice,
+  # browser) and then itself: seven downloads from ping.nself.org. Per download
+  # the latency is bimodal: ~1s when ping is warm (step 10 took 4-6s on
+  # 2026-10-10 and 2026-10-11) and ~20s when it is slow (step 9, a single
+  # download, took 23-26s). Slow mode makes step 10 take 108s, 110s and 128s
+  # (runs 38202476017, 38087589999, 39192880837), so the old baseline of 30
+  # (fail at 90s) failed on ping latency with every container healthy. 60 ->
+  # warn 90s, fail 180s: room for seven slow downloads, and the warn line is the
+  # signal that ping.nself.org is slow (D-0307).
+  [10]=60   # plugin install claw (+ 6 licensed dependencies)
   [11]=10   # admin start
   [12]=5    # curl health
   # Step 13 is not a bare probe: it runs `nself build` + `nself start`, which
