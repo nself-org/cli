@@ -57,9 +57,20 @@ func extractTag(t *testing.T, root string) string {
 	out, err := archive()
 	if err != nil {
 		// A shallow CI checkout carries no tags: fetch just this one, never skip.
-		fetch := exec.Command("git", "-C", root, "fetch", "-q", "--depth=1", "--no-tags", "origin", "refs/tags/"+readerTag+":refs/tags/"+readerTag)
-		if ferr := fetch.Run(); ferr != nil {
-			t.Fatalf("tag %s is not available and fetching it failed (run `git fetch --tags origin`): %v", readerTag, ferr)
+		// A gate host without an SSH agent cannot use the origin URL, so a
+		// failed fetch retries the public HTTPS URL before failing.
+		spec := "refs/tags/" + readerTag + ":refs/tags/" + readerTag
+		var ferr error
+		var detail []byte
+		for _, remote := range []string{"origin", "https://github.com/nself-org/cli.git"} {
+			fetch := exec.Command("git", "-C", root, "fetch", "-q", "--depth=1", "--no-tags", remote, spec)
+			fetch.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+			if detail, ferr = fetch.CombinedOutput(); ferr == nil {
+				break
+			}
+		}
+		if ferr != nil {
+			t.Fatalf("tag %s is not available and fetching it failed (run `git fetch --tags origin`): %v: %s", readerTag, ferr, detail)
 		}
 		if out, err = archive(); err != nil {
 			t.Fatalf("git archive %s failed: %v", readerTag, err)
