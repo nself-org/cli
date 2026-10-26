@@ -42,6 +42,11 @@ func absPluginKey(key, pluginDir string) bool {
 	if !strings.HasPrefix(key, AbsPrefix) {
 		return false
 	}
-	abs := string(filepath.Separator) + filepath.FromSlash(strings.TrimPrefix(key, AbsPrefix))
+	// The key drops only the leading "/" of the path (overlay.display), so a
+	// Windows drive path ("C:/x") is already absolute and needs no separator.
+	abs := filepath.FromSlash(strings.TrimPrefix(key, AbsPrefix))
+	if !filepath.IsAbs(abs) {
+		abs = string(filepath.Separator) + abs
+	}
 	return strings.HasPrefix(displayPath(pluginDir, abs), PluginsPrefix)
 }
