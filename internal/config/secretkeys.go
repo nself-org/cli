@@ -5,8 +5,11 @@ package config
 // helpers, internal/env and the machine audit log (P7-SURF-25, P7-SURF-12).
 // Inputs: a config key or flag name; a config value.
 // Outputs: true when the name contains SECRET, PASS (which covers PASSWORD and
-// AUTH_SMTP_PASS), KEY, TOKEN, CREDENTIAL, WEBHOOK, PRIVATE, DSN, SALT or BASICAUTH
-// (case-insensitive); a value with its URL credentials masked.
+// AUTH_SMTP_PASS), KEY, TOKEN, CREDENTIAL, WEBHOOK, PRIVATE, DSN, SALT or
+// BASICAUTH, or is AUTH or ends in _AUTH (BASIC_AUTH=user:pass, REDISCLI_AUTH)
+// (case-insensitive). AUTH and JWT are not parts on purpose: AUTH_*,
+// HASURA_AUTH_URL, RATE_LIMIT_AUTH_RPS and AUTH_JWT_* config keys must stay
+// visible; a value with its URL credentials masked.
 // Constraints: over-matching (for example PUBLIC_KEY or BYPASS) is the safe
 // side: a match only redacts. internal/env must not keep a second list.
 
@@ -22,6 +25,9 @@ var secretKeyParts = []string{"SECRET", "PASS", "KEY", "TOKEN", "CREDENTIAL", "W
 // IsSecretKey reports whether key names a secret value.
 func IsSecretKey(key string) bool {
 	upper := strings.ToUpper(key)
+	if upper == "AUTH" || strings.HasSuffix(upper, "_AUTH") {
+		return true
+	}
 	for _, part := range secretKeyParts {
 		if strings.Contains(upper, part) {
 			return true
@@ -109,9 +115,16 @@ const maxNestedChecks = 8
 // credential value runs to the next `&` or whitespace (a credential holding
 // a raw `&` or space keeps the part after it); a value masked whole for an
 // encoded credential runs to the next `&`, `;`, `#` or whitespace. Time is
-// linear in len(v). A value without `://` is returned unchanged. The rule
-// over-masks a path that holds an `@`; that is the safe side.
+// linear in len(v). A value without `://` gets the schemeless rules
+// (maskSchemeless: Go DSN user:pass@tcp(, a bare user:pass@host value,
+// password=/pwd= keyword pairs); plain user@host and emails stay as written.
+// The rule over-masks a path that holds an `@`; that is the safe side.
 func MaskURLCredentials(v string) string {
+	return maskSchemeless(maskURLScheme(v))
+}
+
+// maskURLScheme applies the `scheme://` rules of MaskURLCredentials.
+func maskURLScheme(v string) string {
 	i := strings.Index(v, "://")
 	if i < 0 {
 		return v
