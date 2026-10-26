@@ -214,6 +214,13 @@ jobs:
           bash scripts/ci/panic-ratchet_test.sh
           bash scripts/ci/panic-ratchet.sh
 
+      # D-1482: scripts/golden-path.sh writes its report from an EXIT trap, so a
+      # run that aborts outside a step's own failure path still names the step.
+      # Stubbed nself/docker, offline.
+      - name: Golden path report controls
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/ci/golden-path_test.sh
+
       # P7-REG-10: the machine-contract gate. Linux legs only (Windows has no
       # POSIX shell here and macOS legs add nothing the Linux proof lacks).
       # jq and make ship on the GitHub-hosted ubuntu images.
