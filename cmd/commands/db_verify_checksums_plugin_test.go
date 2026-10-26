@@ -6,6 +6,7 @@ package commands
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/nself-org/cli/internal/errs"
@@ -13,7 +14,11 @@ import (
 )
 
 func TestDBVerifyChecksumsRefusesNonPluginNames(t *testing.T) {
-	t.Chdir(t.TempDir()) // no project here: the guard must fire before the config load
+	// The config loads fine from an empty dir and database.VerifyChecksums
+	// re-checks the name (wrapped as "verify checksums: ..."), so E401 alone
+	// does not prove the guard. Only the guard returns the error unwrapped,
+	// before the config load and the database layer are reached.
+	t.Chdir(t.TempDir())
 	for _, bad := range []string{"notify.prev", "bin", "common", "status", "../x", "a/b"} {
 		cmd := &cobra.Command{Use: "verify-checksums"}
 		cmd.Flags().String("plugin", "", "")
@@ -24,6 +29,9 @@ func TestDBVerifyChecksumsRefusesNonPluginNames(t *testing.T) {
 		err := runDBVerifyChecksums(cmd, nil)
 		if d := errs.Describe(err); d == nil || d.Code != "E401" {
 			t.Errorf("--plugin %q: err = %v, want E401", bad, err)
+		}
+		if err != nil && strings.Contains(err.Error(), "verify checksums") {
+			t.Errorf("--plugin %q: err = %v came from the database layer, want the guard's error", bad, err)
 		}
 	}
 }
