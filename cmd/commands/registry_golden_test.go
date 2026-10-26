@@ -33,12 +33,14 @@ const committedRegistry = "../../.github/command-registry.json"
 // compares the document without it.
 var generatedLine = regexp.MustCompile(`(?m)\A\{\n  "_generated": "[^\n]*",\n`)
 
-// goldenChild marks the child process that runs the golden check. Other tests
-// in this package ResetFlags and redeclare flags on the real commands (for
-// example env_target_test.go on `env target add`), so after them the live
-// tree no longer matches what the shipped binary registers. The golden
-// therefore runs the check in a fresh copy of this test binary, whose tree is
-// exactly what init() registered, independent of test order.
+// goldenChild marks the child process that runs the golden check. The env
+// target tests no longer touch the shared tree (D-0237), but others still
+// leave it changed: with TestCanonAccountResolution in the run, `admin` ends
+// up in group "account" where the committed v1.5 file has "plugins". The
+// golden therefore runs the check in a fresh copy of this test binary, whose
+// tree is exactly what init() registered, independent of test order. Drop the
+// wrapper only after that leak is fixed and the golden passes in-process in a
+// full package run.
 const goldenChild = "NSELF_REGISTRY_GOLDEN_CHILD"
 
 // goldenSentinel is printed by the child only after the byte comparison

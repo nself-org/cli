@@ -128,6 +128,21 @@ func (SystemClock) Sleep(ctx context.Context, d time.Duration) error {
 // a source that leaves it empty still gets the two-poll check.
 type StateSource func(ctx context.Context) ([]ContainerState, error)
 
+// GateLimit is how long HealthGate waits for spec: RunningTimeout for a plain
+// service, HealthyTimeout for a one-shot, and for a healthcheck service the
+// larger of HealthyTimeout and its declared HealthTimeout. Callers that print
+// the wait (the deploy progress line) use it so they never disagree with the gate.
+func GateLimit(spec ServiceSpec) time.Duration {
+	limit := RunningTimeout
+	if spec.HasHealthcheck || spec.OneShot() {
+		limit = HealthyTimeout
+	}
+	if spec.HasHealthcheck {
+		limit = max(limit, spec.HealthTimeout)
+	}
+	return limit
+}
+
 // HealthGate waits until spec's containers are ready for their kind (D17).
 // Any kind fails at once on a container that exited non-zero or is
 // restarting. Healthcheck declared -> every container healthy within
@@ -144,13 +159,7 @@ func HealthGate(ctx context.Context, spec ServiceSpec, states StateSource, clock
 	if clock == nil {
 		clock = SystemClock{}
 	}
-	limit := RunningTimeout
-	if spec.HasHealthcheck || spec.OneShot() {
-		limit = HealthyTimeout
-	}
-	if spec.HasHealthcheck {
-		limit = max(limit, spec.HealthTimeout)
-	}
+	limit := GateLimit(spec)
 	deadline := clock.Now().Add(limit)
 	var prev map[string]string
 	for {

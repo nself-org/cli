@@ -153,14 +153,20 @@ func TestNextStep(t *testing.T) {
 		t.Run(tc.stage+"_"+tc.mode, func(t *testing.T) {
 			nextStepFixture(t, tc.stage)
 			t.Setenv("NEXTSTEP_DOCKER", tc.mode)
-			start := time.Now()
 			ctx, cancel := context.WithTimeout(context.Background(), nextStepTimeout)
 			defer cancel()
 			if got := nextStep(ctx); got != "Next: nself "+tc.want {
 				t.Errorf("got %q, want %q", got, tc.want)
 			}
-			if elapsed := time.Since(start); elapsed > 4*time.Second {
-				t.Errorf("detection took %v", elapsed)
+			// Assert the deadline path, not a wall-clock bound: a shared
+			// Windows runner took 9.5s here (D-0492). The slow stub must run
+			// into the deadline; every other case must finish inside it.
+			wantErr := error(nil)
+			if tc.mode == "slow" {
+				wantErr = context.DeadlineExceeded
+			}
+			if err := ctx.Err(); err != wantErr {
+				t.Errorf("ctx.Err() = %v, want %v", err, wantErr)
 			}
 		})
 	}

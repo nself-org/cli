@@ -20,7 +20,7 @@ import (
 
 // rollingFakeDocker answers the four docker compose calls the restart makes.
 // Fixtures live next to the log: services (config --services), config.json,
-// ps.<svc>.json, psfail (any `ps` exits 1), upfail (a service name whose `up` exits 1) and startfixed
+// ps.<svc>.json, psfail (any `ps` exits 1), upfail (a service name whose `up` exits 1), uphang (which drops an uphanging marker once the hung up has started), up130 and startfixed
 // (a constant `docker inspect` StartedAt, i.e. the container never restarted).
 const rollingFakeDocker = `#!/bin/sh
 D="$FAKE_DOCKER_DIR"
@@ -38,6 +38,9 @@ config)
 up)
   for last; do :; done
   if [ -f "$D/upfail" ] && [ "$(cat "$D/upfail")" = "$last" ]; then echo "boom" >&2; exit 1; fi
+  # uphang names a service whose up never returns; up130 one whose up exits like an interrupted docker.
+  if [ -f "$D/uphang" ] && [ "$(cat "$D/uphang")" = "$last" ]; then : > "$D/uphanging"; exec sleep 60; fi
+  if [ -f "$D/up130" ] && [ "$(cat "$D/up130")" = "$last" ]; then exit 130; fi
   echo "$last" >> "$D/ups" ;;
 ps)
   if [ -f "$D/psfail" ]; then echo "Cannot connect to the Docker daemon" >&2; exit 1; fi

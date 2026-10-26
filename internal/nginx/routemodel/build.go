@@ -217,6 +217,13 @@ func validateTarget(target string) error {
 			return fmt.Errorf("target contains forbidden character %q", c)
 		}
 	}
+	// The generated conf is `set $up_x <target>; proxy_pass $up_x;`, and nginx
+	// expands every $name in a set value. A target like http://h/$uri would
+	// proxy to the request URI while the model recorded the literal "/$uri"
+	// (D-1139), so routes.json would disagree with the rendered conf.
+	if strings.Contains(target, "$") {
+		return fmt.Errorf("target contains '$': nginx would expand it as a variable, which the route model cannot represent (write %%24 for a literal dollar sign)")
+	}
 	// nginx cannot use spaces, control or non-ASCII bytes in a proxy_pass
 	// target, and the model cannot represent them.
 	for i := 0; i < len(target); i++ {
