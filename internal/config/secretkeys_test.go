@@ -174,9 +174,17 @@ func TestMaskURLCredentialsNoPanic(t *testing.T) {
 	}
 }
 
+// schemelessTimeOf is the fastest of five runs, so one scheduler or GC stall on
+// a loaded runner does not read as super-linear growth.
 func schemelessTimeOf(unit string, size int) time.Duration {
 	v := strings.Repeat(unit, size/len(unit))
-	start := time.Now()
-	_ = MaskURLCredentials(v)
-	return time.Since(start)
+	best := time.Duration(1<<63 - 1)
+	for i := 0; i < 5; i++ {
+		start := time.Now()
+		_ = MaskURLCredentials(v)
+		if d := time.Since(start); d < best {
+			best = d
+		}
+	}
+	return best
 }
