@@ -70,7 +70,7 @@ func runMigrateCheck(ctx context.Context, pingURL string, doc *licenseMigrateDat
 		// Check migration status from the server.
 		status, err := fetchMigrationStatus(ctx, key, pingURL)
 		if err != nil {
-			doc.Keys = append(doc.Keys, licenseMigrateKey{Key: masked, Product: pp.DisplayName, Remaining: "?", Status: licenseScrub(fmt.Sprintf("Error: %v", err), migrateKeyFlag)})
+		doc.Keys = append(doc.Keys, licenseMigrateKey{Key: masked, Product: pp.DisplayName, Remaining: "?", Status: licenseScrub(fmt.Sprintf("Error: %v", err), migrateKeyFlag)})
 			tbl.AddRow(masked, pp.DisplayName, "?", licenseScrub(fmt.Sprintf("Error: %v", err), key))
 			continue
 		}

@@ -187,6 +187,21 @@ func runStopFlow(cmd *cobra.Command, args []string) error {
 	if err := compose.ComposeDown(ctx, workdir, downOpts); err != nil {
 		return fmt.Errorf("compose down failed: %w", err)
 	}
+	// D-0802: when --volumes is set, also remove postgres volumes that
+	// db image switch kept. They carry the org.nself.image-switch label
+	// and are absent from the current compose file, so compose down
+	// --volumes does not remove them.
+	if volumes {
+		if switched, lvErr := docker.VolumeListByLabel(ctx, "org.nself.image-switch"); lvErr == nil {
+			for _, v := range switched {
+				if rmErr := docker.VolumeRemove(ctx, v); rmErr != nil {
+					fmt.Fprintf(os.Stderr, "Warning: removing image-switch volume %s failed: %v\n", v, rmErr)
+				} else if verbose {
+					fmt.Printf("  Removed image-switch volume %s.\n", v)
+				}
+			}
+		}
+	}
 
 	// Summary. When psErr != nil we could not determine the running container
 	// count beforehand, so report "stopped" generically. When psErr == nil but

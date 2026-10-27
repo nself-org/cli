@@ -118,6 +118,22 @@ func runReset(cmd *cobra.Command, args []string) error {
 			fmt.Println("  Containers stopped and volumes removed.")
 			volumesRemoved = true
 		}
+		// D-0802: compose down --volumes only removes volumes named in the
+		// current compose file. After db image switch, the old postgres
+		// volume (labelled org.nself.image-switch) survives because the new
+		// compose file no longer references it. Remove any such leftover
+		// volumes here so reset actually wipes all project data.
+		if volumesRemoved {
+			if switched, lvErr := docker.VolumeListByLabel(cmd.Context(), "org.nself.image-switch"); lvErr == nil {
+				for _, v := range switched {
+					if rmErr := docker.VolumeRemove(cmd.Context(), v); rmErr != nil {
+						fmt.Fprintf(os.Stderr, "Warning: removing image-switch volume %s failed: %v\n", v, rmErr)
+					} else if !buildEnvelopeWanted(cmd) {
+						fmt.Printf("  Removed image-switch volume %s.\n", v)
+					}
+				}
+			}
+		}
 	} else {
 		fmt.Println("No docker-compose.yml found — skipping container shutdown.")
 	}
