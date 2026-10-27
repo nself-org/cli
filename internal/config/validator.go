@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
 )
 
@@ -172,6 +173,13 @@ func validatePasswords(cfg *Config, checkPatterns bool) error {
 		// GRAFANA_ADMIN_PASSWORD — only if Monitoring enabled, min 16
 		if cfg.Monitoring.Enabled {
 			if err := checkPassword(cfg.Monitoring.GrafanaAdminPassword, "GRAFANA_ADMIN_PASSWORD", 16, checkPatterns); err != nil {
+				return err
+			}
+		}
+
+		// S3_SECRET_KEY — only if object storage enabled in v1.5+, min 16
+		if compat.V15() && getEnvBool("OBJECT_STORAGE_ENABLED", false) {
+			if err := checkPassword(cfg.Minio.S3SecretKey, "S3_SECRET_KEY", 16, checkPatterns); err != nil {
 				return err
 			}
 		}
