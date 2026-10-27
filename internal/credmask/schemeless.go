@@ -30,6 +30,17 @@ var keywordPassword = regexp.MustCompile(`(?i)((?:^|[^A-Za-z0-9_])(?:ssl)?(?:pas
 // (already handled by the URL rules) stay readable.
 var urlKeywordPassword = regexp.MustCompile(`(?i)((?:^|[^A-Za-z0-9_])(?:ssl)?(?:password|passwd|pwd)[ \t]*=[ \t]*)('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|['"].*|[^\s'"&;#][^\s&;#]*)`)
 
+// stepHook, when a test sets it, receives the number of bytes each scan in
+// maskDSNUserinfo and maskKeywordValues reads, so a test can assert linear work
+// on any platform without timing. It is nil in production.
+var stepHook func(n int)
+
+func steps(n int) {
+	if stepHook != nil {
+		stepHook(n)
+	}
+}
+
 // Schemeless masks the credentials config.MaskURLCredentials' `://` rule cannot
 // see.
 func Schemeless(v string) string {
@@ -65,6 +76,7 @@ func maskDSNUserinfo(v string) string {
 	colonAt, schemeAt := -1, -1
 	for _, loc := range locs {
 		at := loc[0]
+		steps(max(at-pos, 0))
 		for ; pos < at; pos++ {
 			switch c := v[pos]; c {
 			case ' ', '\t', '\r', '\n', '"', '\'':
@@ -88,6 +100,7 @@ func maskDSNUserinfo(v string) string {
 		}
 		token := v[start:at]
 		colon := colonAt - start
+		steps(colon)
 		keep := token[:strings.LastIndexByte(token[:colon], '=')+1]
 		b.WriteString(v[done:start])
 		b.WriteString(keep)
@@ -110,6 +123,7 @@ var alreadyMasked = map[string]bool{"****": true, "[REDACTED]": true}
 // a NUL byte, which no real credential does.
 func maskKeywordValues(kw *regexp.Regexp, v string) string {
 	return kw.ReplaceAllStringFunc(v, func(m string) string {
+		steps(len(m))
 		sub := kw.FindStringSubmatch(m)
 		val := strings.Trim(sub[2], `'"`)
 		if alreadyMasked[val] || strings.Contains(val, "\x00") {
