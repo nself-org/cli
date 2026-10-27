@@ -131,6 +131,7 @@ internal/plugin/scaffold 64  # measured 66.3 2026-10-05
 internal/plugin/verify 85  # measured 87.2 2026-10-05
 internal/plugin/verify/signature 95  # measured 99.1 2026-10-13 (P7-PLUG-23)
 internal/plugin/verify/signature/signaturetest 0  # measured 0.0 2026-10-13; test-only key-table swap helper, exercised from other packages' tests (P7-PLUG-23)
+internal/pluginname 85  # measured 90.0 2026-10-26 (D-0602)
 internal/portable 85  # measured 87.5 2026-10-05
 internal/ports 9  # measured 11.5 2026-10-05
 internal/postgres 49  # measured 51.4 2026-10-05
