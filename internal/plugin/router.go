@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
@@ -50,37 +49,12 @@ func pluginBinDir() (string, error) {
 }
 
 // verifyPluginPathOwnership checks that every component of path up to and
-// including root is owned by the current uid and has no group/world write.
+// including root is safe for plugin execution. On Unix this means owned by
+// the current uid and not writable by anyone else (group-write is allowed
+// only when the group is the user's own private group, matching umask 002).
 // A missing or unstat-able component fails closed. Windows skips the check.
 func verifyPluginPathOwnership(path, root string) error {
-	if runtime.GOOS == "windows" {
-		return nil
-	}
-	uid := uint32(syscall.Getuid())
-	cur := path
-	for {
-		info, err := os.Lstat(cur)
-		if err != nil {
-			return errs.Newf("E406", "plugin binary path component %q is not accessible", cur)
-		}
-		if stat, ok := info.Sys().(*syscall.Stat_t); ok {
-			if stat.Uid != uid {
-				return errs.Newf("E406", "plugin binary path component %q is owned by uid %d, not %d", cur, stat.Uid, uid)
-			}
-		}
-		if info.Mode().Perm()&0022 != 0 {
-			return errs.Newf("E406", "plugin binary path component %q is group- or world-writable", cur)
-		}
-		if cur == root || cur == "/" || cur == "." {
-			break
-		}
-		parent := filepath.Dir(cur)
-		if parent == cur {
-			break
-		}
-		cur = parent
-	}
-	return nil
+	return verifyPluginPathOwnershipPlatform(path, root)
 }
 
 // ProxyCommand checks if a plugin binary exists and executes it.
@@ -108,6 +82,7 @@ func ProxyCommandWithHint(cmdName string, args []string, installHint string) err
 		return err
 	}
 	pluginBinary := fmt.Sprintf("nself-%s", cmdName)
+
 	// S-002: Only look in the plugin bin directory, never the full PATH.
 	binDir, err := pluginBinDir()
 	if err != nil {
@@ -117,6 +92,7 @@ func ProxyCommandWithHint(cmdName string, args []string, installHint string) err
 	if runtime.GOOS == "windows" {
 		candidate += ".exe"
 	}
+
 	if _, err := os.Stat(candidate); err != nil {
 		// CLI-R19: an unknown command is the moment a user most needs to be told
 		// how to get it, so the actionable message — `nself install X` — goes in
@@ -141,11 +117,12 @@ func ProxyCommandWithHint(cmdName string, args []string, installHint string) err
 			}
 		}
 		if installHint == "" {
-			return fmt.Errorf("unknown command %q, and no plugin named %q is installed", cmdName, cmdName)
-		}
-		return fmt.Errorf("unknown command %q, and no plugin named %q is installed.\nIf this is an nSelf plugin, install it with:\n%s",
-			cmdName, cmdName, installHint)
+		return fmt.Errorf("unknown command %q, and no plugin named %q is installed", cmdName, cmdName)
 	}
+ return fmt.Errorf("unknown command %q, and no plugin named %q is installed.\n\nIf this is an nSelf plugin, install it with:\n  %s",
+		cmdName, cmdName, installHint)
+}
+
 	return ProxyBinaryAt(candidate, filepath.Dir(binDir), cmdName, args)
 }
 
@@ -237,6 +214,7 @@ func runPluginCommand(cmd *exec.Cmd) error {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+
 	// Run process
 	if err := cmd.Run(); err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok {
@@ -244,6 +222,7 @@ func runPluginCommand(cmd *exec.Cmd) error {
 		}
 		return fmt.Errorf("failed to execute plugin: %w", err)
 	}
+
 	return nil
 }
 
