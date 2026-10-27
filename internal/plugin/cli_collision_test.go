@@ -87,7 +87,11 @@ func TestCheckCLIBinaries_ReinstallAndOrphan(t *testing.T) {
 		t.Fatalf("reinstall refused: %v", err)
 	}
 
-	if err := os.MkdirAll(PluginBinDir(), 0o755); err != nil {
+	binDir, err := PluginBinDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(PublishedBinaryPath("nself-orphan"), []byte("old"), 0o755); err != nil {

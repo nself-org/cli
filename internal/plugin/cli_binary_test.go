@@ -123,7 +123,10 @@ func TestUnlinkCLIBinary_RemovesPublishedCommand(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 
-	binDir := PluginBinDir()
+	binDir, err := PluginBinDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}
@@ -168,7 +171,10 @@ func TestIsCommandInstalled_TracksThePublishedBinary(t *testing.T) {
 		t.Fatal("reported installed before anything was published")
 	}
 
-	binDir := PluginBinDir()
+	binDir, err := PluginBinDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}

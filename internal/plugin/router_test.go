@@ -82,3 +82,19 @@ func TestRouterKeepsExistingHint(t *testing.T) {
 		t.Fatalf("no cache should keep the generic hint: %v", err)
 	}
 }
+
+// TestPluginBinDirRefusesWithoutHOME proves D-1396: when HOME is unset the
+// router must not fall back to a shared directory like /tmp/.nself/plugins/bin,
+// because any local user could plant a binary there that cron or systemd would
+// execute with the caller's secrets.
+func TestPluginBinDirRefusesWithoutHOME(t *testing.T) {
+	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", "")
+	_, err := pluginBinDir()
+	if err == nil {
+		t.Fatal("pluginBinDir succeeded without HOME; expected refusal")
+	}
+	if !strings.Contains(err.Error(), "HOME is not set") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

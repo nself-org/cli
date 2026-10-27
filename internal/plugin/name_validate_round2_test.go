@@ -41,7 +41,10 @@ func binFixture(t *testing.T) (binDir, victim string) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	binDir = pluginBinDir()
+	binDir, err := pluginBinDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +94,8 @@ func TestLinkCLIBinaryRefusesTraversal(t *testing.T) {
 func TestSafePublishedBinaryPathContainment(t *testing.T) {
 	binFixture(t)
 	p, err := safePublishedBinaryPath("nself-foo")
-	if err != nil || filepath.Dir(p) != pluginBinDir() {
+	binDir, pbdErr := pluginBinDir()
+	if err != nil || pbdErr != nil || filepath.Dir(p) != binDir {
 		t.Fatalf("nself-foo -> %q, %v", p, err)
 	}
 	if _, err := safePublishedBinaryPath("../x"); err == nil {

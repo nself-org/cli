@@ -37,7 +37,7 @@ import (
 // PluginBinDir returns the directory the command proxy searches for plugin
 // binaries. Exported so the installer and the router cannot drift apart on
 // where that is.
-func PluginBinDir() string { return pluginBinDir() }
+func PluginBinDir() (string, error) { return pluginBinDir() }
 
 // PublishedBinaryPath returns where a plugin's command binary is published,
 // including the platform's executable suffix.
@@ -46,7 +46,11 @@ func PluginBinDir() string { return pluginBinDir() }
 // the test compute the name itself is how the Windows job went red: the
 // installer appended .exe and the test did not.
 func PublishedBinaryPath(binName string) string {
-	dst := filepath.Join(pluginBinDir(), binName)
+	binDir, err := pluginBinDir()
+	if err != nil {
+		return ""
+	}
+	dst := filepath.Join(binDir, binName)
 	if runtime.GOOS == "windows" {
 		dst += ".exe"
 	}
@@ -133,7 +137,10 @@ func linkCLIBinary(destDir, name string, m *PluginManifest) error {
 		return err
 	}
 
-	binDir := pluginBinDir()
+	binDir, err := pluginBinDir()
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		return fmt.Errorf("creating plugin bin dir: %w", err)
 	}
@@ -168,7 +175,11 @@ func linkCLIBinary(destDir, name string, m *PluginManifest) error {
 // unlinkCLIBinary removes a plugin's published binary. A missing file is not an
 // error — the plugin may never have shipped one.
 func unlinkCLIBinary(name string, m *PluginManifest) error {
-	return unlinkCLIBinaryIn(filepath.Dir(pluginBinDir()), name, m)
+	binDir, err := pluginBinDir()
+	if err != nil {
+		return err
+	}
+	return unlinkCLIBinaryIn(filepath.Dir(binDir), name, m)
 }
 
 // unlinkCLIBinaryIn is unlinkCLIBinary with the plugin directory whose installed
