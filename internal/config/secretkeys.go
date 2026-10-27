@@ -11,8 +11,10 @@ package config
 // side: a match only redacts. internal/env must not keep a second list.
 
 import (
+	"fmt"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/credmask"
 )
 
@@ -31,6 +33,18 @@ func IsSecretKey(key string) bool {
 	// A bare AUTH or a _AUTH suffix (BASIC_AUTH=user:pass, REDISCLI_AUTH) is
 	// secret; AUTH_*, HASURA_AUTH_URL and AUTH_JWT_* config keys stay visible.
 	return upper == "AUTH" || strings.HasSuffix(upper, "_AUTH")
+}
+
+// RefuseLegacyMCPSecretSet is the D-0737 guard of the v1.4 nself_config_set
+// MCP tool, which skips the invoke.Gate round trip of the generated v1.5 tool:
+// in v1.4 mode it refuses secret keys so a token-less loopback client cannot
+// write POSTGRES_PASSWORD or any other secret unconfirmed. Nil in v1.5 mode,
+// where the generated gated tool replaces the legacy one (P7-SURF-03).
+func RefuseLegacyMCPSecretSet(key string) error {
+	if compat.V15() || !IsSecretKey(key) {
+		return nil
+	}
+	return fmt.Errorf("setting secret key %q requires the v1.5 gated tool; upgrade or use `nself config set` interactively", key)
 }
 
 // MaskURLCredentials masks the credentials of a value that holds a URL, a Go

@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -79,5 +80,42 @@ func TestComposeDownRemoveImages(t *testing.T) {
 	b, _ := os.ReadFile(logf)
 	if got, want := strings.TrimSpace(string(b)), "compose down -v --rmi all --remove-orphans -t 5"; got != want {
 		t.Errorf("args = %q, want %q", got, want)
+	}
+}
+
+func TestVolumesRemovedHook(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake docker is a POSIX shell script")
+	}
+	dir := t.TempDir()
+	fail := filepath.Join(dir, "fail")
+	script := "#!/bin/sh\n[ -e '" + fail + "' ] && exit 1\nexit 0\n"
+	bin := filepath.Join(dir, "docker")
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	c := &Compose{DockerPath: bin}
+	var calls []string
+	hookErr := error(nil)
+	old := VolumesRemovedHook
+	VolumesRemovedHook = func(_ context.Context, workdir string) error { calls = append(calls, workdir); return hookErr }
+	t.Cleanup(func() { VolumesRemovedHook = old })
+
+	if err := c.ComposeDown(context.Background(), dir, DownOptions{}); err != nil || len(calls) != 0 {
+		t.Fatalf("down without -v: err %v calls %v", err, calls)
+	}
+	if err := c.ComposeDown(context.Background(), dir, DownOptions{RemoveVolumes: true}); err != nil || !slices.Equal(calls, []string{dir}) {
+		t.Fatalf("down -v: err %v calls %v", err, calls)
+	}
+	hookErr = errors.New("volume is in use")
+	if err := c.ComposeDown(context.Background(), dir, DownOptions{RemoveVolumes: true}); err == nil || !strings.Contains(err.Error(), "in use") {
+		t.Fatalf("a hook failure must fail the down, got %v", err)
+	}
+	calls = nil
+	if err := os.WriteFile(fail, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ComposeDown(context.Background(), dir, DownOptions{RemoveVolumes: true}); err == nil || len(calls) != 0 {
+		t.Fatalf("hook ran after a failed down: err %v calls %v", err, calls)
 	}
 }

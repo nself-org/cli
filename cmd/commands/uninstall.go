@@ -171,22 +171,6 @@ func uninstallProject(cmd *cobra.Command) (res UninstallResult, done bool, err e
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "  %s docker compose down: %v (continuing)\n",
 			ui.C(ui.Yellow, ui.IconWarning), err)
 	}
-	// D-0802: when purge is requested, also remove any postgres volumes left
-	// behind by db image switch. Those carry the org.nself.image-switch
-	// label and are not named in the current compose file, so compose down
-	// --volumes does not touch them.
-	if purge && volumesDeleted {
-		if switched, lvErr := docker.VolumeListByLabel(cmd.Context(), "org.nself.image-switch"); lvErr == nil {
-			for _, v := range switched {
-				if rmErr := docker.VolumeRemove(cmd.Context(), v); rmErr != nil {
-					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "  %s removing image-switch volume %s: %v (continuing)\n",
-						ui.C(ui.Yellow, ui.IconWarning), v, rmErr)
-				} else if !jsonMode {
-					fmt.Printf("  Removed image-switch volume %s.\n", v)
-				}
-			}
-		}
-	}
 
 	removed := []string{}
 	var failed []error

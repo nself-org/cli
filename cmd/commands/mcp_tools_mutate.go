@@ -24,12 +24,12 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/plugin"
 )
@@ -80,16 +80,8 @@ func mcpConfigSetHandler() server.ToolHandlerFunc {
 		value, _ := args["value"].(string)
 		envFlag, _ := args["env"].(string)
 
-		if err := validateConfigKey(key); err != nil {
+		if err := errors.Join(validateConfigKey(key), config.RefuseLegacyMCPSecretSet(key)); err != nil { // D-0737
 			return mcpErrorResult("Error: %v", err)
-		}
-		// D-0737: in v1.4 mode the legacy nself_config_set tool bypasses the
-		// invoke.Gate round trip that the generated v1.5 tool enforces. Refuse
-		// secret keys here so a token-less loopback client cannot write
-		// POSTGRES_PASSWORD or any other secret without confirmation. V15 mode
-		// replaces this tool with the generated gated version (P7-SURF-03).
-		if !compat.V15() && config.IsSecretKey(key) {
-			return mcpErrorResult("Error: setting secret key %q requires the v1.5 gated tool; upgrade or use `nself config set` interactively", key)
 		}
 		if err := validateConfigValue(value); err != nil {
 			return mcpErrorResult("Error: %v", err)
@@ -107,9 +99,7 @@ func mcpConfigSetHandler() server.ToolHandlerFunc {
 		if err != nil {
 			return mcpErrorResult("Error: %v", err)
 		}
-		return mcp.NewToolResultStructuredOnly(ConfigSetResult{
-			Key: key, File: envFile, Created: !updated,
-		}), nil
+		return mcp.NewToolResultStructuredOnly(ConfigSetResult{Key: key, File: envFile, Created: !updated}), nil
 	}
 }
 
