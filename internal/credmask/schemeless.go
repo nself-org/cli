@@ -58,30 +58,42 @@ func maskDSNUserinfo(v string) string {
 	}
 	var b strings.Builder
 	done := 0
-	// One forward pass tracks where the token holding each match starts, so a
-	// long run without whitespace is not rescanned per match.
+	// One forward pass tracks where the token holding each match starts, its
+	// first `:` and its first `://`, so a long run without whitespace is not
+	// rescanned per match.
 	pos, tokenStart := 0, 0
+	colonAt, schemeAt := -1, -1
 	for _, loc := range locs {
 		at := loc[0]
 		for ; pos < at; pos++ {
-			if strings.IndexByte(" \t\r\n\"'", v[pos]) >= 0 {
+			switch c := v[pos]; c {
+			case ' ', '\t', '\r', '\n', '"', '\'':
 				tokenStart = pos + 1
+				colonAt, schemeAt = -1, -1
+			case ':':
+				if colonAt < 0 {
+					colonAt = pos
+				}
+				if schemeAt < 0 && strings.HasPrefix(v[pos:], "://") {
+					schemeAt = pos
+				}
 			}
 		}
 		if at < done {
 			continue
 		}
 		start := max(tokenStart, done)
-		token := v[start:at]
-		colon := strings.IndexByte(token, ':')
-		if colon < 0 || strings.Contains(token, "://") {
+		if colonAt < 0 || (schemeAt >= 0 && schemeAt+3 <= at) {
 			continue
 		}
+		token := v[start:at]
+		colon := colonAt - start
 		keep := token[:strings.LastIndexByte(token[:colon], '=')+1]
 		b.WriteString(v[done:start])
 		b.WriteString(keep)
 		b.WriteString("****")
 		done = at
+		colonAt, schemeAt = -1, -1
 	}
 	b.WriteString(v[done:])
 	return b.String()

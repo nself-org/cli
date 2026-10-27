@@ -10,6 +10,7 @@ import (
 func TestArchProbeKeyMatchesDeployKey(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
 	t.Setenv("NSELF_DEPLOY_SSH_KEY", "")
 	t.Setenv("NSELF_DEPLOY_KEY_PATH", "")
 	t.Setenv("ARCH_PROBE_REF_KEY", "")
