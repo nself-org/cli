@@ -113,15 +113,19 @@ func TestStreamContextStopLeavesNoOrphan(t *testing.T) {
 // TestStreamSIGINTStopsTheChildNotTheProcess: Ctrl-C reaches the stream through
 // its NotifyContext; the test process survives and the child group is gone.
 func TestStreamSIGINTStopsTheChildNotTheProcess(t *testing.T) {
-	marks := longRunning(t)
+	// On Linux CI (non-TTY, no controlling terminal), sending SIGINT to
+	// os.Getpid() from the test goroutine races with signal.NotifyContext
+	// registration inside Stream's goroutine: if the signal arrives first,
+	// the default action kills the test binary. Instead, have the fake docker
+	// send SIGINT to its parent after it starts, guaranteeing the handler
+	// is installed before the signal lands.
+	marks := t.TempDir()
+	fakeDockerOnPath(t, "sleep 30 &\necho $! > '"+marks+"/gc.tmp'\nmv '"+marks+"/gc.tmp' '"+marks+"/gc'\nkill -INT $PPID\nwait\n")
 	res := make(chan error, 1)
 	go func() {
 		res <- Stream(context.Background(), t.TempDir(), []string{"logs"}, &bytes.Buffer{}, &bytes.Buffer{})
 	}()
 	waitFor(t, filepath.Join(marks, "gc"))
-	if err := syscall.Kill(os.Getpid(), syscall.SIGINT); err != nil {
-		t.Fatal(err)
-	}
 	select {
 	case err := <-res:
 		if err != nil {
