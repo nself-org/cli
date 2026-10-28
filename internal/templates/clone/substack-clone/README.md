@@ -6,7 +6,7 @@ Newsletter publishing starter built with nSelf.
 
 - `np_newsletters`, `np_posts`, `np_subscribers`, `np_tiers` tables with RLS
 - Hasura permissions and relationships
-- Flutter starter with post list, editor, and subscriber management
+- Backend scaffold only; no frontend starter is bundled.
 - Required plugins: `cms`, `notify`, `auth`
 
 ## Getting started
@@ -15,6 +15,6 @@ Newsletter publishing starter built with nSelf.
 nself plugin install cms notify auth
 nself start
 nself db migrate
-nself hasura metadata apply --file hasura/metadata.json
-cd flutter && flutter run
+nself db hasura metadata apply
+# Add a frontend service with nself add, or connect your existing React app.
 ```

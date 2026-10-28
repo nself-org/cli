@@ -6,7 +6,7 @@ Community chat platform starter built with nSelf.
 
 - `np_servers`, `np_channels`, `np_messages`, `np_members`, `np_roles` tables with RLS
 - Hasura permissions and relationships
-- Flutter starter with server list, channel list, and message view
+- Backend scaffold only; no frontend starter is bundled.
 - Required plugins: `chat`, `realtime`, `auth`, `moderation`
 
 ## Getting started
@@ -15,6 +15,6 @@ Community chat platform starter built with nSelf.
 nself plugin install chat realtime auth moderation
 nself start
 nself db migrate
-nself hasura metadata apply --file hasura/metadata.json
-cd flutter && flutter run
+nself db hasura metadata apply
+# Add a frontend service with nself add, or connect your existing React app.
 ```

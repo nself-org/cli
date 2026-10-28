@@ -242,8 +242,7 @@ func TestMultiAppFiles(t *testing.T) {
 	}
 }
 
-// TestSixClonesKeepOldShape: the six app clones declare no next_steps and keep
-// their flutter/ starter, so their printed output is unchanged.
+// TestSixClonesKeepOldShape: clones retain manifest compatibility without retired starters.
 func TestSixClonesKeepOldShape(t *testing.T) {
 	for _, name := range All() {
 		if name == "multi-app" {
@@ -256,8 +255,8 @@ func TestSixClonesKeepOldShape(t *testing.T) {
 		if m.NextSteps != nil {
 			t.Errorf("%s declares next_steps %v", name, m.NextSteps)
 		}
-		if !HasFlutter(name) {
-			t.Errorf("%s lost its flutter/ starter", name)
+		if HasFlutter(name) {
+			t.Errorf("%s ships a retired flutter/ starter", name)
 		}
 	}
 }
@@ -440,6 +439,29 @@ func TestScaffoldEnvFilesArePrivate(t *testing.T) {
 		}
 		if info.Mode().Perm() != want {
 			t.Errorf("%s mode = %v, want %v", rel, info.Mode().Perm(), want)
+		}
+	}
+}
+
+func TestCloneGettingStartedCanon(t *testing.T) {
+	for _, name := range All() {
+		if name == "multi-app" {
+			continue
+		}
+		data, err := templateFS.ReadFile(name + "/README.md")
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(data)
+		for _, bad := range []string{"nself hasura metadata apply", "flutter run"} {
+			if strings.Contains(text, bad) {
+				t.Errorf("%s contains %q", name, bad)
+			}
+		}
+		for _, want := range []string{"nself db hasura metadata apply", "nself add", "nself plugin install"} {
+			if !strings.Contains(text, want) {
+				t.Errorf("%s lacks %q", name, want)
+			}
 		}
 	}
 }
