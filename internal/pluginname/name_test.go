@@ -28,3 +28,16 @@ func TestSlugReasonAllowsReservedNames(t *testing.T) {
 		}
 	}
 }
+
+func TestBinaryReason(t *testing.T) {
+	for _, ok := range []string{"nself-foo", "tool.v2", "a_b", "Tool", strings.Repeat("a", MaxLen)} {
+		if r := BinaryReason(ok); r != "" {
+			t.Errorf("BinaryReason(%q) = %q, want empty", ok, r)
+		}
+	}
+	for _, bad := range []string{"", ".", "..", "../x", "a/b", `a\b`, "/abs", "-x", ".hidden", "a\x00b", "a\nb", "a b", strings.Repeat("a", MaxLen+1)} {
+		if BinaryReason(bad) == "" {
+			t.Errorf("BinaryReason(%q) is empty, want a reason", bad)
+		}
+	}
+}
