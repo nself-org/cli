@@ -50,7 +50,7 @@ jobs:
   # is missing, so the `nself-ci` workflow installs age before the gate runs.
   go-test:
     kind: test
-    run: [go, test, -mod=vendor, -count=1, -timeout, 10m, ./...]
+    run: [bash, -c, "go test -mod=vendor -count=1 -timeout 10m ./... 2>&1 | grep -E '^(--- FAIL|FAIL|panic)|_test.go:[0-9]+:' | head -60; exit ${PIPESTATUS[0]}"]
     env:
       CGO_ENABLED: "0"
       AI_AUTO_INSTALL: "false"
