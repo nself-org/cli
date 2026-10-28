@@ -65,9 +65,10 @@ func TestRecipientsHardlinkLeavesReleaseUntouched(t *testing.T) {
 	}
 	node := trustKey(t, filepath.Join(home, "node.key"))
 	_, changed, err := Recipients(RecipientsRequest{ProjectRoot: root, File: "ci", Action: "add", Recipient: node}, func(string, map[string]string) error { return nil })
-	if err != nil || !changed {
-		t.Fatal("grant on ci failed", err)
+	if err == nil || changed {
+		t.Fatal("grant on hardlinked ci was accepted", err)
 	}
+	trustCode(t, err, "E543")
 	after, err := os.ReadFile(release)
 	if err != nil || !reflect.DeepEqual(before, after) {
 		t.Fatal("grant on ci rewrote the hardlinked release store", err)

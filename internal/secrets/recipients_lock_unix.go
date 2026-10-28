@@ -28,3 +28,9 @@ func lockRecipientStore(path string) (func(), error) {
 		time.Sleep(20 * time.Millisecond)
 	}
 }
+
+// multiplyLinked refuses aliases that bypass the file-class consent guard.
+func multiplyLinked(info os.FileInfo) bool {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	return !ok || stat.Nlink > 1
+}

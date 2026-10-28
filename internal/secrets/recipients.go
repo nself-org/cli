@@ -41,7 +41,7 @@ func checkStorePath(dir, path string, missing error) error {
 		}
 		return decryptError()
 	}
-	if !info.Mode().IsRegular() {
+	if !info.Mode().IsRegular() || multiplyLinked(info) {
 		return decryptError()
 	}
 	// Residual TOCTOU: age opens this name after the check. A racing writer
