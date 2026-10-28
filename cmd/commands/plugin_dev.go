@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/ui"
 
@@ -74,6 +75,7 @@ func runPluginDev(cmd *cobra.Command, args []string) error {
 		}
 		uiInfof("Launching debugger via %s plugin debug %s", nself, name)
 		debugCmd := exec.Command(nself, debugArgs...)
+		debugCmd.Env = plugin.ExecEnv(os.Environ(), compat.V15)
 		debugCmd.Stdout = os.Stdout
 		debugCmd.Stderr = os.Stderr
 		return debugCmd.Run()
@@ -111,7 +113,7 @@ func runPluginDev(cmd *cobra.Command, args []string) error {
 	devCmd.Dir = pluginPath
 	devCmd.Stdout = os.Stdout
 	devCmd.Stderr = os.Stderr
-	devCmd.Env = append(os.Environ(), "NSELF_PLUGIN_DEV=1")
+	devCmd.Env = append(plugin.ExecEnv(os.Environ(), compat.V15), "NSELF_PLUGIN_DEV=1")
 
 	if err := devCmd.Run(); err != nil {
 		// Non-zero exit is expected when user Ctrl+Cs (signal).

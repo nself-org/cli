@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/ui"
 
@@ -102,7 +103,7 @@ func runPluginDebug(cmd *cobra.Command, args []string) error {
 	dlvCmd.Dir = pluginPath
 	dlvCmd.Stdout = os.Stdout
 	dlvCmd.Stderr = os.Stderr
-	dlvCmd.Env = append(os.Environ(), "NSELF_PLUGIN_DEV=1")
+	dlvCmd.Env = append(plugin.ExecEnv(os.Environ(), compat.V15), "NSELF_PLUGIN_DEV=1")
 
 	if err := dlvCmd.Run(); err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 130 {
