@@ -57,6 +57,16 @@ jobs:
       NSELF_REQUIRE_AGE: "1"
     timeout: 1500s
 
+  # The contract gate (schemas, registry, wiki pages, compat markers, D-0254). It
+  # also runs in the "Vet, Build & Test" workflow, but only nself-ci is a required
+  # check, so cli#982 merged with an unmarked compat.V15() call and turned main red.
+  contract-check:
+    kind: static
+    run: [make, contract-check]
+    env:
+      CGO_ENABLED: "0"
+    timeout: 900s
+
   # Secrets in the working tree, with the config the security-scan workflow uses.
   # No `when`: a docs-only change still gets a substantive check. The history
   # scan stays in security-scan.yml.
