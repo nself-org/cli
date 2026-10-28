@@ -61,8 +61,20 @@ func waitFor(t *testing.T, path string) {
 	t.Fatalf("%s never appeared", path)
 }
 
-// alive reports whether pid still runs.
-func alive(pid int) bool { return syscall.Kill(pid, 0) == nil }
+// alive reports whether pid still runs. A zombie (killed but not yet reaped)
+// does not count: when the test binary runs under a parent that is the new
+// parent of orphans and never reaps them (the nself-ci runner), kill(pid, 0)
+// succeeds for a dead child forever.
+func alive(pid int) bool {
+	if syscall.Kill(pid, 0) != nil {
+		return false
+	}
+	out, err := exec.Command("ps", "-o", "stat=", "-p", strconv.Itoa(pid)).Output() //nolint:gosec // fixed argv, pid is an int
+	if err != nil {
+		return false
+	}
+	return !strings.HasPrefix(strings.TrimSpace(string(out)), "Z")
+}
 
 // longRunning is a docker stub that records a grandchild's pid in marks/gc and
 // then waits on it, like docker spawning the compose plugin.
