@@ -44,6 +44,11 @@ func TestStateReadParentDeadlineIsNotOwnTimeout(t *testing.T) {
 
 func TestSoftCancelSendsTerm(t *testing.T) {
 	shortenStateBounds(t)
+	// The stub installs its TERM trap a few ms after it starts. Under a loaded
+	// runner the default 200ms bound can expire first, so the TERM arrives
+	// before the trap exists and no marker is written. Give the stub time to
+	// reach `wait`; the call still times out because the stub sleeps 30s.
+	stateCallTimeout = 3 * time.Second
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "term")
 	c, _ := scriptDocker(t, "trap 'echo term > '"+marker+"'; exit 0' TERM\nsleep 30 &\nwait\n")
