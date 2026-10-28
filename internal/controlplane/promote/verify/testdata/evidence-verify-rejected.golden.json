@@ -1,0 +1,10 @@
+{
+  "schema_version": "1",
+  "command": "ci evidence verify",
+  "error": {
+    "code": "E629",
+    "message": "E685: evidence rejected: evidence.invalid (schema validation at validating https://nself.org/schemas/ci-evidence.v1.schema.json: unexpected additional properties [\"not\"])",
+    "exit_code": 11,
+    "class": "other"
+  }
+}
