@@ -148,6 +148,32 @@ func TestACMEIssueRechecksHooksAfterRetire(t *testing.T) {
 	}
 }
 
+// TestACMETimerRecheckKeepsEarlierRetirementHint reaches timerAfter's recheck
+// after issuance already retired the timer. A newly discovered hook must
+// refuse the ACME timer and mention that earlier retirement exactly once.
+func TestACMETimerRecheckKeepsEarlierRetirementHint(t *testing.T) {
+	f := newACMEFix(t)
+	le := useCertbotDir(t)
+	hook := filepath.Join(le, "renewal", "x.conf")
+	sd := &fakeSystemd{load: "loaded", file: "enabled", active: "active"}
+	useSystemd(t, sd)
+	scans, oldConfigs := 0, certbotUserConfigs
+	t.Cleanup(func() { certbotUserConfigs = oldConfigs })
+	certbotUserConfigs = func() ([]string, []string) {
+		scans++
+		if scans == 3 {
+			// timerAfter's first scan has already listed renewal/*.conf.
+			// Add a hook now so only its post-retirement recheck sees it.
+			acmeWriteFile(t, hook, []byte("[renewalparams]\n"+nselfDeployHook(f.project)))
+		}
+		return nil, nil
+	}
+	out, err := f.run(sslSetupCmd, "--acme", "--agree-tos", "--install-cron")
+	if err == nil || codeOf(err) != "E151" || !strings.Contains(err.Error(), hook+":2") || scans != 4 || len(f.runs) != 1 || f.timers != 0 || sd.disables() != 1 || strings.Count(out, "was disabled before this failure") != 1 {
+		t.Fatalf("timer recheck: err=%v scans=%d issues=%d timers=%d disables=%d\n%s", err, scans, len(f.runs), f.timers, sd.disables(), out)
+	}
+}
+
 // TestCertbotSetupRefusesUnderACME: the v1.4 certbot `ssl setup` refuses before
 // running certbot in a project whose certificates ACME manages, or whose
 // lineages.json cannot be read; without lineages it runs as before.
