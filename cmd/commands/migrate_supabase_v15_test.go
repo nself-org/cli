@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -14,6 +15,10 @@ import (
 	spmigrate "github.com/nself-org/cli/internal/migrate/supabase"
 	"github.com/spf13/pflag"
 )
+
+// generatedStamp matches the one-second-resolution timestamp the generator embeds in
+// supabase-migration.sql; two Generate calls straddling a second boundary differ only there.
+var generatedStamp = regexp.MustCompile(`(?m)^-- Generated: \d+$`)
 
 func resetSupabaseFlags(t *testing.T) {
 	t.Helper()
@@ -91,7 +96,7 @@ func TestMigrateSupabaseModes(t *testing.T) {
 		want := spmigrate.Generate("abcdefghijklmnopqrst", &spmigrate.PullResult{Tables: []spmigrate.Table{{Schema: "public", Name: "notes"}}})
 		for name, content := range map[string]string{"supabase-migration.sql": want.MigrationSQL, "hasura-metadata.yaml": want.HasuraMetadata, "import-auth-users.sh": want.AuthImportScript} {
 			got, rerr := os.ReadFile(filepath.Join(out, name))
-			if rerr != nil || string(got) != content {
+			if rerr != nil || generatedStamp.ReplaceAllString(string(got), "-- Generated: <ts>") != generatedStamp.ReplaceAllString(content, "-- Generated: <ts>") {
 				t.Fatalf("v1.4 artifact %s differs from the generator output (err=%v)", name, rerr)
 			}
 		}
