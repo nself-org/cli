@@ -184,7 +184,6 @@ nself template update --force
 - [[cmd-init]], Project initialisation including built-in language scaffolds
 - [[cmd-plugin]], Plugin management
 - [Template Marketplace](https://nself.org/templates), Browse templates in the browser
-- [[cmd-template-publish]], Author guide
 
 [[Home]]
 <!-- END PROSE:description -->

@@ -74,14 +74,16 @@ The restore command:
 
 ## Retention and Prune Holds
 
-`nself backup prune` removes backups older than `BACKUP_RETENTION_DAYS`, but it never deletes a backup tagged `keep` or `keep-*`. The `update stack` command tags its pre-update backup `keep-stack-<timestamp>` so an interrupted or failed update can always roll back; those backups survive prune until you release them. To release a held backup, rename or remove the tag:
+`nself backup prune` applies a tiered retention policy: it keeps the newest backup of each of the last N days, N weeks (Sundays) and N months (the 1st). The defaults are 7 daily, 4 weekly and 12 monthly. Set them with `BACKUP_RETENTION_DAILY`, `BACKUP_RETENTION_WEEKLY` and `BACKUP_RETENTION_MONTHLY`, or per run with `--keep-daily`, `--keep-weekly` and `--keep-monthly`. `BACKUP_RETENTION_DAYS` is a legacy setting that prune does not read. Preview a run with `nself backup prune --dry-run`.
+
+Prune never deletes a backup whose tag is `keep` or starts with `keep-`. The `update stack` command tags its pre-update backup `keep-stack-<run-id>-<nonce>` so an interrupted or failed update can always roll back; those backups survive prune until you release them.
+
+The tag is the part of the file name after the timestamp, for example `myproj_full_20261028_120000_keep-stack-<run-id>-<nonce>.dump`. There is no command to change a tag. To release a held backup, rename the file in your backup directory so the tag no longer starts with `keep` (keep the extension, including `.age` on encrypted backups), then prune:
 
 ```bash
-nself backup tag <backup-id> --rename released-<date>   # drops the keep prefix
-nself backup prune                                       # now eligible for removal
+mv myproj_full_20261028_120000_keep-stack-abc123.dump myproj_full_20261028_120000_released-stack-abc123.dump
+nself backup prune --dry-run   # the renamed backup is now subject to the policy
 ```
-
-A restore that targets a `keep-stack-*` backup runs in strict mode: it refuses to continue when the backup manifest does not match the current project name or when the dump header is missing the expected schema version marker. Strict mode prevents restoring an unrelated stack snapshot into a live project. Override with `--force` only when you have verified the backup belongs to this project.
 
 > **Important:** Test your restores regularly. Untested backups are not backups.
 

@@ -56,7 +56,7 @@ Since v1.2.2, when the project uses a default local domain (unset, `localhost`, 
 
 ```
 error: v0.9 project detected. Found 3 legacy artifact(s): docker-compose.yml, .env, nginx/nginx.conf
-Run `nself migrate` first. See [[Guide-Migration]]
+Run `nself migrate` first. See https://nself.org/docs/migrate/from-v0.9
 ```
 
 A single hit produces a non-blocking warning. Use `nself migrate detect` to see all detected artifacts before running the migration. See [[Upgrade-From-v0.9]] for the full migration guide.

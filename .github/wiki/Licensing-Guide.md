@@ -45,9 +45,9 @@ Each bundle page lists its current plugin membership and purpose. Plugin lists c
 - [[bundle-nclaw]] — AI personal assistant
 - [[bundle-nchat]] — Messaging and voice
 - [[bundle-nfamily]] — Private family social platform
-- [[bundle-nsentry]] — Observability and incident management
+- [[cmd-sentry]] — Observability and incident management
 - [[bundle-clawde]] — Dev environment cloud sync
-- [[bundle-ntask]] — Free core productivity plugins
+- [[Bundles]] — Free core productivity plugins (the Task Bundle)
 
 ---
 

@@ -62,7 +62,7 @@ nself oauth refresh --all
 
 ### See Also
 
-- [[Monitoring]], oauth_token_refresh_total metric
+- [[monitoring]], oauth_token_refresh_total metric
 - [[plugin-google]], Google OAuth configuration
 <!-- END PROSE:description -->
 
