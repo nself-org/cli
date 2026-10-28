@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Purpose: assert the docker-publish.yml concurrency group expression normalises
-#          dispatch input to v<ver> form and handles blank input correctly.
+# Purpose: assert ci.yml and docker-publish.yml parse as YAML, and that the
+#          docker-publish.yml concurrency group expression normalises dispatch input to v<ver> form and handles blank input correctly.
 #          This kills two mutants: (1) dispatch keys on github.ref instead of
 #          inputs.version, (2) dispatch with "1.4.13" (no v) produces a different
 #          key than workflow_run with head_branch=v1.4.13.
@@ -13,6 +13,23 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 WORKFLOW="${HERE}/../../.github/workflows/docker-publish.yml"
 
 [ -f "${WORKFLOW}" ] || { echo "FAIL: ${WORKFLOW} not found" >&2; exit 1; }
+
+# Case 0: both workflows must parse as YAML. A mis-indented step in ci.yml once
+# made the whole workflow invalid while every shell test here still passed.
+yaml_ok() {
+  if command -v ruby >/dev/null 2>&1; then
+    ruby -ryaml -e 'YAML.load_file(ARGV[0])' "$1" 2>/dev/null
+  elif python3 -c 'import yaml' >/dev/null 2>&1; then
+    python3 -c 'import sys, yaml; yaml.safe_load(open(sys.argv[1]))' "$1" 2>/dev/null
+  else
+    echo "FAIL: neither ruby nor python3+yaml available to parse workflows" >&2
+    exit 1
+  fi
+}
+for wf in ci.yml docker-publish.yml; do
+  yaml_ok "${HERE}/../../.github/workflows/${wf}" || { echo "FAIL: ${wf} is not valid YAML" >&2; exit 1; }
+  echo "ok ${wf}-parses"
+done
 
 # Extract the concurrency group expression (line starting with "  group:").
 EXPR=$(sed -n '/^concurrency:/,/^[^ #]/p' "${WORKFLOW}" | sed -n 's/^  group: //p' | head -1)
