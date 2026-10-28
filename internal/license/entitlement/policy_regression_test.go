@@ -258,38 +258,6 @@ func TestLoadRejectedExtractsExactHashFromMarkerName(t *testing.T) {
 	}
 }
 
-// TestSelectTokenExpZeroBoundaryKillsMutant verifies that claims.Exp <= 0 at
-// selection.go:27:31 is pinned. The mutant flips <= to <, accepting exp=0.
-// We use a token with exp=0 that is valid in every other respect (correct subject,
-// covering installed plugins, not rejected) so that the Exp check is the ONLY
-// rejection reason. Under the mutant, selectToken would accept it as a fallback
-// (exp=0 > fallbackExp=-1 initially), but tokenPolicy would reject it with
-// "entitlement grace ended". We assert the error message contains "grace ended"
-// only when the token passes the Exp filter — which happens under the mutant.
-// On original code, exp=0 is filtered before reaching tokenPolicy, so the error
-// is the generic "no verified entitlement".
-func TestSelectTokenExpZeroBoundaryKillsMutant(t *testing.T) {
-	sign := policySigner(t)
-	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "boundary-key")
-	t.Setenv("LICENSE_CACHE_PATH", filepath.Join(t.TempDir(), "license.json"))
-	token := sign("boundary-key", []string{"*"}, 0)
-	got, err := selectToken([]string{token}, []string{"chat"}, nil)
-	if got != "" {
-		t.Fatalf("exp=0 token was accepted: %q", got)
-	}
-	if err == nil {
-		t.Fatal("exp=0 token returned no error")
-	}
-	// Original: "no verified entitlement belongs to an accepted configured licence"
-	// Mutant (<= to <): token passes Exp<0 check, reaches tokenPolicy, gets "entitlement grace ended"
-	if strings.Contains(err.Error(), "grace ended") {
-		t.Fatalf("MUTANT DETECTED: exp=0 passed Exp filter and reached tokenPolicy: %v", err)
-	}
-	if !strings.Contains(err.Error(), "no verified entitlement") {
-		t.Fatalf("unexpected error for exp=0: %v", err)
-	}
-}
-
 // TestRetainedTokenGraceBoundaryKillsMutant pins the grace clause
 // time.Now().After(exp.Add(grace)) in retainedToken: a token 2s past grace is
 // not retained.

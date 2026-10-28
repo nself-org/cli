@@ -94,7 +94,7 @@ CONDITIONALS_NEGATION at internal/license/entitlement/autorefresh.go:259:61 | re
 CONDITIONALS_NEGATION at internal/license/entitlement/lifecycle.go:36:61 | same as autorefresh.go:259:61: recordVerdict error propagation is independent of the negated guard because f.Close() on nil returns an error
 CONDITIONALS_BOUNDARY at internal/license/entitlement/lifecycle.go:78:30 | claims.Exp <= 0 to < 0 in retainedToken: the only new input is exp=0, whose grace deadline is the const 1970-01-31 (PostExpiryGraceWindow), so the next clause rejects it and both return ""; TestRetainedTokenRejectsNonPositiveExp pins it
 CONDITIONALS_NEGATION at internal/license/entitlement/rejected.go:99:9 | when OpenFile fails, the negated guard falls through to f.Close() on a nil receiver which returns invalid-argument; the caller sees an error either way, making the mutation behaviourally equivalent
-CONDITIONALS_BOUNDARY at internal/license/entitlement/selection.go:27:31 | exp=0 tokens are filtered before reaching fallback assignment because bestExp/fallbackExp init to 0 and claims.Exp > 0 is required; flipping <= to < still rejects exp=0 since 0 > 0 is false, so the mutant is killed by TestSelectTokenRejectsNonPositiveExp
+CONDITIONALS_BOUNDARY at internal/license/entitlement/selection.go:27:31 | equivalent: bestExp and fallbackExp init to 0, so exp=0 never satisfies claims.Exp > bestExp or claims.Exp > fallbackExp regardless of whether the filter is <= or <; the token is never selected and the mutant is observationally identical to the original
 '
 
 # Load exact repo-relative IDs for either verdict mode; never match basenames
