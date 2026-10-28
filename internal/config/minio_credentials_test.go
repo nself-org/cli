@@ -24,6 +24,7 @@ import (
 )
 
 func TestValidateMinioCredentialsDisabled(t *testing.T) {
+	compattest.Set(t, false)
 	for _, env := range []string{"prod", "staging"} {
 		cfg := &Config{Env: env, Minio: MinioConfig{RootUser: "minioadmin", RootPassword: "minioadmin"}}
 		if err := ValidateMinioCredentials(cfg); err != nil {
@@ -36,6 +37,7 @@ func TestValidateMinioCredentialsDisabled(t *testing.T) {
 }
 
 func TestValidateMinioCredentials_ProdMinioadmin_ReturnsError(t *testing.T) {
+	compattest.Set(t, false)
 	cfg := &Config{
 		Env: "prod",
 		Minio: MinioConfig{
@@ -54,6 +56,7 @@ func TestValidateMinioCredentials_ProdMinioadmin_ReturnsError(t *testing.T) {
 }
 
 func TestValidateMinioCredentials_StagingMinioadmin_ReturnsError(t *testing.T) {
+	compattest.Set(t, false)
 	cfg := &Config{
 		Env: "staging",
 		Minio: MinioConfig{
@@ -69,6 +72,7 @@ func TestValidateMinioCredentials_StagingMinioadmin_ReturnsError(t *testing.T) {
 }
 
 func TestValidateMinioCredentials_DevMinioadmin_ReturnsNil(t *testing.T) {
+	compattest.Set(t, false)
 	cfg := &Config{
 		Env: "dev",
 		Minio: MinioConfig{
@@ -84,6 +88,7 @@ func TestValidateMinioCredentials_DevMinioadmin_ReturnsNil(t *testing.T) {
 }
 
 func TestValidateMinioCredentials_ProdStrongCredentials_ReturnsNil(t *testing.T) {
+	compattest.Set(t, false)
 	cfg := &Config{
 		Env: "prod",
 		Minio: MinioConfig{
@@ -99,6 +104,7 @@ func TestValidateMinioCredentials_ProdStrongCredentials_ReturnsNil(t *testing.T)
 }
 
 func TestValidateMinioCredentials_ProdShortPassword_ReturnsError(t *testing.T) {
+	compattest.Set(t, false)
 	cfg := &Config{
 		Env: "prod",
 		Minio: MinioConfig{
@@ -117,6 +123,7 @@ func TestValidateMinioCredentials_ProdShortPassword_ReturnsError(t *testing.T) {
 }
 
 func TestValidateMinioCredentials_ProdEmptyUser_ReturnsError(t *testing.T) {
+	compattest.Set(t, false)
 	cfg := &Config{
 		Env: "prod",
 		Minio: MinioConfig{
@@ -132,6 +139,7 @@ func TestValidateMinioCredentials_ProdEmptyUser_ReturnsError(t *testing.T) {
 }
 
 func TestValidateMinioCredentials_ProdMinioadminPassword_StrongUser_ReturnsError(t *testing.T) {
+	compattest.Set(t, false)
 	cfg := &Config{
 		Env: "prod",
 		Minio: MinioConfig{
