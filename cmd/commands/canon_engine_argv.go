@@ -22,8 +22,8 @@ package commands
 import (
 	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/nself-org/cli/internal/cmdregistry"
+	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 

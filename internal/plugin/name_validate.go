@@ -87,10 +87,10 @@ func safePublishedBinaryPath(bin string) (string, error) {
 
 // validateCLIBinaries validates every binary name the manifest would publish.
 func validateCLIBinaries(name string, m *PluginManifest) error {
-for _, bin := range cliBinaryNames(name, m) {
-if _, err := safePublishedBinaryPath(bin); err != nil {
-return err
-}
-}
-return nil
+	for _, bin := range cliBinaryNames(name, m) {
+		if _, err := safePublishedBinaryPath(bin); err != nil {
+			return err
+		}
+	}
+	return nil
 }

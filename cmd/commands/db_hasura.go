@@ -6,14 +6,14 @@ package commands
 // Constraints: split out of db.go (CLI-R12) as a pure move, no behavior change.
 
 import (
-"fmt"
-"os"
-"os/exec"
+	"fmt"
+	"os"
+	"os/exec"
 
-"github.com/nself-org/cli/internal/database"
+	"github.com/nself-org/cli/internal/database"
 	"github.com/nself-org/cli/internal/plugin"
 
-"github.com/spf13/cobra"
+	"github.com/spf13/cobra"
 )
 
 func runDBHasuraConsole(cmd *cobra.Command, _ []string) error {
@@ -91,7 +91,7 @@ func runDBHasuraMetadataReload(cmd *cobra.Command, _ []string) error {
 }
 
 func runDBVerifyChecksums(cmd *cobra.Command, _ []string) error {
-pluginName, _ := cmd.Flags().GetString("plugin")
+	pluginName, _ := cmd.Flags().GetString("plugin")
 	if pluginName != "" {
 		if err := plugin.ValidateName(pluginName); err != nil {
 			return err
@@ -102,8 +102,8 @@ pluginName, _ := cmd.Flags().GetString("plugin")
 		return err
 	}
 	mismatches, err := database.VerifyChecksums(cmd.Context(), cfg, pluginName)
-if err != nil {
-return fmt.Errorf("verify checksums: %w", err)
+	if err != nil {
+		return fmt.Errorf("verify checksums: %w", err)
 	}
 	if len(mismatches) == 0 {
 		fmt.Println("All checksums verified.")

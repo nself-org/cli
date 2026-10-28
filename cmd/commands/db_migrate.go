@@ -6,16 +6,16 @@ package commands
 // Constraints: split out of db.go (CLI-R12) as a pure move, no behavior change.
 
 import (
-"fmt"
-"os"
-"os/exec"
-"path/filepath"
-"time"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"time"
 
-"github.com/nself-org/cli/internal/database"
+	"github.com/nself-org/cli/internal/database"
 	"github.com/nself-org/cli/internal/plugin"
 
-"github.com/spf13/cobra"
+	"github.com/spf13/cobra"
 )
 
 func runDBMigrateUp(cmd *cobra.Command, _ []string) error {
