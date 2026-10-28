@@ -127,6 +127,9 @@ func wirePromoteRelease(cmd *cobra.Command, workdir string, eng *cpromote.Engine
 		Git:      verify.GitCLI{Root: workdir},
 		Evidence: verify.ExecEvidence(binary, resolvePluginDir(), workdir),
 		Warn:     func(msg string) { _, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning:", msg) },
+		// D-1216: trust on first use for the trust origin.
+		PinOnFirstUse: true,
+		Notice:        func(msg string) { _, _ = fmt.Fprintln(cmd.ErrOrStderr(), msg) },
 	}
 	eng.Verify = func(ctx context.Context, s *cpromote.State) error {
 		m, err := verify.Verify(ctx, in)

@@ -36,6 +36,11 @@ type Input struct {
 	Git      Git
 	Evidence EvidenceRunner
 	Warn     func(string)
+	// PinOnFirstUse writes the project's origin to ~/.nself/ci/trust/origin.url
+	// after a release verifies and no pin exists (D-1216); Notice receives the
+	// one-line report. Off by default so a library caller never writes Home.
+	PinOnFirstUse bool
+	Notice        func(string)
 }
 
 // Verify checks the release directory in the contract order.
@@ -86,7 +91,25 @@ func Verify(ctx context.Context, in Input) (*Manifest, error) {
 	if err := os.WriteFile(staged, doc, 0o600); err != nil {
 		return nil, errs.Wrap("E497", "cannot stage the evidence for verification", err)
 	}
-	return m, checkEvidence(ctx, in.Evidence, staged, m.Revision)
+	if err := checkEvidence(ctx, in.Evidence, staged, m.Revision); err != nil {
+		return m, err
+	}
+	if in.PinOnFirstUse {
+		pinFirstUse(ctx, in)
+	}
+	return m, nil
+}
+
+// pinFirstUse reports the outcome of PinOriginOnFirstUse. A failure only warns:
+// the release already verified.
+func pinFirstUse(ctx context.Context, in Input) {
+	url, pinned, err := PinOriginOnFirstUse(ctx, in.Git, in.Home)
+	switch {
+	case err != nil && in.Warn != nil:
+		in.Warn("trust origin not pinned: " + err.Error())
+	case pinned && in.Notice != nil:
+		in.Notice("pinned the trust origin " + url + " in ~/.nself/ci/trust/" + originPinName + "; a different origin now refuses with E493 (delete the file to unpin)")
+	}
 }
 
 func verifyEnvelope(env signing.Envelope, t Trust) ([]byte, []string, error) {
