@@ -125,8 +125,11 @@ func getSchemaVersion(ctx context.Context, cfg *config.Config, pluginName string
 	)
 	out, err := queryPSQL(ctx, cfg, sql)
 	if err != nil {
-		// Table may not exist yet on a fresh instance; treat as version 0.
-		return 0, nil
+		// Not "version 0": a failed query means the version is unknown, and
+		// callers act on 0 by re-running schema provisioning. The version
+		// table is created (checked) before this is called, so a missing
+		// table is not an expected failure here.
+		return 0, fmt.Errorf("reading schema version for %q: %w", pluginName, err)
 	}
 	if out == "" {
 		return 0, nil

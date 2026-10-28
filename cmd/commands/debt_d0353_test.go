@@ -107,7 +107,7 @@ func TestD0353ComposeCascadeDoesNotChangeHash(t *testing.T) {
 			}
 			_ = os.Setenv("D0353_VALUE", "dev-conflict")
 			if operation == "restart" {
-				err = restartServices(context.Background(), comp, dir, []string{"hasura"}, false)
+				err = restartServices(context.Background(), comp, dir, nil, []string{"hasura"}, false)
 			} else {
 				err = startRemainingServicesPhase(context.Background(), comp, dir, cfg)
 			}

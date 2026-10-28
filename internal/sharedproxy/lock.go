@@ -130,6 +130,19 @@ func Detach(ctx context.Context, ownerDir string, regs ...Registration) error {
 	return err
 }
 
+// DetachHolding takes the owner lock, detaches regs and returns with the lock
+// still held: release hands it back. The caller removes the networks (compose
+// down) before releasing, so an owner attach cannot reconnect nginx between the
+// detach and the removal (D-0929). release is never nil; on a lock error it
+// does nothing, and on a detach error the lock is still held.
+func DetachHolding(ctx context.Context, ownerDir string, regs ...Registration) (release func(), err error) {
+	release, err = Lock(ctx, ownerDir)
+	if err != nil {
+		return release, err
+	}
+	return release, detach(ctx, ownerDir, regs...)
+}
+
 // Leave is leave under the owner lock.
 func Leave(ctx context.Context, ownerDir, project string) ([]string, error) {
 	return locked(ctx, ownerDir, func() ([]string, error) { return leave(ctx, ownerDir, project) })

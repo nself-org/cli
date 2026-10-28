@@ -5,7 +5,7 @@ package plugin
 // Purpose: verify the registry's release_signature (hq PLUG D7, contract plugins.release-signature v1) against the keys compiled into the CLI, for both tiers, after the tarball checksum (E124) and before anything is extracted. Split out of installer_locked.go (299-line ratchet).
 // Inputs: the resolved registry manifest and whether the entry is licensed (paid).
 // Outputs: nil (verified, or a one-line warning printed), or a coded error: E121 bad signature, E122 unknown key, E123 revoked key, E107 unsigned where signatures are required.
-// Constraints: the release_signature covers the SOURCE tarball's sha256 (manifest.Checksum). A binary (platform) package on a pinned tier installs only when platform_signatures[<the platform the CLI selected>] verifies over the sha256 computed here from the downloaded archive (contract v1.1, P7-PLUG-84; never the registry's checksum field); absent or invalid is E121, with no source-signature fallback. The dev bypass never skips a present signature on a pinned tier. The manifest's author_public_key is never read for trust. --allow-unsigned is honoured for local path or link installs only; registry installs pass local=false and cannot opt out. Pure policy lives in verify/signature.Decide.
+// Constraints: the release_signature covers the SOURCE tarball's sha256 (manifest.Checksum). A binary (platform) package on a pinned tier installs only when platform_signatures[<the platform the CLI selected>] verifies over the sha256 computed here from the downloaded archive (contract v1.1, P7-PLUG-84; never the registry's checksum field); absent or invalid is E121, with no source-signature fallback; a command plugin whose entry advertises platform_signatures for this platform refuses a source artifact with E121 (D-1415). The dev bypass never skips a present signature on a pinned tier. The manifest's author_public_key is never read for trust. --allow-unsigned is honoured for local path or link installs only; registry installs pass local=false and cannot opt out. Pure policy lives in verify/signature.Decide.
 
 import (
 	"fmt"
@@ -54,6 +54,11 @@ func verifyReleaseSignature(manifest *PluginManifest, paid, local bool, artifact
 	if pinned && artifactKind != "" && artifactKind != ArtifactKindSource {
 		return verifyPlatformSignature(manifest, tier, artifactKind, archiveSum, bypass)
 	}
+	if pinned {
+		if err := refuseSourceFallback(manifest); err != nil {
+			return err
+		}
+	}
 	if bypass && (!pinned || manifest.ReleaseSignature == nil) {
 		return nil
 	}
@@ -76,6 +81,28 @@ func verifyReleaseSignature(manifest *PluginManifest, paid, local bool, artifact
 		fmt.Fprintf(os.Stderr, "warning: %s\n", out.Warning)
 	}
 	return nil
+}
+
+// refuseSourceFallback closes the source-package fallback for a command plugin
+// whose entry advertises a platform signature for this platform (D-1415). The
+// registry field that picks the download (repository) is unsigned, so it can
+// make the platform package 404 and push the install onto the source tarball;
+// that tarball is covered only by release_signature, and linkCLIBinary would
+// publish any binary it holds. An entry that advertises platform_signatures
+// for this platform promises a signed platform package, so a source artifact is
+// E121. The dev bypass does not apply: the signature entry is present.
+func refuseSourceFallback(manifest *PluginManifest) error {
+	if len(cliBinaryNames(manifest.Name, manifest)) == 0 {
+		return nil
+	}
+	plat, err := PlatformArch()
+	if err != nil {
+		return nil
+	}
+	if _, advertised := manifest.PlatformSignatures[plat]; !advertised {
+		return nil
+	}
+	return errs.Newf("E121", "plugin %q: the %s platform package was unavailable and the source package carries no platform signature; refusing the source fallback", manifest.Name, plat)
 }
 
 // verifyPlatformSignature checks the platform signature of a binary package

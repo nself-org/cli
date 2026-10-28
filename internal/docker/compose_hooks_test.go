@@ -24,15 +24,25 @@ func TestPreDownHook(t *testing.T) {
 	c := &Compose{DockerPath: bin}
 
 	var got []string
-	unregister := RegisterPreDownHook(func(_ context.Context, workdir string) {
+	released := 0
+	unregister := RegisterPreDownHook(func(_ context.Context, workdir string) func() {
 		got = append(got, workdir)
 		b, _ := os.ReadFile(order)
 		if len(b) != 0 {
 			t.Errorf("the hook ran after docker: %q", b)
 		}
+		return func() {
+			released++
+			if b, _ := os.ReadFile(order); !strings.HasPrefix(string(b), "docker compose down") {
+				t.Errorf("the hook was released before docker finished: %q", b)
+			}
+		}
 	})
 	if err := c.ComposeDown(context.Background(), dir, DownOptions{RemoveOrphans: true}); err != nil {
 		t.Fatal(err)
+	}
+	if released != 1 {
+		t.Errorf("release ran %d times after the down, want 1 (D-0929)", released)
 	}
 	if !slices.Equal(got, []string{dir}) {
 		t.Errorf("hook calls = %v, want one call for %s", got, dir)

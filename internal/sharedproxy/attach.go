@@ -22,7 +22,8 @@ package sharedproxy
 // test is repeated (once more per further project the output names), and when
 // it still fails every connection made by this call is undone. On every failed
 // exit the files this call restored from quarantine go back into it, so a
-// conf known to fail `nginx -t` never stays in nginx/sites. The public entry
+// conf known to fail `nginx -t` never stays in nginx/sites. A restarting owner
+// this call stopped is started again on any failed exit. The public entry
 // points (Attach, Detach, ...) hold the owner lock (lock.go); the bodies are
 // lower case. All docker calls go through internal/docker.
 

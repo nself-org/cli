@@ -9,7 +9,7 @@ nself init --template multi-app . --force   # overlay the template files
 
 The overlay replaces the `.env.example` and `nself.yml` that `nself init` wrote with the template's own. Keep your own values in `.env` and `.env.local`.
 
-`--dry-run` lists what it would write: `README.md`, `manifest.json`, `nself.yml`, `.env.example`, `migrations/001_multi_app.sql`, `hasura/metadata.json` and `hasura/metadata/databases/default/tables/tables.yaml` (the layout `nself db reconcile` reads; both hold the same tables). No plugins are required, and there is no UI starter.
+`--dry-run` lists what it would write: `README.md`, `manifest.json`, `nself.yml`, `.env.example`, `migrations/001_multi_app.sql` and `hasura/metadata/databases/default/tables/tables.yaml` (the layout `nself db reconcile` reads). No plugins are required, and there is no UI starter.
 
 ## The model
 

@@ -149,16 +149,24 @@ func TestSharedProxyDetachOnDown(t *testing.T) {
 
 	var detached []string
 	var detachErr error
+	held := 0 // locks taken by the stub and not yet released
 	orig := spDetach
 	t.Cleanup(func() { spDetach = orig })
-	spDetach = func(_ context.Context, ownerDir string, regs ...sharedproxy.Registration) error {
+	spDetach = func(_ context.Context, ownerDir string, regs ...sharedproxy.Registration) (func(), error) {
 		if data, _ := os.ReadFile(order); len(data) != 0 {
 			t.Errorf("detach ran after docker: %q", data)
 		}
 		for _, r := range regs {
 			detached = append(detached, ownerDir+"|"+r.Project)
 		}
-		return detachErr
+		held++
+		return func() {
+			held--
+			// D-0929: the lock outlives the compose down.
+			if data, _ := os.ReadFile(order); !strings.HasPrefix(string(data), "docker compose down") {
+				t.Errorf("the owner lock was released before docker down ran: %q", data)
+			}
+		}, detachErr
 	}
 
 	// Every compose-down path of a fronted project detaches first.
@@ -173,6 +181,9 @@ func TestSharedProxyDetachOnDown(t *testing.T) {
 		}
 		if data, _ := os.ReadFile(order); !strings.HasPrefix(string(data), "docker compose down") {
 			t.Errorf("docker down did not run after the detach: %q", data)
+		}
+		if held != 0 {
+			t.Errorf("down %+v left the owner lock held (%d)", opts, held)
 		}
 	}
 
@@ -194,6 +205,9 @@ func TestSharedProxyDetachOnDown(t *testing.T) {
 		_ = os.Remove(order)
 		if err := comp.ComposeDown(context.Background(), b.ProjectDir, docker.DownOptions{}); err != nil {
 			t.Errorf("detach error %v must not fail the down: %v", e, err)
+		}
+		if held != 0 {
+			t.Errorf("detach error %v left the owner lock held (%d)", e, held)
 		}
 	}
 }

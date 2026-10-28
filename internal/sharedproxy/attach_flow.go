@@ -30,6 +30,7 @@ type attachRun struct {
 	out       Outcome
 	connected []Registration // connected by this call, for the rollback
 	restored  []Registration // Files = what this call took out of quarantine
+	stopped   bool           // this call stopped a restarting owner nginx
 }
 
 // undo disconnects every network this call connected.
@@ -84,7 +85,28 @@ func attach(ctx context.Context, ownerDir, self string, regs []Registration) (Ou
 			err = errors.Join(err, qerr)
 		}
 	}
+	if err != nil {
+		if serr := a.startOwnerBack(); serr != nil {
+			err = errors.Join(err, serr)
+		}
+	}
 	return a.out, err
+}
+
+// startOwnerBack starts the owner's nginx again when this call stopped it (a
+// restarting owner) and the attach then failed before it was started: the
+// owner is left as it was found, never stopped by a failed attach (D-0931).
+func (a *attachRun) startOwnerBack() error {
+	if !a.stopped {
+		return nil
+	}
+	if st, err := docker.InspectState(a.ctx, a.nginx); err == nil && st == "running" {
+		return nil
+	}
+	if err := docker.StartContainer(a.ctx, a.nginx); err != nil {
+		return e506("the attach failed and the owner nginx "+a.nginx+" could not be started again; run nself start in the owner", err, "")
+	}
+	return nil
 }
 
 // run does the work. settled is true when the error it returns leaves a
@@ -112,6 +134,7 @@ func (a *attachRun) run(regs []Registration) (settled bool, err error) {
 		if err := docker.StopContainer(a.ctx, nginx); err != nil {
 			return false, e506("cannot stop the restarting owner nginx "+nginx, err, "")
 		}
+		a.stopped = true
 	}
 	before, err := docker.ContainerNetworks(a.ctx, nginx)
 	if err != nil {

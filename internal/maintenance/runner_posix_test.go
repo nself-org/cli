@@ -444,3 +444,31 @@ func TestPressureThresholdStaysBelowDoctorHostLimit(t *testing.T) {
 			DefaultPressureThreshold, doctorHostDiskUsedLimit)
 	}
 }
+
+// TestReclaimRunnerWork_UnreadableWorkDirIsReported guards D-0061: an _work
+// path that cannot be read (anything but "does not exist") used to return the
+// same empty result as a healthy no-op. It must surface a SkipEntry instead.
+func TestReclaimRunnerWork_UnreadableWorkDirIsReported(t *testing.T) {
+	root := t.TempDir()
+	// _work is a file, so ReadDir fails with ENOTDIR rather than ENOENT.
+	if err := os.WriteFile(filepath.Join(root, "_work"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, reclaimed, skipped := reclaimRunnerWork(root, false)
+	if len(reclaimed) != 0 {
+		t.Fatalf("reclaimed = %v; want none", reclaimed)
+	}
+	if len(skipped) != 1 || skipped[0].Path != filepath.Join(root, "_work") {
+		t.Fatalf("skipped = %+v; want one entry for the unreadable _work dir", skipped)
+	}
+}
+
+// TestReclaimRunnerWork_MissingWorkDirIsSilent keeps the legitimate case: a
+// fresh runner install has no _work yet, which is nothing to report.
+func TestReclaimRunnerWork_MissingWorkDirIsSilent(t *testing.T) {
+	_, reclaimed, skipped := reclaimRunnerWork(t.TempDir(), false)
+	if len(reclaimed) != 0 || len(skipped) != 0 {
+		t.Fatalf("got reclaimed=%v skipped=%v; want both empty for a missing _work", reclaimed, skipped)
+	}
+}

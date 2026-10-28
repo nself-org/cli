@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 // isoFixture is one testdata/isolation/*.json file: a live export_metadata
@@ -98,9 +100,19 @@ func TestIsolationRules(t *testing.T) {
 }
 
 // TestIsolationTemplateFile keeps the guard in step with the shipped template:
-// the real multi-app metadata.json must produce no finding.
+// the real multi-app tables.yaml (the one table metadata the template ships,
+// D-0917) must produce no finding. It is wrapped into the export_metadata
+// shape the guard parses.
 func TestIsolationTemplateFile(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join("..", "templates", "clone", "multi-app", "hasura", "metadata.json"))
+	raw, err := os.ReadFile(filepath.Join("..", "templates", "clone", "multi-app", "hasura", "metadata", "databases", "default", "tables", "tables.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tables []any
+	if err := yaml.Unmarshal(raw, &tables); err != nil {
+		t.Fatal(err)
+	}
+	b, err := json.Marshal(map[string]any{"sources": []any{map[string]any{"name": "default", "tables": tables}}})
 	if err != nil {
 		t.Fatal(err)
 	}
