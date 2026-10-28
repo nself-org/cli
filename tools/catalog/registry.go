@@ -77,6 +77,10 @@ func buildRegistry(t tierInfo, ms map[string]*manifestv2.Manifest, rel *model.Re
 		if strings.TrimPrefix(m.Version, "v") != strings.TrimPrefix(r.Version, "v") {
 			rep.note("%s: manifest version %s differs from released version %s; the registry carries the release", s, m.Version, r.Version)
 		}
+		if t.catalog == model.TierLicensed && len(r.PlatformSignatures) > 0 {
+			rep.problem("%s: platform_signatures is not allowed on a licensed row (no licensed platform producer exists, and the entry carries no platform_checksums to match)", s)
+			continue
+		}
 		link, prob := linking(m, r)
 		if prob != "" {
 			rep.problems = append(rep.problems, prob)
