@@ -173,6 +173,14 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 	}
 	defer func() { _ = os.Remove(archivePath) }()
 
+	// Open the archive once (D-1326): the checksum, the platform signature and the extraction all
+	// read this handle, not the path.
+	archive, archiveSum, err := openArchive(archivePath)
+	if err != nil {
+		return fmt.Errorf("reading plugin %q archive: %w", name, err)
+	}
+	defer func() { _ = archive.Close() }()
+
 	// Step 5: Verify checksum before extraction — resolveArtifactChecksum
 	// picks the checksum matching the artifact Step 4 downloaded.
 	expectedChecksum, err := resolveArtifactChecksum(*manifest, artifactKind)
@@ -185,12 +193,12 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 	// always the SOURCE artifact's — see verifyChecksum's FIX-CLI-6 doc
 	// comment (a missing platform checksum already refused above).
 	if expectedChecksum != "" {
-		if err := verifyChecksum(archivePath, expectedChecksum, manifest.PublishStatus); err != nil {
+		if err := verifyChecksumSum(archivePath, archiveSum, expectedChecksum, manifest.PublishStatus); err != nil {
 			_ = os.Remove(archivePath)
 			return fmt.Errorf("checksum verification for plugin %q: %w", name, err)
 		}
 	} else {
-		if err := verifyChecksum(archivePath, "", manifest.PublishStatus); err != nil {
+		if err := verifyChecksumSum(archivePath, archiveSum, "", manifest.PublishStatus); err != nil {
 			// NSELF_PLUGIN_REQUIRE_CHECKSUM=1 hard-refusal path.
 			_ = os.Remove(archivePath)
 			return fmt.Errorf("checksum verification for plugin %q: %w", name, err)
@@ -222,7 +230,7 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 			slog.Warn("audit log write failed — bypass event not recorded", "error", werr)
 		}
 	}
-	if err := verifyReleaseSignature(manifest, paid, false, artifactKind, archivePath, bypassed); err != nil {
+	if err := verifyReleaseSignature(manifest, paid, false, artifactKind, archiveSum, bypassed); err != nil {
 		_ = os.Remove(archivePath)
 		return fmt.Errorf("signature verification for plugin %q: %w", name, err)
 	}
@@ -249,7 +257,7 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 
 	// Step 6: Extract to pluginDir/{name}/.
 	destDir := filepath.Join(pluginDir, name)
-	if err := extractTarGz(archivePath, destDir); err != nil {
+	if err := extractTarGzFrom(archive, destDir); err != nil {
 		return fmt.Errorf("extracting plugin %q: %w", name, err)
 	}
 

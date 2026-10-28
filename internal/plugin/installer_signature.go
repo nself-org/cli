@@ -8,10 +8,7 @@ package plugin
 // Constraints: the release_signature covers the SOURCE tarball's sha256 (manifest.Checksum). A binary (platform) package on a pinned tier installs only when platform_signatures[<the platform the CLI selected>] verifies over the sha256 computed here from the downloaded archive (contract v1.1, P7-PLUG-84; never the registry's checksum field); absent or invalid is E121, with no source-signature fallback. The dev bypass never skips a present signature on a pinned tier. The manifest's author_public_key is never read for trust. --allow-unsigned is honoured for local path or link installs only; registry installs pass local=false and cannot opt out. Pure policy lives in verify/signature.Decide.
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 
@@ -50,12 +47,12 @@ func unsignedAllowed(local bool) bool {
 // (contract v1.1) and never by the source signature: the registry fields that
 // choose a binary download (pluginType, binaryName, repository, platform
 // checksums) are unsigned, so only a signature over the downloaded bytes and
-// the CLI's own platform vouches for them. archivePath is the downloaded file.
-func verifyReleaseSignature(manifest *PluginManifest, paid, local bool, artifactKind, archivePath string, bypass bool) error {
+// the CLI's own platform vouches for them. archiveSum is the lowercase hex sha256 of the downloaded file (hashed once from the install's open handle).
+func verifyReleaseSignature(manifest *PluginManifest, paid, local bool, artifactKind, archiveSum string, bypass bool) error {
 	tier := releaseTier(paid)
 	pinned := signature.Pinned(tier)
 	if pinned && artifactKind != "" && artifactKind != ArtifactKindSource {
-		return verifyPlatformSignature(manifest, tier, artifactKind, archivePath, bypass)
+		return verifyPlatformSignature(manifest, tier, artifactKind, archiveSum, bypass)
 	}
 	if bypass && (!pinned || manifest.ReleaseSignature == nil) {
 		return nil
@@ -87,7 +84,7 @@ func verifyReleaseSignature(manifest *PluginManifest, paid, local bool, artifact
 // present one, whatever release_signature says. Everything else fails closed:
 // no entry, no readable archive and a bad signature are all errors, and the
 // install never falls back to the source package.
-func verifyPlatformSignature(manifest *PluginManifest, tier, platform, archivePath string, bypass bool) error {
+func verifyPlatformSignature(manifest *PluginManifest, tier, platform, archiveSum string, bypass bool) error {
 	rel, present := manifest.PlatformSignatures[platform]
 	if !present {
 		if bypass {
@@ -95,23 +92,8 @@ func verifyPlatformSignature(manifest *PluginManifest, tier, platform, archivePa
 		}
 		return errs.Newf("E121", "plugin %q: the %s binary package has no platform signature", manifest.Name, platform)
 	}
-	sum, err := archiveSHA256(archivePath)
-	if err != nil {
-		return errs.Wrap("E121", fmt.Sprintf("plugin %q: cannot hash the %s binary package for its signature", manifest.Name, platform), err)
+	if archiveSum == "" {
+		return errs.Newf("E121", "plugin %q: cannot hash the %s binary package for its signature", manifest.Name, platform)
 	}
-	return signature.VerifyPlatform(tier, manifest.Name, manifest.Version, platform, sum, rel)
-}
-
-// archiveSHA256 returns the lowercase hex sha256 of the file at path.
-func archiveSHA256(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = f.Close() }()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
+	return signature.VerifyPlatform(tier, manifest.Name, manifest.Version, platform, archiveSum, rel)
 }

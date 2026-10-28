@@ -228,7 +228,7 @@ func TestPlatformSignaturesCacheRoundTrip(t *testing.T) {
 	if got == nil || got.PlatformSignatures[plat] == nil || *got.PlatformSignatures[plat] != *signed {
 		t.Fatalf("platform_signatures lost or changed in the cache round trip: %+v", got)
 	}
-	if err := verifyReleaseSignature(got, false, false, plat, archive, false); err != nil {
+	if err := verifyReleaseSignature(got, false, false, plat, sha256Hex(body), false); err != nil {
 		t.Fatalf("a warm-cache platform install must verify, not skip: %v", err)
 	}
 	bad, _ := findPlugin(reloaded, "invalid-plugin")
