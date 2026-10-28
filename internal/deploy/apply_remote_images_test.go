@@ -30,12 +30,29 @@ func TestSaveImageTagsInspectOutcomes(t *testing.T) {
 		{"empty success", "return 0", true, 0},
 		{"malformed success", "printf '%s\\n' invalid", true, 0},
 		{"successful warning", "printf '%s\\n' warning >&2; printf '%s\\n' " + q(fakeImageID("a")), true, 0},
+		{"empty missing suffix", "printf '%s\\n' 'Error: No such image: ' >&2; return 1", true, 0},
+		{"missing plus diagnostic", "printf '%s\\n' 'Error: No such image: web:1' 'permission denied' >&2; return 1", true, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := imageInspectRemote{newFakeRemote(t), tc.answer}
 			saved, err := saveImageTags(context.Background(), r, []string{"web:1"})
 			if (err != nil) != tc.wantErr || len(saved) != tc.count {
 				t.Fatalf("saved=%v err=%v", saved, err)
+			}
+		})
+	}
+}
+
+func TestSaveImageTagsNormalizedMissingReference(t *testing.T) {
+	for _, tc := range []struct{ ref, missing string }{
+		{"web", "web:latest"},
+		{"docker.io/library/web:1", "web:1"},
+	} {
+		t.Run(tc.ref, func(t *testing.T) {
+			r := imageInspectRemote{newFakeRemote(t), "printf '%s\\n' " + q("Error response from daemon: No such image: "+tc.missing) + " >&2; return 1"}
+			saved, err := saveImageTags(context.Background(), r, []string{tc.ref})
+			if err != nil || len(saved) != 0 {
+				t.Fatalf("missing normalized reference: saved=%v err=%v", saved, err)
 			}
 		})
 	}

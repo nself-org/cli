@@ -49,12 +49,16 @@ func saveImageTags(ctx context.Context, r Remote, refs []string) ([]imageTag, er
 	if len(refs) == 0 {
 		return nil, nil
 	}
+	// Docker normalizes missing references (for example web -> web:latest).
+	// Accept only its single-line missing-image diagnostic, with a nonempty name.
 	script := fmt.Sprintf(`for img in %s; do
 if id=$(docker image inspect --format '{{.Id}}' "$img" 2>&1); then
   printf '%%s %%s\n' "$id" "$img"
 else
   case "$id" in
-    "Error response from daemon: No such image: $img"|"Error: No such image: $img") ;;
+    *'
+'*) exit 1 ;;
+    "Error response from daemon: No such image: "?*|"Error: No such image: "?*) ;;
     *) printf 'cannot inspect image %%s before pull\n' "$img" >&2; exit 1 ;;
   esac
 fi
