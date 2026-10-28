@@ -857,6 +857,9 @@ set with the same pull, per-service `up`, health gate, `nginx -t`, nginx reload 
 apply. The database restore returns the data to the moment of the backup: writes made since then,
 while the new containers ran, are lost.
 
+Rollback resolves SSH keys and server names only from the target environment's inventory;
+the remote path comes from the recorded tar.
+
 The database is restored at most once per record: `db_restored_at` is saved right after
 `nself backup restore` succeeds, before the re-apply, so a retry of a rollback that failed later
 (on any host) skips it and redoes only files and services. The `backup_host` is rolled back first. If it
