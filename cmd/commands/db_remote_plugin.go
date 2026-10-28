@@ -15,6 +15,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/nself-org/cli/internal/plugin"
 )
 
 // withRemotePluginFlag appends "--plugin <name>" to remoteArgs when cmd carries
@@ -31,8 +33,10 @@ func withRemotePluginFlag(cmd *cobra.Command, remoteArgs []string) ([]string, er
 		return remoteArgs, nil
 	}
 	name := f.Value.String()
-	if err := validatePluginFlag(name); err != nil {
-		return nil, err
+	if name != "" {
+		if err := plugin.ValidateName(name); err != nil {
+			return nil, err
+		}
 	}
 	insertAt := len(remoteArgs)
 	for i := 0; i < len(remoteArgs); i++ {

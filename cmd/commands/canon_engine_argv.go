@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/nself-org/cli/internal/cmdregistry"
 	"github.com/spf13/pflag"
 )
 
@@ -289,7 +290,7 @@ func rootFlag(root *cobra.Command, a string) *pflag.Flag {
 		return f
 	}
 	if a == "--help" || a == "-h" || a == "--version" {
-		return &pflag.Flag{Name: strings.TrimLeft(a, "-"), Value: boolValue{}}
+		return &pflag.Flag{Name: strings.TrimLeft(a, "-"), Value: cmdregistry.NoopBoolValue{}}
 	}
 	return nil
 }
