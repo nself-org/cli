@@ -7,10 +7,15 @@
 # (E510) switch nothing; SIGKILL after env is written -> `start` is refused (E512) -> --resume;
 # a second run changes nothing; --rollback; SIGKILL during the restore -> --resume converges.
 # Inputs: W shared host/container path, nself/docker/curl/jq on PATH, run from the repo root.
+# POSTGRES_VERSION is the Postgres major of the starting alpine image (default 16; the switch
+# supports 12 to 17); the switch must land on the pgvector image of the same major (D-0806).
 # Outputs: non-vacuous PASS assertions. Constraints: fake credentials only; cleanup owns only the
 # e2e-adopt-pgs* containers, volumes and project; shared Docker stays running.
 set -euo pipefail
 export NSELF_V15=1
+PGV="${POSTGRES_VERSION:-16}"
+case "$PGV" in [0-9][0-9]) ;; *) echo "FAIL: POSTGRES_VERSION must be a two-digit major, got '$PGV'"; exit 2 ;; esac
+unset POSTGRES_VERSION   # the project's env files own it from here; init must not inherit it
 command -v openssl >/dev/null || apk add -q openssl >/dev/null
 : "${W:?W must be a host-visible work directory}"
 REPO="$PWD"
@@ -51,6 +56,7 @@ cd "$DIR"
 nself init --non-interactive --name "$P" --no-pgvector >>"$LOG" 2>&1 || fail init
 cat >>.env.local <<ENV
 ENV=dev
+POSTGRES_VERSION=${PGV}-alpine
 POSTGRES_PASSWORD=$F_PG
 HASURA_GRAPHQL_ADMIN_SECRET=$F_HASURA
 HASURA_JWT_KEY=$F_JWT
@@ -79,7 +85,7 @@ pg() { docker exec "$PGC" psql -X -U postgres -d "${DB:-$PGDB}" -v ON_ERROR_STOP
 pgs() { DB=postgres pg "$1"; }
 test "$(pg "SELECT count(*) FROM public.np_plugins WHERE name='a10-fixture'")" = 1 || fail 'plugin row missing'
 image_of() { docker inspect --format '{{.Config.Image}}' "$PGC"; }
-case "$(image_of)" in *alpine*) ;; *) fail "expected an alpine postgres, got $(image_of)" ;; esac
+case "$(image_of)" in *":${PGV}-alpine"*) ;; *) fail "expected postgres:${PGV}-alpine, got $(image_of)" ;; esac
 files_sha() { cat docker-compose.yml nself.lock.yaml .env | sha; }
 
 # ---- seed -------------------------------------------------------------------------------------
@@ -147,7 +153,7 @@ err_code() { jq -r '.error.code // empty' "$1" 2>/dev/null; }
 # ---- plan: changes nothing --------------------------------------------------------------------
 BASE_FILES="$(files_sha)"
 nself db image switch --to pgvector --plan --json >"$W/plan.json" 2>>"$LOG" || fail 'plan'
-jq -e '.data.status=="planned" and (.data.new_image|test("pgvector")) and (.data.new_volume|test("_postgres_data_pgvector_")) and .data.build!=null and ([.data.preflight[].ok]|all) and (.data.databases>=3)' "$W/plan.json" >/dev/null || fail 'plan report'
+jq -e '.data.status=="planned" and (.data.new_image|test("pgvector.*pg'"$PGV"'")) and (.data.new_volume|test("_postgres_data_pgvector_")) and .data.build!=null and ([.data.preflight[].ok]|all) and (.data.databases>=3)' "$W/plan.json" >/dev/null || fail 'plan report'
 test "$(files_sha)" = "$BASE_FILES" || fail 'plan changed env, compose or lock'
 test -z "$(new_volumes)" && test ! -e .nself/image-switch/state.json || fail 'plan created a volume or a state'
 running_all || fail 'plan stopped the stack'
@@ -206,7 +212,7 @@ jq -e '.data.status=="switched"' "$W/resume.json" >/dev/null || fail 'resume rep
 
 # ---- after the switch -------------------------------------------------------------------------
 wait_for 120 running_all || fail 'the stack is not running after the resume'
-case "$(image_of)" in *pgvector*) ;; *) fail "postgres is not a pgvector image: $(image_of)" ;; esac
+case "$(image_of)" in *pgvector*"pg${PGV}"*) ;; *) fail "postgres is not the pg${PGV} pgvector image: $(image_of)" ;; esac
 NEWVOL="$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' "$PGC")"
 test "$NEWVOL" != "$OLDVOL" && test "$NEWVOL" = "$(sed -n 's/^POSTGRES_DATA_VOLUME=//p' .env | tail -1 | tr -d '"')" || fail 'postgres is not on the new volume named in .env'
 grep -q "name: $NEWVOL" docker-compose.yml || fail 'compose does not name the new volume'
