@@ -57,6 +57,9 @@ func newLicenseStatusData() licenseStatusData {
 // emitLicenseShow writes the `license show` document in its legacy-compatible
 // form; out is nil when no key is configured.
 func emitLicenseShow(cmd *cobra.Command, out *licenseShowJSON) error {
+	if out == nil && legacyBare() {
+		return emitDoc(cmd, map[string]string{"error": "no license key configured"}, true)
+	}
 	doc := licenseShowData{Bundles: []string{}}
 	if out != nil {
 		doc = licenseShowData{Configured: true, KeyPrefix: out.KeyPrefix, Tier: out.Tier, Bundles: nonNilStrings(out.Bundles),

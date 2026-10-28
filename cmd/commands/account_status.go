@@ -63,6 +63,9 @@ func runAccountStatus(cmd *cobra.Command, _ []string) error {
 	if infoErr != nil {
 		// Fall back to cached data.
 		if jsonEnvelopeOn(cmd) {
+			if legacyBare() {
+				return emitDoc(cmd, cachedAccountJSON(af), true)
+			}
 			return emitAccountStatus(cmd, accountCachedStatus(af, "cached"))
 		}
 		if jsonOut {
@@ -149,20 +152,23 @@ func printCachedAccount(af *auth.AuthFile) {
 }
 
 func printCachedAccountJSON(af *auth.AuthFile) error {
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(cachedAccountJSON(af))
+}
+
+func cachedAccountJSON(af *auth.AuthFile) map[string]interface{} {
 	tier := af.Tier
 	if tier == "" {
 		tier = "free"
 	}
-	out := map[string]interface{}{
+	return map[string]interface{}{
 		"email":        af.Email,
 		"display_name": af.DisplayName,
 		"tier":         tier,
 		"bundles":      af.Bundles,
 		"cached":       true,
 	}
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	return enc.Encode(out)
 }
 
 // ── account show (legacy alias — same as status) ─────────────────────────────

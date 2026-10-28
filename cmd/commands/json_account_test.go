@@ -261,3 +261,25 @@ func accountGoldenSample(path string, zero any) any {
 	}
 	return goldenSample(path, zero)
 }
+
+func TestAccountStatusLegacyCached(t *testing.T) {
+	want, err := os.ReadFile("testdata/json/account-status-cached-legacy.golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	compattest.Set(t, true)
+	t.Setenv(output.LegacyEnvVar, "1")
+	undo := prepareTreeWith(&canonTable, RootCmd, true, false)
+	defer undo()
+	home := isolateHome(t)
+	writeTestAuthFile(t, home, &auth.AuthFile{AccessToken: fixtureAccessToken, Email: "alice@example.test", Tier: "plus"})
+	accountServer(t, false)
+	out, err := runLicenseJSON(t, accountStatusCmd, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	noSecrets(t, "legacy cached status", out)
+	if out != string(want) {
+		t.Fatalf("got %q, want %q", out, want)
+	}
+}
