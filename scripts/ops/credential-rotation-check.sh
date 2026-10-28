@@ -98,7 +98,7 @@ Summary:
 
 1. Verify backup admin is available (see [\`bus-factor.md\`](../docs/operations/bus-factor.md)).
 2. Generate new credential at vendor console (parallel to existing).
-3. Stage as \`${credential}_NEW\` in \`~/.claude/vault.env\`.
+3. Stage as \`${credential}_NEW\` in your credential store.
 4. Roll dependents (Vercel env, GH Actions secrets, Hetzner \`.env.secrets\`, CRD config).
 5. Verify new credential works via a real action.
 6. Revoke old credential at vendor.
@@ -107,7 +107,7 @@ Summary:
 
 ## Vault Variable
 
-Update in \`~/.claude/vault.env\`:
+Update in your secrets file:
 
 \`\`\`bash
 ${credential}=<new-value>
