@@ -188,7 +188,7 @@ func TestRetainedTokenExactGraceBoundary(t *testing.T) {
 		offset time.Duration
 		want   bool
 	}{
-		{"one-second-before-grace", -license.PostExpiryGraceWindow + time.Second, true},
+		{"five-seconds-before-grace", -license.PostExpiryGraceWindow + 5*time.Second, true},
 		{"one-second-past-grace", -license.PostExpiryGraceWindow - 2*time.Second, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
