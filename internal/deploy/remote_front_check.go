@@ -14,7 +14,7 @@ package deploy
 //              what the record says this project shipped there (or what it ships
 //              now). A path without a recorded set (an old record) is treated
 //              like an unknown path: its set must equal the shipped file's, and
-//              it is never pruned. An empty set never matches an unknown path.
+//              it is never pruned. An empty set never matches (sameNames).
 
 import (
 	"context"
@@ -32,7 +32,11 @@ type frontView struct {
 	Names map[string][]string // that record's server_name set per path; a missing key is "unknown"
 }
 
-func sameNames(a, b []string) bool { return strings.Join(a, " ") == strings.Join(b, " ") }
+// sameNames reports whether two server_name sets are equal. An empty set is no
+// evidence of ownership, so it equals nothing, not even another empty set.
+func sameNames(a, b []string) bool {
+	return len(a) > 0 && len(b) > 0 && strings.Join(a, " ") == strings.Join(b, " ")
+}
 
 // checkFrontForeign refuses (E485, nothing sent) to replace a host file that is
 // not this project's.
@@ -63,7 +67,7 @@ func checkFrontForeign(ctx context.Context, r Remote, front string, v frontView)
 			if sameNames(theirs, rec) || sameNames(theirs, ours) {
 				continue
 			}
-		} else if len(theirs) > 0 && len(ours) > 0 && sameNames(theirs, ours) {
+		} else if sameNames(theirs, ours) {
 			continue
 		}
 		return errs.New("E485", fmt.Sprintf("%q in the fronting stack is a generated file of another project: its server_name set is [%s], this deploy ships [%s]",
@@ -102,6 +106,8 @@ func frontPrunable(ctx context.Context, r Remote, front string, v frontView) (pr
 			kept = append(kept, fmt.Sprintf("[kept] %s/%s (no generated marker; not pruned)", front, p))
 		case !have:
 			kept = append(kept, fmt.Sprintf("[kept] %s/%s (no server_name set recorded for it; not pruned)", front, p))
+		case len(rec) == 0 || len(serverNameSet(conf)) == 0:
+			kept = append(kept, fmt.Sprintf("[kept] %s/%s (an empty server_name set proves no ownership; not pruned)", front, p))
 		case !sameNames(serverNameSet(conf), rec):
 			kept = append(kept, fmt.Sprintf("[kept] %s/%s (server_name changed since this project shipped it; not pruned)", front, p))
 		default:

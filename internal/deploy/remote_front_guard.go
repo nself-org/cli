@@ -121,36 +121,56 @@ func localServerNames(stage, rel string) ([]string, error) {
 
 // pruneFrontMarked removes, from the candidates (front paths this host's record
 // says the previous deploy shipped), the files that carry the strict build
-// marker. It returns the files it removed.
-func pruneFrontMarked(ctx context.Context, r Remote, front string, candidates []string) ([]string, error) {
+// marker and, inside the same script, whose server_name set is still the one in
+// names (the set read at the check, so a file replaced since then stays). It
+// returns the files it removed and a [kept] line for each file it left because
+// its set changed.
+func pruneFrontMarked(ctx context.Context, r Remote, front string, candidates []string, names map[string][]string) (removed, kept []string, err error) {
 	var cand []string
 	for _, f := range candidates {
 		if frontPathOK(f) {
 			cand = append(cand, f)
 		}
 	}
-	var removed []string
 	pat := q("^" + strings.ReplaceAll(BuildNginxMarker, " ", "[ ]"))
 	for len(cand) > 0 {
 		n := min(len(cand), 50)
-		body := fmt.Sprintf(`if [ -f "$2" ] && head -n 5 -- "$2" 2>/dev/null | grep -q %s; then rm -f -- "$2" && printf '%%s\n' "$1"; fi`, pat)
+		var want strings.Builder
+		for _, f := range cand[:n] {
+			if set := names[f]; len(set) > 0 {
+				fmt.Fprintf(&want, "%s) want=%s;; ", q(f), q(strings.Join(set, " ")))
+			}
+		}
+		body := strings.NewReplacer("@WANT@", want.String(), "@PAT@", pat, "@MAX@", fmt.Sprint(frontConfMax)).Replace(frontPruneBody)
 		out, err := r.Run(ctx, shScript(guardedScript(front, cand[:n], body)))
 		if err != nil {
-			return removed, fmt.Errorf("pruning generated files on %s: %w", r.Label(), err)
+			return removed, kept, fmt.Errorf("pruning generated files on %s: %w", r.Label(), err)
 		}
 		if err := refusedPaths(out); err != nil {
-			return removed, err
+			return removed, kept, err
 		}
 		asked := map[string]bool{}
 		for _, f := range cand[:n] {
 			asked[f] = true
 		}
 		for _, f := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-			if asked[f] {
+			if p, ok := strings.CutPrefix(f, "KEPT "); ok && asked[p] {
+				kept = append(kept, fmt.Sprintf("[kept] %s/%s (server_name changed since it was checked; not pruned)", front, p))
+			} else if asked[f] {
 				removed = append(removed, f)
 			}
 		}
 		cand = cand[n:]
 	}
-	return removed, nil
+	return removed, kept, nil
 }
+
+// frontPruneBody is the per-path prune step: the marker rule, then the same
+// server_name set as serverNameSet (comments dropped, sorted, unique) compared
+// with the recorded one. A path with no recorded set is never removed.
+const frontPruneBody = `if [ -f "$2" ] && head -n 5 -- "$2" 2>/dev/null | grep -q @PAT@; then
+want=; case "$1" in @WANT@esac
+got=$(head -c @MAX@ -- "$2" 2>/dev/null | sed 's/#.*//' | grep -oE '(^|[^[:alnum:]_])server_name[[:space:]]+[^;]+;' | sed -E 's/^.*server_name[[:space:]]+//; s/;$//' | tr -s '[:space:]' '\n' | grep -v '^$' | LC_ALL=C sort -u | tr '\n' ' ')
+got=${got% }
+if [ -n "$want" ] && [ "$got" = "$want" ]; then rm -f -- "$2" && printf '%s\n' "$1"; else printf 'KEPT %s\n' "$1"; fi
+fi`
