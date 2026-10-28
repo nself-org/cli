@@ -9,8 +9,9 @@
 #   `ci-release` of the plugins repository (the same pin as plugins nself-ci.yml).
 #   To move the pin, change the three values in one commit; rollback of a bad
 #   release is a revert of that commit. The binary is never built from this checkout.
-# Duplication: ci.yml still runs the same Go checks across the OS matrix plus the
-#   v1.5 leg and vendor sync; it is retired later (debt row).
+# Duplication (D-0140): ci.yml no longer repeats gofmt, the contract gate or
+#   vet/build/test on its ubuntu-latest leg. It keeps the other OS legs, the v1.5
+#   leg, golangci-lint and vendor sync, which this gate does not replace.
 # Rules (see the template): job name `nself-ci`, no `paths:` filter, no matrix, no
 #   cancel-in-progress, actions pinned by sha, read-only token, `--no-status`.
 
