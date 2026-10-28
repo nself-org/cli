@@ -9,7 +9,7 @@ package imageswitch
 // replays database ACLs and settings, captures the result and stops cleanly.
 // Inputs: the dump in the stage. Outputs: the new volume, PhaseRestored.
 // Constraints: the only skipped statement is CREATE ROLE of the bootstrap role
-// (logged); any other error fails the restore (E511). The one-shot runs as root so
+// (logged); any other error fails the restore (E511). The one-shot runs as root (all capabilities dropped but five) so
 // it can read the 0600 stage; it hands the stage back to the host uid:gid on exit.
 
 import (
@@ -20,6 +20,11 @@ import (
 
 	"github.com/nself-org/cli/internal/docker"
 )
+
+// restoreCaps are the capabilities restore.sh needs once every other one is dropped: chown the stage
+// back, gosu to postgres (setuid, setgid), read 0600 files of another uid, and act on files it does
+// not own.
+var restoreCaps = []string{"CHOWN", "SETUID", "SETGID", "DAC_OVERRIDE", "FOWNER"}
 
 // volumeLabels are what compose puts on the volume it creates, so `compose up`
 // accepts the volume this command made instead of warning that it is foreign.
@@ -78,6 +83,10 @@ func (s *Switch) restore(ctx context.Context) error {
 	spec := docker.RunSpec{
 		Image: s.st.NewImage, Name: s.oneShot("restore"), User: "0:0", Network: "none",
 		Args: []string{"bash", "/stage/restore.sh"},
+		// Root only to read the 0600 stage files, run initdb as postgres through gosu and chown the
+		// stage back: nothing else (D-0803).
+		CapDrop: []string{"ALL"},
+		CapAdd:  restoreCaps,
 		EnvPass: map[string]string{
 			"BOOT_USER": cl.Bootstrap, "NSELF_COLLATE": collate, "NSELF_CTYPE": ctype,
 			"HOST_UID": strconv.Itoa(uid), "HOST_GID": strconv.Itoa(gid),
