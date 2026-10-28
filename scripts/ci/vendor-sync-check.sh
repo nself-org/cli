@@ -28,16 +28,16 @@ export GOWORK=off
 # Go builds through a symlinked .go file or directory but `go mod vendor`
 # drops it, so a symlink in a local replace target (./sdk/go) would reach
 # go test but not the binary. A local target is a ./, ../ or absolute path.
-for dir in $(go mod edit -json | grep -o '"Path": "\.\{0,2\}/[^"]*"' | sed 's/^"Path": "//; s/"$//'); do
+while IFS= read -r dir; do
   links="$(find "${dir}" -type l 2>/dev/null || true)"
   if [ -n "${links}" ]; then
     echo "vendor-sync-check: FAIL: symlinks in ${dir} (go mod vendor drops them):" >&2
     echo "${links}" >&2
     exit 1
   fi
-done
+done < <(go mod edit -json | grep -o '"Path": "\.\{0,2\}/[^"]*"' | sed 's/^"Path": "//; s/"$//')
 
-WORK="$(mktemp -d)"
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/vendor-sync.XXXXXX")"
 trap 'rm -rf "${WORK}"' EXIT
 
 # GOFLAGS=-mod=vendor (set by some CI jobs) makes `go mod vendor` refuse to run.

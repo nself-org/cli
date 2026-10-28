@@ -12,12 +12,12 @@
 #            - the package in its nearest enclosing package directory (its own
 #              .go files, testdata/, data files read beside the code); a root
 #              package only for root files and the root testdata/;
-#            - for a file outside every package directory (docs, scripts,
-#              .github/), every package whose .go files name its directory
+#            - for every non-Go file (including docs, scripts, .github/),
+#              every package whose .go files name its directory
 #              path (`dir/` or `/dir"` for a top-level one), its top-level
 #              directory as a quoted literal, or (for a root file) its file
 #              name: tests that read the wiki or a CI script are found that way.
-#          Seeds from .go and embedded files are closed over reverse imports
+#          Seeds from .go, embedded files and deleted data owners are closed over reverse imports
 #          (`go list -deps`, test imports included); the other seeds only
 #          feed their own package's tests, so they are listed as they are. Prints `./...` alone when go.mod, go.sum,
 #          vendor/ or anything under internal/errs/ changed (everything
@@ -114,8 +114,9 @@ awk -F'|' -v modpath="$MODPATH" -v moddir="$MODDIR" '
 sed -n 's/^P //p' "$TMP/mapped" > "$TMP/seeds"
 sed -n 's/^D //p' "$TMP/mapped" > "$TMP/direct"
 
-# Files outside every package: find the module .go files that name them.
-sed -n 's/^U //p' "$TMP/mapped" | while IFS= read -r f; do
+# Data can be owned by one package and read by another. Scan every non-Go
+# path, including owned data, for those readers.
+sed '/\.go$/d' "$TMP/changed" | while IFS= read -r f; do
   case "$f" in
     */*/*)
       printf '%s\n' "${f%/*}"
@@ -148,6 +149,23 @@ if [ -s "$TMP/patterns" ]; then
     fi
   fi
 fi
+
+# A removed embedded file no longer appears in go list's EmbedFiles. Close
+# deleted data owners over imports conservatively, so wildcard embeds still
+# reach their consumers when another matching file keeps the pattern valid.
+while IFS= read -r f; do
+  [ -e "$f" ] && continue
+  case "$f" in *.go) continue ;; esac
+  d="$f"
+  while [ "${d%/*}" != "$d" ]; do
+    d="${d%/*}"
+    awk -F'|' -v dir="$MODDIR/$d" '$2 == dir { print $1 }' "$TMP/graph"
+  done
+  case "$f" in
+    */*) ;;
+    *) awk -F'|' -v dir="$MODDIR" '$2 == dir { print $1 }' "$TMP/graph" ;;
+  esac
+done < "$TMP/changed" >> "$TMP/seeds"
 
 if [ ! -s "$TMP/seeds" ] && [ ! -s "$TMP/direct" ]; then
   echo "affected-pkgs: no Go package is affected by this change set" >&2

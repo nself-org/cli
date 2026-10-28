@@ -2,7 +2,7 @@
 # Purpose: positive and negative controls for scripts/ci/vendor-sync-check.sh
 #          on a synthetic module shaped like the cli: a main module that
 #          replaces a first-party sdk module with ./sdk and vendors it.
-# Inputs:  none.
+# Inputs:  optional script-under-test path (default: sibling vendor-sync-check.sh).
 # Outputs: "ok <case>" per passing case; exit 0 when all pass, exit 1 on the
 #          first mismatch.
 # Constraints: bash 3.2 compatible; offline (GOPROXY=off, no third-party
@@ -10,7 +10,8 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-WORK="$(mktemp -d)"
+SCRIPT="${1:-$HERE/vendor-sync-check.sh}"
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/vendor-sync-test.XXXXXX")"
 trap 'rm -rf "${WORK}"' EXIT
 
 export GOPROXY=off GOWORK=off GOTOOLCHAIN=local GOFLAGS=-mod=mod
@@ -20,7 +21,7 @@ export GOCACHE="${GOCACHE:-$(go env GOCACHE)}"
 fixture() {
   local m="$1"
   mkdir -p "${m}/scripts/ci" "${m}/sdk/lib"
-  cp "${HERE}/vendor-sync-check.sh" "${m}/scripts/ci/"
+  cp "${SCRIPT}" "${m}/scripts/ci/vendor-sync-check.sh"
   cat > "${m}/go.mod" <<'EOF'
 module github.com/nself-org/vsc-fixture
 
@@ -103,6 +104,13 @@ expect sdk-symlinked-dir 1 "${d}" "symlinks in ./sdk"
 d="$(case_dir go-mod-vendor-fails)"
 printf 'package main\n\nimport _ "github.com/nself-org/vsc-fixture/sdk/missing"\n' > "${d}/broken.go"
 expect go-mod-vendor-fails 2 "${d}" "go mod vendor failed"
+
+d="$(case_dir sdk-spaced-path)"
+mv "${d}/sdk" "${d}/sdk space"
+(cd "${d}" && go mod edit '-replace=github.com/nself-org/vsc-fixture/sdk=./sdk space' && go mod vendor)
+printf 'package lib\n' > "${d}/sdk space/linked.src"
+ln -s ../linked.src "${d}/sdk space/lib/linked.go"
+expect sdk-spaced-path 1 "${d}" "symlinks in ./sdk space"
 
 d="$(case_dir no-vendor-dir)"
 rm -rf "${d}/vendor"
