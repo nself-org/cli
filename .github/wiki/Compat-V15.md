@@ -71,6 +71,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | D-0490 | a fragment may include another file, extend a service of one, build on the host network, join a network it does not declare or redefine a core service (warning) | E129 fails the build | `internal/build/plugins_network_normalize.go` |
 | D-0491 | replacing another owner's or a core nginx/sites file warns | E055 fails the build | `internal/build/plugin_nginx_collision.go` |
 | D-0676 | bare stream path streams as path:// with a notice | refused | `internal/backup/stream_dest_compat.go` |
+| D-0686 | S3_SECRET_KEY accepted at any strength | must be at least 16 characters when object storage is enabled | `internal/config/validator.go` |
 | D-0752 | plugin disable never confirmed | prod-class and hand-edit confirmation before the marker is written. | `cmd/commands/plugin_disable_gate.go` |
 | D-0843 | a downgrade only warns | refused unless --allow-downgrade is given | `internal/plugin/installer_downgrade.go` |
 | P7-ADOPT-01 | writable absolute bind allowed | E502 | `internal/compose/custom_service_v2.go` |

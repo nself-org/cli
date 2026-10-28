@@ -178,6 +178,7 @@ func validatePasswords(cfg *Config, checkPatterns bool) error {
 		}
 
 		// S3_SECRET_KEY — only if object storage enabled in v1.5+, min 16
+		// compat.V15(D-0686): S3_SECRET_KEY accepted at any strength -> must be at least 16 characters when object storage is enabled
 		if compat.V15() && getEnvBool("OBJECT_STORAGE_ENABLED", false) {
 			if err := checkPassword(cfg.Minio.S3SecretKey, "S3_SECRET_KEY", 16, checkPatterns); err != nil {
 				return err
