@@ -19,17 +19,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// initContainerLabel is the label docker.cleanupInitContainers removes by.
-const initContainerLabel = "nself.type=init-container"
-
 type composeLabels struct {
 	Services map[string]struct {
 		Labels yaml.Node `yaml:"labels"`
 	} `yaml:"services"`
 }
 
-// initContainerServices returns the services carrying initContainerLabel in
-// any of files.
+// initContainerServices returns services whose effective nself.type label is
+// init-container after applying label overrides in Compose file order.
 func initContainerServices(files []string) (map[string]bool, error) {
 	out := map[string]bool{}
 	for _, path := range files {
@@ -45,31 +42,37 @@ func initContainerServices(files []string) (map[string]bool, error) {
 			return nil, fmt.Errorf("parsing compose file %s: %w", path, err)
 		}
 		for name, svc := range doc.Services {
-			if hasLabel(&svc.Labels, initContainerLabel) {
-				out[name] = true
+			if value, present := labelValue(&svc.Labels, "nself.type"); present {
+				if value == "init-container" {
+					out[name] = true
+				} else {
+					delete(out, name)
+				}
 			}
 		}
 	}
 	return out, nil
 }
 
-// hasLabel reports whether a compose labels node (map or list) holds kv.
-func hasLabel(n *yaml.Node, kv string) bool {
-	key, val, _ := strings.Cut(kv, "=")
+// labelValue reads one Compose label, preserving whether an override sets it.
+func labelValue(n *yaml.Node, key string) (string, bool) {
 	switch n.Kind {
 	case yaml.MappingNode:
-		var m map[string]string
-		return n.Decode(&m) == nil && m[key] == val
-	case yaml.SequenceNode:
-		var l []string
-		if n.Decode(&l) != nil {
-			return false
+		var labels map[string]string
+		if n.Decode(&labels) == nil {
+			value, ok := labels[key]
+			return value, ok
 		}
-		for _, e := range l {
-			if strings.TrimSpace(e) == kv {
-				return true
+	case yaml.SequenceNode:
+		var labels []string
+		if n.Decode(&labels) == nil {
+			for i := len(labels) - 1; i >= 0; i-- {
+				k, value, _ := strings.Cut(labels[i], "=")
+				if k == key {
+					return value, true
+				}
 			}
 		}
 	}
-	return false
+	return "", false
 }
