@@ -35,6 +35,13 @@ func runTier(o *options, t tierInfo, stderr io.Writer) (outputs, []string, error
 	if err != nil {
 		return nil, nil, err
 	}
+	var removed []string
+	if o.check {
+		removed, err = removedReleaseRows(o.releases, rel)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
 	b, err := loadBundles(o.bundles)
 	if err != nil {
 		return nil, nil, err
@@ -51,6 +58,7 @@ func runTier(o *options, t tierInfo, stderr io.Writer) (outputs, []string, error
 		}
 	}
 	ms, rep := scanManifests(o.plugins)
+	rep.problems = append(rep.problems, removed...)
 	for _, s := range sortedKeys(rel.Releases) { // a release row needs a plugin directory
 		if _, err := os.Stat(filepath.Join(o.plugins, s)); err != nil {
 			rep.problem("%s: releases.json has a row but the tree has no such directory", s)

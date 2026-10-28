@@ -14,17 +14,14 @@ func writeReleases(t *testing.T, dir, body string) {
 	}
 }
 
-func TestVersionDisagreementIsNoted(t *testing.T) {
+func TestVersionDisagreementIsRefused(t *testing.T) {
 	dir := tree(t, "licensed", "claw") // manifest 1.1.2
 	manifest := filepath.Join(dir, "claw", "plugin.json")
 	b := strings.Replace(string(readFile(t, manifest)), `"version": "1.1.2"`, `"version": "1.1.12"`, 1)
 	if err := os.WriteFile(manifest, []byte(b), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	code, se := gen(t, tierArgs("licensed", dir, t.TempDir(), "")...)
-	if code != 0 || !strings.Contains(se, "claw: manifest version 1.1.12 differs from released version 1.1.2") {
-		t.Fatalf("exit %d\n%s", code, se)
-	}
+	expectProblem(t, "claw: manifest version 1.1.12 differs from released version 1.1.2", tierArgs("licensed", dir, t.TempDir(), "")...)
 }
 
 func TestConflictingMinVersionKeysAreRefused(t *testing.T) {
@@ -73,7 +70,7 @@ func TestRequireReleasedFailsOnAnUnreleasedManifest(t *testing.T) {
 func TestReleaseBinariesMustCoverWhatTheManifestRequires(t *testing.T) {
 	dir := tree(t, "free", "sentry-cli")
 	sig := strings.Repeat("a", 64)
-	writeReleases(t, dir, `{"schema_version":1,"releases":{"sentry-cli":{"version":"1.0.0","sha256":"`+sig+`","release_signature":null,"binaries":["nself-sentry"]}}}`)
+	writeReleases(t, dir, `{"schema_version":1,"releases":{"sentry-cli":{"version":"1.2.6","sha256":"`+sig+`","release_signature":null,"binaries":["nself-sentry"]}}}`)
 	expectProblem(t, "sentry-cli: the manifest requires binaries nself-sentry-server but the release lists nself-sentry", tierArgs("free", dir, t.TempDir(), "")...)
 	writeReleases(t, dir, `{"schema_version":1,"releases":{"sentry-cli":{"version":"1.0.0","sha256":"`+sig+`","release_signature":null,"binaries":["Sentry"]}}}`)
 	expectProblem(t, "binaries entry Sentry must match", tierArgs("free", dir, t.TempDir(), "")...)
