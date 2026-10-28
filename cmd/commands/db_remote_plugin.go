@@ -4,12 +4,12 @@ package commands
 // Inputs: the cobra command (may carry a --plugin flag) and the remote argv a
 // db subcommand built.
 // Outputs: the argv with "--plugin <name>" appended, or the E401 error from
-// validatePluginFlag for an invalid name.
+// plugin.ValidateName for an invalid name.
 // Constraints: no I/O. The argv is copied, never mutated in place. A caller
 // that already forwards --plugin is left alone; flag metadata distinguishes
 // flags from their values during deduplication. Quoting
 // happens later in shellQuoteArgs. An invalid name fails before any SSH call.
-// SPORT: cli/cmd/commands — see D-0232, db_remote.go, plugin_flag.go.
+// SPORT: cli/cmd/commands — see D-0232, db_remote.go, internal/plugin/name_validate.go.
 
 import (
 	"strings"
@@ -33,10 +33,8 @@ func withRemotePluginFlag(cmd *cobra.Command, remoteArgs []string) ([]string, er
 		return remoteArgs, nil
 	}
 	name := f.Value.String()
-	if name != "" {
-		if err := plugin.ValidateName(name); err != nil {
-			return nil, err
-		}
+	if err := plugin.ValidateName(name); err != nil {
+		return nil, err
 	}
 	insertAt := len(remoteArgs)
 	for i := 0; i < len(remoteArgs); i++ {
