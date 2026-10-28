@@ -9,8 +9,8 @@
 #   without `-mod=vendor`; the cli builds and tests against the committed
 #   vendor/ tree, so the Go jobs are named here with the same argv as the `ci`
 #   job of .github/workflows/ci.yml (scripts/ci/gofmt-check.sh is the single
-#   source of the format rule). The v1.5 test leg, vendor-sync check, contract
-#   gate and the multi-OS matrix stay in ci.yml until it is retired (debt row).
+#   source of the format rule). The v1.5 test leg, vendor-sync check and the
+#   multi-OS matrix stay in ci.yml until it is retired (debt row).
 # Rule: a job here may be tuned (workdir, when.paths, timeout) but never made
 #   optional to get a green run (Epic D28).
 # Drills: every directory of scripts/drill/legs that holds an executable `run`
