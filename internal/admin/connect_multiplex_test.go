@@ -15,7 +15,7 @@ func TestAdminStrictPolicyDisablesMultiplexing(t *testing.T) {
 		{"operator-default", "host.test", 22, false},
 		{"operator-port", "[host.test]:2222", 2222, false},
 		{"pin-default", "host.test", 22, true},
-		{"pin-port", "nself-host.test-2222", 2222, true},
+		{"pin-port", "nself+host.test+2222", 2222, true},
 	} {
 		for _, entry := range entryNames {
 			t.Run(trust.name+"/"+entry, func(t *testing.T) {

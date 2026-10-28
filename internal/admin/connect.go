@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -19,7 +18,6 @@ import (
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
-	"github.com/nself-org/cli/internal/hostpin"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
@@ -167,9 +165,11 @@ func adminHostKeyOptions(ctx context.Context, spec remote.HostSpec) ([]string, e
 	if resolved.HostKeyAlias != "" && resolved.HostKeyAlias != "none" {
 		operatorAlias = resolved.HostKeyAlias
 	}
-	pinAlias := spec.Host
-	if (spec.Port != 0 && spec.Port != 22) || net.ParseIP(spec.Host) != nil {
-		pinAlias = hostpin.PinAlias(ctx, spec.Host, spec.Port, remote.Fingerprint)
+	// The port stays as given: remote.PinAlias applies the one port-22 rule.
+	pinAlias := remote.PinAlias(spec)
+	// A pin an older release made under its own alias moves to the shared one, once.
+	if err := (remote.PinnedHostKeys{Path: pinFile}).MigrateLegacyPin(spec, keys); err != nil {
+		return nil, errs.New("E487", fmt.Sprintf("deploy pin file %s refused: %v", pinFile, err))
 	}
 	operator := adminTrustedFingerprints(ctx, operatorAlias, filepath.Join(home, ".ssh", "known_hosts"))
 	pinned := adminTrustedFingerprints(ctx, pinAlias, pinFile)
@@ -181,7 +181,7 @@ func adminHostKeyOptions(ctx context.Context, spec remote.HostSpec) ([]string, e
 				"-o", "ControlMaster=no", "-o", "ControlPath=none",
 				"-o", pinOption,
 			}
-			if !operator[key.Fingerprint] && (spec.Port != 0 && spec.Port != 22 || net.ParseIP(spec.Host) != nil) {
+			if pinAlias != strings.ToLower(spec.Host) && !operator[key.Fingerprint] {
 				opts = append(opts, "-o", "HostKeyAlias="+pinAlias)
 			}
 			return opts, nil

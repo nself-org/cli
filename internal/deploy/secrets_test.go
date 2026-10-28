@@ -174,7 +174,7 @@ func TestPushSecretsLocalOperand(t *testing.T) {
 	t.Setenv("HOME", pinHome(t))
 	read := installFakeSSHTools(t)
 	installFakeKeyscan(t)
-	if err := (remote.PinnedHostKeys{Path: DeployKnownHostsPath()}).Add("nself-203.0.113.7-22", "ssh-ed25519 AQID"); err != nil {
+	if err := (remote.PinnedHostKeys{Path: DeployKnownHostsPath()}).Add("nself+203.0.113.7+22", "ssh-ed25519 AQID"); err != nil {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
