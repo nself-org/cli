@@ -14,7 +14,7 @@ import (
 
 func TestPluginArgRefusedBeforeAnyScan(t *testing.T) {
 	cfg := &config.Config{}
-	for _, name := range []string{"../victim", "./x", "a/b", "..", ".", "/etc", `a\b`, "a\x00b"} {
+	for _, name := range []string{"../victim", "./x", "a/b", "..", ".", "/etc", `a\b`, "a\x00b", "notify.prev", "bin", "common", "status"} {
 		if err := validatePluginArg(name); err == nil {
 			t.Errorf("validatePluginArg(%q) = nil", name)
 		}

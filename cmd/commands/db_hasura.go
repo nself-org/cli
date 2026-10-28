@@ -90,11 +90,14 @@ func runDBHasuraMetadataReload(cmd *cobra.Command, _ []string) error {
 }
 
 func runDBVerifyChecksums(cmd *cobra.Command, _ []string) error {
+	plugin, _ := cmd.Flags().GetString("plugin")
+	if err := validatePluginFlag(plugin); err != nil {
+		return err
+	}
 	cfg, err := loadProjectConfig()
 	if err != nil {
 		return err
 	}
-	plugin, _ := cmd.Flags().GetString("plugin")
 	mismatches, err := database.VerifyChecksums(cmd.Context(), cfg, plugin)
 	if err != nil {
 		return fmt.Errorf("verify checksums: %w", err)

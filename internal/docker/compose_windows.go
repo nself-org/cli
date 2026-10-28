@@ -13,3 +13,11 @@ func setProcGroupAttr(_ *exec.Cmd) {}
 // killProcessGroup is a no-op on Windows because there is no unix-style
 // process group to signal. The Cancel hook falls through to cmd.Process.Kill().
 func killProcessGroup(_ *exec.Cmd) {}
+
+// termProcessGroup kills the immediate process: Windows has no SIGTERM to send.
+func termProcessGroup(cmd *exec.Cmd) error {
+	if cmd.Process == nil {
+		return nil
+	}
+	return cmd.Process.Kill()
+}

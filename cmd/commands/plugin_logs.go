@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/nself-org/cli/internal/docker"
 	"github.com/spf13/cobra"
 )
 
@@ -66,13 +67,7 @@ func runPluginLogs(cmd *cobra.Command, args []string) error {
 
 	if grepPattern == "" {
 		// Simple passthrough.
-		dockerCmd := exec.Command("docker", dockerArgs...)
-		dockerCmd.Stdout = os.Stdout
-		dockerCmd.Stderr = os.Stderr
-		if err := dockerCmd.Run(); err != nil {
-			return fmt.Errorf("docker logs: %w", err)
-		}
-		return nil
+		return docker.Stream(cmd.Context(), "", dockerArgs, os.Stdout, os.Stderr)
 	}
 
 	// Validate the grep pattern before use so we get a helpful error on invalid regex.
@@ -81,34 +76,33 @@ func runPluginLogs(cmd *cobra.Command, args []string) error {
 	}
 
 	// With grep: pipe docker logs output through grep.
-	dockerCmd := exec.Command("docker", dockerArgs...)
 	grepCmd := exec.Command("grep", "-E", grepPattern)
-
-	dockerOut, err := dockerCmd.StdoutPipe()
+	grepIn, err := grepCmd.StdinPipe()
 	if err != nil {
-		return fmt.Errorf("creating docker stdout pipe: %w", err)
+		return fmt.Errorf("creating grep stdin pipe: %w", err)
 	}
-	dockerCmd.Stderr = os.Stderr
-	grepCmd.Stdin = dockerOut
 	grepCmd.Stdout = os.Stdout
 	grepCmd.Stderr = os.Stderr
-
-	if err := dockerCmd.Start(); err != nil {
-		return fmt.Errorf("starting docker logs: %w", err)
-	}
 	if err := grepCmd.Start(); err != nil {
 		return fmt.Errorf("starting grep: %w", err)
 	}
 
 	// Wait for docker to finish, then grep will EOF.
-	_ = dockerCmd.Wait()
+	streamErr := docker.Stream(cmd.Context(), "", dockerArgs, grepIn, os.Stderr)
+	_ = grepIn.Close()
 	// grep exits 1 on "no match" (normal) and 2+ on error. Only surface errors.
-	if err := grepCmd.Wait(); err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+	waitErr := grepCmd.Wait()
+	// A docker that failed to start or exited non-zero is the root cause; it
+	// outranks grep's "no match" exit.
+	if streamErr != nil {
+		return streamErr
+	}
+	if waitErr != nil {
+		if exitErr, ok := waitErr.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
 			// No lines matched — not an error.
 			return nil
 		}
-		return fmt.Errorf("grep error: %w", err)
+		return fmt.Errorf("grep error: %w", waitErr)
 	}
 	return nil
 }

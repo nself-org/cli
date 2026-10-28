@@ -1,31 +1,29 @@
 package database
 
-// Purpose: refuse a path-shaped --plugin argument before any migration scan
-// (P7-PLUG-20 fix). migrationsDir joins the plugin name to the plugin
+// Purpose: refuse a non-plugin --plugin argument before any migration scan
+// (P7-PLUG-20 fix, D-0602). migrationsDir joins the plugin name to the plugin
 // directory, so `nself db migrate up --plugin ../victim` would scan and apply
-// SQL from a sibling directory.
+// SQL from a sibling directory, and `--plugin notify.prev` the update backup's.
 // Inputs: the --plugin value ("" means the project's own migrations).
 // Outputs: nil, or an E401 error.
-// Constraints: no I/O. This layer only guarantees the name is one path segment.
-// The full plugin-name grammar (plugin.ValidateName) runs at the command layer
-// (validatePluginFlag); importing internal/plugin here would add a same-layer
-// L2 edge that layers.yaml does not allow.
+// Constraints: no I/O. The grammar is pluginname.Reason, the same check
+// plugin.ValidateName runs at the command layer: one path segment, lowercase
+// slug, not a backup directory and not a reserved name (bin, common, status).
 
 import (
-	"path/filepath"
-	"strings"
-
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/pluginname"
 )
 
-// validatePluginArg refuses a non-empty plugin argument that is not exactly one
-// path segment under the plugin directory.
+// validatePluginArg refuses a non-empty plugin argument that is not a plain,
+// non-reserved plugin name.
 func validatePluginArg(plugin string) error {
 	if plugin == "" {
 		return nil
 	}
-	if plugin == "." || plugin == ".." || strings.ContainsAny(plugin, "/\\\x00") || filepath.VolumeName(plugin) != "" {
-		return errs.Newf("E401", "invalid plugin name %q: must be a single plugin name, not a path", plugin)
+	if reason := pluginname.Reason(plugin); reason != "" {
+		return errs.Newf("E401", "invalid plugin name %q: %s", plugin, reason).
+			WithFix("use the plugin name as shown by 'nself plugin list', for example 'nself db migrate up --plugin notify'")
 	}
 	return nil
 }

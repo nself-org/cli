@@ -144,8 +144,9 @@ func PlannedRecord(state *GeneratedState, pb *nbuild.PlannedBuild) (*GeneratedSt
 		keep[displayPath(pb.PluginDir, key)] = true
 	}
 	// D-0318: the build no longer rewrites shared plugin fragments, so a
-	// legacy "@plugins/" key (D-0557) can only go stale and leaves the record.
-	next.pruneLegacyPluginKeys(keep)
+	// legacy "@plugins/" key (D-0557), or an "@abs/" key for a plugin fragment
+	// (D-0644), can only go stale and leaves the record.
+	next.pruneLegacyPluginKeys(keep, pb.PluginDir)
 	body, err := next.body()
 	if err != nil {
 		return nil, nil, err

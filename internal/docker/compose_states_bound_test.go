@@ -44,6 +44,11 @@ func TestStateReadParentDeadlineIsNotOwnTimeout(t *testing.T) {
 
 func TestSoftCancelSendsTerm(t *testing.T) {
 	shortenStateBounds(t)
+	// The stub installs its TERM trap a few ms after it starts. Under a loaded
+	// runner the default 200ms bound can expire first, so the TERM arrives
+	// before the trap exists and no marker is written. Give the stub time to
+	// reach `wait`; the call still times out because the stub sleeps 30s.
+	stateCallTimeout = 3 * time.Second
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "term")
 	c, _ := scriptDocker(t, "trap 'echo term > '"+marker+"'; exit 0' TERM\nsleep 30 &\nwait\n")
@@ -82,6 +87,27 @@ func TestFreshStatesDropsVanishedContainer(t *testing.T) {
 			cs, err := c.FreshStates(context.Background(), dir, "a", nil)
 			if (err != nil) != tc.wantErr || len(cs) != tc.wantLen || (!tc.wantErr && (cs[0].ID != "c1" || cs[0].StartedAt != "t1")) {
 				t.Errorf("states %+v, err %v", cs, err)
+			}
+		})
+	}
+}
+
+func TestStartMarksDropsVanishedContainer(t *testing.T) {
+	ps := "echo '[{\"ID\":\"c1\",\"Name\":\"p-a-1\",\"State\":\"exited\"},{\"ID\":\"c2\",\"Name\":\"p-a-2\",\"State\":\"exited\"},{\"ID\":\"c3\",\"Name\":\"p-a-3\",\"State\":\"running\"}]'\n"
+	for name, tc := range map[string]struct {
+		stderr  string
+		want    map[string]string
+		wantErr bool
+	}{
+		"no such object":    {"Error: No such object: c2", map[string]string{"c1": "t1"}, false},
+		"no such container": {"Error: No such container: c2", map[string]string{"c1": "t1"}, false},
+		"other failure":     {"Cannot connect to the Docker daemon", nil, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c, dir := scriptDocker(t, "if [ \"$1\" = inspect ]; then\n if [ \"$5\" = c2 ]; then echo '"+tc.stderr+"' >&2; exit 1; fi\n echo t1; exit 0; fi\n"+ps)
+			marks, err := c.StartMarks(context.Background(), dir, "a")
+			if (err != nil) != tc.wantErr || len(marks) != len(tc.want) || (!tc.wantErr && marks["c1"] != "t1") {
+				t.Errorf("marks %+v, err %v; want %+v, err %v", marks, err, tc.want, tc.wantErr)
 			}
 		})
 	}

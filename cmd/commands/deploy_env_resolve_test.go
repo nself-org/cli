@@ -87,6 +87,7 @@ func TestReadEnvFileOverrides_ParsesAndStripsQuotes(t *testing.T) {
 // a stale dev-tier value that no longer matches what was baked into
 // docker-compose.yml.
 func TestWriteResolvedDeployEnv_LaterFilesOverrideEarlier(t *testing.T) {
+	isolateDeployConfigEnv(t)
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("POSTGRES_DB=dev_db\nSHARED_KEY=from_dev\n"), 0o600); err != nil {
 		t.Fatalf("write .env: %v", err)
@@ -128,6 +129,7 @@ func TestWriteResolvedDeployEnv_LaterFilesOverrideEarlier(t *testing.T) {
 // function actually deletes the temp snapshot so repeated deploys don't
 // accumulate stray files in the project root.
 func TestWriteResolvedDeployEnv_CleanupRemovesFile(t *testing.T) {
+	isolateDeployConfigEnv(t)
 	dir := t.TempDir()
 	path, cleanup, err := writeResolvedDeployEnv(dir, "prod")
 	if err != nil {

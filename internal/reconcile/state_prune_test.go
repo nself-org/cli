@@ -30,7 +30,7 @@ func TestPruneLegacyPluginKeys(t *testing.T) {
 		PluginsPrefix + "planned/docker-compose.plugin.yml": "w",
 		PluginsPrefix + "flat.yml":                          "f",
 	}}
-	s.pruneLegacyPluginKeys(map[string]bool{PluginsPrefix + "planned/docker-compose.plugin.yml": true})
+	s.pruneLegacyPluginKeys(map[string]bool{PluginsPrefix + "planned/docker-compose.plugin.yml": true}, "")
 
 	for _, k := range []string{"docker-compose.yml", ".nself/plugins/live/docker-compose.plugin.yml", PluginsPrefix + "planned/docker-compose.plugin.yml"} {
 		if _, ok := s.Files[k]; !ok {
@@ -162,5 +162,38 @@ func TestPluginDirOnlyInProjectEnv(t *testing.T) {
 				t.Fatal("a refused apply overwrote the hand-edited overlay")
 			}
 		})
+	}
+}
+
+// TestPlannedRecordDropsLegacyAbsPluginKeys (D-0644): a plugin fragment that
+// an old record named "@abs/<path>" (the shell's plugin directory differed from
+// the build's) is under the build's plugin directory, so it leaves the record
+// like its "@plugins/" twin. An "@abs/" key outside the plugin directory stays.
+func TestPlannedRecordDropsLegacyAbsPluginKeys(t *testing.T) {
+	isolateEnv(t)
+	plugins := t.TempDir()
+	abs := func(p string) string { return AbsPrefix + strings.TrimPrefix(filepath.ToSlash(p), "/") }
+	legacy := abs(filepath.Join(plugins, "alpha", "docker-compose.plugin.yml"))
+	outside := abs(filepath.Join(t.TempDir(), "elsewhere.conf"))
+	cur := &GeneratedState{Files: map[string]string{legacy: "old", outside: "keep", "docker-compose.yml": "c"}}
+	pb := &nbuild.PlannedBuild{Files: map[string]nbuild.PlannedFile{}, PluginDir: plugins}
+
+	next, body, err := PlannedRecord(cur, pb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := next.Files[legacy]; ok {
+		t.Fatalf("legacy @abs/ plugin key must leave the record: %v", next.Files)
+	}
+	for _, k := range []string{outside, "docker-compose.yml"} {
+		if _, ok := next.Files[k]; !ok {
+			t.Fatalf("%s must stay in the record: %v", k, next.Files)
+		}
+	}
+	if _, ok := cur.Files[legacy]; !ok {
+		t.Fatal("PlannedRecord must not mutate the current record")
+	}
+	if _, again, err := PlannedRecord(next, pb); err != nil || string(again) != string(body) {
+		t.Fatalf("folding twice must be idempotent: %v", err)
 	}
 }

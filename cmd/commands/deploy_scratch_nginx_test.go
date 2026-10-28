@@ -53,6 +53,7 @@ func stdoutOf(t *testing.T, fn func()) string {
 // nginxProject is an operator project with marked, unmarked and conf.d nginx files.
 func nginxProject(t *testing.T, env string) string {
 	t.Helper()
+	isolateDeployConfigEnv(t)
 	root := t.TempDir()
 	wf(t, filepath.Join(root, ".env"), "PROJECT_NAME=demo\n"+env)
 	wf(t, filepath.Join(root, "nginx", "sites", "stale.conf"), testBuildMarker+"# stale generated output\n")
