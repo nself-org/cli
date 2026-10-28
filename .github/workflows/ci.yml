@@ -10,8 +10,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  fmt:
-    name: gofmt
+  workflow-lint:
+    name: workflow YAML lint
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -23,13 +23,9 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # CLI-R01: this gate did not exist before 2026-08-23, which is how 30
-      # unformatted files reached main while the PRI claimed `gofmt -l .` was
-      # enforced. scripts/ci/gofmt-check.sh is the single source of the rule so
-      # the local `make fmt-check` and this job can never disagree.
-      - name: gofmt check
-        run: bash scripts/ci/gofmt-check.sh
-
+      # D-0140: the gofmt gate (scripts/ci/gofmt-check.sh) runs in the required
+      # `nself-ci` job (.nself/ci.yaml `gofmt`), so it is not repeated here.
+      #
       # A duplicate mapping key (two `if:` on one step) parses fine in most YAML
       # tooling but GitHub rejects the whole file, reporting only "this run
       # likely failed because of a workflow file issue". Catch it here instead
@@ -140,8 +136,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
 
+      # D-0140: the required `nself-ci` job runs go vet, go build and go test
+      # (-mod=vendor, Linux amd64, v1.4 mode) on this same runner, so the
+      # ubuntu-latest leg keeps only the checks below that nself-ci lacks. The
+      # other OS legs are not replaced and still run all three.
       - name: Vet
-        if: matrix.skip_docker_tests != 'true'
+        if: matrix.skip_docker_tests != 'true' && matrix.os != 'ubuntu-latest'
         run: go vet -mod=vendor ./...
 
       - name: Vet (Windows — pure-Go packages only)
@@ -150,7 +150,7 @@ jobs:
         shell: cmd
 
       - name: Build
-        if: matrix.skip_docker_tests != 'true'
+        if: matrix.skip_docker_tests != 'true' && matrix.os != 'ubuntu-latest'
         run: go build -mod=vendor ./...
 
       - name: Build (Windows)
@@ -159,7 +159,7 @@ jobs:
         shell: cmd
 
       - name: Test
-        if: matrix.skip_docker_tests != 'true'
+        if: matrix.skip_docker_tests != 'true' && matrix.os != 'ubuntu-latest'
         run: go test -mod=vendor -timeout 10m ./...
 
       # D-0275: the default run above is v1.4 only, so a test that breaks under
@@ -221,13 +221,8 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: bash scripts/ci/golden-path_test.sh
 
-      # P7-REG-10: the machine-contract gate. Linux legs only (Windows has no
-      # POSIX shell here and macOS legs add nothing the Linux proof lacks).
-      # jq and make ship on the GitHub-hosted ubuntu images.
-      - name: Contract gate (make contract-check)
-        if: runner.os == 'Linux'
-        run: make contract-check
-
+      # D-0140: `make contract-check` (P7-REG-10) runs in the required `nself-ci`
+      # job (.nself/ci.yaml `contract-check`); only the smoke below stays here.
       - name: Contract smoke (Linux, both compat modes)
         if: runner.os == 'Linux'
         run: bash scripts/ci/contract-smoke.sh

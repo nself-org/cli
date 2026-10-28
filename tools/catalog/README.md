@@ -50,7 +50,13 @@ clock). Exit 0 ok, 1 `-check` found a difference, 2 bad input or a data problem 
   must not be null (it is the anchor). A malformed value is a problem and the run exits 2. A manifest
   with no row is left out of the registry (no checksum yet) and named on stderr (`-require-released` makes it
   an error); a row with no plugin directory is an error. When the manifest and the row disagree on the
-  version, the registry carries the release and a note names both.
+  version (ignoring a leading `v`), generation fails instead of projecting HEAD metadata onto old bytes.
+  Restore the manifest matching the released version or publish a matching release row. `-partial`
+  omits mismatched entries and still exits 2.
+  In `-check` mode, release rows are also compared with the input file's repository `origin/main`
+  (or local `main` when the remote ref is absent). Removing a previously released slug fails even
+  after regenerating the registry. Fetch main before checking; missing refs or unreadable baseline
+  data fail the check. Standalone inputs outside Git have no baseline comparison.
 - **Command binaries.** v1.4.12 turns an entry's `cliCommands`, `binaryName` and `pluginType` into required
   `nself-<command>` binaries and fails the install when the archive lacks one. A manifest cannot say whether
   the archive ships them, so those three keys are emitted only for a release whose `binaries` list covers

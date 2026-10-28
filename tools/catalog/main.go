@@ -118,7 +118,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	for _, p := range probs {
 		say(stderr, "catalog: problem: %s\n", p)
 	}
-	if len(probs) > 0 && !o.partial {
+	if len(probs) > 0 && (!o.partial || o.check) {
 		return 2
 	}
 	if o.check {
