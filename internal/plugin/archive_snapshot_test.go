@@ -38,7 +38,8 @@ func TestArchiveSnapshotSurvivesPathReplacement(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := verifyChecksumSum(path, sum, sum, "stable"); err != nil {
+	// Pin the expected hash of the original archive bytes; comparing sum to itself is vacuous.
+	if err := verifyChecksumSum(path, sum, "2862fa190cd9554fc07cdacaf4ff99cf25c5b72b9dbc5ed5f3d19ea797237c49", "stable"); err != nil {
 		t.Fatal(err)
 	}
 

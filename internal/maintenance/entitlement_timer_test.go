@@ -528,7 +528,7 @@ func TestCronSelfDeleteCreatesLockDir(t *testing.T) {
 	run := exec.Command("sh", "-c", fields[5])
 	// Do NOT create ~/.nself; the fix must mkdir -p it before the redirect.
 	if runtime.GOOS == "darwin" {
-		if err := os.WriteFile(filepath.Join(stubs, "flock"), []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
+		if err := os.WriteFile(filepath.Join(stubs, "flock"), []byte("#!/bin/sh\nshift 2; exec \"$@\"\n"), 0755); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -579,7 +579,7 @@ func TestCronSelfDeleteKeepsForeignLines(t *testing.T) {
 	}
 	// This shell shape is also tested on macOS, where flock is not shipped.
 	if runtime.GOOS == "darwin" {
-		if err := os.WriteFile(filepath.Join(stubs, "flock"), []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
+		if err := os.WriteFile(filepath.Join(stubs, "flock"), []byte("#!/bin/sh\nshift 2; exec \"$@\"\n"), 0755); err != nil {
 			t.Fatal(err)
 		}
 	}
