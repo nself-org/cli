@@ -9,8 +9,11 @@ package build
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/nself-org/cli/internal/compat/compattest"
 )
 
 // TestResolveNginxSitesDir_Unfronted proves the default (FrontedBy unset)
@@ -94,5 +97,62 @@ func TestResolveNginxSitesDir_FrontedAtFilesystemRoot(t *testing.T) {
 	root := string(filepath.Separator)
 	if _, err := resolveNginxSitesDir(root, "nself-web"); err == nil {
 		t.Error("expected an error resolving a fronting dir at filesystem root, got nil")
+	}
+}
+
+// TestResolveNginxSitesDir_SymlinkOutsideProject (D-0757): a project's own nginx/sites that is a
+// symlink to a directory outside the project is refused in v1.5, because the plan lists in-tree
+// paths while the write lands at the link target. v1.4 keeps writing through it.
+func TestResolveNginxSitesDir_SymlinkOutsideProject(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	linked := func(t *testing.T, viaParent bool) string {
+		workdir, outside := t.TempDir(), t.TempDir()
+		nginx := filepath.Join(workdir, "nginx")
+		if err := os.MkdirAll(nginx, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		target := filepath.Join(nginx, "sites")
+		if viaParent {
+			// nginx itself is the link and sites does not exist yet
+			if err := os.RemoveAll(nginx); err != nil {
+				t.Fatal(err)
+			}
+			target = nginx
+		}
+		if err := os.Symlink(outside, target); err != nil {
+			t.Fatal(err)
+		}
+		return workdir
+	}
+	for _, viaParent := range []bool{false, true} {
+		workdir := linked(t, viaParent)
+		compattest.Set(t, true)
+		if _, err := resolveNginxSitesDir(workdir, ""); err == nil || !strings.Contains(err.Error(), "outside the project") {
+			t.Errorf("viaParent=%v: v1.5 must refuse, got %v", viaParent, err)
+		}
+		compattest.Set(t, false)
+		if _, err := resolveNginxSitesDir(workdir, ""); err != nil {
+			t.Errorf("viaParent=%v: v1.4 keeps the old behaviour, got %v", viaParent, err)
+		}
+	}
+	// A symlink that stays inside the project, and a real or missing directory, are fine.
+	compattest.Set(t, true)
+	workdir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workdir, "shared-sites"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(workdir, "nginx"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(workdir, "shared-sites"), filepath.Join(workdir, "nginx", "sites")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolveNginxSitesDir(workdir, ""); err != nil {
+		t.Errorf("a link that stays in the project: %v", err)
+	}
+	if _, err := resolveNginxSitesDir(t.TempDir(), ""); err != nil {
+		t.Errorf("a project with no nginx directory yet: %v", err)
 	}
 }

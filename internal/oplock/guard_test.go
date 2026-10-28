@@ -3,7 +3,7 @@
 package oplock
 
 // Tests for the guard policy: which classes take the lock, the v1.5 and v1.4
-// contention paths, token export and restore, and fail-open on I/O errors.
+// contention paths, token export and restore, and the I/O-error policy.
 // Time is injected (fakeClock, oplock_test.go); nothing sleeps.
 
 import (
@@ -159,19 +159,35 @@ func TestOpLockGuardV14TimeoutWarns(t *testing.T) {
 	}
 }
 
-func TestOpLockGuardFailsOpenOnIOError(t *testing.T) {
-	compattest.Set(t, true)
+func TestOpLockGuardIOError(t *testing.T) {
 	// The project path is a file, so .nself cannot be created.
 	blocker := filepath.Join(t.TempDir(), "file")
 	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	stderr := useGuardEnv(t, newFake())
-	ctx, release, err := Guard(context.Background(), Request{Dir: blocker, Command: "x", SideEffect: "write", Output: "document"})
-	release()
-	if err != nil || FromContext(ctx) != nil || !strings.Contains(stderr.String(), "unavailable") {
-		t.Fatalf("I/O failure must not block the command: err=%v stderr=%q", err, stderr.String())
-	}
+	req := Request{Dir: blocker, Command: "x", SideEffect: "write", Output: "document"}
+	t.Run("v1.4 warns and runs unlocked", func(t *testing.T) {
+		compattest.Set(t, false)
+		stderr := useGuardEnv(t, newFake())
+		ctx, release, err := Guard(context.Background(), req)
+		release()
+		if err != nil || FromContext(ctx) != nil || !strings.Contains(stderr.String(), "unavailable") {
+			t.Fatalf("v1.4 I/O failure must not block the command: err=%v stderr=%q", err, stderr.String())
+		}
+	})
+	t.Run("v1.5 fails with E460", func(t *testing.T) {
+		compattest.Set(t, true)
+		stderr := useGuardEnv(t, newFake())
+		ctx, release, err := Guard(context.Background(), req)
+		release()
+		var ce *errs.CLIError
+		if !errors.As(err, &ce) || ce.Code != "E460" || FromContext(ctx) != nil {
+			t.Fatalf("v1.5 must refuse when the lock cannot be taken: err=%v", err)
+		}
+		if strings.Contains(stderr.String(), "continuing without it") {
+			t.Fatalf("v1.5 must not continue without the lock: %q", stderr.String())
+		}
+	})
 }
 
 func TestOpLockWaitHonoursContext(t *testing.T) {

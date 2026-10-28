@@ -102,3 +102,26 @@ func TestExpectTransactionFrontingAndExternalReads(t *testing.T) {
 	}
 	assertArtifact(t, filepath.Join(fronting, "route.conf"), "route", 0644)
 }
+
+// TestExpectSkipsBackupWithoutTheEffect (D-0757): a confirmed render with no nginx-sites-backup
+// effect (the plan leaves nginx/sites alone) takes no snapshot, and that is not a deviation.
+func TestExpectSkipsBackupWithoutTheEffect(t *testing.T) {
+	dir := t.TempDir()
+	sites := filepath.Join(dir, "nginx", "sites")
+	if err := os.MkdirAll(sites, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sites, "route.conf"), []byte("kept"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	sink := newExpectSink(dir, &PlannedBuild{})
+	if err := backupNginxSitesVia(sink, dir, sites); err != nil {
+		t.Fatalf("a render without the effect must skip the snapshot, got %v", err)
+	}
+	if err := sink.commit(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".nself")); !os.IsNotExist(err) {
+		t.Fatalf("a snapshot was taken without the effect: %v", err)
+	}
+}

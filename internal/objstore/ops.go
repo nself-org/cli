@@ -60,6 +60,19 @@ func (c *Client) EnsureBucket(ctx context.Context, bucket string) error {
 // seekable body is hashed and rewound, any other body is spooled to a
 // temporary file (removed before return).
 func (c *Client) Put(ctx context.Context, bucket, key string, body io.Reader, size int64) error {
+	return c.put(ctx, bucket, key, body, size, false)
+}
+
+// PutIfAbsent is Put with If-None-Match: *, so the store refuses to replace an
+// object that exists at the moment of the write. A 412 (or the 409
+// ConditionalRequestConflict a store returns for a racing writer) comes back
+// as an error that satisfies errors.Is(err, ErrObjectExists). A store that
+// ignores the header overwrites, as Put does.
+func (c *Client) PutIfAbsent(ctx context.Context, bucket, key string, body io.Reader, size int64) error {
+	return c.put(ctx, bucket, key, body, size, true)
+}
+
+func (c *Client) put(ctx context.Context, bucket, key string, body io.Reader, size int64, onlyNew bool) error {
 	if err := checkBucket(bucket); err != nil {
 		return err
 	}
@@ -78,7 +91,11 @@ func (c *Client) Put(ctx context.Context, bucket, key string, body io.Reader, si
 		return err
 	}
 	defer cleanup()
-	req, err := c.build(ctx, http.MethodPut, bucket, key, nil, payload)
+	var hdr http.Header
+	if onlyNew {
+		hdr = http.Header{"If-None-Match": {"*"}}
+	}
+	req, err := c.buildWith(ctx, http.MethodPut, bucket, key, nil, payload, hdr)
 	if err != nil {
 		return err
 	}
@@ -93,7 +110,13 @@ func (c *Client) Put(ctx context.Context, bucket, key string, body io.Reader, si
 		return err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return c.apiError("put", resp)
+		e := c.apiError("put", resp)
+		var ae *Error
+		if onlyNew && errors.As(e, &ae) && (ae.Status == http.StatusPreconditionFailed ||
+			ae.Status == http.StatusConflict && ae.Code == "ConditionalRequestConflict") {
+			return fmt.Errorf("%w: %w", ErrObjectExists, e)
+		}
+		return e
 	}
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxErrorBody))
 	return resp.Body.Close()

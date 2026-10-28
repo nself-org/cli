@@ -158,7 +158,7 @@ func TestInstallFromURL_RefusedReinstallKeepsTheOldInstall(t *testing.T) {
 // either point goes through rollbackInstall and loses a working upgrade.
 func TestCheckCLIBinaries_RunsBeforeTheInstallIsTouched(t *testing.T) {
 	for _, c := range []struct{ file, fn, later string }{
-		{"installer_locked.go", "func installLocked(", "extractTarGz(archivePath, destDir)"},
+		{"installer_locked.go", "func installLocked(", "extractTarGzFrom(archive, destDir)"},
 		{"install_thirdparty.go", "func InstallFromURL(", "os.RemoveAll(destDir)"},
 	} {
 		src := readFile(t, c.file)

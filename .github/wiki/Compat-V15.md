@@ -73,6 +73,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | D-0676 | bare stream path streams as path:// with a notice | refused | `internal/backup/stream_dest_compat.go` |
 | D-0686 | S3_SECRET_KEY accepted at any strength | must be at least 16 characters when object storage is enabled | `internal/config/validator.go` |
 | D-0752 | plugin disable never confirmed | prod-class and hand-edit confirmation before the marker is written. | `cmd/commands/plugin_disable_gate.go` |
+| D-0757 | nginx/sites may be a symlink out of the project and the build writes through it | v1.5 refuses a project's own nginx/sites that resolves outside the project | `internal/build/nginx_sites_dir.go` |
 | D-0843 | a downgrade only warns | refused unless --allow-downgrade is given | `internal/plugin/installer_downgrade.go` |
 | P7-ADOPT-01 | writable absolute bind allowed | E502 | `internal/compose/custom_service_v2.go` |
 | P7-ADOPT-03 | warn | E505 | `internal/build/shared_proxy.go` |
@@ -121,7 +122,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-LIVE-06 | post-install build hint | automatic reconcile | `cmd/commands/plugin_install.go` |
 | P7-LIVE-09 | the project lock is written and honoured only when nself.lock.yaml exists or --write-lock is given | always | `internal/build/lockfile.go` |
 | P7-LIVE-10 | plan keeps the redis pin | plan moves it to valkey | `cmd/commands/update_plan_sources.go` |
-| P7-LIVE-13 | a held lock is polled for 30 s, then a warning and the command runs unlocked | a held lock fails at once with E460 | `internal/oplock/guard.go` |
+| P7-LIVE-13 | a held lock is polled for 30 s, then a warning and the command runs unlocked | a held lock fails at once with E460, and so does a lock file that cannot be opened | `internal/oplock/guard.go` |
 | P7-LIVE-17 | IMAGE_PINNING defaults to legacy | lock | `internal/compose/images_lock.go` |
 | P7-LIVE-19 | the default cache engine is redis | valkey | `internal/compose/cache_service.go` |
 | P7-LIVE-20 | auth runs nhost/auth:0.36.0 (auth-v14) | the current nhost/auth release (auth) when AUTH_ENCRYPTION_KEY is set | `internal/compose/auth_image.go` |

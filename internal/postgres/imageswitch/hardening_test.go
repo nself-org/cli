@@ -54,6 +54,13 @@ func TestOneShotSpecsAreHardened(t *testing.T) {
 	if len(dump.CapDrop) == 0 || dump.CapDrop[0] != "ALL" {
 		t.Error("the dump one-shot drops every capability")
 	}
+	// D-0803: the restore one-shot runs as root but only with the five capabilities restore.sh needs.
+	if len(restore.CapDrop) != 1 || restore.CapDrop[0] != "ALL" {
+		t.Errorf("the restore one-shot drops every capability, got %v", restore.CapDrop)
+	}
+	if got, want := strings.Join(restore.CapAdd, ","), "CHOWN,SETUID,SETGID,DAC_OVERRIDE,FOWNER"; got != want {
+		t.Errorf("restore CapAdd = %q, want %q", got, want)
+	}
 	for _, spec := range rec.specs {
 		for _, a := range spec.Args {
 			if strings.Contains(a, fakePassword) || strings.Contains(a, fakeHash) {

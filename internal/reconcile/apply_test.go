@@ -779,3 +779,57 @@ func TestSecondRenderNeedsForceForHandEdits(t *testing.T) {
 		t.Fatalf("with --force: %v", err)
 	}
 }
+
+// TestApplySnapshotsSitesOnlyWhenPlanned (D-0757): the nginx/sites snapshot is written exactly when
+// the plan lists the nginx-sites-backup effect. A change that leaves nginx/sites alone plans no
+// snapshot and apply takes none.
+func TestApplySnapshotsSitesOnlyWhenPlanned(t *testing.T) {
+	f := loadFixture(t, "dev-minimal")
+	ctx := context.Background()
+	req := Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, Seed: []byte("fixture-seed")}
+	if _, err := Apply(ctx, req, ApplyOptions{Yes: true}); err != nil {
+		t.Fatal(err)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(f.project, "nginx", "sites")); len(entries) == 0 {
+		t.Fatal("the fixture generates no nginx/sites conf, so the test would prove nothing")
+	}
+	backups := filepath.Join(f.project, ".nself", "backups")
+	if err := os.RemoveAll(backups); err != nil {
+		t.Fatal(err)
+	}
+	// An artifact outside nginx/sites goes missing: the plan re-adds it and must not list a snapshot.
+	if err := os.Remove(filepath.Join(f.project, "docker-compose.yml")); err != nil {
+		t.Fatal(err)
+	}
+	p, err := Apply(ctx, req, ApplyOptions{Yes: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Empty || hasEffect(p, EffectNginxSitesBkp) {
+		t.Fatalf("plan empty=%v effects=%+v: want a change without a snapshot", p.Empty, p.Effects)
+	}
+	if _, err := os.Stat(backups); !os.IsNotExist(err) {
+		t.Fatalf("apply took a snapshot the plan did not list: %v", err)
+	}
+	// A site conf that changes is listed and snapshotted.
+	conf := filepath.Join(f.project, "nginx", "sites")
+	entries, _ := os.ReadDir(conf)
+	stale := filepath.Join(conf, entries[0].Name())
+	data, err := os.ReadFile(stale)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stale, append(data, []byte("# drift\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p, err = Apply(ctx, req, ApplyOptions{Yes: true, Force: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasEffect(p, EffectNginxSitesBkp) {
+		t.Fatalf("a rewritten site conf must list the snapshot: %+v", p.Effects)
+	}
+	if snaps, err := os.ReadDir(backups); err != nil || len(snaps) != 1 {
+		t.Fatalf("the listed snapshot was not taken: %v %v", snaps, err)
+	}
+}

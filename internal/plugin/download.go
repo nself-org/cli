@@ -205,17 +205,22 @@ func buildFallbackDownloadURL(name, version, repository string) string {
 
 // extractTarGz extracts a gzipped tarball into destDir.
 func extractTarGz(archivePath, destDir string) error {
-	if err := os.MkdirAll(destDir, 0o755); err != nil {
-		return fmt.Errorf("creating destination directory: %w", err)
-	}
-
 	f, err := os.Open(archivePath)
 	if err != nil {
 		return fmt.Errorf("opening archive: %w", err)
 	}
 	defer func() { _ = f.Close() }()
+	return extractTarGzFrom(f, destDir)
+}
 
-	gz, err := gzip.NewReader(f)
+// extractTarGzFrom extracts a gzipped tarball read from r into destDir. The installer passes the
+// handle it already hashed, so the bytes extracted are the bytes checked (D-1326).
+func extractTarGzFrom(r io.Reader, destDir string) error {
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return fmt.Errorf("creating destination directory: %w", err)
+	}
+
+	gz, err := gzip.NewReader(r)
 	if err != nil {
 		return fmt.Errorf("gzip reader: %w", err)
 	}

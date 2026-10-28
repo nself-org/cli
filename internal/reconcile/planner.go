@@ -24,7 +24,6 @@ import (
 	"os"
 	"runtime"
 	"sort"
-	"strings"
 
 	nbuild "github.com/nself-org/cli/internal/build"
 )
@@ -117,6 +116,7 @@ func compute(ctx context.Context, req Request) (*computed, error) {
 		Artifacts: arts,
 		Effects:   append(effectsOf(res.Planned.Effects, hasSitesChange(arts)), req.Extra...),
 	}
+	holdSnapshotToPlan(res.Planned, arts)
 	if p.Command == "" {
 		p.Command = CmdBuild
 	}
@@ -245,7 +245,8 @@ func artifactSets(ov overlay, pb *nbuild.PlannedBuild) (before, after ArtifactSe
 // the nginx/sites snapshot when the build leaves nginx/sites alone (every
 // build takes the snapshot, so listing it would make a plan that changes
 // nothing look non-empty; it matters only when the build rewrites or removes a
-// site conf, which sitesChanged reports).
+// site conf, which sitesChanged reports). Apply takes the snapshot under the
+// same rule (holdSnapshotToPlan), so the plan and the write agree (D-0757).
 func effectsOf(in []nbuild.PlannedEffect, sitesChanged bool) []Effect {
 	out := []Effect{}
 	for _, e := range in {
@@ -255,17 +256,6 @@ func effectsOf(in []nbuild.PlannedEffect, sitesChanged bool) []Effect {
 		out = append(out, Effect{Kind: EffectKind(e.Kind), Target: e.Target, Detail: e.Detail})
 	}
 	return out
-}
-
-// hasSitesChange reports whether the plan changes or removes a file under an
-// nginx/sites directory (the project's or the fronting stack's).
-func hasSitesChange(arts []Artifact) bool {
-	for _, a := range arts {
-		if a.Kind == KindNginx && (a.Action != ActionAdd) && strings.Contains(a.Path, "nginx/sites/") {
-			return true
-		}
-	}
-	return false
 }
 
 // contentPlanID is the plan_id of EPIC D9 as amended 2026-10-05: sha256 over

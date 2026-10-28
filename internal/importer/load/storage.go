@@ -100,8 +100,13 @@ func ApplyStorage(ctx context.Context, r *portable.Reader, store *objstore.Clien
 		if e != nil {
 			return nil, errs.New("E521", "object bundle member invalid")
 		}
-		e = store.Put(ctx, o.Bucket, o.Key, f, o.Bytes)
+		// Conditional PUT: a key another writer created after the preflight listing is refused,
+		// not replaced (D-0774).
+		e = store.PutIfAbsent(ctx, o.Bucket, o.Key, f, o.Bytes)
 		_ = f.Close()
+		if errors.Is(e, objstore.ErrObjectExists) {
+			return nil, errs.New("E519", "target object store already has an object the bundle would overwrite")
+		}
 		if e != nil {
 			return nil, errs.New("E521", "object load failed")
 		}

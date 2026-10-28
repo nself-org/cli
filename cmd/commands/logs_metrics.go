@@ -13,11 +13,12 @@ package commands
 
 import (
 	"context"
-	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/nself-org/cli/internal/docker"
 )
 
 // LogSummary holds per-service log analysis results.
@@ -34,13 +35,11 @@ type LogSummary struct {
 func CollectLogSummary(ctx context.Context, workdir string, service string, maxLines int) (*LogSummary, error) {
 	summary := &LogSummary{Service: service}
 
-	cmd := exec.CommandContext(ctx, "docker", "compose", "logs",
+	out, err := docker.ComposeOutput(ctx, workdir, "logs",
 		"--tail", strconv.Itoa(maxLines),
 		"--no-log-prefix",
 		service,
 	)
-	cmd.Dir = workdir
-	out, err := cmd.Output()
 	if err != nil {
 		// Service may not be running — return empty summary, no error.
 		return summary, nil
@@ -102,13 +101,11 @@ func SampleLogVolume(ctx context.Context, workdir string, service string, sample
 	vol := &LogVolume{Service: service}
 
 	sinceSeconds := int(sampleDuration.Seconds())
-	cmd := exec.CommandContext(ctx, "docker", "compose", "logs",
+	out, err := docker.ComposeOutput(ctx, workdir, "logs",
 		"--since", strconv.Itoa(sinceSeconds)+"s",
 		"--no-log-prefix",
 		service,
 	)
-	cmd.Dir = workdir
-	out, err := cmd.Output()
 	if err != nil {
 		// Service may not be running — return empty volume, no error.
 		return vol, nil

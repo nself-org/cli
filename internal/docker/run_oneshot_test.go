@@ -93,6 +93,17 @@ func TestBuildRunArgs_Hardening(t *testing.T) {
 	}
 }
 
+func TestBuildRunArgs_CapAdd(t *testing.T) {
+	args, err := buildRunArgs(RunSpec{Image: "img:1", CapDrop: []string{"ALL"}, CapAdd: []string{"CHOWN", "SETUID"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "run --rm --cap-drop ALL --cap-add CHOWN --cap-add SETUID img:1"
+	if got := strings.Join(args, " "); got != want {
+		t.Errorf("argv = %q, want %q", got, want)
+	}
+}
+
 // pinOneShotName fixes the generated container name for the test.
 func pinOneShotName(t *testing.T, name string) {
 	t.Helper()

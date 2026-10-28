@@ -16,10 +16,11 @@ package oplock
 // Constraints:
 //   - Takes the lock only for side_effect write, remote or destructive with
 //     output kind document. read, stream and interactive commands never do.
-//   - v1.5: a held lock fails fast with E460. v1.4: poll up to 30 s, then warn
-//     on stderr and run unlocked. Platform or I/O failures never block a
-//     command: a notice goes to stderr and the command runs unlocked. The
-//     platform notice (no flock, native Windows) is skipped under --quiet and
+//   - v1.5: a held lock fails fast with E460, and so does a lock file that
+//     cannot be opened. v1.4: poll up to 30 s, then warn on stderr and run
+//     unlocked; a lock file that cannot be opened warns and runs unlocked. A
+//     platform without flock never blocks a command: the command runs
+//     unlocked in both modes. The platform notice (no flock, native Windows) is skipped under --quiet and
 //     when stderr is not a terminal (D-0241).
 //   - Notices go to Stderr, never stdout, so a --json envelope stays one
 //     document.
@@ -99,7 +100,7 @@ func Guard(ctx context.Context, r Request) (context.Context, func(), error) {
 		return ctx, noop, nil
 	}
 	o := Opts{Command: r.Command, Poll: 250 * time.Millisecond, Clock: DefaultClock}
-	// compat.V15(P7-LIVE-13): a held lock is polled for 30 s, then a warning and the command runs unlocked -> a held lock fails at once with E460
+	// compat.V15(P7-LIVE-13): a held lock is polled for 30 s, then a warning and the command runs unlocked -> a held lock fails at once with E460, and so does a lock file that cannot be opened
 	v15 := compat.V15()
 	if !v15 {
 		o.Wait = waitV14
@@ -120,6 +121,12 @@ func Guard(ctx context.Context, r Request) (context.Context, func(), error) {
 		}
 		notef("nself: warning: %s after %s; continuing without the lock\n", holderText(he.Holder, he.Known), he.Waited.Round(time.Second))
 		return ctx, noop, nil
+	case v15:
+		// The lock file cannot be opened or locked (read-only folder, I/O failure): running a write
+		// command without its guard is the race the lock exists to stop, so v1.5 stops (D-0757).
+		return ctx, noop, errs.Wrap("E460", "the project operation lock could not be taken: "+err.Error(), err).
+			WithWhy("The lock file .nself/op.lock could not be opened or locked.").
+			WithFix("Make the project folder writable (check the permissions of .nself), then run this command again.")
 	default:
 		notef("nself: warning: project operation lock unavailable (%v); continuing without it\n", err)
 		return ctx, noop, nil

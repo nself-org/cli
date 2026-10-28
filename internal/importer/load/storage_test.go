@@ -8,7 +8,9 @@ import (
 	"github.com/nself-org/cli/internal/importer/verify"
 	"github.com/nself-org/cli/internal/objstore"
 	"github.com/nself-org/cli/internal/portable"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -113,5 +115,58 @@ func TestStorageCollisions(t *testing.T) {
 	other := portable.Manifest{Storage: portable.Storage{Objects: []portable.Object{{Bucket: "b", Key: "a/x"}, {Bucket: "c", Key: "a//x"}}}}
 	if err = StorageCollisions(ctx, other, fakeLister{}, false); err != nil {
 		t.Fatalf("the same key in two buckets is fine: %v", err)
+	}
+}
+
+// TestApplyStorageRefusesRacedKey: an object that appears after the preflight listing is refused
+// by the conditional PUT and the load stops with E519 (D-0774).
+func TestApplyStorageRefusesRacedKey(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "stage")
+	writer, err := portable.NewWriter(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := "fixture-object"
+	hash := sha256.Sum256([]byte(body))
+	member, err := portable.StorageMember("bucket", "raced")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = writer.WriteFile(member, strings.NewReader(body)); err != nil {
+		t.Fatal(err)
+	}
+	m := portable.Manifest{Storage: portable.Storage{Objects: []portable.Object{{Bucket: "bucket", Key: "raced", Member: member, SHA256: hex.EncodeToString(hash[:]), Bytes: int64(len(body))}}}, SourceCounts: []portable.SourceCount{{Kind: "objects", Count: 1, Method: "independent list"}}}
+	if _, err = writer.Finish(m); err != nil {
+		t.Fatal(err)
+	}
+	r, err := portable.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var puts, conditional int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		switch {
+		case req.Method == http.MethodHead:
+			w.WriteHeader(http.StatusOK)
+		case req.Method == http.MethodPut:
+			puts++
+			if req.Header.Get("If-None-Match") == "*" {
+				conditional++
+			}
+			// Another writer created the key after the preflight.
+			w.WriteHeader(http.StatusPreconditionFailed)
+			_, _ = io.WriteString(w, `<Error><Code>PreconditionFailed</Code><Message>exists</Message></Error>`)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer srv.Close()
+	store := &objstore.Client{Endpoint: srv.URL, AccessKey: "AKIAFAKEFAKEFAKE0001", SecretKey: "not-a-real-secret-for-tests"}
+	_, err = ApplyStorage(context.Background(), r, store, false)
+	if codeOf(err) != "E519" || strings.Contains(err.Error(), "raced") {
+		t.Fatalf("a key created after the preflight must give E519 without the key name: %v", err)
+	}
+	if puts != 1 || conditional != 1 {
+		t.Fatalf("puts=%d conditional=%d: the PUT must carry If-None-Match: *", puts, conditional)
 	}
 }

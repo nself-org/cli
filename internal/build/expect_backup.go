@@ -21,8 +21,8 @@ func (e *expectSink) backupSites(sitesDir string) error {
 	if err != nil || len(entries) == 0 {
 		return err
 	}
-	if err := e.allowBackup(); err != nil {
-		return err
+	if e.allowBackup() != nil {
+		return nil // the confirmed render carries no snapshot: the plan leaves nginx/sites alone (D-0757)
 	}
 	if err := checkBackupRoot(e.root); err != nil {
 		return err

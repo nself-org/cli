@@ -207,6 +207,24 @@ func TestRedactDropsRowDataAndThePassword(t *testing.T) {
 	}
 }
 
+func TestRedactCutsQuotedValues(t *testing.T) {
+	_, s := newFake(t)
+	cases := []struct{ in, want, gone string }{
+		{"ERROR:  invalid input syntax for type integer: \"hunter2-value\"", "ERROR:  invalid input syntax for type integer:", "hunter2-value"},
+		{"pg_restore: error: could not execute query: ERROR:  invalid input value for enum mood: 'secret-row'\nCommand was: INSERT INTO t VALUES ('secret-row');", "pg_restore: error: could not execute query: ERROR:  invalid input value for enum mood:", "secret-row"},
+		{"pg_restore: error: could not execute query: ERROR:  relation \"accounts\" already exists\nCommand was: CREATE TABLE accounts (", "relation \"accounts\" already exists", "CREATE TABLE"},
+		{"pg_restore: error: COPY failed\nCommand was: COPY t (a) FROM stdin;\n('multi-line-literal')\npg_restore: warning: errors ignored on restore: 1", "pg_restore: warning: errors ignored on restore: 1", "multi-line-literal"},
+		{"ERROR:  duplicate key value violates unique constraint \"u_email\"", "unique constraint \"u_email\"", "zzz"},
+		{"docker: pull access denied for \"registry/img\"", "\"registry/img\"", "zzz"},
+	}
+	for _, c := range cases {
+		out := s.redact(c.in, 6)
+		if !strings.Contains(out, c.want) || strings.Contains(out, c.gone) {
+			t.Errorf("redact(%q) = %q; want %q and not %q", c.in, out, c.want, c.gone)
+		}
+	}
+}
+
 func TestClusterProblemsNameWhatCannotMove(t *testing.T) {
 	c := sampleCluster(t)
 	c.Templates = []string{"tpl"}

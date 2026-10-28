@@ -1,7 +1,7 @@
 package commands
 
 // Purpose: Log streaming core split out of logs.go (CLI-R12 Batch B
-// mechanical file-size split). Runs `docker compose logs` and pipes each
+// mechanical file-size split). Runs `docker compose logs` (through internal/docker) and pipes each
 // line through the logs_filter.go transforms, plus the running-services
 // helper shared by the summary/top reports.
 // Inputs: a context, project workdir, the docker compose args to run, and
@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/nself-org/cli/internal/docker"
@@ -56,7 +55,7 @@ func streamLogLines(parent context.Context, workdir string, composeArgs []string
 
 // getRunningServices returns the list of service names from docker compose ps --services.
 func getRunningServices(ctx context.Context, workdir string) ([]string, error) {
-	out, err := exec.CommandContext(ctx, "docker", "compose", "ps", "--services").Output()
+	out, err := docker.ComposeOutput(ctx, workdir, "ps", "--services")
 	if err != nil {
 		return nil, fmt.Errorf("docker compose ps --services: %w", err)
 	}

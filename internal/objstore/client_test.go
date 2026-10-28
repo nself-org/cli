@@ -275,3 +275,42 @@ func TestListStopsOnRepeatedToken(t *testing.T) {
 		t.Fatal("truncated without token must fail")
 	}
 }
+
+func TestPutIfAbsent(t *testing.T) {
+	for _, tls := range []bool{false, true} {
+		fake := newFakeS3()
+		srv := fake.server(tls)
+		c := testClient(srv)
+		ctx := context.Background()
+		if err := c.EnsureBucket(ctx, "bkt"); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.PutIfAbsent(ctx, "bkt", "k", strings.NewReader("first"), 5); err != nil {
+			t.Fatalf("tls=%v: new key: %v", tls, err)
+		}
+		err := c.PutIfAbsent(ctx, "bkt", "k", strings.NewReader("second"), 6)
+		if !errors.Is(err, ErrObjectExists) {
+			t.Fatalf("tls=%v: existing key must give ErrObjectExists, got %v", tls, err)
+		}
+		var ae *Error
+		if !errors.As(err, &ae) || ae.Status != http.StatusPreconditionFailed {
+			t.Fatalf("tls=%v: want the 412 as *Error, got %v", tls, err)
+		}
+		if got := fake.buckets["bkt"]["k"]; string(got) != "first" {
+			t.Fatalf("tls=%v: object was replaced: %q", tls, got)
+		}
+		if fake.condRefused != 1 {
+			t.Fatalf("tls=%v: condRefused=%d", tls, fake.condRefused)
+		}
+		// The unconditional Put keeps replacing.
+		if err := c.Put(ctx, "bkt", "k", strings.NewReader("third"), 5); err != nil {
+			t.Fatal(err)
+		}
+		// A failure that is not a precondition stays a plain error.
+		err = c.PutIfAbsent(ctx, "nobkt", "k", strings.NewReader("x"), 1)
+		if err == nil || errors.Is(err, ErrObjectExists) {
+			t.Fatalf("tls=%v: missing bucket: %v", tls, err)
+		}
+		srv.Close()
+	}
+}

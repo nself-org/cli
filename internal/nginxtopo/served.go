@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // ErrFrontingUnresolved is returned (wrapped) when NGINX_FRONTED_BY is set but
@@ -90,4 +91,37 @@ func SharedOwnerRegistered(servedRoot string) bool {
 	nginxDir, _ := ServedNginxDir(servedRoot, "") // cannot fail with an empty frontedBy
 	_, err := os.Stat(filepath.Join(nginxDir, SharedDir, SharedOwnerFile))
 	return err == nil
+}
+
+// Contained refuses a directory under root that resolves, through a symlink in it or in any
+// parent, to a place outside root. A plan lists in-tree paths while a write would land at the link
+// target, so the plan would not describe the write (D-0757). A directory that does not exist yet is
+// checked through its nearest existing parent.
+func Contained(root, dir string) error {
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return fmt.Errorf("resolving the project directory %s: %w", root, err)
+	}
+	existing, rest := dir, ""
+	for {
+		_, err := os.Lstat(existing)
+		if err == nil {
+			break
+		}
+		parent := filepath.Dir(existing)
+		if !os.IsNotExist(err) || parent == existing {
+			return fmt.Errorf("checking %s: %w", dir, err)
+		}
+		rest, existing = filepath.Join(filepath.Base(existing), rest), parent
+	}
+	real, err := filepath.EvalSymlinks(existing)
+	if err != nil {
+		return fmt.Errorf("resolving %s: %w", existing, err)
+	}
+	real = filepath.Join(real, rest)
+	if rel, err := filepath.Rel(realRoot, real); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("refusing to generate nginx site configs: %s resolves to %s, outside the project %s; "+
+			"replace the symlink with a real directory (the plan and the write must name the same files)", dir, real, root)
+	}
+	return nil
 }

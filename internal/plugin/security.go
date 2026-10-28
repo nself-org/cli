@@ -92,11 +92,7 @@ func pluginChecksumRequired() bool {
 // errs.ErrPluginMissingChecksum and refuse the install.
 func verifyChecksum(filePath string, expectedHash string, publishStatus string) error {
 	if expectedHash == "" {
-		if pluginChecksumRequired() && EffectiveStatus(publishStatus) == "stable" {
-			return fmt.Errorf("plugin %q is missing required checksum for stable publishStatus — install refused: %w",
-				filePath, errs.ErrPluginMissingChecksum)
-		}
-		return nil
+		return missingChecksum(filePath, publishStatus)
 	}
 
 	f, err := os.Open(filePath)
@@ -113,6 +109,16 @@ func verifyChecksum(filePath string, expectedHash string, publishStatus string) 
 	actual := hex.EncodeToString(h.Sum(nil))
 	if !strings.EqualFold(actual, expectedHash) {
 		return errs.Newf("E124", "checksum mismatch: expected %s, got %s", expectedHash, actual)
+	}
+	return nil
+}
+
+// missingChecksum is the verdict when the registry has no checksum: warn-and-proceed unless
+// NSELF_PLUGIN_REQUIRE_CHECKSUM=1 and the plugin is effectively stable.
+func missingChecksum(label, publishStatus string) error {
+	if pluginChecksumRequired() && EffectiveStatus(publishStatus) == "stable" {
+		return fmt.Errorf("plugin %q is missing required checksum for stable publishStatus — install refused: %w",
+			label, errs.ErrPluginMissingChecksum)
 	}
 	return nil
 }

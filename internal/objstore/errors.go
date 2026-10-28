@@ -2,6 +2,7 @@ package objstore
 
 import (
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,9 @@ import (
 
 // maxErrorBody bounds how much of an error response is read.
 const maxErrorBody = 64 << 10
+
+// ErrObjectExists is returned by PutIfAbsent when the key already holds an object.
+var ErrObjectExists = errors.New("objstore: object already exists")
 
 // Error is a non-success S3 response.
 type Error struct {
