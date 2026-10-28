@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // trustEncryptStore supports isolated secret contract checks.
@@ -462,5 +463,53 @@ func TestMappedStoreNonregularAndMissing(t *testing.T) {
 				t.Fatal("invalid store returned values")
 			}
 		})
+	}
+}
+
+// TestRecipientsConcurrentChanges holds the first writer at audit, after load.
+func TestRecipientsConcurrentChanges(t *testing.T) {
+	root, home, _ := trustFixture(t)
+	trustStore(t, root, "ci", "FOO")
+	a := trustKey(t, filepath.Join(home, "a.key"))
+	b := trustKey(t, filepath.Join(home, "b.key"))
+	audit := func(string, map[string]string) error { return nil }
+	req := RecipientsRequest{ProjectRoot: root, File: "ci", Action: "add", Recipient: a}
+	if _, _, err := Recipients(req, audit); err != nil {
+		t.Fatal(err)
+	}
+	entered, release := make(chan struct{}), make(chan struct{})
+	done := make(chan error, 1)
+	req.Action = "remove"
+	go func() {
+		_, _, err := Recipients(req, func(string, map[string]string) error {
+			close(entered)
+			<-release
+			return nil
+		})
+		done <- err
+	}()
+	<-entered
+	second := make(chan error, 1)
+	go func() {
+		_, _, err := Recipients(RecipientsRequest{ProjectRoot: root, File: "ci", Action: "add", Recipient: b}, audit)
+		second <- err
+	}()
+	select {
+	case err := <-second:
+		close(release)
+		<-done
+		t.Fatalf("second writer passed the first writer's audit: %v", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-second; err != nil {
+		t.Fatal(err)
+	}
+	rows, _, err := Recipients(RecipientsRequest{ProjectRoot: root, File: "ci", Action: "list"}, nil)
+	if err != nil || slices.Contains(rows, a) || !slices.Contains(rows, b) {
+		t.Fatalf("lost update: %v %v", rows, err)
 	}
 }
