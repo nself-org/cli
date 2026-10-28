@@ -82,8 +82,8 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 	// sshKey goes into the rsync ssh command string, which rsync passes
 	// through a shell. Reject any key path containing shell metacharacters to
 	// prevent command injection via NSELF_DEPLOY_SSH_KEY.
-	if sshKey != "" && !sshKeyRe.MatchString(sshKey) {
-		return fmt.Errorf("NSELF_DEPLOY_SSH_KEY contains unsafe characters (got %q): only [a-zA-Z0-9/_.~-] allowed", sshKey)
+	if err := deploy.CheckKeyPath(sshKey); err != nil {
+		return err
 	}
 
 	spec, err := remote.ParseHostSpec(host)

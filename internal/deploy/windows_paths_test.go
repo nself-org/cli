@@ -1,11 +1,14 @@
 package deploy
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/nself-org/cli/internal/errs"
 )
 
 func TestWindowsDeployKeyPaths(t *testing.T) {
@@ -71,5 +74,28 @@ func TestWindowsDeployCopyPaths(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(args, "\n"), "--files-from=/mounted/c/Jane Doe/list\n") {
 		t.Errorf("inventory list = %q", args)
+	}
+}
+
+func TestKeyPathWhitespaceIsCoded(t *testing.T) {
+	home := `C:\Users\Jane Doe`
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	for _, key := range []string{`C:\Users\Jane Doe\.ssh\id_ed25519`, `C:/Users/Jane Doe/.ssh/id_ed25519`} {
+		err := CheckKeyPath(key)
+		if err == nil {
+			t.Fatalf("key %q accepted", key)
+		}
+		var ce *errs.CLIError
+		if !errors.As(err, &ce) || ce.Code != "E484" {
+			t.Errorf("key %q: want a coded E484 error, got %v", key, err)
+		}
+		if !strings.Contains(err.Error(), home) {
+			t.Errorf("key %q: error does not name the home path: %v", key, err)
+		}
+	}
+	other := CheckKeyPath("/tmp/a key")
+	if other == nil || strings.Contains(other.Error(), "home directory") {
+		t.Errorf("a blank outside home must not blame home: %v", other)
 	}
 }
