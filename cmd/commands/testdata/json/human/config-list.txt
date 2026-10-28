@@ -81,6 +81,7 @@ AUTH_REQUIRE_EMAIL_VERIFICATION               (unset)                        uns
 AUTH_EMAIL_TEMPLATE_FETCH_URL                 (unset)                        unset
 AUTH_GRAVATAR_ENABLED                         (unset)                        unset
 AUTH_LOCALE_DEFAULT                           (unset)                        unset
+AUTH_JWT_CUSTOM_CLAIMS                        (unset)                        unset
 HASURA_AUTH_URL                               (unset)                        unset
 HASURA_AUTH_SMTP_HOST                         (unset)                        unset
 HASURA_AUTH_SMTP_PORT                         (unset)                        unset
