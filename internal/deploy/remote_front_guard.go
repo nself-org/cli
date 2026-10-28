@@ -28,47 +28,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
-	"sort"
 	"strings"
+
+	"github.com/nself-org/cli/internal/frontcheck"
 )
-
-// frontConfMax caps how much of a host conf is read.
-const frontConfMax = 262144
-
-var serverNameRe = regexp.MustCompile(`\bserver_name[ \t]+([^;]+);`)
-
-// hasBuildMarker is the strict marker rule on conf text.
-func hasBuildMarker(conf string) bool {
-	for i, line := range strings.Split(conf, "\n") {
-		if i >= 5 {
-			break
-		}
-		if strings.HasPrefix(line, BuildNginxMarker) {
-			return true
-		}
-	}
-	return false
-}
-
-// serverNameSet is the sorted, unique server_name values of the conf (comments dropped).
-func serverNameSet(conf string) []string {
-	seen := map[string]bool{}
-	for _, line := range strings.Split(conf, "\n") {
-		line, _, _ = strings.Cut(line, "#")
-		for _, m := range serverNameRe.FindAllStringSubmatch(line, -1) {
-			for _, n := range strings.Fields(m[1]) {
-				seen[n] = true
-			}
-		}
-	}
-	out := make([]string, 0, len(seen))
-	for n := range seen {
-		out = append(out, n)
-	}
-	sort.Strings(out)
-	return out
-}
 
 // readFrontConfs reads (head -c) the existing regular, non-symlink files among
 // paths in the front root, in one quoted script. A nonce line frames each file.
@@ -81,7 +44,7 @@ func readFrontConfs(ctx context.Context, r Remote, front string, paths []string)
 	_, _ = rand.Read(nb[:])
 	nonce := "@@" + hex.EncodeToString(nb[:])
 	script := fmt.Sprintf(`cd %s 2>/dev/null || exit 0; for f in %s; do if [ -f "$f" ] && [ ! -L "$f" ]; then printf '%%s %%s\n' %s "$f"; head -c %d -- "$f"; printf '\n'; fi; done; exit 0`,
-		q(front), strings.Join(quoteAll(paths), " "), q(nonce), frontConfMax)
+		q(front), strings.Join(quoteAll(paths), " "), q(nonce), frontcheck.ConfMax)
 	raw, err := r.Run(ctx, shScript(script))
 	if err != nil {
 		return nil, fmt.Errorf("reading the fronting stack's existing sites on %s: %w", r.Label(), err)
@@ -112,11 +75,11 @@ func localServerNames(stage, rel string) ([]string, error) {
 		return nil, err
 	}
 	defer func() { _ = f.Close() }()
-	b, err := io.ReadAll(io.LimitReader(f, frontConfMax))
+	b, err := io.ReadAll(io.LimitReader(f, frontcheck.ConfMax))
 	if err != nil {
 		return nil, err
 	}
-	return serverNameSet(string(b)), nil
+	return frontcheck.ServerNameSet(string(b)), nil
 }
 
 // pruneFrontMarked removes, from the candidates (front paths this host's record
@@ -141,7 +104,7 @@ func pruneFrontMarked(ctx context.Context, r Remote, front string, candidates []
 				fmt.Fprintf(&want, "%s) want=%s;; ", q(f), q(strings.Join(set, " ")))
 			}
 		}
-		body := strings.NewReplacer("@WANT@", want.String(), "@PAT@", pat, "@MAX@", fmt.Sprint(frontConfMax)).Replace(frontPruneBody)
+		body := strings.NewReplacer("@WANT@", want.String(), "@PAT@", pat, "@MAX@", fmt.Sprint(frontcheck.ConfMax)).Replace(frontcheck.PruneBody)
 		out, err := r.Run(ctx, shScript(guardedScript(front, cand[:n], body)))
 		if err != nil {
 			return removed, kept, fmt.Errorf("pruning generated files on %s: %w", r.Label(), err)
@@ -164,13 +127,3 @@ func pruneFrontMarked(ctx context.Context, r Remote, front string, candidates []
 	}
 	return removed, kept, nil
 }
-
-// frontPruneBody is the per-path prune step: the marker rule, then the same
-// server_name set as serverNameSet (comments dropped, sorted, unique) compared
-// with the recorded one. A path with no recorded set is never removed.
-const frontPruneBody = `if [ -f "$2" ] && head -n 5 -- "$2" 2>/dev/null | grep -q @PAT@; then
-want=; case "$1" in @WANT@esac
-got=$(head -c @MAX@ -- "$2" 2>/dev/null | sed 's/#.*//' | grep -oE '(^|[^[:alnum:]_])server_name[[:space:]]+[^;]+;' | sed -E 's/^.*server_name[[:space:]]+//; s/;$//' | tr -s '[:space:]' '\n' | grep -v '^$' | LC_ALL=C sort -u | tr '\n' ' ')
-got=${got% }
-if [ -n "$want" ] && [ "$got" = "$want" ]; then rm -f -- "$2" && printf '%s\n' "$1"; else printf 'KEPT %s\n' "$1"; fi
-fi`

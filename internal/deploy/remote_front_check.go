@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/frontcheck"
 )
 
 // frontView is what the host-file checks need to know.
@@ -30,12 +31,6 @@ type frontView struct {
 	Files []string            // shipped now
 	Prev  []string            // shipped by this host's previous deploy (record)
 	Names map[string][]string // that record's server_name set per path; a missing key is "unknown"
-}
-
-// sameNames reports whether two server_name sets are equal. An empty set is no
-// evidence of ownership, so it equals nothing, not even another empty set.
-func sameNames(a, b []string) bool {
-	return len(a) > 0 && len(b) > 0 && strings.Join(a, " ") == strings.Join(b, " ")
 }
 
 // checkFrontForeign refuses (E485, nothing sent) to replace a host file that is
@@ -54,7 +49,7 @@ func checkFrontForeign(ctx context.Context, r Remote, front string, v frontView)
 		if !exists {
 			continue
 		}
-		if !hasBuildMarker(conf) {
+		if !frontcheck.HasBuildMarker(conf, BuildNginxMarker) {
 			return errs.New("E485", fmt.Sprintf("unmarked file would be overwritten: %q in the fronting stack", p)).
 				WithFix("move or delete that hand-written file on the host (or add the nself generated marker to it), then deploy again; nothing was sent")
 		}
@@ -62,12 +57,12 @@ func checkFrontForeign(ctx context.Context, r Remote, front string, v frontView)
 		if err != nil {
 			return err
 		}
-		theirs := serverNameSet(conf)
+		theirs := frontcheck.ServerNameSet(conf)
 		if rec, have := v.Names[p]; known[p] && have {
-			if sameNames(theirs, rec) || sameNames(theirs, ours) {
+			if frontcheck.SameNames(theirs, rec) || frontcheck.SameNames(theirs, ours) {
 				continue
 			}
-		} else if sameNames(theirs, ours) {
+		} else if frontcheck.SameNames(theirs, ours) {
 			continue
 		}
 		return errs.New("E485", fmt.Sprintf("%q in the fronting stack is a generated file of another project: its server_name set is [%s], this deploy ships [%s]",
@@ -102,13 +97,13 @@ func frontPrunable(ctx context.Context, r Remote, front string, v frontView) (pr
 		}
 		rec, have := v.Names[p]
 		switch {
-		case !hasBuildMarker(conf):
+		case !frontcheck.HasBuildMarker(conf, BuildNginxMarker):
 			kept = append(kept, fmt.Sprintf("[kept] %s/%s (no generated marker; not pruned)", front, p))
 		case !have:
 			kept = append(kept, fmt.Sprintf("[kept] %s/%s (no server_name set recorded for it; not pruned)", front, p))
-		case len(rec) == 0 || len(serverNameSet(conf)) == 0:
+		case len(rec) == 0 || len(frontcheck.ServerNameSet(conf)) == 0:
 			kept = append(kept, fmt.Sprintf("[kept] %s/%s (an empty server_name set proves no ownership; not pruned)", front, p))
-		case !sameNames(serverNameSet(conf), rec):
+		case !frontcheck.SameNames(frontcheck.ServerNameSet(conf), rec):
 			kept = append(kept, fmt.Sprintf("[kept] %s/%s (server_name changed since this project shipped it; not pruned)", front, p))
 		default:
 			prune = append(prune, p)
