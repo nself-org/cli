@@ -272,6 +272,58 @@ func TestStackUpdateNoTTYE403(t *testing.T) {
 	}
 }
 
+// TestNonProdResumeResetAfterPullOkBuildFailed covers the regression where
+// pull succeeded before build failed, and a subsequent resume discards the
+// backup. Without resetting every step, the journal would read
+// pending,ok,failed,... which validateJournal rejects as noncontiguous.
+func TestNonProdResumeResetAfterPullOkBuildFailed(t *testing.T) {
+	o := Options{ProjectDir: t.TempDir(), Yes: true}
+	b := newFixture()
+	j := newJournal(false)
+	// Simulate: backup ok, pull ok, build failed.
+	if err := runStep(context.Background(), b, j, "backup"); err != nil {
+		t.Fatal(err)
+	}
+	for i := range j.Steps {
+		switch j.Steps[i].Name {
+		case "backup":
+			j.Steps[i].Result = "ok"
+		case "pull":
+			if err := runStep(context.Background(), b, j, "pull"); err != nil {
+				t.Fatal(err)
+			}
+			j.Steps[i].Result = "ok"
+		case "build":
+			j.Steps[i].Result = "failed"
+		}
+	}
+	if err := saveJournal(o.ProjectDir, j); err != nil {
+		t.Fatal(err)
+	}
+	// On resume, verify fails so backup evidence is cleared pre-mutation.
+	b.fail, b.calls = "verify", nil
+	got, err := Execute(context.Background(), o, b)
+	assertCode(t, err, "E139")
+	disk, loadErr := loadJournal(o.ProjectDir)
+	if loadErr != nil {
+		t.Fatalf("journal unreadable after reset: %v", loadErr)
+	}
+	if got.BackupID != "" || disk.BackupID != "" {
+		t.Fatalf("stale backup retained after reset: %+v", disk)
+	}
+	for i, s := range disk.Steps {
+		if s.Result != "pending" {
+			t.Fatalf("step %d (%s) not reset to pending: %q", i, s.Name, s.Result)
+		}
+	}
+	// A fresh retry must succeed without hitting the noncontiguous guard.
+	b.fail, b.calls = "", nil
+	got, err = Execute(context.Background(), o, b)
+	if err != nil || got.Status != "complete" || b.calls[0] != "backup" {
+		t.Fatalf("fresh retry after mid-run reset: %v %v", b.calls, err)
+	}
+}
+
 func contains(items []string, name string) bool {
 	for _, item := range items {
 		if item == name {
