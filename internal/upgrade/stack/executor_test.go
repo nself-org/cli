@@ -280,3 +280,53 @@ func contains(items []string, name string) bool {
 	}
 	return false
 }
+
+// boundedBackupBackend blocks in each backup phase until its step context ends.
+type boundedBackupBackend struct {
+	*fixtureBackend
+	phase string
+}
+
+func (b *boundedBackupBackend) block(ctx context.Context) error {
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return errors.New("backup phase has no deadline")
+	}
+	if time.Until(deadline) > stepTimeout("migrate") {
+		return errors.New("backup deadline exceeds migration budget")
+	}
+	// A shortened child keeps this regression test fast while exercising cancellation.
+	child, cancel := context.WithTimeout(ctx, time.Millisecond)
+	defer cancel()
+	<-child.Done()
+	return child.Err()
+}
+func (b *boundedBackupBackend) Backup(ctx context.Context, j *Journal) error {
+	if b.phase == "backup" {
+		return b.block(ctx)
+	}
+	return b.fixtureBackend.Backup(ctx, j)
+}
+func (b *boundedBackupBackend) VerifyBackup(ctx context.Context, j *Journal) error {
+	if b.phase == "verify" {
+		return b.block(ctx)
+	}
+	return b.fixtureBackend.VerifyBackup(ctx, j)
+}
+func (b *boundedBackupBackend) CountRows(ctx context.Context) (map[string]int64, error) {
+	if b.phase == "rows" {
+		return nil, b.block(ctx)
+	}
+	return b.fixtureBackend.CountRows(ctx)
+}
+func TestBackupPhasesHaveStepDeadline(t *testing.T) {
+	for _, phase := range []string{"backup", "verify", "rows"} {
+		t.Run(phase, func(t *testing.T) {
+			b := &boundedBackupBackend{fixtureBackend: newFixture(), phase: phase}
+			err := runStep(context.Background(), b, newJournal(false), "backup")
+			if !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("phase did not receive bounded context: %v", err)
+			}
+		})
+	}
+}
