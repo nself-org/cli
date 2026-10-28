@@ -146,6 +146,11 @@ func checkKey(k string) error {
 
 // build creates and signs the http.Request for path-style bucket/key.
 func (c *Client) build(ctx context.Context, method, bucket, key string, query [][2]string, payloadHash string) (*http.Request, error) {
+	return c.buildWith(ctx, method, bucket, key, query, payloadHash, nil)
+}
+
+// buildWith is build with extra request headers, set before signing so they are signed.
+func (c *Client) buildWith(ctx context.Context, method, bucket, key string, query [][2]string, payloadHash string, hdr http.Header) (*http.Request, error) {
 	u, err := c.endpoint()
 	if err != nil {
 		return nil, err
@@ -165,6 +170,9 @@ func (c *Client) build(ctx context.Context, method, bucket, key string, query []
 	req, err := http.NewRequestWithContext(ctx, method, raw, nil)
 	if err != nil {
 		return nil, errors.New("objstore: " + c.redact(err.Error()))
+	}
+	for k, vs := range hdr {
+		req.Header[k] = append([]string(nil), vs...)
 	}
 	c.signer().Sign(req, payloadHash, c.now())
 	return req, nil

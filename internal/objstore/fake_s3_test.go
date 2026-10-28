@@ -31,6 +31,8 @@ type fakeS3 struct {
 	rawPaths []string
 	unsigned int // PUTs that arrived with UNSIGNED-PAYLOAD
 	signed   int // PUTs that arrived with a payload hash
+	// condRefused counts conditional PUTs refused with 412 because the key existed.
+	condRefused int
 }
 
 func newFakeS3() *fakeS3 { return &fakeS3{buckets: map[string]map[string][]byte{}} }
@@ -104,6 +106,11 @@ func (f *fakeS3) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodPut:
 		if !ok {
 			f.fail(w, http.StatusNotFound, "NoSuchBucket", "no such bucket")
+			return
+		}
+		if _, held := objs[key]; held && r.Header.Get("If-None-Match") == "*" {
+			f.condRefused++
+			f.fail(w, http.StatusPreconditionFailed, "PreconditionFailed", "At least one of the pre-conditions you specified did not hold")
 			return
 		}
 		body, rerr := io.ReadAll(r.Body)
