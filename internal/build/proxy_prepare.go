@@ -4,7 +4,7 @@ package build
 // build user (D-0782) so Docker never creates them root-owned on Linux, which
 // would stop an unprivileged build from removing them after a swap to nginx.
 // Inputs: the build sink, the project workdir and the host owner map from
-// proxyHostOwner (non-nil only for Traefik on Linux).
+// proxyHostOwner (non-nil only for Traefik on Linux with a daemon that keeps uids).
 // Outputs: .nself/generated/traefik and .nself/generated/traefik-static, empty,
 // mode 0755, through the sink (plan mode only records them).
 // Constraints: a path that exists and is not a plain directory is left alone;

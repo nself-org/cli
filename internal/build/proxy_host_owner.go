@@ -8,22 +8,28 @@ package build
 // bind-mounted keys keep their host owner and a root container with every
 // capability dropped cannot read them. Elsewhere the fragment's 0:0 default
 // stays, so an nginx project's compose.env is unchanged. The build process
-// issues the keys, so its own ids are their owner.
+// issues the keys, so its own ids are their owner. A rootless or userns-remapped
+// daemon maps a container uid to a sub-uid that cannot read them: 0:0 stays (D-0771).
 
 import (
 	"os"
 	"runtime"
 	"strconv"
+	"sync"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/docker"
 )
+
+// daemonRemapsUIDs asks the daemon once per process. Tests replace it.
+var daemonRemapsUIDs = sync.OnceValue(docker.RemapsUIDs)
 
 // proxyHostOwner returns the ids Traefik runs as, or nil when nothing is exported.
 func proxyHostOwner(cfg *config.Config, workdir, pluginDir string) map[string]string {
 	if runtime.GOOS != "linux" {
 		return nil
 	}
-	if provider, err := ProxyProvider(cfg, workdir, pluginDir); err != nil || provider != ProviderTraefik {
+	if provider, err := ProxyProvider(cfg, workdir, pluginDir); err != nil || provider != ProviderTraefik || daemonRemapsUIDs() {
 		return nil
 	}
 	return map[string]string{
