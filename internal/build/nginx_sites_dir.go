@@ -32,6 +32,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/nginxtopo"
 )
 
@@ -52,7 +53,14 @@ func resolveNginxSitesDir(workdir, frontedBy string) (string, error) {
 	// project's unused directory named in the refusal.
 	nginxDir, err := nginxtopo.ServedNginxDir(workdir, frontedBy)
 	if err == nil {
-		return filepath.Join(nginxDir, "sites"), nil
+		sites := filepath.Join(nginxDir, "sites")
+		// compat.V15(D-0757): nginx/sites may be a symlink out of the project and the build writes through it -> v1.5 refuses a project's own nginx/sites that resolves outside the project
+		if frontedBy == "" && compat.V15() {
+			if err := nginxtopo.Contained(workdir, sites); err != nil {
+				return "", err
+			}
+		}
+		return sites, nil
 	}
 
 	ownNginxDir, _ := nginxtopo.ServedNginxDir(workdir, "")

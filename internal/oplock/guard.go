@@ -100,7 +100,7 @@ func Guard(ctx context.Context, r Request) (context.Context, func(), error) {
 		return ctx, noop, nil
 	}
 	o := Opts{Command: r.Command, Poll: 250 * time.Millisecond, Clock: DefaultClock}
-	// compat.V15(P7-LIVE-13): a held lock is polled for 30 s, then a warning and the command runs unlocked -> a held lock fails at once with E460
+	// compat.V15(P7-LIVE-13): a held lock is polled for 30 s, then a warning and the command runs unlocked -> a held lock fails at once with E460, and so does a lock file that cannot be opened
 	v15 := compat.V15()
 	if !v15 {
 		o.Wait = waitV14

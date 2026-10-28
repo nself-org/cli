@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -142,5 +143,39 @@ func TestSharedOwnerRegistered(t *testing.T) {
 	}
 	if !SharedOwnerRegistered(root) {
 		t.Fatal("nginx/shared/" + SharedOwnerFile + " present but no owner reported")
+	}
+}
+
+func TestContained(t *testing.T) {
+	root, outside := t.TempDir(), t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "nginx"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := Contained(root, filepath.Join(root, "nginx", "sites")); err != nil {
+		t.Fatalf("a missing directory inside the project: %v", err)
+	}
+	if err := Contained(root, filepath.Join(root, "x", "y", "z")); err != nil {
+		t.Fatalf("a missing nested directory inside the project: %v", err)
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "nginx", "sites")); err != nil {
+		t.Fatal(err)
+	}
+	if err := Contained(root, filepath.Join(root, "nginx", "sites")); err == nil || !strings.Contains(err.Error(), "outside the project") {
+		t.Fatalf("a link out of the project: %v", err)
+	}
+	if err := os.Remove(filepath.Join(root, "nginx", "sites")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(root, "nginx")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "nginx")); err != nil {
+		t.Fatal(err)
+	}
+	if err := Contained(root, filepath.Join(root, "nginx", "sites")); err == nil {
+		t.Fatal("a linked parent that leaves the project must be refused even when sites does not exist")
 	}
 }
