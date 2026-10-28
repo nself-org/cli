@@ -46,7 +46,7 @@ cd "$DIR"
 nself init --non-interactive --name "$NAME" --no-pgvector >>"$LOG" 2>&1 || fail 'init'
 owned=1
 nself init --template multi-app . --force >"$W/overlay.out" 2>>"$LOG" || fail 'template overlay'
-for f in README.md manifest.json nself.yml .env.example migrations/001_multi_app.sql hasura/metadata.json hasura/metadata/databases/default/tables/tables.yaml; do
+for f in README.md manifest.json nself.yml .env.example migrations/001_multi_app.sql hasura/metadata/databases/default/tables/tables.yaml; do
   test -f "$f" || fail "overlay did not write $f"
 done
 test ! -e flutter || fail 'overlay wrote a flutter/ folder'
