@@ -85,6 +85,13 @@ func finishScratchStage(w io.Writer, set deploy.ArtifactSet, stale []string) (de
 // clearScratch removes the scratch root of env (both layouts).
 func clearScratch(workdir, env string) error {
 	root := scratchDirFor(workdir, env)
+	// RemoveAll follows a symlinked ancestor, so a planted .nself or
+	// .nself/deploy-build link would aim the delete at another tree.
+	for _, anc := range []string{filepath.Join(workdir, ".nself"), filepath.Dir(root)} {
+		if fi, err := os.Lstat(anc); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("deploy: %s is a symlink; refusing to clear the scratch directory through it", anc)
+		}
+	}
 	if err := os.RemoveAll(root); err != nil {
 		return fmt.Errorf("deploy: clearing %s: %w", root, err)
 	}

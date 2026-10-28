@@ -19,7 +19,7 @@ import (
 
 // TakeFrontSSL lists the certificate dirs of the fronting stack at front.
 func TakeFrontSSL(ctx context.Context, r Remote, front string) ([]CertDir, error) {
-	pems, err := r.Run(ctx, shScript(fmt.Sprintf(`find -L %s -maxdepth 2 -name '*.pem' -print 2>/dev/null || true`, q(path.Join(front, "ssl", "certificates")))))
+	pems, err := r.Run(ctx, shScript(fmt.Sprintf(`d=%s; [ -d "$d" ] || exit 0; find -L "$d" -maxdepth 2 -name '*.pem' -print`, q(path.Join(front, "ssl", "certificates")))))
 	if err != nil {
 		return nil, fmt.Errorf("target snapshot: listing the fronting stack's certificates: %w", err)
 	}

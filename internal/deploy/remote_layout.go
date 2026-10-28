@@ -87,7 +87,8 @@ exit 0`, q(remotePath), strings.Join(quoteAll(dirs), " "), strings.Join(quoteAll
 // remotePath. Every path is resolved first; one whose directory leaves the real
 // remote_path (or that is itself a symlink) prints "REFUSE <path>" and nothing
 // is run. The directory is resolved again just before each act. A path whose
-// directory does not exist is skipped.
+// directory does not exist is skipped. Every path is tried; the script exits 1
+// if any act failed, not just the last one.
 func guardedScript(remotePath string, paths []string, body string) string {
 	return fmt.Sprintf(`rp=%s; cd -P "$rp" || exit 1; base=$(pwd -P); set -- %s
 act() { %s; }
@@ -95,7 +96,9 @@ real_of() { [ -d "$base/$(dirname "$1")" ] || return 2; x=$(cd -P "$base/$(dirna
 refuse=0
 for f in "$@"; do if [ -L "$base/$f" ]; then printf 'REFUSE %%s\n' "$f"; refuse=1; continue; fi; real_of "$f" >/dev/null; [ $? -eq 1 ] && { printf 'REFUSE %%s\n' "$f"; refuse=1; }; done
 if [ "$refuse" = 1 ]; then exit 0; fi
-for f in "$@"; do d=$(real_of "$f") || continue; act "$f" "$d/$(basename "$f")"; done`, q(remotePath), strings.Join(quoteAll(paths), " "), body)
+rc=0
+for f in "$@"; do d=$(real_of "$f") || continue; act "$f" "$d/$(basename "$f")" || rc=1; done
+exit $rc`, q(remotePath), strings.Join(quoteAll(paths), " "), body)
 }
 
 // refusedPaths turns the REFUSE lines of a guardedScript into an error.

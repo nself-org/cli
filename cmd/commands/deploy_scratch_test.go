@@ -198,3 +198,45 @@ func isolateDeployConfigEnv(t *testing.T) {
 		}
 	}
 }
+
+// D-0824: clearScratch never deletes through a symlinked .nself ancestor.
+func TestClearScratchRefusesSymlinkedAncestor(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		link func(work, other string) string // returns the planted link's path
+	}{
+		{".nself", func(work, other string) string { return filepath.Join(work, ".nself") }},
+		{".nself/deploy-build", func(work, other string) string {
+			_ = os.MkdirAll(filepath.Join(work, ".nself"), 0o755)
+			return filepath.Join(work, ".nself", "deploy-build")
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			work, other := t.TempDir(), t.TempDir()
+			victim := filepath.Join(other, "prod", "keep.txt") // what scratchDirFor(work, "prod") would hit through the link
+			wf(t, victim, "keep\n")
+			if tc.name == ".nself" {
+				wf(t, filepath.Join(other, "deploy-build", "prod", "keep.txt"), "keep\n")
+				victim = filepath.Join(other, "deploy-build", "prod", "keep.txt")
+			}
+			if err := os.Symlink(other, tc.link(work, other)); err != nil {
+				t.Skipf("symlinks unavailable: %v", err)
+			}
+			if err := clearScratch(work, "prod"); err == nil {
+				t.Error("clearScratch went through a symlinked ancestor without an error")
+			}
+			if _, err := os.Stat(victim); err != nil {
+				t.Errorf("the file behind the link was deleted: %v", err)
+			}
+		})
+	}
+	// A plain tree is still cleared.
+	work := t.TempDir()
+	wf(t, filepath.Join(work, ".nself", "deploy-build", "prod", "stale.txt"), "x")
+	if err := clearScratch(work, "prod"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(work, ".nself", "deploy-build", "prod")); err == nil {
+		t.Error("the scratch root was not cleared")
+	}
+}
