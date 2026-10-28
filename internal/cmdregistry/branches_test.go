@@ -40,6 +40,15 @@ func TestEffectiveJSON(t *testing.T) {
 	}
 }
 
+func TestEffectiveJSONFlagCannotPromoteToEnvelope(t *testing.T) {
+	for _, base := range []string{canon.JSONLegacy, canon.JSONNone} {
+		c := &Command{JSON: base, Flags: []Flag{{Name: "env", JSON: strPtr(canon.JSONEnvelope)}}}
+		if got := EffectiveJSON(c, map[string]bool{"env": true}); got != base {
+			t.Fatalf("base %q with envelope flag = %q, want %q", base, got, base)
+		}
+	}
+}
+
 func TestBracketedUnclosed(t *testing.T) {
 	for _, tc := range []struct {
 		in, wantTok, wantRest string

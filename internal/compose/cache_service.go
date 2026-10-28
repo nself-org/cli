@@ -24,8 +24,6 @@ import (
 	"sync"
 
 	"github.com/nself-org/cli/internal/compat"
-
-	"gopkg.in/yaml.v3"
 )
 
 // Cache engines REDIS_ENGINE accepts.
@@ -87,36 +85,6 @@ func existingCacheEngine() string {
 	existingMu.RLock()
 	defer existingMu.RUnlock()
 	return existingEngine
-}
-
-// ExistingCacheEngine reads the cache engine out of an existing docker-compose.yml:
-// EngineValkey when the `redis` service image names valkey, EngineRedis when that
-// service exists in any other form (a literal or ${VAR:-default} image, a build)
-// or a redis_data volume is declared, EngineValkey for a valkey_data volume alone,
-// "" when the file shows no cache at all. An unparseable file shows nothing.
-func ExistingCacheEngine(composeYAML []byte) string {
-	var doc struct {
-		Services map[string]struct {
-			Image string `yaml:"image"`
-		} `yaml:"services"`
-		Volumes map[string]interface{} `yaml:"volumes"`
-	}
-	if yaml.Unmarshal(composeYAML, &doc) != nil {
-		return ""
-	}
-	if svc, ok := doc.Services["redis"]; ok {
-		if strings.Contains(strings.ToLower(svc.Image), "valkey") {
-			return EngineValkey
-		}
-		return EngineRedis
-	}
-	if _, ok := doc.Volumes["redis_data"]; ok {
-		return EngineRedis
-	}
-	if _, ok := doc.Volumes["valkey_data"]; ok {
-		return EngineValkey
-	}
-	return ""
 }
 
 // cacheVolume is the named data volume of the cache engine.

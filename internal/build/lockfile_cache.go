@@ -14,9 +14,11 @@ package build
 // (compose.cacheEngine); no compose file or no cache in it means no hint.
 
 import (
+	"os"
 	"path/filepath"
 
 	"github.com/nself-org/cli/internal/compose"
+	"github.com/nself-org/cli/internal/config"
 )
 
 // installLockPins installs the image pins for this render, plus the cache engine
@@ -30,9 +32,25 @@ func (st *buildState) installLockPins() (func(), error) {
 	hint := ""
 	if _, pinned := compose.ProjectPins()["redis"]; !pinned {
 		if data, rerr := st.sink.ReadFile(filepath.Join(st.workdir, "docker-compose.yml")); rerr == nil {
-			hint = compose.ExistingCacheEngine(data)
+			hint = compose.ExistingCacheEngineEnv(data, st.composeEnvLookup())
 		}
 	}
 	restoreHint := compose.SetExistingCacheEngine(hint)
 	return func() { restoreHint(); restorePins() }, nil
+}
+
+// composeEnvLookup resolves a Compose variable the way `docker compose` does:
+// the process environment first, then the project's .env.
+func (st *buildState) composeEnvLookup() func(string) (string, bool) {
+	var dot map[string]string
+	if raw, rerr := st.sink.ReadFile(filepath.Join(st.workdir, ".env")); rerr == nil {
+		dot, _ = config.ParseEnvBytes(filepath.Join(st.workdir, ".env"), raw)
+	}
+	return func(k string) (string, bool) {
+		if v, ok := os.LookupEnv(k); ok {
+			return v, true
+		}
+		v, ok := dot[k]
+		return v, ok
+	}
 }
