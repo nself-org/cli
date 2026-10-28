@@ -498,6 +498,53 @@ func FuzzRenderTimer(f *testing.F) {
 	})
 }
 
+// TestCronSelfDeleteCreatesLockDir runs the real cron line through sh with no
+// ~/.nself directory present, proving the self-removal creates it instead of
+// failing the redirect and leaving the crontab line in place forever.
+func TestCronSelfDeleteCreatesLockDir(t *testing.T) {
+	tmp, _ := filepath.EvalSymlinks(t.TempDir())
+	store, stubs := filepath.Join(tmp, "store"), filepath.Join(tmp, "stubs")
+	if err := os.MkdirAll(stubs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stub := "#!/bin/sh\nif [ \"$1\" = -l ]; then cat " + store + "; else cat > " + store + "; fi\n"
+	if err := os.WriteFile(filepath.Join(stubs, "crontab"), []byte(stub), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(tmp, "nself")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gone := filepath.Join(tmp, "gone-project")
+	line, err := renderCron(bin, gone, Hash(gone))
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := "MAILTO=ops\n0 3 * * * printf 'a\\n%s' b\n"
+	if err := os.WriteFile(store, []byte(before+line+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fields := strings.SplitN(strings.ReplaceAll(line, `\%`, "%"), " ", 6)
+	run := exec.Command("sh", "-c", fields[5])
+	// Do NOT create ~/.nself; the fix must mkdir -p it before the redirect.
+	if runtime.GOOS == "darwin" {
+		if err := os.WriteFile(filepath.Join(stubs, "flock"), []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run.Env = []string{"HOME=" + tmp, "PATH=" + stubs + ":" + os.Getenv("PATH")}
+	if out, err := run.CombinedOutput(); err != nil {
+		t.Fatalf("cron line failed without ~/.nself: %v\n%s", err, out)
+	}
+	got, _ := os.ReadFile(store)
+	if string(got) != before {
+		t.Fatalf("cron line not removed when ~/.nself was missing:\n got %q\nwant %q", got, before)
+	}
+	if _, err := os.Stat(filepath.Join(tmp, ".nself")); err != nil {
+		t.Fatalf("~/.nself was not created by the cron line: %v", err)
+	}
+}
+
 // TestCronSelfDeleteKeepsForeignLines runs the real cron line through sh (cron's \% unescape
 // applied) with the project gone, against a stub crontab, and checks foreign lines before and
 // after the timer line survive byte for byte while the timer line disappears.

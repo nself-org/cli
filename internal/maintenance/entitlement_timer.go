@@ -163,7 +163,7 @@ func renderCron(bin, dir, hash string) (string, error) {
 	}
 	minute, _ := strconv.ParseUint(hash[:2], 16, 8)
 	tag := entCronTag + hash
-	drop := fmt.Sprintf(`(flock -x 9 && t=$(crontab -l 2>/dev/null) && printf '%%s\n' "$t" | grep -vF %s | crontab -) 9>"$HOME/.nself/entitlement-cron.lock"`, shQuote(tag))
+	drop := fmt.Sprintf(`{ mkdir -p "$HOME/.nself" && (flock -x 9 && t=$(crontab -l 2>/dev/null) && printf '%%s\n' "$t" | grep -vF %s | crontab -) 9>"$HOME/.nself/entitlement-cron.lock"; }`, shQuote(tag))
 	line := fmt.Sprintf("%d */6 * * * if test -e %s && test -d %s; then %s >/dev/null; else %s; fi %s",
 		minute%60, shQuote(bin), shQuote(dir), refreshCmd(bin, dir), drop, tag)
 	return cronEscape(line), nil
