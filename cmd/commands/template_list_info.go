@@ -114,7 +114,11 @@ func runTemplateList(cmd *cobra.Command, args []string) error {
 
 func runTemplateInfo(cmd *cobra.Command, args []string) error {
 	slug := args[0]
-	if m, err := clone.GetManifest(slug); err == nil {
+	if slug == "multi-app" {
+		m, err := clone.GetManifest(slug)
+		if err != nil {
+			return err
+		}
 		e := templateEntry{Slug: m.Name, DisplayName: m.Name, Description: m.Description, Category: "bundled", Author: "nSelf", RequiredPlugins: nonNilStrings(m.RequiredPlugins), TemplateVersion: m.Version, NextSteps: templateNext(slug)}
 		if jsonEnvelopeOn(cmd) {
 			return emitEnv(cmd, e, true)

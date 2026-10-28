@@ -19,7 +19,6 @@ package commands
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -29,6 +28,7 @@ import (
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/plugin"
+	"github.com/nself-org/cli/internal/plugin/autoinstall"
 	"github.com/nself-org/cli/internal/plugin/verify/signature"
 )
 
@@ -64,7 +64,7 @@ func autoInstallPluginLocked(ctx context.Context, cfg *config.Config, slug, vers
 
 	// This check is inside the operation lock: a concurrent first run may
 	// already have installed this exact signed catalogue entry.
-	if bin, ok := autoInstallCached(resolvePluginDir(), slug, manifest); ok {
+	if bin, ok := autoinstall.Cached(resolvePluginDir(), slug, manifest); ok {
 		return bin, nil
 	}
 
@@ -103,8 +103,8 @@ func autoInstallPluginLocked(ctx context.Context, cfg *config.Config, slug, vers
 		return "", fmt.Errorf("auto-install of %q %s failed: %w (install it by hand: nself add %s)", slug, manifest.Version, err, slug)
 	}
 
-	bin := plugin.PublishedBinaryPath(autoInstallBinaryName(slug, manifest))
-	if got := readInstalledVersion(pluginDir, slug); got != manifest.Version {
+	bin := plugin.PublishedBinaryPath(autoinstall.BinaryName(slug, manifest))
+	if got := autoinstall.ReadInstalledVersion(pluginDir, slug); got != manifest.Version {
 		// Unreadable or different: the catalogue changed under us. Remove what this
 		// call published (by the checked name; UndoInstall uses the archive's).
 		_ = plugin.UndoInstall(ctx, cfg, slug, pluginDir)
@@ -115,7 +115,7 @@ func autoInstallPluginLocked(ctx context.Context, cfg *config.Config, slug, vers
 	if st, err := os.Stat(bin); err != nil || st.IsDir() {
 		return "", fmt.Errorf("auto-install of %q: the installer reported success but %s was not published (install it by hand: nself add %s)", slug, bin, slug)
 	}
-	if err := autoInstallRecord(pluginDir, slug, manifest, bin); err != nil {
+	if err := autoinstall.Record(pluginDir, slug, manifest, bin); err != nil {
 		return "", err
 	}
 	return bin, nil
@@ -143,8 +143,8 @@ func autoInstallResolve(ctx context.Context, slug, version string) (*plugin.Plug
 	if m.RequiresLicense || m.IsCommercial || (m.Tier != "" && m.Tier != plugin.WireTierFree) {
 		return nil, nil, fmt.Errorf("auto-install of %q: the catalogue entry is licensed, and only free plugins are auto-installed (install it by hand: %s)", slug, manual)
 	}
-	if !autoInstallSafeBinaryName(autoInstallBinaryName(slug, m)) {
-		return nil, nil, fmt.Errorf("auto-install of %q: the catalogue entry names an unsafe command binary %q (install it by hand: %s)", slug, autoInstallBinaryName(slug, m), manual)
+	if !autoInstallSafeBinaryName(autoinstall.BinaryName(slug, m)) {
+		return nil, nil, fmt.Errorf("auto-install of %q: the catalogue entry names an unsafe command binary %q (install it by hand: %s)", slug, autoinstall.BinaryName(slug, m), manual)
 	}
 	if len(m.Dependencies) > 0 || len(m.OptionalDependencies) > 0 {
 		return nil, nil, fmt.Errorf("auto-install of %q: the entry has dependencies, which the installer would add before verifying it (install it by hand: %s)", slug, manual)
@@ -161,15 +161,6 @@ func autoInstallResolve(ctx context.Context, slug, version string) (*plugin.Plug
 			WithFix("Run `" + manual + "` with a CLI release that pins the key.")
 	}
 	return m, reg, nil
-}
-
-// autoInstallBinaryName is the name the installer publishes a single-command
-// plugin under: the manifest's binaryName, else nself-<slug>.
-func autoInstallBinaryName(slug string, m *plugin.PluginManifest) string {
-	if m.BinaryName != "" {
-		return m.BinaryName
-	}
-	return "nself-" + slug
 }
 
 // autoInstallSetEnv sets each variable and returns a func that puts the
@@ -197,21 +188,6 @@ func autoInstallSetEnv(vars map[string]string) (func(), error) {
 		}
 	}
 	return restore, nil
-}
-
-// readInstalledVersion returns the version in <pluginDir>/<slug>/plugin.json, or "".
-func readInstalledVersion(pluginDir, slug string) string {
-	b, err := os.ReadFile(filepath.Join(pluginDir, slug, "plugin.json"))
-	if err != nil {
-		return ""
-	}
-	var m struct {
-		Version string `json:"version"`
-	}
-	if json.Unmarshal(b, &m) != nil {
-		return ""
-	}
-	return m.Version
 }
 
 // autoInstallMoveAside renames <pluginDir>/<slug> to ../plugins.aside/<slug>.pre-autoinstall-<ts>

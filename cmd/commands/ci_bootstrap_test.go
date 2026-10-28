@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/plugin"
+	"github.com/nself-org/cli/internal/plugin/autoinstall"
 	"github.com/nself-org/cli/internal/plugin/verify/signature"
 	"github.com/nself-org/cli/internal/plugin/verify/signature/signaturetest"
 )
@@ -460,7 +461,7 @@ func TestCIBootstrapRechecksPublishedReceipt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, ok := autoInstallCached(dir, "ci", m); !ok || got != bin {
+	if got, ok := autoinstall.Cached(dir, "ci", m); !ok || got != bin {
 		t.Fatal("verified install has no usable receipt")
 	}
 	if _, err := ensureCIBinary(false); err != nil {
@@ -473,17 +474,17 @@ func TestCIBootstrapRechecksPublishedReceipt(t *testing.T) {
 	if err := os.WriteFile(bin, []byte("tampered"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := autoInstallCached(dir, "ci", m); ok {
+	if _, ok := autoinstall.Cached(dir, "ci", m); ok {
 		t.Fatal("tampered published bytes trusted")
 	}
 	if _, err := ensureCIBinary(false); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := autoInstallCached(dir, "ci", m); !ok {
+	if _, ok := autoinstall.Cached(dir, "ci", m); !ok {
 		t.Fatal("tampered binary was not repaired")
 	}
 	m.BinaryName = "nself-custom-ci"
-	if _, ok := autoInstallCached(dir, "ci", m); ok {
+	if _, ok := autoinstall.Cached(dir, "ci", m); ok {
 		t.Fatal("cache ignored catalogue binary name")
 	}
 }
