@@ -174,8 +174,8 @@ func TestStartMayContinueDistinguishesFailureKinds(t *testing.T) {
 	}
 }
 
-// Boundary tests for mutation survivors at lifecycle.go:78:30 (CONDITIONALS_BOUNDARY
-// on After) and selection.go:27:31 (CONDITIONALS_BOUNDARY on Exp <= 0).
+// Boundary tests for the grace clause in retainedToken. (The mutant at
+// lifecycle.go:78:30 is the Exp <= 0 guard; see lifecycle_exp_test.go.)
 // retainedToken uses time.Now().After(exp.Add(grace)). We compute exp relative to
 // time.Now() inside each subtest so the window between signing and checking is
 // negligible; the "past" case uses an extra 2s margin to avoid flakiness.
@@ -290,10 +290,9 @@ func TestSelectTokenExpZeroBoundaryKillsMutant(t *testing.T) {
 	}
 }
 
-// TestRetainedTokenGraceBoundaryKillsMutant pins lifecycle.go:78:30 where
-// time.Now().After(exp.Add(grace)) controls retention. The mutant flips After
-// to !After (or Before), retaining tokens PAST grace. We test a token exactly
-// 2s past grace: original rejects it, mutant retains it.
+// TestRetainedTokenGraceBoundaryKillsMutant pins the grace clause
+// time.Now().After(exp.Add(grace)) in retainedToken: a token 2s past grace is
+// not retained.
 func TestRetainedTokenGraceBoundaryKillsMutant(t *testing.T) {
 	sign := policySigner(t)
 	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "accepted")

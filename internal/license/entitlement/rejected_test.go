@@ -199,8 +199,8 @@ func TestLoadRejectedIgnoresMarkerWithEmptyHash(t *testing.T) {
 	}
 }
 
-// writeMarker must propagate OpenFile errors: mutating `if err != nil` to
-// `if err == nil` at rejected.go:99:9 would swallow the failure and return nil.
+// writeMarker must report an OpenFile failure. The mutant at rejected.go:99:9
+// is killed by rejected_marker_test.go, which checks which error comes back.
 func TestWriteMarkerReportsOpenFailure(t *testing.T) {
 	dir := useRejectedDir(t)
 	// Block the marker path with a directory so OpenFile cannot create it.
