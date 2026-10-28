@@ -17,9 +17,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/joho/godotenv"
-
 	"github.com/nself-org/cli/internal/compose"
+	"github.com/nself-org/cli/internal/config"
 )
 
 // installLockPins installs the image pins for this render, plus the cache engine
@@ -44,8 +43,8 @@ func (st *buildState) installLockPins() (func(), error) {
 // the process environment first, then the project's .env.
 func (st *buildState) composeEnvLookup() func(string) (string, bool) {
 	var dot map[string]string
-	if raw, err := st.sink.ReadFile(filepath.Join(st.workdir, ".env")); err == nil {
-		dot, _ = godotenv.UnmarshalBytes(raw)
+	if raw, rerr := st.sink.ReadFile(filepath.Join(st.workdir, ".env")); rerr == nil {
+		dot, _ = config.ParseEnvBytes(filepath.Join(st.workdir, ".env"), raw)
 	}
 	return func(k string) (string, bool) {
 		if v, ok := os.LookupEnv(k); ok {
