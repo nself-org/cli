@@ -1,6 +1,6 @@
 package build
 
-// Purpose: the line rewrites of TemplateSecrets. Phase A/A2 replace whole
+// Purpose: the YAML rewrites of TemplateSecrets. Phase A/A2 replace whole
 //          "KEY: value" entries (rewriteKeyLines); Phase C replaces a secret
 //          still literal after the env-key and URL phases by its ${VAR}
 //          reference, without breaking the YAML, renaming a mapping key or
@@ -16,6 +16,7 @@ package build
 // SPORT: cli/internal/build — secret templating (S-secret-env-templating).
 
 import (
+	"bytes"
 	"regexp"
 	"strings"
 	"unicode"
@@ -27,62 +28,45 @@ import (
 // generators emit: ${A}, ${A:-} and ${A:-${B}}.
 var composeRefPattern = regexp.MustCompile(`\$\{[A-Za-z_][A-Za-z0-9_]*(?::-(?:\$\{[A-Za-z_][A-Za-z0-9_]*\})?)?\}`)
 
-// envLinePattern matches a one-line "KEY: value" mapping entry.
-var envLinePattern = regexp.MustCompile(`^(\s+)([A-Za-z_][A-Za-z0-9_]*): (.+)$`)
-
-// blockScalarStart matches a line that opens a "|" or ">" block scalar,
-// including an anchor or tag before it, an indentation or chomping
-// indicator after it, and a trailing comment.
-var blockScalarStart = regexp.MustCompile(`(?:^|:|-)\s*(?:(?:&\S+|!\S*)\s+)*[|>](?:[0-9][+-]?|[+-][0-9]?)?\s*(?:#.*)?$`)
-
-// templateOtherLiterals is Phase C. Raw pass: a secret of 8+ characters that
-// holds no quote, backslash or control character cannot overlap a YAML
-// escape, so its raw occurrences become ${VAR}; the result is kept only when
-// the YAML still loads (when it loaded before). Decoded pass: single-line
-// "KEY: value" entries outside block scalars are decoded, so a secret the
-// YAML encoder escaped (quotes, backslashes) is found and the line re-encoded.
-// Neither pass rewrites text inside an existing ${...} reference.
+// templateOtherLiterals walks decoded value scalars, including sequence items
+// and block scalars. Mapping keys and existing references are preserved.
 func templateOtherLiterals(out string, keys []string, secrets map[string]string) string {
-	shape, loads := yamlShape(out)
-	for _, key := range keys {
-		val := secrets[key]
-		if len(val) < 8 || !rawReplaceSafe(val) {
-			continue
-		}
-		next := replaceOutsideRefs(out, val, "${"+key+"}")
-		if next == out {
-			continue
-		}
-		// compose does not interpolate mapping keys: a secret that spells a
-		// service or volume name must not rename it.
-		if nextShape, ok := yamlShape(next); !loads || (ok && nextShape == shape) {
-			out = next
-		}
-	}
-
-	lines := strings.Split(out, "\n")
-	blockIndent := -1
-	for i, line := range lines {
-		indent := len(line) - len(strings.TrimLeft(line, " "))
-		if blockIndent >= 0 {
-			if strings.TrimSpace(line) == "" || indent > blockIndent {
-				continue // inside a block scalar: literal text, not YAML
-			}
-			blockIndent = -1
-		}
-		if blockScalarStart.MatchString(line) {
-			blockIndent = indent
-			continue
-		}
-		if envLinePattern.MatchString(line) {
-			lines[i] = templateDecodedLine(line, keys, secrets)
-		}
-	}
-	next := strings.Join(lines, "\n")
-	if nextShape, ok := yamlShape(next); loads && (!ok || nextShape != shape) {
+	var root yaml.Node
+	if yaml.Unmarshal([]byte(out), &root) != nil {
 		return out
 	}
-	return next
+	changed := false
+	var walk func(*yaml.Node)
+	walk = func(n *yaml.Node) {
+		if n.Kind == yaml.ScalarNode && n.ShortTag() == "!!str" {
+			value := n.Value
+			for _, key := range keys {
+				if val := secrets[key]; len(val) >= 8 {
+					n.Value = replaceOutsideRefs(n.Value, val, "${"+key+"}")
+				}
+			}
+			if n.Value != value {
+				changed = true
+				n.Style = 0
+			}
+		}
+		for i, child := range n.Content {
+			if n.Kind != yaml.MappingNode || i%2 != 0 {
+				walk(child)
+			}
+		}
+	}
+	walk(&root)
+	if !changed {
+		return out
+	}
+	var encoded bytes.Buffer
+	encoder := yaml.NewEncoder(&encoded)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(&root); err != nil {
+		return out
+	}
+	return encoded.String()
 }
 
 // rewriteKeyLines replaces the value of every "<indent>KEY: value" line for
@@ -120,17 +104,6 @@ func rewriteKeyLines(out, key string, fn func(line string) (string, bool)) strin
 	}
 	kept = append(kept, blanks...)
 	return strings.Join(kept, "\n")
-}
-
-// rawReplaceSafe reports whether val can be replaced byte for byte in YAML
-// text: it holds no character the YAML encoder escapes or quotes around.
-func rawReplaceSafe(val string) bool {
-	for _, r := range val {
-		if r == '\'' || r == '"' || r == '\\' || (r != ' ' && !unicode.IsPrint(r)) {
-			return false
-		}
-	}
-	return true
 }
 
 // replaceOutsideRefs replaces old with repl in s, except where a match cuts
@@ -171,59 +144,6 @@ func replaceOutsideRefs(s, old, repl string) string {
 	}
 	sb.WriteString(s[last:])
 	return sb.String()
-}
-
-// yamlShape returns the mapping keys of text in document order (the part
-// of a compose file docker compose does not interpolate) and whether text
-// parses as YAML at all.
-func yamlShape(text string) (string, bool) {
-	var root yaml.Node
-	if yaml.Unmarshal([]byte(text), &root) != nil {
-		return "", false
-	}
-	var sb strings.Builder
-	var walk func(n *yaml.Node)
-	walk = func(n *yaml.Node) {
-		for i, c := range n.Content {
-			if n.Kind == yaml.MappingNode && i%2 == 0 {
-				sb.WriteString(c.Value)
-				sb.WriteByte(0)
-			}
-			walk(c)
-		}
-	}
-	walk(&root)
-	return sb.String(), true
-}
-
-// templateDecodedLine returns line with every secret (8+ characters) in its
-// YAML-decoded value replaced by ${KEY}, re-encoded as YAML. Lines that do
-// not decode to a single string, or hold no secret, are returned unchanged.
-func templateDecodedLine(line string, keys []string, secrets map[string]string) string {
-	m := envLinePattern.FindStringSubmatch(line)
-	var decoded map[string]string
-	if yaml.Unmarshal([]byte(m[2]+": "+m[3]), &decoded) != nil || len(decoded) != 1 {
-		return line
-	}
-	v, ok := decoded[m[2]]
-	if !ok {
-		return line
-	}
-	nv := v
-	for _, key := range keys {
-		if val := secrets[key]; len(val) >= 8 {
-			nv = replaceOutsideRefs(nv, val, "${"+key+"}")
-		}
-	}
-	if nv == v {
-		return line
-	}
-	b, err := yaml.Marshal(map[string]string{m[2]: nv})
-	enc := strings.TrimSuffix(string(b), "\n")
-	if err != nil || strings.Contains(enc, "\n") {
-		return line // a block scalar would need re-indenting; keep the line
-	}
-	return m[1] + enc
 }
 
 // lineValueIs reports whether the "KEY: value" YAML line decodes to val. A

@@ -130,7 +130,7 @@ func describe(n *yaml.Node) string {
 	case yaml.SequenceNode:
 		return "a list"
 	}
-	return "a " + strings.TrimPrefix(n.ShortTag(), "!!") + " (" + n.Value + ")"
+	return "a " + strings.TrimPrefix(n.ShortTag(), "!!")
 }
 
 var pluginsType = reflect.TypeOf(ManifestPlugins{})
@@ -199,7 +199,7 @@ func (c *collector) walk(n *yaml.Node, t reflect.Type, path string) {
 			// build coerces these to a string (no -> "false"), which is rarely meant.
 			c.add(n.Line, n.Column, path, CodeManifestType,
 				fmt.Sprintf("expected a string, found %s: YAML reads it as a %s, not text", describe(n), strings.TrimPrefix(n.ShortTag(), "!!")),
-				fmt.Sprintf("quote it: %q", n.Value))
+				"quote the value so YAML reads it as text")
 		} else if n.Kind != yaml.ScalarNode {
 			c.typeErr(n, path, "a string")
 		} else if path == "cli_min_version" && !ValidateCLIMinVersion(n.Value) {

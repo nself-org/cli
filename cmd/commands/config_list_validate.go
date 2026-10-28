@@ -11,7 +11,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/nself-org/cli/internal/build"
@@ -182,29 +181,9 @@ func manifestLines(text string) []string {
 	return lines
 }
 
-// foundScalar matches the scalar a manifest type finding echoes: build's
-// describe() renders "found a <tag> (<value>)", and the string check follows
-// it with ": YAML reads it as a <tag>, not text".
-// (?s): a block scalar puts newlines in the value; \S+ covers custom tags.
-var foundScalar = regexp.MustCompile(`(?s)(found an? \S+) \(.*\)($|: YAML reads it as )`)
-
-// quoteScalar matches the string check's fix, which quotes the scalar back.
-var quoteScalar = regexp.MustCompile(`(?s)^quote it: ".*"$`)
-
-// redactManifestFinding drops the scalar values a manifest finding copies from
-// nself.yaml (D-0430): a value written where a map or list belongs can be a
-// credential, and the findings reach stderr and the machine envelope. File,
-// position, path, code and key names stay, so the finding still points at
-// the line to fix.
-func redactManifestFinding(f build.Finding) build.Finding {
-	f.Message = foundScalar.ReplaceAllString(f.Message, "${1} (value hidden)${2}")
-	f.Fix = quoteScalar.ReplaceAllString(f.Fix, "quote the value so YAML reads it as text")
-	return f
-}
-
 // reportNselfYAML validates nself.yaml / nself.yml when the project has one and
 // prints each finding to w (stderr) as "file:line:col: severity: path: [code] ...",
-// with scalar values redacted (redactManifestFinding).
+// without scalar values.
 // It returns the number of findings that are errors: none in v1.4 mode (the
 // findings are warnings), all of them in v1.5 mode. A project without a
 // manifest reports nothing.
@@ -215,7 +194,7 @@ func reportNselfYAML(w io.Writer, projectDir string) int {
 	}
 	errorCount := 0
 	for _, f := range build.ValidateManifestFile(path) {
-		_, _ = fmt.Fprintln(w, redactManifestFinding(f).String())
+		_, _ = fmt.Fprintln(w, f.String())
 		if f.Severity == build.SeverityError {
 			errorCount++
 		}

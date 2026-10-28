@@ -51,6 +51,12 @@ func Pin(refs map[string]string, r Resolver) (images, unpinned map[string]string
 			if r.LocalDigest != nil {
 				if d := r.LocalDigest(ref); digestRE.MatchString(d) {
 					images[svc] = ref + "@" + d
+					// Prefer the CLI spelling when it identifies the same bytes.
+					if r.CLILocked != nil {
+						if locked, ok := r.CLILocked(ref); ok && pinnedRE.MatchString(locked) && RefDigest(locked) == d {
+							images[svc] = locked
+						}
+					}
 					continue
 				}
 			}
