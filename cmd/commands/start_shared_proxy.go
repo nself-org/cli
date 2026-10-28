@@ -24,6 +24,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 
 	"github.com/nself-org/cli/internal/config"
@@ -36,8 +37,9 @@ import (
 var (
 	spLocate = sharedproxy.Locate
 	spAttach = sharedproxy.Attach
-	spDetach = sharedproxy.Detach
+	spDetach = sharedproxy.DetachHolding
 	spLeave  = sharedproxy.Leave
+	spFlush  = sharedproxy.ReloadIfPending
 )
 
 func init() {
@@ -61,6 +63,7 @@ func afterStartSharedProxy(ctx context.Context, cfg *config.Config, workdir stri
 	}
 	switch site.Role {
 	case sharedproxy.RoleOwner:
+		flushPendingReload(ctx, workdir)
 		attachAllRegistered(ctx, workdir, site)
 		return nil
 	case sharedproxy.RoleFronted:
@@ -70,6 +73,14 @@ func afterStartSharedProxy(ctx context.Context, cfg *config.Config, workdir stri
 		return attachSelf(ctx, site)
 	}
 	return nil
+}
+
+// flushPendingReload pays the owner reload that a fronted project's failed
+// uninstall left owed (D-0931). A failure is a warning: the owner still starts.
+func flushPendingReload(ctx context.Context, ownerDir string) {
+	if _, err := spFlush(ctx, ownerDir); err != nil {
+		ui.Warn(fmt.Sprintf("Shared proxy: a removed project's files may still be served; the owner's nginx could not be reloaded: %v", err))
+	}
 }
 
 func attachAllRegistered(ctx context.Context, ownerDir string, site sharedproxy.Site) {
@@ -111,22 +122,26 @@ func warnOutcome(out sharedproxy.Outcome, err error) {
 
 // beforeStopSharedProxy is the compose pre-down hook: a fronted project
 // disconnects the owner's nginx from its network before its network is removed.
-func beforeStopSharedProxy(ctx context.Context, workdir string) {
+// The owner lock is held until the returned function runs after the down, so a
+// concurrent owner start cannot reattach the network in between (D-0929).
+func beforeStopSharedProxy(ctx context.Context, workdir string) func() {
 	site, err := spLocate(workdir)
 	if err != nil {
 		ui.Warn(fmt.Sprintf("Shared proxy: registrations are not readable, so the owner's nginx was not disconnected and the network may stay in use: %v", err))
-		return
+		return nil
 	}
 	if site.Role != sharedproxy.RoleFronted {
-		return
+		return nil
 	}
-	switch err := spDetach(ctx, site.OwnerDir, *site.Reg); {
+	release, err := spDetach(ctx, site.OwnerDir, *site.Reg)
+	switch {
 	case err == nil:
 	case errors.Is(err, sharedproxy.ErrOwnerNotRunning):
 		ui.Warn("Shared proxy: the owner's nginx is not running; nothing to disconnect")
 	default:
 		ui.Warn(fmt.Sprintf("Shared proxy: %v", err))
 	}
+	return release
 }
 
 // leaveSharedProxy is `nself uninstall` in a fronted project (review R2b): it
@@ -140,6 +155,14 @@ func leaveSharedProxy(ctx context.Context, workdir string) error {
 		return errs.New("E506", "cannot leave the shared proxy: its registrations are not readable").WithWhy(err.Error())
 	}
 	if site.Role != sharedproxy.RoleFronted {
+		// A retry after a failed reload: the registration is already gone, but
+		// the parent owner may still owe a reload (D-0931).
+		if parent := filepath.Dir(workdir); sharedproxy.ReloadPending(parent) {
+			if _, err := spFlush(ctx, parent); err != nil {
+				ui.Warn(fmt.Sprintf("Shared proxy: reloading %s: %v", parent, err))
+				return fmt.Errorf("reloading the shared proxy at %s: %w", parent, err)
+			}
+		}
 		return nil
 	}
 	if _, err := spLeave(ctx, site.OwnerDir, site.Reg.Project); err != nil {

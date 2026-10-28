@@ -74,7 +74,9 @@ func (c *Compose) ComposeUp(ctx context.Context, workdir string, services ...str
 
 // ComposeDown runs `docker compose down` with the given options in the given workdir.
 func (c *Compose) ComposeDown(ctx context.Context, workdir string, opts DownOptions) error {
-	RunPreDownHooks(ctx, workdir) // the shared proxy detaches here (compose_hooks.go)
+	// The shared proxy detaches here and keeps its lock until the down is done
+	// (compose_hooks.go), so an owner attach cannot slip in between.
+	defer RunPreDownHooks(ctx, workdir)()
 	args := c.buildBaseArgs()
 	args = append(args, "down")
 	if opts.RemoveVolumes {

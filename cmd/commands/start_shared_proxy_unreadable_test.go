@@ -64,8 +64,11 @@ func TestUnreadableRegistrations(t *testing.T) {
 		detached := false
 		orig := spDetach
 		t.Cleanup(func() { spDetach = orig })
-		spDetach = func(context.Context, string, ...sharedproxy.Registration) error { detached = true; return nil }
-		out := captureStderr(t, func() { beforeStopSharedProxy(ctx, b.ProjectDir) })
+		spDetach = func(context.Context, string, ...sharedproxy.Registration) (func(), error) {
+			detached = true
+			return func() {}, nil
+		}
+		out := captureStderr(t, func() { _ = beforeStopSharedProxy(ctx, b.ProjectDir) })
 		if detached || !strings.Contains(out, "not readable") || !strings.Contains(out, "zzz.json") {
 			t.Fatalf("detached=%v, stderr %q: want a warning naming the unreadable file", detached, out)
 		}

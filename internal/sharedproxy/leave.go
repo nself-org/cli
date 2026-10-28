@@ -44,8 +44,9 @@ func removeQuarantine(ownerDir, project string, remove bool) error {
 	return nil
 }
 
-// leave detaches, unregisters and reloads. A project with no registration is a
-// no-op. Leave is the locked entry.
+// leave detaches, unregisters and reloads. A project with no registration owes
+// nothing, unless an earlier leave could not reload (D-0931): then it pays that
+// reload. Leave is the locked entry.
 func leave(ctx context.Context, ownerDir, project string) ([]string, error) {
 	set, err := Load(DirOf(ownerDir), ownerDir)
 	if err != nil {
@@ -53,6 +54,9 @@ func leave(ctx context.Context, ownerDir, project string) ([]string, error) {
 	}
 	reg := set.Find(project)
 	if reg == nil {
+		if ReloadPending(ownerDir) {
+			return nil, settleReload(ctx, ownerDir)
+		}
 		return nil, nil
 	}
 	// Checked first: a refused quarantine path leaves registration and files alone.
@@ -67,6 +71,11 @@ func leave(ctx context.Context, ownerDir, project string) ([]string, error) {
 	if err != nil {
 		return removed, err
 	}
+	// The registration is gone, so a retry cannot tell a reload is owed: record
+	// it until the owner has reloaded (or is not running).
+	if err := markReloadPending(ownerDir); err != nil {
+		detachErr = errors.Join(detachErr, err)
+	}
 	if err := removeQuarantine(ownerDir, project, true); err != nil {
 		return removed, err
 	}
@@ -74,6 +83,7 @@ func leave(ctx context.Context, ownerDir, project string) ([]string, error) {
 	switch {
 	case errors.Is(nerr, ErrOwnerNotRunning):
 		// Warning level: the files are gone and a stopped owner serves nothing.
+		clearReloadPending(ownerDir)
 	case nerr != nil:
 		// The files are gone but nginx still serves them; say so.
 		return removed, errors.Join(ownerErr(nerr), detachErr)
@@ -85,6 +95,7 @@ func leave(ctx context.Context, ownerDir, project string) ([]string, error) {
 		if err := reload(ctx, nginx, &o, func() {}); err != nil {
 			return removed, err
 		}
+		clearReloadPending(ownerDir)
 	}
 	return removed, detachErr
 }

@@ -61,8 +61,8 @@ A fronted project publishes no port 80 or 443 and runs no Nginx of its own. The 
 |---|---|
 | `nself start` in a fronted project | After the stack is healthy: connect the owner's Nginx to `<project>_network` (no change when already connected), run `nginx -t`, then `nginx -s reload`. |
 | `nself start` in the owner | Does the same for every registration whose network exists. A registered project that is stopped gives one warning per project; the owner still starts. |
-| `nself stop`, `restart`, `start --fresh`, `reset`, `uninstall` in a fronted project | Before compose takes the project down, the owner's Nginx is disconnected from `<project>_network`. Compose cannot remove a network while a foreign container is attached, so without this step `nself stop` would fail. |
-| `nself uninstall` in a fronted project | Also removes the project's files and registration from the owner and reloads the owner's Nginx. If that cannot be done (for example a registration cannot be read, `nginx/shared/quarantine` or a certificate directory is a symlink, or the owner's Nginx cannot be looked up), uninstall returns `E506` and does not report the files as removed. |
+| `nself stop`, `restart`, `start --fresh`, `reset`, `uninstall` in a fronted project | Before compose takes the project down, the owner's Nginx is disconnected from `<project>_network`. Compose cannot remove a network while a foreign container is attached, so without this step `nself stop` would fail. The owner lock is held from the disconnect until compose has finished, so an owner `nself start` cannot reattach the network in between. |
+| `nself uninstall` in a fronted project | Also removes the project's files and registration from the owner and reloads the owner's Nginx. If that cannot be done (for example a registration cannot be read, `nginx/shared/quarantine` or a certificate directory is a symlink, or the owner's Nginx cannot be looked up), uninstall returns `E506` and does not report the files as removed. If only the reload failed, the debt is recorded in `nginx/shared/.reload-pending`; run `nself uninstall` again or `nself start` in the owner and the reload is retried. |
 
 A fronted `nself start` returns `E506` when the registrations under the owner cannot be read (one invalid registration file of any project is enough), because its domains would not be served. The owner's own start only warns. Before a compose down, the same condition is a warning that names the cause; the down continues.
 
@@ -72,7 +72,7 @@ If the owner's Nginx is not running, the fronted project starts and stops anyway
 
 ### Restarting the owner's Nginx
 
-A restarted or recreated Nginx container loses its extra networks. Run `nself start` in the owner afterwards: it reattaches every registered, running project.
+A restarted or recreated Nginx container loses its extra networks. `nself restart nginx` in the owner reattaches every registered, running project once the container is back; for a container you recreated by other means, run `nself start` in the owner. If a start attach fails after it stopped a crash-looping Nginx, the owner's Nginx is started again.
 
 ### A failed `nginx -t` (E506)
 
