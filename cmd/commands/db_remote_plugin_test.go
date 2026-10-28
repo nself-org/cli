@@ -6,6 +6,7 @@ package commands
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -98,5 +99,58 @@ func TestWithRemotePluginFlag_NoDuplicateNoMutation(t *testing.T) {
 	again, err := withRemotePluginFlag(cmd, out)
 	if err != nil || len(again) != 5 {
 		t.Fatalf("duplicate forwarded: %q, err = %v", again, err)
+	}
+}
+
+func TestWithRemotePluginFlag_DistinguishesFlagsFromValues(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		args      []string
+		forwarded bool
+	}{
+		{"string value", []string{"--migration-dir", "--plugin"}, false},
+		{"inline string value", []string{"--migration-dir=--plugin"}, false},
+		{"boolean then plugin", []string{"--dry-run", "--plugin", "claw"}, true},
+		{"inline plugin", []string{"--plugin=claw"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := &cobra.Command{Use: "up"}
+			cmd.Flags().String("plugin", "claw", "")
+			cmd.Flags().String("migration-dir", "", "")
+			cmd.Flags().Bool("dry-run", false, "")
+			out, err := withRemotePluginFlag(cmd, tc.args)
+			want := append([]string(nil), tc.args...)
+			if !tc.forwarded {
+				want = append(want, "--plugin", "claw")
+			}
+			if err != nil || !reflect.DeepEqual(out, want) {
+				t.Fatalf("out = %q, err = %v; want %q", out, err, want)
+			}
+		})
+	}
+}
+
+func TestWithRemotePluginFlag_PositionalPluginIsNotAFlag(t *testing.T) {
+	cmd := &cobra.Command{Use: "up"}
+	cmd.Flags().String("plugin", "claw", "")
+	out, err := withRemotePluginFlag(cmd, []string{"db", "migrate", "up", "--", "--plugin"})
+	want := []string{"db", "migrate", "up", "--plugin", "claw", "--", "--plugin"}
+	if err != nil || !reflect.DeepEqual(out, want) {
+		t.Fatalf("out = %q, err = %v; want %q", out, err, want)
+	}
+}
+
+func TestRemoteUp_PluginLikeDirectoryStillValidatesPlugin(t *testing.T) {
+	sent, err := remoteUp(t, map[string]string{"migration-dir": "--plugin", "plugin": "../x"})
+	if err == nil || len(sent) != 0 {
+		t.Fatalf("err = %v, sent = %q; want validation error and no SSH", err, sent)
+	}
+}
+
+func TestWithRemotePluginFlag_ValidatesAlreadyForwardedPlugin(t *testing.T) {
+	cmd := &cobra.Command{Use: "up"}
+	cmd.Flags().String("plugin", "../x", "")
+	if _, err := withRemotePluginFlag(cmd, []string{"--plugin", "../x"}); err == nil {
+		t.Fatal("already forwarded plugin bypassed local validation")
 	}
 }
