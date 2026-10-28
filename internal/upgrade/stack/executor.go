@@ -70,7 +70,10 @@ func execute(ctx context.Context, o Options, b Backend) (*Journal, error) {
 			}
 			if !updateMutationAttempted(j) {
 				err = resetBackupEvidence(j, err)
-				j.Steps[0].Result = "pending"
+				// Later steps ran against the dump that was just discarded.
+				for i := range j.Steps {
+					j.Steps[i].Result = "pending"
+				}
 				if saveErr := saveJournal(o.ProjectDir, j); saveErr != nil {
 					return j, errs.Wrap("E139", "Cannot clear invalid backup evidence", saveErr)
 				}
