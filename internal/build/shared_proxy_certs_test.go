@@ -340,3 +340,30 @@ func TestInstallCertPlannedPairGoesThroughSink(t *testing.T) {
 		t.Fatalf("the planned pair was not staged through the sink: %v", err)
 	}
 }
+
+func TestInstallCertRegeneratedPairIsNotPlanned(t *testing.T) {
+	root := t.TempDir()
+	src := filepath.Join(root, "ssl", "certificates", "b-test")
+	writeCert(t, src, time.Now().Add(-time.Hour))
+	sink := newMemSink(root, "")
+	fx := &planEffects{}
+	_ = fx.Do(EffectCertificates, src, "regenerate expired pair", nil)
+	st := &buildState{sink: sink, fx: fx, opts: BuildOptions{Mode: ModePlan}}
+	sp := &sharedProxy{project: "bproj", workdir: root, sslDir: filepath.Join(root, "owner", "ssl")}
+	if err := st.installCert(sp, "b-test", true); err != nil {
+		t.Fatal(err)
+	}
+	if len(sink.snapshot().Files) != 0 {
+		t.Fatal("plan recorded expired certificate bytes scheduled for regeneration")
+	}
+	// Apply receives a fresh pair and an empty certificate plan.
+	writeCert(t, src, time.Now().Add(48*time.Hour))
+	st.sink = newExpectSink(root, &PlannedBuild{Files: map[string]PlannedFile{}})
+	st.opts.Mode = ModeWrite
+	if err := st.installCert(sp, "b-test", false); err != nil {
+		t.Fatal(err)
+	}
+	if !sameFiles(src, filepath.Join(sp.sslDir, "certificates", "b-test")) {
+		t.Fatal("fresh pair was not installed")
+	}
+}

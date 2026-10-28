@@ -189,6 +189,9 @@ func probeWritable(target string) error {
 // go through the sink.
 func (st *buildState) installCert(sp *sharedProxy, dir string, replace bool) error {
 	src := filepath.Join(sp.workdir, "ssl", "certificates", dir)
+	if st.fx != nil && st.certPlanned(dir, sp) {
+		return nil // regenerated during apply; old bytes cannot bind the plan
+	}
 	target := filepath.Join(sp.sslDir, "certificates", dir)
 	pair := map[string][]byte{}
 	for _, f := range certFiles {
