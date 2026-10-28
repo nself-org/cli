@@ -181,7 +181,7 @@ func adminHostKeyOptions(ctx context.Context, spec remote.HostSpec) ([]string, e
 				"-o", "ControlMaster=no", "-o", "ControlPath=none",
 				"-o", pinOption,
 			}
-			if spec.Port != 0 && spec.Port != 22 && !operator[key.Fingerprint] {
+			if !operator[key.Fingerprint] && (spec.Port != 0 && spec.Port != 22 || net.ParseIP(spec.Host) != nil) {
 				opts = append(opts, "-o", "HostKeyAlias="+pinAlias)
 			}
 			return opts, nil

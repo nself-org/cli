@@ -148,3 +148,59 @@ func TestAdminPinFileOption(t *testing.T) {
 		})
 	}
 }
+
+// TestAdminSSHV15IPPort22PinOnly verifies that an IP literal on port 22 with a
+// pin enrolled under the nself-<ip>-22 alias emits HostKeyAlias so ssh checks
+// the pin alias rather than the bare IP. Without HostKeyAlias, strict checking
+// would fail because the pin file has no entry for the plain IP.
+func TestAdminSSHV15IPPort22PinOnly(t *testing.T) {
+	compattest.Set(t, true)
+	e := newArgvEnv(t, "", &hostKey{alias: "nself-203.0.113.7-22", pin: true})
+	if err := callEntry("verify", "u", "203.0.113.7", 22); err != nil {
+		t.Fatal(err)
+	}
+	got := e.argv(t)
+	found := false
+	for i, w := range got {
+		if w == "HostKeyAlias=nself-203.0.113.7-22" {
+			found = true
+			if i == 0 || got[i-1] != "-o" {
+				t.Fatalf("HostKeyAlias not preceded by -o: %q", got)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("missing HostKeyAlias for IP port 22 pin-only: %q", got)
+	}
+}
+
+// TestAdminSSHV15Non22PinAliasFallback verifies that for a non-22 port, the
+// admin connect path finds a pin under either the new alias or the legacy
+// v1.4.13 alias. This covers the deploy.PinAlias fallback at the admin layer.
+func TestAdminSSHV15Non22PinAliasFallback(t *testing.T) {
+	cases := []struct{ name, alias string }{
+		{"new-alias", "nself+host.test+2222"},
+		{"legacy-alias", "nself-host.test-2222"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			compattest.Set(t, true)
+			e := newArgvEnv(t, "", &hostKey{alias: tc.alias, pin: true})
+			if err := callEntry("verify", "u", "host.test", 2222); err != nil {
+				t.Fatal(err)
+			}
+			got := e.argv(t)
+			found := false
+			for _, w := range got {
+				if strings.HasPrefix(w, "HostKeyAlias=") {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("missing HostKeyAlias for %s: %q", tc.name, got)
+			}
+		})
+	}
+}
