@@ -73,6 +73,19 @@ func TestBuildExistingRedisProjectKeepsRedis(t *testing.T) {
 	}
 }
 
+// An overridden fallback and a variable-only image on a valkey volume are read
+// after interpolation / from the data volume (D-0658).
+func TestBuildCacheEngineInterpolatedAndOpaque(t *testing.T) {
+	img, vol := cacheOf(t, "services:\n  redis:\n    image: ${CACHE_IMAGE:-valkey/valkey:8.1-alpine}\n", "CACHE_IMAGE=redis:7-alpine\n")
+	if strings.Contains(img, "valkey") || vol != "redis_data" {
+		t.Errorf("overridden fallback: image %q volume %q, want redis", img, vol)
+	}
+	img, vol = cacheOf(t, "services:\n  redis:\n    image: ${CACHE_IMAGE}\n    volumes:\n      - valkey_data:/data\n", "")
+	if !strings.Contains(img, "valkey") || vol != "valkey_data" {
+		t.Errorf("variable-only image on valkey_data: image %q volume %q, want valkey", img, vol)
+	}
+}
+
 // Controls: no cache evidence defaults to valkey; an existing valkey project
 // stays valkey; the explicit key still wins over what the compose shows.
 func TestBuildCacheEngineControls(t *testing.T) {

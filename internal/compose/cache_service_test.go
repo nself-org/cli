@@ -337,12 +337,28 @@ func TestExistingCacheEngine(t *testing.T) {
 		{"valkey image", "services:\n  redis:\n    image: valkey/valkey:8.1-alpine\n", EngineValkey},
 		{"redis_data volume", "services:\n  a:\n    image: x\nvolumes:\n  redis_data: {}\n", EngineRedis},
 		{"valkey_data volume", "volumes:\n  valkey_data: {}\n", EngineValkey},
+		{"opaque image on valkey_data", "services:\n  redis:\n    image: ${CACHE_IMAGE}\n    volumes:\n      - valkey_data:/data\n", EngineValkey},
+		{"opaque image on redis_data", "services:\n  redis:\n    image: ${CACHE_IMAGE}\n    volumes:\n      - redis_data:/data\n", EngineRedis},
+		{"opaque image long volume form", "services:\n  redis:\n    image: ${CACHE_IMAGE}\n    volumes:\n      - {type: volume, source: valkey_data, target: /data}\n", EngineValkey},
 		{"no cache", "services:\n  a:\n    image: x\n", ""},
 		{"not yaml", "services: [\n", ""},
 	} {
 		if got := ExistingCacheEngine([]byte(tc.yaml)); got != tc.want {
 			t.Errorf("%s: %q, want %q", tc.name, got, tc.want)
 		}
+	}
+	env := func(k string) (string, bool) {
+		if k == "CACHE_IMAGE" {
+			return "redis:7-alpine", true
+		}
+		return "", false
+	}
+	fallback := "services:\n  redis:\n    image: ${CACHE_IMAGE:-valkey/valkey:8.1-alpine}\n"
+	if got := ExistingCacheEngineEnv([]byte(fallback), env); got != EngineRedis {
+		t.Errorf("overridden fallback: %q, want redis", got)
+	}
+	if got := ExistingCacheEngineEnv([]byte(fallback), nil); got != EngineValkey {
+		t.Errorf("unset variable uses the fallback: %q, want valkey", got)
 	}
 	compattest.Both(t, func(t *testing.T) {
 		t.Cleanup(SetProjectPins(nil))
