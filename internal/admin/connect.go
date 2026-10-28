@@ -168,7 +168,7 @@ func adminHostKeyOptions(ctx context.Context, spec remote.HostSpec) ([]string, e
 		operatorAlias = resolved.HostKeyAlias
 	}
 	pinAlias := spec.Host
-	if spec.Port != 0 || net.ParseIP(spec.Host) != nil {
+	if (spec.Port != 0 && spec.Port != 22) || net.ParseIP(spec.Host) != nil {
 		pinAlias = deploy.PinAlias(ctx, spec)
 	}
 	operator := adminTrustedFingerprints(ctx, operatorAlias, filepath.Join(home, ".ssh", "known_hosts"))
