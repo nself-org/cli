@@ -1,15 +1,15 @@
 package plugin
 
 import (
-"errors"
-"os"
-"path/filepath"
+	"errors"
+	"os"
+	"path/filepath"
 	"runtime"
-"strings"
-"testing"
+	"strings"
+	"testing"
 
-"github.com/nself-org/cli/internal/compat/compattest"
-"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/compat/compattest"
+	"github.com/nself-org/cli/internal/errs"
 )
 
 // catalogCacheFixture isolates HOME and the catalog cache, and (when body is
@@ -89,15 +89,15 @@ func TestRouterKeepsExistingHint(t *testing.T) {
 // because any local user could plant a binary there that cron or systemd would
 // execute with the caller's secrets.
 func TestPluginBinDirRefusesWithoutHOME(t *testing.T) {
-t.Setenv("HOME", "")
-t.Setenv("USERPROFILE", "")
-_, err := pluginBinDir()
-if err == nil {
-t.Fatal("pluginBinDir succeeded without HOME; expected refusal")
-}
-if !strings.Contains(err.Error(), "HOME is not set") {
-t.Fatalf("unexpected error: %v", err)
-}
+	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", "")
+	_, err := pluginBinDir()
+	if err == nil {
+		t.Fatal("pluginBinDir succeeded without HOME; expected refusal")
+	}
+	if !strings.Contains(err.Error(), "HOME is not set") {
+		t.Fatalf("unexpected error: %v", err)
+	}
 }
 
 // TestVerifyPluginPathOwnershipRefusesUnsafe proves that verifyPluginPathOwnership
@@ -106,32 +106,32 @@ t.Fatalf("unexpected error: %v", err)
 // must fail. Windows skips the check by design (see router_windows.go).
 func TestVerifyPluginPathOwnershipRefusesUnsafe(t *testing.T) {
 	if runtime.GOOS == "windows" {
- t.Skip("ownership check is a no-op on Windows")
+		t.Skip("ownership check is a no-op on Windows")
 	}
 	root := t.TempDir()
 	sub := filepath.Join(root, "sub")
 	if err := os.MkdirAll(sub, 0o755); err != nil {
- t.Fatal(err)
+		t.Fatal(err)
 	}
 	target := filepath.Join(sub, "bin")
 	if err := os.WriteFile(target, []byte("#!/bin/sh\n"), 0o755); err != nil {
- t.Fatal(err)
+		t.Fatal(err)
 	}
 
 	// Baseline: owned by us, no unsafe bits -> passes.
 	if err := verifyPluginPathOwnership(target, root); err != nil {
- t.Fatalf("baseline failed: %v", err)
+		t.Fatalf("baseline failed: %v", err)
 	}
 
 	// World-writable component -> refused.
 	if err := os.Chmod(sub, 0o757); err != nil {
- t.Fatal(err)
+		t.Fatal(err)
 	}
 	if err := verifyPluginPathOwnership(target, root); err == nil || !strings.Contains(err.Error(), "world-writable") {
- t.Fatalf("world-writable not refused: %v", err)
+		t.Fatalf("world-writable not refused: %v", err)
 	}
 	if err := os.Chmod(sub, 0o755); err != nil {
- t.Fatal(err)
+		t.Fatal(err)
 	}
 
 	// Group-writable -> refused even when the directory's gid matches the
@@ -172,13 +172,13 @@ func TestVerifyPluginPathOwnershipRefusesUnsafe(t *testing.T) {
 
 	// Foreign owner -> refused. Only possible when running as root.
 	if os.Getuid() == 0 {
- foreignUID := 65534 // nobody on most Linux/macOS systems
- if err := os.Chown(sub, foreignUID, -1); err != nil {
- t.Skipf("cannot chown to foreign uid %d: %v", foreignUID, err)
- }
- if err := verifyPluginPathOwnership(target, root); err == nil || !strings.Contains(err.Error(), "owned by uid") {
- t.Fatalf("foreign owner not refused: %v", err)
- }
+		foreignUID := 65534 // nobody on most Linux/macOS systems
+		if err := os.Chown(sub, foreignUID, -1); err != nil {
+			t.Skipf("cannot chown to foreign uid %d: %v", foreignUID, err)
+		}
+		if err := verifyPluginPathOwnership(target, root); err == nil || !strings.Contains(err.Error(), "owned by uid") {
+			t.Fatalf("foreign owner not refused: %v", err)
+		}
 	}
 }
 
@@ -188,31 +188,31 @@ func TestVerifyPluginPathOwnershipRefusesUnsafe(t *testing.T) {
 // verifyPluginPathOwnership in ProxyBinaryAt would make this test pass.
 func TestProxyBinaryAtRefusesUnsafePath(t *testing.T) {
 	if runtime.GOOS == "windows" {
- t.Skip("ownership check is a no-op on Windows")
+		t.Skip("ownership check is a no-op on Windows")
 	}
 	root := t.TempDir()
 	binDir := filepath.Join(root, "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
- t.Fatal(err)
+		t.Fatal(err)
 	}
 	bin := filepath.Join(binDir, "nself-testplug")
 	if err := os.WriteFile(bin, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
- t.Fatal(err)
+		t.Fatal(err)
 	}
 
 	// Baseline: safe directory -> accepted (exec will fail because it's a
 	// shell script, but ownership passes).
 	if err := verifyPluginPathOwnership(bin, root); err != nil {
- t.Fatalf("baseline ownership failed: %v", err)
+		t.Fatalf("baseline ownership failed: %v", err)
 	}
 
 	// Make the bin directory world-writable -> ProxyBinaryAt must refuse.
 	if err := os.Chmod(binDir, 0o757); err != nil {
- t.Fatal(err)
+		t.Fatal(err)
 	}
 	err := ProxyBinaryAt(bin, root, "testplug", nil)
 	if err == nil || !strings.Contains(err.Error(), "world-writable") {
- t.Fatalf("ProxyBinaryAt did not refuse world-writable dir: %v", err)
+		t.Fatalf("ProxyBinaryAt did not refuse world-writable dir: %v", err)
 	}
 }
 
@@ -227,9 +227,9 @@ func findForeignGID(t *testing.T) uint32 {
 	// test and keeps the dependency footprint small.
 	candidates := []uint32{1, 2, 99, 65534}
 	for _, g := range candidates {
- if g != myGID {
- return g
- }
+		if g != myGID {
+			return g
+		}
 	}
 	return 0
 }

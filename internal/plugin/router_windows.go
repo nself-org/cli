@@ -7,4 +7,3 @@ package plugin
 // runtime_windows.go). The security model here relies on the per-user
 // profile directory being protected by the OS.
 func verifyPluginPathOwnershipPlatform(_, _ string) error { return nil }
-

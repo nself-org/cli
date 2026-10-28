@@ -117,11 +117,11 @@ func ProxyCommandWithHint(cmdName string, args []string, installHint string) err
 			}
 		}
 		if installHint == "" {
-		return fmt.Errorf("unknown command %q, and no plugin named %q is installed", cmdName, cmdName)
+			return fmt.Errorf("unknown command %q, and no plugin named %q is installed", cmdName, cmdName)
+		}
+		return fmt.Errorf("unknown command %q, and no plugin named %q is installed.\n\nIf this is an nSelf plugin, install it with:\n  %s",
+			cmdName, cmdName, installHint)
 	}
- return fmt.Errorf("unknown command %q, and no plugin named %q is installed.\n\nIf this is an nSelf plugin, install it with:\n  %s",
-		cmdName, cmdName, installHint)
-}
 
 	return ProxyBinaryAt(candidate, filepath.Dir(binDir), cmdName, args)
 }

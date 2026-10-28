@@ -47,4 +47,3 @@ func verifyPluginPathOwnershipPlatform(path, root string) error {
 	}
 	return nil
 }
-
