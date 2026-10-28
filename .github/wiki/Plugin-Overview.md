@@ -14,8 +14,7 @@
 | Tier | Price | Includes |
 |------|-------|---------|
 | **Free** | $0 | Core CLI + free plugins (MIT licensed) |
-| **Basic** | $0.99/mo or $9.99/yr | The standard licensed plugins (excludes Pro-tier AI suite) |
-| **Pro** | $1.99/mo or $19.99/yr | Basic + AI suite (ai, browser, claw, claw-budget, claw-web, post, voice) |
+The CLI no longer uses Basic / Pro tiers. Bundles are independent purchases; see [[Licensing-Guide]] and [nself.org/pricing](https://nself.org/pricing) for the current catalog.
 | **Elite** | $4.99/mo or $49.99/yr | Pro + email support |
 | **Business** | $9.99/mo or $99.99/yr | Elite + 24h email support + priority feature requests |
 | **Business+** | $49.99/mo or $499.99/yr | Business + dedicated support channel |

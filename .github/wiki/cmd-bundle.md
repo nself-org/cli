@@ -195,13 +195,15 @@ nself bundle remove nchat --dry-run
 
 | Slug | Display name | Price | Status |
 |------|-------------|-------|--------|
-| `nclaw` | ɳClaw | $0.99/mo or $9.99/yr | active |
-| `nchat` | ɳChat | $0.99/mo or $9.99/yr | active |
-| `nfamily` | ɳFamily | $0.99/mo or $9.99/yr | planned v1.1.0 |
-| `clawde` | ClawDE | $0.99/mo or $9.99/yr | planned v1.1.0 |
-| `nsentry` | ɳSentry | $0.99/mo or $9.99/yr | planned v1.1.0 |
-| `ntask` | ɳTask | FREE | active |
+| `task` | Task Bundle | FREE | active |
+| `chat` | Chat Bundle | $0.99/mo or $9.99/yr | active |
+| `claw` | Claw Bundle | $0.99/mo or $9.99/yr | active |
+| `family` | Family Bundle | $0.99/mo or $9.99/yr | active |
+| `sentry` | Sentry Bundle | $0.99/mo or $9.99/yr | active |
+| `clawde` | ClawDE Bundle | $0.99/mo or $9.99/yr | active |
 | `nself-plus` | ɳSelf+ | $3.99/mo or $39.99/yr | active |
+
+Bundle membership, pricing and status are fetched live from `https://plugins.nself.org/bundles.json`; the table above is a snapshot. See [[Licensing-Guide]] and [nself.org/pricing](https://nself.org/pricing) for the current catalog.
 
 Buy or manage subscriptions at: https://nself.org/pricing
 

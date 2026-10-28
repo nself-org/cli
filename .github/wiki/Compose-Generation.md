@@ -65,10 +65,12 @@ Networks follow the fragment rules in [[Plugins#compose-fragment-rules]]. In v1.
 The compose file is assembled in this order. Services later in the list can depend on services earlier in the list.
 
 1. **Core**, `postgres`, `hasura`, `auth`, `nginx`
-2. **Optional**, `minio` (with init container), `redis`, `mailpit`, `admin`, `functions`, `mlflow`, `search`
+2. **Optional**, object storage (`seaweedfs` + `seaweedfs-init` in v1.5 when `OBJECT_STORAGE_ENABLED=true`; `minio` with init container in v1.4, or in v1.5 only after `nself add minio`), `redis`, `mailpit`, `admin`, `functions`, `mlflow`, `search`
 3. **Monitoring**, `prometheus`, `grafana`, `loki`, `promtail`, `tempo`, `alertmanager`, `cadvisor`, `node-exporter`, `postgres-exporter`, `redis-exporter`
 4. **Custom**, `CS_1` through `CS_10`
 5. **Plugins**, loaded from `~/.nself/plugins/`, in install order
+
+Object storage selection depends on the project version. A v1.5 project (`NSELF_V15=1`) generates `seaweedfs` and its `seaweedfs-init` sidecar when `OBJECT_STORAGE_ENABLED=true`; MinIO is no longer emitted by default and must be added explicitly with `nself add minio` (which fails with [[error-codes#e138]] when seaweedfs is already present). A v1.4 project keeps the original `minio` + `minio-init` pair. See [[Object-Storage]] for migration and configuration details.
 
 ---
 

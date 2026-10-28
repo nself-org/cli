@@ -150,7 +150,7 @@ When running on a v0.9 CLI (any `0.x.y` binary), `nself update --check` queries 
 
 ```
 WARNING: You are running a legacy v0.9 CLI. Migration to v1.1.1 is required.
-Upgrade guide: https://nself.org/docs/migrate/from-v0.9
+Upgrade guide: [[Guide-Migration]]
 ```
 
 The check is read-only and non-destructive. It does not install anything. See [[Upgrade-From-v0.9]] for the full migration guide.

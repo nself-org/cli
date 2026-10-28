@@ -72,6 +72,17 @@ The restore command:
 3. Restores from the dump file
 4. Restarts services
 
+## Retention and Prune Holds
+
+`nself backup prune` removes backups older than `BACKUP_RETENTION_DAYS`, but it never deletes a backup tagged `keep` or `keep-*`. The `update stack` command tags its pre-update backup `keep-stack-<timestamp>` so an interrupted or failed update can always roll back; those backups survive prune until you release them. To release a held backup, rename or remove the tag:
+
+```bash
+nself backup tag <backup-id> --rename released-<date>   # drops the keep prefix
+nself backup prune                                       # now eligible for removal
+```
+
+A restore that targets a `keep-stack-*` backup runs in strict mode: it refuses to continue when the backup manifest does not match the current project name or when the dump header is missing the expected schema version marker. Strict mode prevents restoring an unrelated stack snapshot into a live project. Override with `--force` only when you have verified the backup belongs to this project.
+
 > **Important:** Test your restores regularly. Untested backups are not backups.
 
 ## Backup Verification Checklist

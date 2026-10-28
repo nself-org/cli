@@ -34,6 +34,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -192,6 +193,18 @@ func main() {
 	}
 
 	if *check {
+		badLinks, err := auditProseLinks(*dir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "audit prose links: %v\n", err)
+			os.Exit(1)
+		}
+		if len(badLinks) > 0 {
+			fmt.Fprintf(os.Stderr, "%d wiki command page(s) contain forbidden links:\n", len(badLinks))
+			for _, b := range badLinks {
+				fmt.Fprintf(os.Stderr, "  %s\n", b)
+			}
+			os.Exit(1)
+		}
 		if len(stale) > 0 {
 			fmt.Fprintf(os.Stderr, "%d wiki command page(s) are stale — run `make wiki-commands`:\n  %s\n",
 				len(stale), strings.Join(stale, "\n  "))
@@ -238,4 +251,44 @@ func pageStale(path, expected string) bool {
 // convention settled on cmd-<name>.md, newest first.
 func legacyPageNames(cmd string) []string {
 	return []string{cmd + ".md"}
+}
+
+// auditProseLinks fails when any cmd-*.md page contains a link into the
+// private .claude workspace or an nself.org/docs URL that is not in the
+// published docs nav. Both classes of link 404 in public renders (D-0717).
+func auditProseLinks(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var bad []string
+	claudeRe := regexp.MustCompile(`github\.com/nself-org/cli/blob/main/\.claude`)
+	docsRe := regexp.MustCompile(`https://nself\.org/docs/[^\s\)]+`)
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasPrefix(e.Name(), "cmd-") || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		body := string(data)
+		if claudeRe.MatchString(body) {
+			bad = append(bad, fmt.Sprintf("%s: contains .claude/ link", e.Name()))
+		}
+		for _, m := range docsRe.FindAllString(body, -1) {
+			// Allow only pages known to exist in the public docs nav.
+			switch strings.TrimRight(m, ").,;:") {
+			case "https://nself.org/docs/commands",
+				"https://nself.org/docs/plugins",
+				"https://nself.org/docs/guides",
+				"https://nself.org/docs/reference":
+				continue
+			default:
+				bad = append(bad, fmt.Sprintf("%s: broken docs link %s", e.Name(), m))
+			}
+		}
+	}
+	return bad, nil
 }

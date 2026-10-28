@@ -11,8 +11,8 @@ nself_pro_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 Accepted prefixes:
-- `nself_pro_`, Pro tier and above
-- `nself_max_`, Pro tier
+- `nself_pro_`, paid bundles and ɳSelf+
+- `nself_max_`, ɳSelf+ and enterprise
 - `nself_ent_`, Enterprise tier
 - `nself_owner_`, Owner/self-hosted tier
 
