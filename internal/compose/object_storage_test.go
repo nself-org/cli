@@ -593,3 +593,46 @@ func TestMinioE138RemedyTwo(t *testing.T) {
 		t.Fatalf("remedy 3 must clear E138: %v", err)
 	}
 }
+
+// D-0691: a custom service gets one usable S3_BUCKET and the full list in S3_BUCKETS.
+func TestS3BucketEnvForCustomServices(t *testing.T) {
+	compattest.Set(t, true)
+	for _, tc := range []struct {
+		name, list, explicit string
+		plugin               bool
+		bucket, buckets      string
+	}{
+		{"seaweedfs-zero", "", "", false, "", ""},
+		{"seaweedfs-one", "uploads", "", false, "uploads", "uploads"},
+		{"seaweedfs-two", "uploads,archives", "", false, "uploads", "uploads,archives"},
+		{"seaweedfs-spaces", " uploads , archives ,", "", false, "uploads", "uploads,archives"},
+		{"seaweedfs-explicit", "uploads,archives", "archives", false, "archives", "uploads,archives"},
+		{"plugin-zero", "", "", true, "", ""},
+		{"plugin-one", "uploads", "", true, "uploads", "uploads"},
+		{"plugin-two", "uploads,public", "", true, "uploads", "uploads,public"},
+		{"plugin-explicit", "uploads,public", "public", true, "public", "uploads,public"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			storagePluginSeam(t, tc.plugin)
+			cfg := storageFixture(t, tc.plugin, !tc.plugin, true)
+			t.Setenv("OBJECT_STORAGE_BUCKETS", tc.list)
+			t.Setenv("S3_BUCKET", tc.explicit)
+			cfg.Minio.DefaultBuckets = tc.list
+			cfg.Minio.S3Bucket = "nself" // the load-time default must not leak into the env
+			env := coreEnvVarsFor(cfg, config.CustomService{Name: "worker", Port: 3000}, nil, true)
+			if env["S3_BUCKET"] != tc.bucket || env["S3_BUCKETS"] != tc.buckets {
+				t.Fatalf("S3_BUCKET=%q S3_BUCKETS=%q, want %q and %q", env["S3_BUCKET"], env["S3_BUCKETS"], tc.bucket, tc.buckets)
+			}
+		})
+	}
+	t.Run("ops-profile-drops-both", func(t *testing.T) {
+		storagePluginSeam(t, false)
+		cfg := storageFixture(t, false, true, true)
+		env := coreEnvVarsFor(cfg, config.CustomService{Name: "worker", Port: 3000}, nil, false)
+		for _, key := range []string{"S3_BUCKET", "S3_BUCKETS"} {
+			if _, ok := env[key]; ok {
+				t.Fatalf("%s injected for a profile without object storage", key)
+			}
+		}
+	})
+}

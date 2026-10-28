@@ -240,7 +240,8 @@ func (g *Generator) buildSeaweedInit() ServiceConfig {
 
 // Purpose: add S3_* connection vars for the active store to a custom service.
 // Inputs: the env map being built and the loaded config.
-// Outputs: S3_ENDPOINT, S3_ACCESS_KEY, S3_SECRET_KEY, S3_BUCKET; nothing with no store.
+// Outputs: S3_ENDPOINT, S3_ACCESS_KEY, S3_SECRET_KEY, S3_BUCKET (one bucket name) and
+// S3_BUCKETS (the full comma-separated list); nothing with no store.
 // Constraints: v1.5 only. ActiveStore names the plugin only with MinIO intent
 // (cfg.Minio.Enabled), so a machine-wide plugin never injects empty keys into an unrelated
 // project. Secrets are env refs.
@@ -250,12 +251,36 @@ func addActiveStoreEnvVars(env map[string]string, cfg *config.Config) {
 		env["S3_ENDPOINT"] = "http://seaweedfs:8333"
 		env["S3_ACCESS_KEY"] = secretRef("S3_ACCESS_KEY", cfg.Minio.S3AccessKey)
 		env["S3_SECRET_KEY"] = secretRef("S3_SECRET_KEY", cfg.Minio.S3SecretKey)
-		env["S3_BUCKET"] = os.Getenv("OBJECT_STORAGE_BUCKETS")
+		setBucketEnv(env, os.Getenv("OBJECT_STORAGE_BUCKETS"))
 	case "minio-plugin":
 		env["S3_ENDPOINT"] = "http://minio:9000"
 		env["S3_ACCESS_KEY"] = cfg.Minio.RootUser
 		env["S3_SECRET_KEY"] = secretRef("MINIO_ROOT_PASSWORD", cfg.Minio.RootPassword)
-		env["S3_BUCKET"] = cfg.Minio.DefaultBuckets
+		setBucketEnv(env, cfg.Minio.DefaultBuckets)
+	}
+}
+
+// Purpose: give a custom service one usable S3_BUCKET plus the full list in S3_BUCKETS.
+// Inputs: the env map being built and the configured comma-separated bucket list.
+// Outputs: S3_BUCKET = an explicit S3_BUCKET from the project env, else the first listed
+// bucket; S3_BUCKETS = the trimmed list. Both empty when nothing is configured.
+// Constraints: v1.5 only (the v1.4 contract passes the raw list). The explicit value is read
+// from the process env because cfg.Minio.S3Bucket is always defaulted to "nself" at load and
+// so cannot tell an explicit choice from the default.
+func setBucketEnv(env map[string]string, list string) {
+	var buckets []string
+	for _, name := range strings.Split(list, ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			buckets = append(buckets, name)
+		}
+	}
+	env["S3_BUCKETS"] = strings.Join(buckets, ",")
+	env["S3_BUCKET"] = ""
+	if len(buckets) > 0 {
+		env["S3_BUCKET"] = buckets[0]
+	}
+	if explicit := strings.TrimSpace(os.Getenv("S3_BUCKET")); explicit != "" {
+		env["S3_BUCKET"] = explicit
 	}
 }
 
@@ -267,7 +292,7 @@ func dropStoreEnvVars(env map[string]string) {
 	if !compat.V15() {
 		return
 	}
-	for _, key := range []string{"S3_ENDPOINT", "S3_ACCESS_KEY", "S3_SECRET_KEY", "S3_BUCKET"} {
+	for _, key := range []string{"S3_ENDPOINT", "S3_ACCESS_KEY", "S3_SECRET_KEY", "S3_BUCKET", "S3_BUCKETS"} {
 		delete(env, key)
 	}
 }
