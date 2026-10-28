@@ -66,10 +66,11 @@ func loadJournal(project string) (*Journal, error) {
 
 // validateJournal rejects contradictory states instead of guessing a resume point.
 // Inputs: decoded journal. Outputs: structural validation error.
-// Constraints: successful steps are a contiguous prefix in the shared order.
+// Constraints: successful steps are a contiguous prefix in the shared order; the run id matches
+// runtimeRunID because it is printed into archive guidance and used in an archive file name.
 func validateJournal(j *Journal) error {
 	steps := ExecutionPlan()
-	if j.RunID == "" || j.StartedAt.IsZero() || len(j.Steps) != len(steps) {
+	if !runtimeRunID.MatchString(j.RunID) || j.StartedAt.IsZero() || len(j.Steps) != len(steps) {
 		return fmt.Errorf("stack update journal lacks run identity or ordered steps")
 	}
 	switch j.Status {

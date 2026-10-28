@@ -1,0 +1,68 @@
+# Purpose: run scripts/e2e/pgvector-switch.sh (nself db image switch --to pgvector) against
+# Postgres 15 and 17 every night, so the pg_dump and pg_restore path is proven on more than the
+# default major 16 (D-0806). The switch supports 12 to 17; the script takes the starting major
+# from POSTGRES_VERSION. Red is the alert: a missed night shows as a missing run.
+# Constraints: fake credentials only (the script owns them), read-only token, no secrets; the
+# script removes its own e2e-adopt-pgs* containers and volumes.
+name: pgvector switch e2e
+
+on:
+  schedule:
+    - cron: '45 3 * * *'
+  workflow_dispatch:
+    inputs:
+      majors:
+        description: Postgres majors to switch, as a JSON array
+        type: string
+        default: '["15","17"]'
+  pull_request:
+    paths:
+      - scripts/e2e/pgvector-switch.sh
+      - .github/workflows/pgvector-switch-e2e.yml
+
+concurrency:
+  group: pgvector-switch-e2e-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  switch:
+    name: switch pg${{ matrix.major }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        major: ${{ fromJSON(inputs.majors || '["15","17"]') }}
+    steps:
+      - name: Checkout CLI
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Build nself from this ref
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          go build -mod=vendor -o "$RUNNER_TEMP/bin/nself" ./cmd/nself
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Switch pg${{ matrix.major }} to its pgvector image
+        env:
+          POSTGRES_VERSION: ${{ matrix.major }}
+        run: |
+          W="$RUNNER_TEMP/pgvector-switch-${POSTGRES_VERSION}"
+          mkdir -p "$W"
+          export W
+          bash scripts/e2e/pgvector-switch.sh
+      - name: Keep the log
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pgvector-switch-pg${{ matrix.major }}-log
+          path: ${{ runner.temp }}/pgvector-switch-${{ matrix.major }}/pgvector-switch-e2e.log
+          if-no-files-found: warn
+          retention-days: 14

@@ -13,6 +13,9 @@
 #   bash scripts/release-create.sh v1.0.14 --skip-denylist --notes-file RELEASE_NOTES.md
 #
 # Exits non-zero on any denylist hit unless --skip-denylist is supplied.
+# DENY-001 (cosign bundles) and DENY-002 (SBOMs) need the build output: with no dist/
+# they are skipped with a note (release.yml's Pre-Release Gate enforces them post-build),
+# and with dist/ present they are enforced. DENY-004 reads the license-audit run on main.
 # When --skip-denylist is supplied, prompts interactively for a justification
 # and appends an audit record to audit/release-overrides.log before proceeding.
 
@@ -55,15 +58,26 @@ log_fail() { printf "[release-create] FAIL: %s\n" "$*" >&2; }
 
 # Returns 0 if rule passes, 1 if it triggers (block).
 check_rule_signature() {
-  # DENY-001: signature-check. Look for any *.cosign.bundle in dist/.
-  if [ -d "${REPO_ROOT}/dist" ] && ls "${REPO_ROOT}/dist"/*.cosign.bundle >/dev/null 2>&1; then
+  # DENY-001: signature-check. Look for any *.cosign.bundle in dist/. The bundles exist only
+  # after release.yml builds, so without dist/ the rule is skipped with a note (release.yml's
+  # Pre-Release Gate enforces it post-build). With dist/ present it is enforced.
+  if [ ! -d "${REPO_ROOT}/dist" ]; then
+    log_info "no dist/ yet; skipping DENY-001 signature-check (enforced post-build by release.yml)"
+    return 0
+  fi
+  if ls "${REPO_ROOT}/dist"/*.cosign.bundle >/dev/null 2>&1; then
     return 0
   fi
   return 1
 }
 
 check_rule_sbom() {
-  # DENY-002: missing-sbom. Require both SPDX + CycloneDX in dist/ or repo root.
+  # DENY-002: missing-sbom. Require both SPDX + CycloneDX in dist/ or repo root. Like DENY-001
+  # it needs the build output: without dist/ it is skipped with a note.
+  if [ ! -d "${REPO_ROOT}/dist" ]; then
+    log_info "no dist/ yet; skipping DENY-002 missing-sbom (enforced post-build by release.yml)"
+    return 0
+  fi
   for f in sbom.spdx.json sbom.cdx.json; do
     if [ ! -f "${REPO_ROOT}/dist/${f}" ] && [ ! -f "${REPO_ROOT}/${f}" ]; then
       return 1
@@ -89,13 +103,14 @@ check_rule_commits_since_prior() {
 }
 
 check_rule_license_scan() {
-  # DENY-004: failed-license-scan. Query latest license-audit.yml run.
+  # DENY-004: failed-license-scan. Query the latest license-audit.yml run on main (a run on
+  # another branch says nothing about the release).
   if ! command -v gh >/dev/null 2>&1; then
     log_warn "gh CLI not found; cannot verify license-audit. Treating as PASS (CI gate handles it)."
     return 0
   fi
   local conclusion
-  conclusion=$(gh run list --workflow license-audit.yml --limit 1 --json conclusion -q '.[0].conclusion' 2>/dev/null || echo "")
+  conclusion=$(gh run list --workflow license-audit.yml --branch main --limit 1 --json conclusion -q '.[0].conclusion' 2>/dev/null || echo "")
   if [ "${conclusion}" = "success" ]; then
     return 0
   fi
