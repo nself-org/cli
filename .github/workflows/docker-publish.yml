@@ -41,8 +41,11 @@ permissions:
 # cancel-in-progress: false — this workflow deploys/publishes/releases; a superseding
 # run must queue behind an in-flight one, never cancel it mid-flight.
 concurrency:
-  # D-0204: key on the release tag so concurrent publishes of different tags queue independently.
-  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || (github.event_name == 'workflow_dispatch' && inputs.version) || github.ref }}
+ # D-0204: key on the release tag so concurrent publishes of different tags queue independently.
+  # D-0204: key on the normalised release tag (always v<ver>) so a dispatch with
+  # or without the leading v serialises with the matching workflow_run. Blank
+  # dispatch input falls through to github.ref (the default branch), never "".
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || (github.event_name == 'workflow_dispatch' && inputs.version != '' && (startsWith(inputs.version, 'v') && inputs.version || format('v{0}', inputs.version))) || github.ref }}
   cancel-in-progress: false
 
 jobs:

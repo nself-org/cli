@@ -229,6 +229,12 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: bash scripts/ci/docker-publish-version_test.sh
 
+      # D-0204: concurrency group expression must normalise dispatch input to
+      # v<ver> and handle blank input; kills two surviving mutants.
+      - name: Docker publish concurrency expression test
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/ci/docker-publish-concurrency_test.sh
+
       # P7-REG-10: the machine-contract gate. Linux legs only (Windows has no
       # POSIX shell here and macOS legs add nothing the Linux proof lacks).
       # jq and make ship on the GitHub-hosted ubuntu images.
