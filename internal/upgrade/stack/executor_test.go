@@ -330,3 +330,53 @@ func TestBackupPhasesHaveStepDeadline(t *testing.T) {
 		})
 	}
 }
+
+func TestNonProdResumeDamagedBackup(t *testing.T) {
+	for _, started := range []bool{false, true} {
+		t.Run(map[bool]string{false: "before-start", true: "after-start"}[started], func(t *testing.T) {
+			o := Options{ProjectDir: t.TempDir(), Yes: true}
+			b := newFixture()
+			j := newJournal(false)
+			if err := runStep(context.Background(), b, j, "backup"); err != nil {
+				t.Fatal(err)
+			}
+			for i := range j.Steps {
+				if j.Steps[i].Name == "backup" {
+					j.Steps[i].Result = "ok"
+				}
+				if started {
+					if j.Steps[i].Name == "start" {
+						j.Steps[i].Result = "running"
+						break
+					}
+					j.Steps[i].Result = "ok"
+				}
+			}
+			if err := saveJournal(o.ProjectDir, j); err != nil {
+				t.Fatal(err)
+			}
+			b.fail = "verify"
+			got, err := Execute(context.Background(), o, b)
+			assertCode(t, err, "E139")
+			var e *errs.CLIError
+			if !errors.As(err, &e) {
+				t.Fatal(err)
+			}
+			if started {
+				if got.BackupID == "" || !strings.Contains(e.Fix, "archive") || !strings.Contains(e.Fix, "verify") {
+					t.Fatalf("unsafe evidence handling or missing guidance: %+v %v", got, e)
+				}
+				return
+			}
+			disk, loadErr := loadJournal(o.ProjectDir)
+			if loadErr != nil || got.BackupID != "" || disk.BackupID != "" || ResumeStep(disk) != "backup" {
+				t.Fatalf("stale backup retained: %+v %v", disk, loadErr)
+			}
+			b.fail, b.calls = "", nil
+			got, err = Execute(context.Background(), o, b)
+			if err != nil || got.Status != "complete" || b.calls[0] != "backup" {
+				t.Fatalf("fresh backup retry: %v %v", b.calls, err)
+			}
+		})
+	}
+}
