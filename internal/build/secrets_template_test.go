@@ -542,3 +542,32 @@ func TestRedisCLIURLGuardParsesYAMLLists(t *testing.T) {
 		t.Fatalf("a YAML parse error must be reported, got %v", got)
 	}
 }
+
+// Custom services keep the MinIO root identity selected by the generator even
+// when a distinct application S3 credential pair is configured (D-0639).
+func TestTemplateSecretsCustomServiceMinioIdentity(t *testing.T) {
+	compattest.Set(t, false)
+	cfg := secretTestConfig()
+	cfg.Minio.S3AccessKey = "application-access"
+	cfg.Minio.S3SecretKey = "application-secret"
+	cfg.CustomServices = []config.CustomService{{Name: "worker", Port: 3000, Template: "express-js"}}
+	raw, err := compose.NewGenerator(cfg).Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	templated := TemplateSecrets(raw, SecretEnvMap(cfg))
+	var doc struct {
+		Services map[string]struct {
+			Environment map[string]string `yaml:"environment"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(templated, &doc); err != nil {
+		t.Fatal(err)
+	}
+	env := doc.Services["worker"].Environment
+	for key, want := range map[string]string{"S3_ACCESS_KEY": "${MINIO_ROOT_USER}", "S3_SECRET_KEY": "${MINIO_ROOT_PASSWORD}"} {
+		if env[key] != want {
+			t.Errorf("%s = %q, want %q", key, env[key], want)
+		}
+	}
+}
