@@ -42,7 +42,7 @@ permissions:
 # run must queue behind an in-flight one, never cancel it mid-flight.
 concurrency:
   # D-0204: key on the release tag so concurrent publishes of different tags queue independently.
-  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || (github.event_name == 'workflow_dispatch' && inputs.version) || github.ref }}
   cancel-in-progress: false
 
 jobs:

@@ -226,6 +226,7 @@ jobs:
 
       # D-0204: docker-publish-version.sh stub-gh test (P7-HYG-06 follow-up).
       - name: Docker publish version script test
+        if: matrix.os == 'ubuntu-latest'
         run: bash scripts/ci/docker-publish-version_test.sh
 
       # P7-REG-10: the machine-contract gate. Linux legs only (Windows has no
