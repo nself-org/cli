@@ -10,7 +10,7 @@ All Hasura configuration is driven by `HASURA_*` variables in your `.env` files.
 
 | Variable | Type | Default | Required | Description |
 |----------|------|---------|----------|-------------|
-| `HASURA_VERSION` | string | blank | No | Blank keeps the project lock pin, or uses v2.44.0 in v1.4 and v2.51.0 in v1.5. Any nonblank tag is explicit. |
+| `HASURA_VERSION` | string | blank | No | Blank keeps the project lock pin, or uses v2.44.0 in v1.4 and v2.51.0 in v1.5. Any nonblank tag is explicit, except `v2.44.0` is treated as the old init default (non-explicit) when the project lock pins v2.51.0, so upgraded projects keep their newer pin without clearing `.env`. |
 | `HASURA_GRAPHQL_ADMIN_SECRET` | string | *(none)* | **Yes** | Admin API secret (minimum 32 characters). Required to access the Hasura Console and the admin API endpoint. |
 | `HASURA_JWT_KEY` | string | *(none)* | **Yes** | JWT signing key (minimum 32 characters). Used to verify tokens issued by the Auth service. |
 | `HASURA_JWT_TYPE` | string | `HS256` | No | JWT algorithm. Supported values: `HS256`, `RS256`, and other algorithms supported by Hasura. |

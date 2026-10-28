@@ -21,9 +21,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// composePrefixRE matches the "<service>  | " prefix docker compose puts on every line.
+// recordTimestampPrefixRE matches a leading ISO-8601 timestamp that some log
+// drivers prepend before the compose service prefix.
 var recordTimestampPrefixRE = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?[ \t]?`)
 
+// composePrefixRE matches the "<service>  | " prefix docker compose puts on every line.
 var composePrefixRE = regexp.MustCompile(`^([^\s|]+)\s*\|\s?`)
 
 // logRecordFromLine splits one raw compose log line into its record: service

@@ -127,15 +127,22 @@ func TestHasuraLockPinKept(t *testing.T) {
 }
 
 // TestHasuraLockPinKeptAfterUpdate: a project `nself update` moved to v2.51.0 keeps
-// that pin whether .env leaves the version blank or names the same release.
+// that pin whether .env leaves the version blank, names the same release, or
+// still carries the old init default v2.44.0 (migration: stale init defaults
+// do not downgrade an upgraded project).
 func TestHasuraLockPinKeptAfterUpdate(t *testing.T) {
 	cur, _ := LockedRef("hasura")
+	v14, _ := LockedRef("hasura-v14")
 	compattest.Both(t, func(t *testing.T) {
 		setMode(t, PinningLock)
 		var notices bytes.Buffer
 		defer PinNoticeSink(&notices)()
 		defer SetProjectPins(map[string]string{"hasura": cur.String()})()
-		for _, v := range []string{"", cur.Version} {
+		// Blank, the pin's own version, and the old init default v2.44.0 all
+		// keep the v2.51.0 pin. The last case is the migration: projects whose
+		// .env still says HASURA_VERSION=v2.44.0 from an older `nself init`
+		// must not be downgraded after `nself update` moves the pin to v2.51.0.
+		for _, v := range []string{"", cur.Version, v14.Version} {
 			t.Setenv("HASURA_VERSION", v)
 			if got := hasuraImageFor(t, v); got != cur.String() {
 				t.Errorf("HASURA_VERSION=%q: hasura image = %q, want the pin %q", v, got, cur.String())
@@ -145,4 +152,24 @@ func TestHasuraLockPinKeptAfterUpdate(t *testing.T) {
 			t.Errorf("a kept pin printed a notice: %q", notices.String())
 		}
 	})
+}
+
+// TestHasuraInitUpgradeWithoutPin: without a project pin, HASURA_VERSION=v2.44.0
+// remains explicit even in v1.5 — the migration only applies when a v2.51.0 pin
+// exists (nself update case). This test documents that boundary.
+func TestHasuraInitUpgradeKeepsNewerPin(t *testing.T) {
+	v14, _ := LockedRef("hasura-v14")
+	setMode(t, PinningLock)
+	defer SetProjectPins(nil)()
+compattest.Set(t, true)
+t.Setenv("HASURA_VERSION", v14.Version)
+	// Without a pin, v2.44.0 is explicit and resolves to hasura-v14.
+	if got := hasuraImageFor(t, v14.Version); got != v14.String() {
+		t.Errorf("v1.5 without pin, HASURA_VERSION=%s: hasura image = %q, want explicit v14 %q", v14.Version, got, v14.String())
+}
+	// v1.4 also treats v2.44.0 as explicit (it matches hasura-v14's default).
+compattest.Set(t, false)
+if got := hasuraImageFor(t, v14.Version); got != v14.String() {
+		t.Errorf("v1.4 without pin, HASURA_VERSION=%s: hasura image = %q, want explicit v14 %q", v14.Version, got, v14.String())
+}
 }
