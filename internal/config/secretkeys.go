@@ -41,6 +41,7 @@ func IsSecretKey(key string) bool {
 // write POSTGRES_PASSWORD or any other secret unconfirmed. Nil in v1.5 mode,
 // where the generated gated tool replaces the legacy one (P7-SURF-03).
 func RefuseLegacyMCPSecretSet(key string) error {
+	// compat.V15(D-0737): legacy MCP nself_config_set refuses secret keys -> the generated gated v1.5 tool handles them
 	if compat.V15() || !IsSecretKey(key) {
 		return nil
 	}
