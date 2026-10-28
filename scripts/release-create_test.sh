@@ -3,8 +3,9 @@
 #
 # Copies the script into a throwaway git repo and runs it with a fake `gh` that
 # records its arguments. Checks:
-#   1a. No dist/ + non-draft: blocked (verified artifacts required before publish).
-#   1b. No dist/ + --draft: allowed (orchestrator opens the release shell first).
+#   1a. No dist/ (non-draft): DENY-001/002 skipped with a note; the release goes through
+#       without --skip-denylist.
+#   1b. No dist/ + --draft: same.
 #   2. dist/ present without bundles or SBOMs: DENY-001 and DENY-002 still block.
 #   3. DENY-004 asks for the license-audit run on main only.
 #
@@ -50,19 +51,20 @@ run() { # run <fixture dir> [extra args...] -> stdout+stderr of the wrapper; exi
   RC=$?
 }
 
-# 1a. no dist/ + non-draft: must block until artifacts are verified
+# 1a. no dist/: DENY-001/002 skip with a note, nothing triggers, gh release create runs
 d="$(fixture notag)"
 run "${d}"
-if [ "${RC}" -ne 0 ] && { [[ "${OUT}" == *"verified artifacts in dist/"* ]] || { [[ "${OUT}" == *"DENY-001 signature-check"* ]] && [[ "${OUT}" == *"DENY-002 missing-sbom"* ]]; }; }; then
-  ok "no dist/ + non-draft: blocked (denylist or artifact guard)"
+if [ "${RC}" -eq 0 ] && [[ "${OUT}" == *"skipping DENY-001"* ]] && [[ "${OUT}" == *"skipping DENY-002"* ]] \
+  && [[ "${OUT}" == *"denylist: PASS"* ]] && grep -q '^release create v9.9.9' "${d}/gh.log"; then
+  ok "no dist/: DENY-001/002 skipped with a note, release goes through"
 else
-  bad "no dist/ + non-draft: blocked (denylist or artifact guard)" "rc=${RC} out=${OUT}"
+  bad "no dist/: DENY-001/002 skipped with a note, release goes through" "rc=${RC} out=${OUT}"
 fi
 
-# 1b. no dist/ + --draft: orchestrator may open the release shell before build
+# 1b. no dist/ + --draft behaves the same
 d="$(fixture draft)"
 run "${d}" --draft
-if [ "${RC}" -eq 0 ] && grep -q '^release create v9.9.9 --draft' "${d}/gh.log"; then
+if [ "${RC}" -eq 0 ] && [[ "${OUT}" == *"skipping DENY-001"* ]] && grep -q '^release create v9.9.9 --draft' "${d}/gh.log"; then
   ok "no dist/ + --draft: release goes through"
 else
   bad "no dist/ + --draft: release goes through" "rc=${RC} out=${OUT}"

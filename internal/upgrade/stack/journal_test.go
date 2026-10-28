@@ -3,11 +3,12 @@ package stack
 import (
 	"context"
 	"encoding/json"
-	"github.com/nself-org/cli/internal/errs"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/nself-org/cli/internal/errs"
 )
 
 func TestJournalRejectsContradictoryResume(t *testing.T) {

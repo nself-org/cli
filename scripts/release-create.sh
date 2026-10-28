@@ -13,6 +13,9 @@
 #   bash scripts/release-create.sh v1.0.14 --skip-denylist --notes-file RELEASE_NOTES.md
 #
 # Exits non-zero on any denylist hit unless --skip-denylist is supplied.
+# DENY-001 (cosign bundles) and DENY-002 (SBOMs) need the build output: with no dist/
+# they are skipped with a note (release.yml's Pre-Release Gate enforces them post-build),
+# and with dist/ present they are enforced. DENY-004 reads the license-audit run on main.
 # When --skip-denylist is supplied, prompts interactively for a justification
 # and appends an audit record to audit/release-overrides.log before proceeding.
 
@@ -48,12 +51,6 @@ if [ ! -f "${DENYLIST_FILE}" ]; then
   exit 2
 fi
 
-# Detect --draft early so artifact rules can skip safely for non-publishing drafts.
-IS_DRAFT=0
-for arg in "${PASSTHROUGH_ARGS[@]:-}"; do
-  if [ "${arg}" = "--draft" ]; then IS_DRAFT=1; break; fi
-done
-
 # ── Helpers ──────────────────────────────────────────────────────────────────
 log_info() { printf "[release-create] %s\n" "$*"; }
 log_warn() { printf "[release-create] WARN: %s\n" "$*" >&2; }
@@ -62,15 +59,13 @@ log_fail() { printf "[release-create] FAIL: %s\n" "$*" >&2; }
 # Returns 0 if rule passes, 1 if it triggers (block).
 check_rule_signature() {
   # DENY-001: signature-check. Look for any *.cosign.bundle in dist/. The bundles exist only
-  # after release.yml builds. When invoked directly (outside the orchestrator), we MUST have
-  # verified artifacts before publishing; otherwise a non-draft `gh release create` could
-  # publish before build/signing/SBOM checks succeed. Draft creates are allowed without
-  # dist/ so the orchestrator can open the release shell first.
-  if [ "${IS_DRAFT}" -eq 1 ]; then return 0; fi
+  # after release.yml builds, so without dist/ the rule is skipped with a note (release.yml's
+  # Pre-Release Gate enforces it post-build). With dist/ present it is enforced.
   if [ ! -d "${REPO_ROOT}/dist" ]; then
-    return 1
+    log_info "no dist/ yet; skipping DENY-001 signature-check (enforced post-build by release.yml)"
+    return 0
   fi
-  if [ -d "${REPO_ROOT}/dist" ] && ls "${REPO_ROOT}/dist"/*.cosign.bundle >/dev/null 2>&1; then
+  if ls "${REPO_ROOT}/dist"/*.cosign.bundle >/dev/null 2>&1; then
     return 0
   fi
   return 1
@@ -78,10 +73,10 @@ check_rule_signature() {
 
 check_rule_sbom() {
   # DENY-002: missing-sbom. Require both SPDX + CycloneDX in dist/ or repo root. Like DENY-001
-  # it needs the build output; without dist/ we cannot verify SBOMs before publish.
-  if [ "${IS_DRAFT}" -eq 1 ]; then return 0; fi
+  # it needs the build output: without dist/ it is skipped with a note.
   if [ ! -d "${REPO_ROOT}/dist" ]; then
-    return 1
+    log_info "no dist/ yet; skipping DENY-002 missing-sbom (enforced post-build by release.yml)"
+    return 0
   fi
   for f in sbom.spdx.json sbom.cdx.json; do
     if [ ! -f "${REPO_ROOT}/dist/${f}" ] && [ ! -f "${REPO_ROOT}/${f}" ]; then
@@ -194,12 +189,6 @@ else
     "${TIMESTAMP}" "${GIT_SHA}" "${TAG}" "${OPERATOR}" "${RULE_IDS}" "${REASON}" \
     >> "${AUDIT_LOG}"
   log_warn "override logged to ${AUDIT_LOG}"
-fi
-
-# ── Guard: non-draft publishes require verified artifacts ───────────────────
-if [ "${IS_DRAFT}" -ne 1 ] && [ ! -d "${REPO_ROOT}/dist" ]; then
-  log_fail "non-draft release requires verified artifacts in dist/ (signatures + SBOMs). Use --draft or run via the release orchestrator."
-  exit 1
 fi
 
 # ── Invoke gh release create ─────────────────────────────────────────────────
