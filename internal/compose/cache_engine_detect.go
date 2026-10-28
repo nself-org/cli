@@ -88,11 +88,11 @@ func interpolateCompose(s string, lookup func(string) (string, bool)) string {
 			out.WriteByte(s[i])
 			continue
 		}
-		switch {
-		case s[i+1] == '$':
+		switch s[i+1] {
+		case '$':
 			out.WriteByte('$')
 			i++
-		case s[i+1] == '{':
+		case '{':
 			end := strings.IndexByte(s[i:], '}')
 			if end < 0 {
 				out.WriteString(s[i:])
