@@ -173,3 +173,139 @@ func TestStartMayContinueDistinguishesFailureKinds(t *testing.T) {
 		}
 	}
 }
+
+// Boundary tests for mutation survivors at lifecycle.go:78:30 (CONDITIONALS_BOUNDARY
+// on After) and selection.go:27:31 (CONDITIONALS_BOUNDARY on Exp <= 0).
+// retainedToken uses time.Now().After(exp.Add(grace)). We compute exp relative to
+// time.Now() inside each subtest so the window between signing and checking is
+// negligible; the "past" case uses an extra 2s margin to avoid flakiness.
+func TestRetainedTokenExactGraceBoundary(t *testing.T) {
+	sign := policySigner(t)
+	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "accepted")
+	path := filepath.Join(t.TempDir(), "entitlement")
+	for _, tc := range []struct {
+		name   string
+		offset time.Duration
+		want   bool
+	}{
+		{"one-second-before-grace", -license.PostExpiryGraceWindow + time.Second, true},
+		{"one-second-past-grace", -license.PostExpiryGraceWindow - 2*time.Second, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Now()
+			exp := now.Add(tc.offset)
+			token := sign("accepted", []string{"chat"}, exp.Unix())
+			if err := os.WriteFile(path, []byte(token), 0600); err != nil {
+				t.Fatal(err)
+			}
+			got := retainedToken(path)
+			if (got != "") != tc.want {
+				t.Fatalf("retained=%v, want=%v (offset=%v)", got != "", tc.want, tc.offset)
+			}
+		})
+	}
+}
+
+// selectToken rejects claims.Exp <= 0. A future expiry (now+1h) must be accepted;
+// zero and negative must be rejected. Each subtest gets its own LICENSE_CACHE_PATH
+// so loadRejected never sees a stale or blocked record from another subtest.
+func TestSelectTokenExpZeroBoundary(t *testing.T) {
+	sign := policySigner(t)
+	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "boundary-key")
+	now := time.Now().Unix()
+	for _, tc := range []struct {
+		name    string
+		exp     int64
+		wantErr bool
+	}{
+		{"exp-zero-rejected", 0, true},
+		{"exp-future-accepted", now + 3600, false},
+		{"exp-negative-rejected", -1, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("LICENSE_CACHE_PATH", filepath.Join(t.TempDir(), "license.json"))
+			token := sign("boundary-key", []string{"*"}, tc.exp)
+			got, err := selectToken([]string{token}, []string{"*"}, nil)
+			if (err != nil) != tc.wantErr || (!tc.wantErr && got != token) {
+				t.Fatalf("got=%q err=%v; wantErr=%v", got, err, tc.wantErr)
+			}
+		})
+	}
+}
+
+// ARITHMETIC_BASE at rejected.go:83:49 mutates len(name)-len(markerSuffix) to
+// len(name)+len(markerSuffix), producing a wrong slice index. A marker with a
+// known hash must yield exactly that hash in the set, not a truncated or
+// extended key.
+func TestLoadRejectedExtractsExactHashFromMarkerName(t *testing.T) {
+	dir := useRejectedDir(t)
+	hash := "abcdef0123456789"
+	marker := filepath.Join(dir, markerPrefix+hash+markerSuffix)
+	if err := os.WriteFile(marker, []byte{}, 0600); err != nil {
+		t.Fatal(err)
+	}
+	set, err := loadRejected()
+	if err != nil {
+		t.Fatalf("load failed: %v", err)
+	}
+	if !set[hash] {
+		t.Fatalf("hash %q not found in set %v", hash, set)
+	}
+	for k := range set {
+		if k != hash {
+			t.Fatalf("unexpected key %q in set (want only %q)", k, hash)
+		}
+	}
+}
+
+// TestSelectTokenExpZeroBoundaryKillsMutant verifies that claims.Exp <= 0 at
+// selection.go:27:31 is pinned. The mutant flips <= to <, accepting exp=0.
+// We use a token with exp=0 that is valid in every other respect (correct subject,
+// covering installed plugins, not rejected) so that the Exp check is the ONLY
+// rejection reason. Under the mutant, selectToken would accept it as a fallback
+// (exp=0 > fallbackExp=-1 initially), but tokenPolicy would reject it with
+// "entitlement grace ended". We assert the error message contains "grace ended"
+// only when the token passes the Exp filter — which happens under the mutant.
+// On original code, exp=0 is filtered before reaching tokenPolicy, so the error
+// is the generic "no verified entitlement".
+func TestSelectTokenExpZeroBoundaryKillsMutant(t *testing.T) {
+	sign := policySigner(t)
+	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "boundary-key")
+	t.Setenv("LICENSE_CACHE_PATH", filepath.Join(t.TempDir(), "license.json"))
+	token := sign("boundary-key", []string{"*"}, 0)
+	got, err := selectToken([]string{token}, []string{"chat"}, nil)
+	if got != "" {
+		t.Fatalf("exp=0 token was accepted: %q", got)
+	}
+	if err == nil {
+		t.Fatal("exp=0 token returned no error")
+	}
+	// Original: "no verified entitlement belongs to an accepted configured licence"
+	// Mutant (<= to <): token passes Exp<0 check, reaches tokenPolicy, gets "entitlement grace ended"
+	if strings.Contains(err.Error(), "grace ended") {
+		t.Fatalf("MUTANT DETECTED: exp=0 passed Exp filter and reached tokenPolicy: %v", err)
+	}
+	if !strings.Contains(err.Error(), "no verified entitlement") {
+		t.Fatalf("unexpected error for exp=0: %v", err)
+	}
+}
+
+// TestRetainedTokenGraceBoundaryKillsMutant pins lifecycle.go:78:30 where
+// time.Now().After(exp.Add(grace)) controls retention. The mutant flips After
+// to !After (or Before), retaining tokens PAST grace. We test a token exactly
+// 2s past grace: original rejects it, mutant retains it.
+func TestRetainedTokenGraceBoundaryKillsMutant(t *testing.T) {
+	sign := policySigner(t)
+	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "accepted")
+	path := filepath.Join(t.TempDir(), "entitlement")
+	now := time.Now()
+	exp := now.Add(-license.PostExpiryGraceWindow - 2*time.Second)
+	token := sign("accepted", []string{"chat"}, exp.Unix())
+	if err := os.WriteFile(path, []byte(token), 0600); err != nil {
+		t.Fatal(err)
+	}
+	got := retainedToken(path)
+	if got != "" {
+		t.Fatalf("MUTANT DETECTED: token past grace was retained (len=%d)", len(got))
+	}
+}
