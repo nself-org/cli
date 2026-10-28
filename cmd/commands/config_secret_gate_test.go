@@ -146,6 +146,30 @@ func TestConfigVerdictFailurePaths(t *testing.T) {
 	}
 }
 
+// TestTrustStatusHumanWarningExit pins the human warning verdict in both modes.
+func TestTrustStatusHumanWarningExit(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		v15  bool
+		code int
+		args []string
+	}{
+		{"v14", false, 1, []string{"trust", "status"}},
+		{"v15", true, 2, []string{"config", "trust", "status"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := runPilot(t, cfgFixtureProject(t), tc.v15, nil, tc.args...)
+			if r.code != tc.code || !strings.Contains(r.stdout+r.stderr, "Some trust components need attention") {
+				t.Fatalf("human trust warning: exit=%d want=%d\n%s\n%s", r.code, tc.code, r.stdout, r.stderr)
+			}
+			const legacyError = "trust warnings present (exit code 2)"
+			if strings.Contains(r.stderr, legacyError) == tc.v15 {
+				t.Fatalf("human trust warning v15=%v: unexpected error wording: %s", tc.v15, r.stderr)
+			}
+		})
+	}
+}
+
 // machineReadArgs are the positional arguments the invoke sweep gives a read
 // row that needs them.
 var machineReadArgs = map[string][]string{
