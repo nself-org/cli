@@ -16,7 +16,6 @@ import (
 // writable by group/world outside the user's private group (umask 002).
 func verifyPluginPathOwnershipPlatform(path, root string) error {
 	uid := uint32(syscall.Getuid())
-	gid := uint32(syscall.Getgid())
 	cur := path
 	for {
 		info, err := os.Lstat(cur)
@@ -34,8 +33,8 @@ func verifyPluginPathOwnershipPlatform(path, root string) error {
 		if mode&0o002 != 0 {
 			return errs.Newf("E406", "plugin binary path component %q is world-writable", cur)
 		}
-		if mode&0o020 != 0 && stat.Gid != gid {
-			return errs.Newf("E406", "plugin binary path component %q is group-writable by foreign gid %d (run chmod g-w %q to fix)", cur, stat.Gid, cur)
+		if mode&0o020 != 0 {
+			return errs.Newf("E406", "plugin binary path component %q is group-writable (run chmod g-w %q to fix)", cur, cur)
 		}
 		if cur == root || cur == "/" || cur == "." {
 			break

@@ -134,29 +134,40 @@ func TestVerifyPluginPathOwnershipRefusesUnsafe(t *testing.T) {
  t.Fatal(err)
 	}
 
-	// Group-writable by a foreign gid -> refused. We can't easily create a
-	// directory owned by another uid in a unit test, but we can flip the gid
-	// to one that isn't ours when running as root, or rely on the fact that
-	// most CI runners have at least one supplementary group. When we can't
-	// arrange a foreign gid we skip rather than false-pass.
+	// Group-writable -> refused even when the directory's gid matches the
+	// caller's primary gid. Shared groups such as macOS `staff` would
+	// otherwise let other members replace plugin binaries. Regression test
+	// for review finding: matching the primary GID does not establish a
+	// private group.
+	if err := os.Chmod(sub, 0o775); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyPluginPathOwnership(target, root); err == nil || !strings.Contains(err.Error(), "group-writable") {
+		t.Fatalf("same-gid group-writable not refused: %v", err)
+	}
+	if err := os.Chmod(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Foreign gid with group-write must still be refused (defense in depth).
 	foreignGID := findForeignGID(t)
 	if foreignGID != 0 {
- if err := os.Chown(sub, -1, int(foreignGID)); err != nil {
- t.Skipf("cannot chown to foreign gid %d: %v", foreignGID, err)
- }
- if err := os.Chmod(sub, 0o775); err != nil {
- t.Fatal(err)
- }
- if err := verifyPluginPathOwnership(target, root); err == nil || !strings.Contains(err.Error(), "group-writable") {
- t.Fatalf("foreign group-writable not refused: %v", err)
- }
- // Restore for subsequent cases.
- if err := os.Chmod(sub, 0o755); err != nil {
- t.Fatal(err)
- }
- if err := os.Chown(sub, -1, os.Getgid()); err != nil {
- t.Logf("warning: could not restore gid: %v", err)
- }
+		if err := os.Chown(sub, -1, int(foreignGID)); err != nil {
+			t.Skipf("cannot chown to foreign gid %d: %v", foreignGID, err)
+		}
+		if err := os.Chmod(sub, 0o775); err != nil {
+			t.Fatal(err)
+		}
+		if err := verifyPluginPathOwnership(target, root); err == nil || !strings.Contains(err.Error(), "group-writable") {
+			t.Fatalf("foreign group-writable not refused: %v", err)
+		}
+		// Restore for subsequent cases.
+		if err := os.Chmod(sub, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chown(sub, -1, os.Getgid()); err != nil {
+			t.Logf("warning: could not restore gid: %v", err)
+		}
 	}
 
 	// Foreign owner -> refused. Only possible when running as root.
