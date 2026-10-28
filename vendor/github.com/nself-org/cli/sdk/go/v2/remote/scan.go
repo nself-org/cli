@@ -103,6 +103,22 @@ func ScanHostKeysSSH(ctx context.Context, t Target, nodeID string) ([]HostKey, e
 	if err := ValidateDest(t.Dest); err != nil {
 		return nil, err
 	}
+	return scanHostKeysSSH(ctx, t.Dest, []string{"--", t.Dest}, nodeID)
+}
+
+// ScanHostKeysSSHSpec captures a key using the same endpoint arguments as the
+// eventual connection, including an explicit user/port and SSH configuration.
+func ScanHostKeysSSHSpec(ctx context.Context, spec HostSpec, nodeID string) ([]HostKey, error) {
+	if err := spec.Validate(); err != nil {
+		return nil, err
+	}
+	if err := ValidateNodeID(nodeID); err != nil {
+		return nil, err
+	}
+	return scanHostKeysSSH(ctx, spec.Dest(), spec.SSHArgs(), nodeID)
+}
+
+func scanHostKeysSSH(ctx context.Context, dest string, endpoint []string, nodeID string) ([]HostKey, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	ver, verr := SSHVersion(ctx)
@@ -133,7 +149,8 @@ func ScanHostKeysSSH(ctx context.Context, t Target, nodeID string) ([]HostKey, e
 	} {
 		args = append(args, "-o", o)
 	}
-	args = append(args, "--", t.Dest, "true")
+	args = append(args, endpoint...)
+	args = append(args, "true")
 	cmd, err := Command(ctx, "ssh", args...)
 	if err != nil {
 		return nil, err
@@ -141,11 +158,11 @@ func ScanHostKeysSSH(ctx context.Context, t Target, nodeID string) ([]HostKey, e
 	out, runErr := cmd.CombinedOutput() // exit 255 is expected
 	raw, rerr := os.ReadFile(tmp)
 	if rerr != nil {
-		return nil, fmt.Errorf("ssh to %s captured no host key: %v\n%s", t.Dest, runErr, strings.TrimSpace(string(out)))
+		return nil, fmt.Errorf("ssh to %s captured no host key: %v\n%s", dest, runErr, strings.TrimSpace(string(out)))
 	}
 	keys := parseHostKeys(string(raw))
 	if len(keys) == 0 {
-		return nil, fmt.Errorf("ssh to %s captured no host key\n%s", t.Dest, strings.TrimSpace(string(out)))
+		return nil, fmt.Errorf("ssh to %s captured no host key\n%s", dest, strings.TrimSpace(string(out)))
 	}
 	return keys, nil
 }

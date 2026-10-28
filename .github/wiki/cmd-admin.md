@@ -96,3 +96,11 @@ nself admin health
 <!-- END PROSE:see-also -->
 
 ← [[Commands]] | [[Home]] →
+
+In v1.5, remote admin connections capture host keys through SSH, honouring
+`ssh_config` aliases, jump hosts and an explicit port. Unknown keys fail with
+E487. Verify the displayed fingerprint independently, then add the verified
+public key to your `~/.ssh/known_hosts` under the effective hostname (or
+`HostKeyAlias`), using `[hostname]:port` for a non-default port. E487 prints the
+exact lookup name. This trust path works for IP addresses and needs no nSelf
+environment or deploy target. Scanning alone never enrolls a key.

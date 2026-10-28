@@ -119,3 +119,40 @@ func TestScanHostKeysSSH_UnknownVersionKeepsKnownHostsCommandNone(t *testing.T) 
 		t.Fatalf("argv lacks KnownHostsCommand=none: %q", scan.args)
 	}
 }
+
+func TestScanHostKeysSSHSpecEndpoint(t *testing.T) {
+	log := stubTools(t, map[string]string{"ssh": sshScanStub})
+	spec, err := ParseHostSpec("ops@alias.test:2222")
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys, err := ScanHostKeysSSHSpec(context.Background(), spec, "admin")
+	if err != nil || len(keys) != 1 {
+		t.Fatalf("keys = %v, %v", keys, err)
+	}
+	calls := readCalls(t, log)
+	args := calls[len(calls)-1].args
+	if !strings.HasSuffix(strings.Join(args, " "), "-p 2222 -- ops@alias.test true") {
+		t.Fatalf("endpoint lost: %q", args)
+	}
+	for _, a := range args {
+		if strings.HasPrefix(a, "ProxyJump=") || strings.HasPrefix(a, "ProxyCommand=") {
+			t.Fatalf("overrode SSH configuration: %s", a)
+		}
+	}
+}
+
+func TestScanHostKeysSSHSpecRejectsBeforeExec(t *testing.T) {
+	n := countExecs(t)
+	for _, spec := range []HostSpec{{Host: "-oX"}, {Host: "good", Port: -1}, {Host: "good", User: "a b"}} {
+		if _, err := ScanHostKeysSSHSpec(context.Background(), spec, "admin"); err == nil {
+			t.Errorf("accepted %+v", spec)
+		}
+	}
+	if _, err := ScanHostKeysSSHSpec(context.Background(), HostSpec{Host: "good"}, "bad id"); err == nil {
+		t.Error("accepted bad scan id")
+	}
+	if *n != 0 {
+		t.Fatalf("%d execs before validation", *n)
+	}
+}

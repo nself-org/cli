@@ -41,7 +41,7 @@ func TestAdminSSHV15PinOnlyExact(t *testing.T) {
 			if err := callEntry("verify", "u", tc.host, 2222); err != nil {
 				t.Fatal(err)
 			}
-			mustExist(t, e.scanMark(), "ssh-keyscan must run in v1.5 mode")
+			mustExist(t, e.scanMark(), "SSH key capture must run in v1.5 mode")
 			want := append(v15Verify(e.pinFile(), tc.alias), "-p", "2222", "--", tc.dest, "true")
 			got := e.argv(t)
 			if !reflect.DeepEqual(got, want) {
