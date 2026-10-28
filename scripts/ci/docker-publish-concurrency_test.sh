@@ -64,4 +64,22 @@ if ! printf '%s' "${EXPR}" | grep -q "inputs.version != ''"; then
 fi
 echo "ok blank-dispatch-falls-through-to-github-ref"
 
+# Case 4 (D-0204): :latest promotion is its own job in one shared concurrency
+# group, and the per-tag docker job no longer writes :latest. Kills the mutant
+# where promotion runs inside the per-tag group (releases race, :latest goes
+# backwards) or the group is keyed per tag.
+JOB=$(sed -n '/^  promote-latest:/,$p' "${WORKFLOW}")
+[ -n "${JOB}" ] || { echo "FAIL: no promote-latest job" >&2; exit 1; }
+printf '%s\n' "${JOB}" | grep -qE '^      group: docker-publish-latest$' \
+  || { echo "FAIL: promote-latest lacks the shared literal group 'docker-publish-latest'" >&2; exit 1; }
+printf '%s\n' "${JOB}" | grep -q 'cancel-in-progress: false' \
+  || { echo "FAIL: promote-latest must not cancel an in-flight promotion" >&2; exit 1; }
+printf '%s\n' "${JOB}" | grep -q 'docker-publish-promote.sh' \
+  || { echo "FAIL: promote-latest does not run the revalidating script" >&2; exit 1; }
+if sed '/^  promote-latest:/,$d' "${WORKFLOW}" | grep -v '^ *#' | grep -q 'imagetools create'; then
+  echo "FAIL: the per-tag docker job still promotes :latest outside the shared group" >&2
+  exit 1
+fi
+echo "ok latest-promotion-is-serialised-and-revalidated"
+
 echo "docker-publish-concurrency_test: all cases passed"
