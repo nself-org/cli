@@ -3,7 +3,8 @@
 #
 # Copies the script into a throwaway git repo and runs it with a fake `gh` that
 # records its arguments. Checks:
-#   1. No dist/ (tag time): DENY-001 and DENY-002 are skipped, the release goes through.
+#   1a. No dist/ + non-draft: blocked (verified artifacts required before publish).
+#   1b. No dist/ + --draft: allowed (orchestrator opens the release shell first).
 #   2. dist/ present without bundles or SBOMs: DENY-001 and DENY-002 still block.
 #   3. DENY-004 asks for the license-audit run on main only.
 #
@@ -42,24 +43,30 @@ EOF
   echo "${d}"
 }
 
-run() { # run <fixture dir> -> stdout+stderr of the wrapper; exit status in RC
+run() { # run <fixture dir> [extra args...] -> stdout+stderr of the wrapper; exit status in RC
   local d="$1"
-  OUT="$(cd "${d}" && PATH="${d}/bin:${PATH}" GH_LOG="${d}/gh.log" bash scripts/release-create.sh v9.9.9 2>&1)"
+  shift
+  OUT="$(cd "${d}" && PATH="${d}/bin:${PATH}" GH_LOG="${d}/gh.log" bash scripts/release-create.sh v9.9.9 "$@" 2>&1)"
   RC=$?
 }
 
-# 1. tag time: no dist/
+# 1a. no dist/ + non-draft: must block until artifacts are verified
 d="$(fixture notag)"
 run "${d}"
-if [ "${RC}" -eq 0 ] && grep -q '^release create v9.9.9' "${d}/gh.log"; then
-  ok "no dist/: the release goes through"
+if [ "${RC}" -ne 0 ] && { [[ "${OUT}" == *"verified artifacts in dist/"* ]] || { [[ "${OUT}" == *"DENY-001 signature-check"* ]] && [[ "${OUT}" == *"DENY-002 missing-sbom"* ]]; }; }; then
+  ok "no dist/ + non-draft: blocked (denylist or artifact guard)"
 else
-  bad "no dist/: the release goes through" "rc=${RC} out=${OUT}"
+  bad "no dist/ + non-draft: blocked (denylist or artifact guard)" "rc=${RC} out=${OUT}"
 fi
-case "${OUT}" in
-  *"DENY-001 is enforced post-build"*"DENY-002 is enforced post-build"*) ok "no dist/: the skip is announced for DENY-001 and DENY-002" ;;
-  *) bad "no dist/: the skip is announced" "${OUT}" ;;
-esac
+
+# 1b. no dist/ + --draft: orchestrator may open the release shell before build
+d="$(fixture draft)"
+run "${d}" --draft
+if [ "${RC}" -eq 0 ] && grep -q '^release create v9.9.9 --draft' "${d}/gh.log"; then
+  ok "no dist/ + --draft: release goes through"
+else
+  bad "no dist/ + --draft: release goes through" "rc=${RC} out=${OUT}"
+fi
 
 # 2. dist/ exists but is empty: the post-build rules still bite
 d="$(fixture emptydist)"
