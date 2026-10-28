@@ -109,6 +109,9 @@ func EffectiveJSON(cmd *Command, set map[string]bool) string {
 		if !set[flag.Name] || flag.JSON == nil {
 			continue
 		}
+		if *flag.JSON == canon.JSONEnvelope && cmd.JSON != canon.JSONEnvelope {
+			continue // a flag cannot turn a non-envelope command into an envelope one
+		}
 		if r := rank[*flag.JSON]; r > best {
 			best, kind = r, *flag.JSON
 		}
