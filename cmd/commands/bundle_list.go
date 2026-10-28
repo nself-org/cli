@@ -16,6 +16,7 @@ package commands
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/nself-org/cli/internal/output"
 	"strings"
 
 	"github.com/nself-org/cli/internal/bundle"
@@ -116,7 +117,7 @@ func runBundleList(cmd *cobra.Command, _ []string) error {
 	}
 
 	if jsonEnvelopeOn(cmd) {
-		if rows == nil && !legacyBare() {
+		if rows == nil && !output.LegacyRequested() {
 			rows = []bundleListRow{} // the envelope data is an array; the bare legacy form printed null
 		}
 		return emitEnv(cmd, rows, true) // P7-SURF-13

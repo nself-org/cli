@@ -158,3 +158,17 @@ func TestLegacyMarshalFailureIsReturned(t *testing.T) {
 		}
 	}
 }
+
+func TestLegacyRequested(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  bool
+	}{{"", false}, {"0", false}, {"1", true}, {"true", true}, {"TRUE", true}, {"yes", false}} {
+		t.Run(tc.value, func(t *testing.T) {
+			t.Setenv(LegacyEnvVar, tc.value)
+			if got := LegacyRequested(); got != tc.want {
+				t.Fatalf("LegacyRequested() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

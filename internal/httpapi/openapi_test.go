@@ -95,3 +95,16 @@ func TestOpenAPIBuilder(t *testing.T) {
 		t.Fatal("invalid data schema accepted")
 	}
 }
+
+func TestOpenAPIPluginInfoFailureDescription(t *testing.T) {
+	reg := &cmdregistry.Registry{Commands: []cmdregistry.Command{{
+		Path: "nself config plugins info", Runnable: true, Canon: "subcommand", SideEffect: "read", Output: "document", JSON: "envelope",
+	}}}
+	raw, err := OpenAPI(reg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(raw, []byte("An unresolved tier returns an error envelope")) {
+		t.Fatalf("missing failure description: %s", raw)
+	}
+}

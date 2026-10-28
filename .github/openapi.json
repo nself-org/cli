@@ -22238,6 +22238,7 @@
     },
     "/v1/commands/config/plugins/info": {
       "post": {
+        "description": "An unresolved tier returns an error envelope with the cause. The legacy bare tier_reason and tier_error fields are not a successful HTTP response.",
         "operationId": "nself_config_plugins_info",
         "requestBody": {
           "content": {

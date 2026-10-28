@@ -8,6 +8,7 @@ package admin
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/nself-org/cli/internal/output"
 
 	"github.com/nself-org/cli/internal/ui"
 
@@ -35,7 +36,7 @@ func projectsCommand() *cobra.Command {
 			}
 
 			if jsonOn(cmd) {
-				if projects == nil && !legacyBare() {
+				if projects == nil && !output.LegacyRequested() {
 					projects = []AdminProject{} // the envelope data is an array; the bare legacy form printed null
 				}
 				return emit(cmd, ProjectList(projects), true)

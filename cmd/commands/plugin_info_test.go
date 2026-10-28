@@ -207,7 +207,7 @@ func runInfoRoot(t *testing.T, extra ...string) (string, error) {
 	var stdout, stderr bytes.Buffer
 	child.Stdout, child.Stderr = &stdout, &stderr
 	if err := child.Run(); err != nil {
-		return stdout.String(), fmt.Errorf("%v: %s", err, strings.TrimSpace(stderr.String()))
+		return stdout.String(), fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return stdout.String(), nil
 }
@@ -263,8 +263,8 @@ func infoFailure(t *testing.T, out string) (reason, cause string) {
 }
 
 // TestPluginInfoJSONThroughRoot (CR M1, S2): `nself plugin info <n> --json`
-// works through the root command. v1.5 prints the JSON (the registry row is
-// json legacy, so the E402 gate lets it through); v1.4 still ignores the flag
+// works through the root command. v1.5 prints a data envelope on success
+// and an error envelope for an unresolved tier; v1.4 still ignores the flag
 // and prints the table.
 func TestPluginInfoJSONThroughRoot(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
@@ -322,14 +322,18 @@ func TestPluginInfoLegacyEnvFailureIsOneBareDocument(t *testing.T) {
 	compattest.Set(t, true)
 	t.Setenv(output.LegacyEnvVar, "1")
 	infoFixtureRegistry(t, "", `{"plugins":[`+
-		`{"name":"notify","tier":"free","version":"1.0.0","description":"first entry"},`+
+		`{"name":"notify","tier":"free","version":"https://user:synthetic@license.example.test/check?token=abc123","description":"first entry"},`+
 		`{"name":"notify","tier":"pro","version":"2.0.0","description":"second entry"}]}`)
 	out, err := runInfoRoot(t, "--json")
 	if err == nil {
 		t.Fatalf("an unresolved tier must still fail, got output %s", out)
 	}
-	if !strings.Contains(err.Error(), "exit status") || !strings.Contains(err.Error(), "tier unresolved") {
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != errs.ExitUserError || !strings.Contains(err.Error(), "tier unresolved") {
 		t.Fatalf("want a non-zero exit and the reported failure on stderr, got %v", err)
+	}
+	if strings.Contains(out+err.Error(), "synthetic") || strings.Contains(out+err.Error(), "abc123") {
+		t.Fatal("legacy failure leaked a fixture credential")
 	}
 	dec := json.NewDecoder(strings.NewReader(out))
 	var doc map[string]json.RawMessage

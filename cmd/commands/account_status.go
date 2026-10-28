@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/nself-org/cli/internal/output"
 	"os"
 	"strings"
 
@@ -63,7 +64,7 @@ func runAccountStatus(cmd *cobra.Command, _ []string) error {
 	if infoErr != nil {
 		// Fall back to cached data.
 		if jsonEnvelopeOn(cmd) {
-			if legacyBare() {
+			if output.LegacyRequested() {
 				return emitDoc(cmd, cachedAccountJSON(af), true)
 			}
 			return emitAccountStatus(cmd, accountCachedStatus(af, "cached"))

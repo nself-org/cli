@@ -350,8 +350,22 @@ func TestServicesBodies(t *testing.T) {
 	})
 	t.Run("ps without a compose file is an error, not an empty document", func(t *testing.T) {
 		fakeProject(t, "PROJECT_NAME=smoke\n")
-		if _, err := runExt(t, extendCmd(t, "config", "services", "ps"), nil, map[string]string{}); err == nil {
+		out, err := runExt(t, extendCmd(t, "config", "services", "ps"), nil, map[string]string{})
+		if err == nil {
 			t.Fatal("ps without docker-compose.yml succeeded")
+		}
+		var envelope bytes.Buffer
+		if err := output.EmitError(output.Writer{Out: &envelope}, "config services ps", err); err != nil {
+			t.Fatal(err)
+		}
+		var doc struct {
+			Error struct{ Code, Message string }
+		}
+		if err := json.Unmarshal(envelope.Bytes(), &doc); err != nil {
+			t.Fatal(err)
+		}
+		if doc.Error.Code != "E400" || !strings.Contains(doc.Error.Message, "docker-compose.yml") || out != "" {
+			t.Fatalf("missing-compose failure: output=%q envelope=%s", out, envelope.String())
 		}
 	})
 	t.Run("group answers with its subcommands", func(t *testing.T) {
