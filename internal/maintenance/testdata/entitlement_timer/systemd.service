@@ -5,5 +5,5 @@ Description=nSelf entitlement refresh dae668e4084f07b6
 Type=oneshot
 User=1000
 SuccessExitStatus=78
-ExecStart=/bin/sh -c 'test -x \'/usr/local/bin/nself\' && test -d \'/srv/app\' || exit 78; exec env NSELF_V15=1 \'/usr/local/bin/nself\' license refresh --project \'/srv/app\' --quiet'
+ExecStart=/bin/sh -c 'test -e \'/usr/local/bin/nself\' && test -d \'/srv/app\' || exit 78; exec env NSELF_V15=1 \'/usr/local/bin/nself\' license refresh --project \'/srv/app\' --quiet'
 ExecStopPost=+/bin/sh -c 'if test "$$EXIT_STATUS" = 78; then systemctl disable --now nself-entitlement-dae668e4084f07b6.timer; rm -f /etc/systemd/system/nself-entitlement-dae668e4084f07b6.service /etc/systemd/system/nself-entitlement-dae668e4084f07b6.timer; systemctl daemon-reload; fi'

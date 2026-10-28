@@ -10,8 +10,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 	"unicode/utf8"
 )
 
@@ -368,7 +371,7 @@ func TestLaunchAgentGuard(t *testing.T) {
 			}
 			args := plistArgs(t, data)
 			cmd := exec.Command(args[0], args[1:]...)
-			cmd.Env = []string{"HOME=" + home, "PATH=" + stubs + ":/usr/bin:/bin"}
+			cmd.Env = []string{"HOME=" + home, "PATH=" + stubs + ":" + os.Getenv("PATH")}
 			if out, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("guard script failed: %v\n%s", err, out)
 			}
@@ -524,7 +527,16 @@ func TestCronSelfDeleteKeepsForeignLines(t *testing.T) {
 	}
 	fields := strings.SplitN(strings.ReplaceAll(line, `\%`, "%"), " ", 6)
 	run := exec.Command("sh", "-c", fields[5])
-	run.Env = []string{"PATH=" + stubs + ":/usr/bin:/bin"}
+	if err := os.MkdirAll(filepath.Join(tmp, ".nself"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	// This shell shape is also tested on macOS, where flock is not shipped.
+	if runtime.GOOS == "darwin" {
+		if err := os.WriteFile(filepath.Join(stubs, "flock"), []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run.Env = []string{"HOME=" + tmp, "PATH=" + stubs + ":" + os.Getenv("PATH")}
 	if out, err := run.CombinedOutput(); err != nil {
 		t.Fatalf("cron line failed: %v\n%s", err, out)
 	}
@@ -581,5 +593,49 @@ func TestOverlongPathsAreRefused(t *testing.T) {
 	long := "/" + strings.Repeat("a", 301)
 	if _, err := renderCron("/usr/local/bin/nself", long, Hash(long)); err == nil {
 		t.Fatal("a cron line near cron's length limit was rendered")
+	}
+}
+
+func TestCronConcurrentProjectsKeepBothLines(t *testing.T) {
+	f, root := newFake(t, "linux", 1000)
+	var mu sync.Mutex
+	current := ""
+	h := f.host
+	h.run = func(stdin, name string, args ...string) (string, error) {
+		mu.Lock()
+		if args[0] == "-l" {
+			value := current
+			mu.Unlock()
+			time.Sleep(20 * time.Millisecond)
+			return value, nil
+		}
+		current = stdin
+		mu.Unlock()
+		return "", nil
+	}
+	var wg sync.WaitGroup
+	for _, name := range []string{"one", "two"} {
+		wg.Add(1)
+		go func(name string) {
+			defer wg.Done()
+			if _, err := h.installCron("/bin/nself", filepath.Join(root, name), Hash(name)); err != nil {
+				t.Error(err)
+			}
+		}(name)
+	}
+	wg.Wait()
+	if strings.Count(current, entCronTag) != 4 {
+		t.Fatalf("lost a project cron line: %s", current)
+	}
+}
+
+func TestRefreshGuardRetainsNonExecutableBinary(t *testing.T) {
+	root := t.TempDir()
+	bin := filepath.Join(root, "nself")
+	if err := os.WriteFile(bin, []byte("upgrading"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("sh", "-c", refreshScript(bin, root, "exit 78")).CombinedOutput(); err != nil {
+		t.Fatalf("existing binary treated as gone: %v %s", err, out)
 	}
 }

@@ -96,9 +96,10 @@ func systemdEscape(s string) string {
 // cronEscape escapes `%`, which cron turns into a newline.
 func cronEscape(s string) string { return strings.ReplaceAll(s, "%", `\%`) }
 
-// refreshScript is the guard + refresh command shared by systemd and cron text.
+// refreshScript guards presence, not executability: an upgrade can temporarily
+// clear executable bits. Only a missing binary or project retires the timer.
 func refreshScript(bin, dir string, gone string) string {
-	return fmt.Sprintf("test -x %s && test -d %s || %s", shQuote(bin), shQuote(dir), gone)
+	return fmt.Sprintf("test -e %s && test -d %s || %s", shQuote(bin), shQuote(dir), gone)
 }
 
 // refreshCmd pins v1.5 mode: the timer is only installed in it, and its environment is empty.
@@ -162,8 +163,8 @@ func renderCron(bin, dir, hash string) (string, error) {
 	}
 	minute, _ := strconv.ParseUint(hash[:2], 16, 8)
 	tag := entCronTag + hash
-	drop := fmt.Sprintf(`t=$(crontab -l 2>/dev/null) && printf '%%s\n' "$t" | grep -vF %s | crontab -`, shQuote(tag))
-	line := fmt.Sprintf("%d */6 * * * if test -x %s && test -d %s; then %s >/dev/null; else %s; fi %s",
+	drop := fmt.Sprintf(`(flock -x 9 && t=$(crontab -l 2>/dev/null) && printf '%%s\n' "$t" | grep -vF %s | crontab -) 9>"$HOME/.nself/entitlement-cron.lock"`, shQuote(tag))
+	line := fmt.Sprintf("%d */6 * * * if test -e %s && test -d %s; then %s >/dev/null; else %s; fi %s",
 		minute%60, shQuote(bin), shQuote(dir), refreshCmd(bin, dir), drop, tag)
 	return cronEscape(line), nil
 }
@@ -177,7 +178,7 @@ func renderPlist(bin, dir, hash string) ([]byte, error) {
 		return nil, err
 	}
 	label := launchAgentLabel(hash)
-	script := fmt.Sprintf(`if test -x %s && test -d %s; then exec %s; else rm -f "$HOME/Library/LaunchAgents/%s.plist"; launchctl bootout "gui/$(id -u)/%s"; fi`,
+	script := fmt.Sprintf(`if test -e %s && test -d %s; then exec %s; else rm -f "$HOME/Library/LaunchAgents/%s.plist"; launchctl bootout "gui/$(id -u)/%s"; fi`,
 		shQuote(bin), shQuote(dir), refreshCmd(bin, dir), label, label)
 	var sb strings.Builder
 	sb.WriteString(xml.Header)

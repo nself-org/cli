@@ -17,18 +17,18 @@ package commands
 
 import (
 	"errors"
+	"fmt"
 	"io"
+	"os"
 	"strings"
 
-	"fmt"
-	"github.com/spf13/pflag"
-	"os"
-
 	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/license/entitlement"
 	"github.com/nself-org/cli/internal/plugin"
-
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // invokedCommandPath returns the command path as the user actually spelled it,
@@ -62,6 +62,7 @@ func Execute() (resultErr error) {
 			commandLogFinish = nil
 		}
 	}()
+	entitlement.SetMountProbe(docker.FileBindMounted)
 	// Secret values arrive by environment, not argv (D-0468): restore them first.
 	if err := restoreSecretArgv(); err != nil {
 		return err
