@@ -21486,11 +21486,6 @@
           "flags": {
             "additionalProperties": false,
             "properties": {
-              "ai": {
-                "default": false,
-                "description": "Run the AI first-run wizard (install Ollama, setup Gemini pool, verify)",
-                "type": "boolean"
-              },
               "alerts": {
                 "default": false,
                 "description": "Check monitoring alert rules are loaded",
@@ -21529,11 +21524,6 @@
               "headless": {
                 "default": false,
                 "description": "Print OAuth URL instead of opening browser (for SSH/headless servers)",
-                "type": "boolean"
-              },
-              "install-check": {
-                "default": false,
-                "description": "Run 6-stage onboarding funnel check (used by Homebrew post-install hook)",
                 "type": "boolean"
               },
               "only": {
@@ -25396,25 +25386,10 @@
                 "description": "Show logs since (e.g. 1h, 30m, or RFC3339)",
                 "type": "string"
               },
-              "status": {
-                "default": false,
-                "description": "Show service status overview",
-                "type": "boolean"
-              },
-              "summary": {
-                "default": false,
-                "description": "Show recent errors by service",
-                "type": "boolean"
-              },
               "tail": {
                 "default": 10,
                 "description": "Number of lines to show",
                 "type": "integer"
-              },
-              "top": {
-                "default": false,
-                "description": "Show most active services",
-                "type": "boolean"
               },
               "until": {
                 "default": "",
