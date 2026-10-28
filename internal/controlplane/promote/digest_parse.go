@@ -46,6 +46,9 @@ func parseComposeRows[T any](raw []byte, what string) ([]T, error) {
 	return rows, nil
 }
 
+// composePSCommand lists every container of the source project with its service.
+const composePSCommand = "docker compose ps --all --format json"
+
 // composeContainer is one row of `docker compose ps --format json`.
 type composeContainer struct {
 	Name    string `json:"Name"`
@@ -56,15 +59,13 @@ type composeContainer struct {
 // Compose's images JSON carries ContainerName and no Service (checked against
 // Compose 5.6), so rows without a service are mapped through `docker compose ps`.
 // A container that ps does not name keeps an empty service and fails closed.
+// CaptureSourceManifest snapshots the ps listing next to the images listing, so
+// the mapping here sees the same containers the images listing named.
 func resolveImageServices(ctx context.Context, run Runner, images []composeImage) ([]composeImage, error) {
-	missing := false
-	for _, image := range images {
-		missing = missing || image.Service == ""
-	}
-	if !missing {
+	if !missingService(images) {
 		return images, nil
 	}
-	raw, err := run(ctx, "docker compose ps --all --format json")
+	raw, err := run(ctx, composePSCommand)
 	if err != nil {
 		return nil, fmt.Errorf("list source compose containers: %w", err)
 	}

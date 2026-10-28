@@ -107,6 +107,12 @@ The steps are resolve, confirm, verify, preflight, source-health, capture, build
 compare, snapshot, save, apply, migrate, health, and record. Builds use the target
 cascade in a scratch directory. Production values never enter the operator's tree.
 
+Local-server promotion on a Windows operator machine is unproven end to end. The
+local runner starts every command through `sh -c`, so it needs a POSIX `sh` on
+`PATH`, and the model resolver gives that process a minimal environment (`PATH`,
+`HOME`, `DOCKER_CONFIG`, `XDG_CONFIG_HOME`) without `SYSTEMROOT`, which Windows
+programs often need. Promote from Linux or macOS, or from WSL.
+
 Compare proves per-platform image digest equality before taking a snapshot or
 changing the target. It resolves every staged compose fragment with the target's
 environment files and captures the source using its compose manifest. Each service's
