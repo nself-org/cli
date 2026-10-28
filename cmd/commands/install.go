@@ -28,6 +28,8 @@ import (
 // Constraints: `install` and `remove` must stay thin. Anything that belongs to
 // installation belongs in internal/plugin or internal/bundle, not here.
 
+const removeDeleteDataHelp = "Delete plugin data (schema/tables). v1.5 keeps data unless --delete-data and asks for confirmation (or pass --yes); v1.4 plugin remove never asks and drops data unless --keep-data. Bundle data deletion asks for confirmation (or pass --yes) in both modes"
+
 var installCmd = &cobra.Command{
 	Use:   "install <name> [name...]",
 	Short: "Install a plugin or bundle",
@@ -92,7 +94,7 @@ func init() {
 
 	removeCmd.Flags().Bool("yes", false, "Skip confirmation prompts")
 	removeCmd.Flags().Bool("keep-data", false, "Preserve database data on remove")
-	removeCmd.Flags().Bool("delete-data", false, "Delete plugin data (schema/tables). A bundle remove asks for confirmation (or pass --yes); a plugin remove never asks and drops data unless --keep-data")
+	removeCmd.Flags().Bool("delete-data", false, removeDeleteDataHelp)
 	removeCmd.Flags().Bool("force", false, "Remove even if other plugins depend on this one")
 	removeCmd.Flags().Bool("dry-run", false, "Print the planned actions without removing")
 
