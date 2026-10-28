@@ -13,6 +13,9 @@
 #     GitHub Wiki does not resolve a backtick-enclosed token as a link either.
 set -euo pipefail
 
+# sort and comm must use the same collation on every developer host.
+export LC_ALL=C
+
 cd "$(dirname "$0")/../.."
 WIKI=".github/wiki"
 
@@ -27,7 +30,7 @@ trap 'rm -f "$PAGES" "$LINKS"' EXIT
 
 find "$WIKI" -name '*.md' -exec basename {} .md \; | sort -u > "$PAGES"
 
-python3 - "$WIKI" > "$LINKS" <<'PYEOF'
+python3 - "$WIKI" <<'PYEOF' | sort -u > "$LINKS"
 import os
 import re
 import sys

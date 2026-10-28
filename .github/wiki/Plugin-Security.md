@@ -69,7 +69,7 @@ Two limits to know: the tier of an entry comes from the registry, so while a tie
 
 An earlier CLI may have left `~/.nself/bin/nself-ci` behind. If that is a regular file, the CLI renames it to `nself-ci.unverified-legacy` (never deleting it, and never overwriting an earlier copy) and prints one notice per run. A symlink, a directory, or a file in a read-only directory is left in place with the same notice.
 
-`bash scripts/ci/probe-served-ci.sh --min-version <v>` checks the live registry before a release ships this behaviour: the free `ci` entry is signed, each of the four platform tarballs is covered by its platform signature and holds an executable `nself-ci`, and `nself ci` from the new binary matches the old one on a fixture, on the host and in a clean container.
+`bash scripts/ci/probe-served-ci.sh --min-version <v>` checks the live registry before a release ships this behaviour: the free `ci` entry is signed, the source tarball matches its signed checksum, and all five platform tarballs (including Windows) match their signed platform checksums and contain the binary (`nself-ci.exe` on Windows). `nself ci` from the new binary must match the old one on a Go fixture with a pinned shell gate, on the host and in a clean container. The fixture deliberately fails with a known marker so matching startup errors cannot pass parity. Gate timings are excluded from output comparison. Binary lookup follows the CLI: root and `bin/` candidates first, then nested directories.
 
 ### Rotation and revocation
 
