@@ -62,6 +62,12 @@ func autoInstallPluginLocked(ctx context.Context, cfg *config.Config, slug, vers
 		return "", err
 	}
 
+	// This check is inside the operation lock: a concurrent first run may
+	// already have installed this exact signed catalogue entry.
+	if bin, ok := autoInstallCached(resolvePluginDir(), slug, manifest); ok {
+		return bin, nil
+	}
+
 	// plugin.Install fetches the catalogue again. Pin its tier to free, make a
 	// missing signature a refusal in 1.4 mode too, and drop the licence bypass,
 	// so a catalogue that changes between the two fetches cannot be installed
@@ -108,6 +114,9 @@ func autoInstallPluginLocked(ctx context.Context, cfg *config.Config, slug, vers
 	}
 	if st, err := os.Stat(bin); err != nil || st.IsDir() {
 		return "", fmt.Errorf("auto-install of %q: the installer reported success but %s was not published (install it by hand: nself add %s)", slug, bin, slug)
+	}
+	if err := autoInstallRecord(pluginDir, slug, manifest, bin); err != nil {
+		return "", err
 	}
 	return bin, nil
 }
