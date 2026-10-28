@@ -51,7 +51,7 @@ Removal does not revoke plaintext already read. Rotate secret values after remov
 
 Run grants against an operator-trusted checkout. A writer can copy ciphertext from `release.age` to `ci.age`; granting that copy uses the lower class because the filename determines the class (D-0509). Symlink refusal does not prevent ciphertext copies.
 
-Pass an absolute `--project` to resolve and recipient commands. Monorepo startup may change the working directory to `backend/` before a relative path or the default project is resolved (D-0510).
+Resolve and recipient commands preserve the caller's working directory, including at a monorepo root with `backend/.env`. Relative `--project` paths and the default project resolve from that directory; absolute paths are honoured. This applies to both `config secrets` and the v1.4 `secrets` spelling.
 
 ### `secrets rotate <KEY>`
 ### `secrets rekey`

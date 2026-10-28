@@ -157,11 +157,11 @@ func init() {
 		// Run for all lifecycle commands so that stop, restart, logs, status,
 		// build, and exec work correctly from a monorepo root — not just start.
 		//
-		// Repo-scoped commands are excluded (isRepoScopedCommand): chdir'ing
-		// before RunE makes a relative [repo-root] argument resolve against
-		// backend/ instead of the directory the user typed it in.
+		// Repo-scoped invocations are excluded: chdir'ing before RunE makes
+		// relative repo paths and secrets --project resolve against backend/
+		// instead of the directory the user typed them in.
 		noMonorepo, _ := cmd.Flags().GetBool("no-monorepo")
-		if !noMonorepo && !isSourceSafeCommand(cmd.Name()) && !isRepoScopedCommand(cmd.Name()) {
+		if !noMonorepo && !isSourceSafeCommand(cmd.Name()) && !isRepoScopedInvocation(cmd) {
 			if cwd, err := os.Getwd(); err == nil {
 				if backendRoot := config.DetectMonorepoRoot(cwd); backendRoot != "" {
 					// In JSON mode stdout carries exactly one document, so the
