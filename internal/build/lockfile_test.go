@@ -239,6 +239,7 @@ func TestLockBootstrapDigest(t *testing.T) {
 // TestLockV14OptIn: v1.4 writes no lock unless build --write-lock opts in; once
 // the file exists it is honoured and updated.
 func TestLockV14OptIn(t *testing.T) {
+	t.Setenv("PATH", t.TempDir()) // No local Docker digest lookup.
 	f := newPlanFixture(t, "dev-minimal")
 	compattest.Set(t, false)
 	lockBuild(t, f)
