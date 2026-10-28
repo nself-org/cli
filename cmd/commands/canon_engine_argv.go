@@ -72,6 +72,10 @@ func rewriteOldToNew(t *canonTableT, root *cobra.Command, args []string, start i
 	if kind == "removed" {
 		return nil, nil, removedError(best)
 	}
+	// Identity breakouts keep their spelling and need no deprecation warning.
+	if strings.Join(best.From, " ") == strings.Join(best.To, " ") {
+		return args, nil, nil
+	}
 	removal := best.RemovalAt
 	if removal == "" {
 		removal = canonRemovalDefault

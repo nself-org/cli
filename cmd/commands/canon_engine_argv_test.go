@@ -20,6 +20,30 @@ import (
 
 func sp(s string) []string { return strings.Fields(s) }
 
+func TestCanonEngineArgvIdentityBreakouts(t *testing.T) {
+	root := newFixtureTree()
+	for _, input := range []string{"ci", "ci nodes ls", "--json ci nodes ls", "functions", "functions deploy --force"} {
+		t.Run(input, func(t *testing.T) {
+			args := sp(input)
+			got, notes, err := rewriteCanonArgsWith(&canonTable, root, args, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, args) {
+				t.Errorf("identity breakout changed argv: got %v, want %v", got, args)
+			}
+			if len(notes) != 0 {
+				t.Errorf("identity breakout emitted deprecation notes: %+v", notes)
+			}
+		})
+	}
+	// The identity parent must not hide a longer, real move beneath it.
+	got, notes, err := rewriteCanonArgsWith(&canonTable, root, sp("ci eval run"), true)
+	if err != nil || strings.Join(got, " ") != "eval run" || len(notes) != 1 || notes[0].New != "eval" {
+		t.Fatalf("child breakout: argv=%v notes=%+v err=%v", got, notes, err)
+	}
+}
+
 func TestCanonEngineArgv(t *testing.T) {
 	tb := fixtureTable(t)
 	type tc struct{ in, v14, v15 string }
