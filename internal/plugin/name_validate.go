@@ -16,7 +16,6 @@ package plugin
 
 import (
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/nself-org/cli/internal/errs"
@@ -36,10 +35,6 @@ var pluginSlugRe = pluginname.SlugRe
 // reservedNames are plugin-shaped names that already mean something else to the
 // CLI (see pluginname.Reserved).
 var reservedNames = pluginname.Reserved
-
-// binaryNameRe is the allowed shape of a published command binary name (one
-// path element). It is wider than a plugin slug only for '.', '_' and capitals.
-var binaryNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 // ValidateName reports whether name is a plain plugin slug that is safe to join
 // to the plugin directory and is not a reserved infrastructure name.
@@ -65,28 +60,9 @@ func ValidateCommandName(cmd string) error {
 // ValidateBinaryName reports whether bin is a single plain path element that is
 // safe to join to the plugin bin directory. A manifest's binaryName and
 // cliCommands names come from the plugin author, so they get the same checks as
-// a plugin name (no separator, no dot reference, no control character, Base
-// unchanged) with the binary name alphabet.
+// a plugin name with the binary name alphabet (see pluginname.BinaryReason).
 func ValidateBinaryName(bin string) error {
-	reason := ""
-	switch {
-	case bin == "":
-		reason = "it is empty"
-	case bin == "." || bin == "..":
-		reason = "it is a directory reference"
-	case len(bin) > maxPluginNameLen:
-		reason = "it is too long"
-	case strings.ContainsAny(bin, `/\`) || strings.ContainsRune(bin, filepath.Separator):
-		reason = "it contains a path separator"
-	case filepath.IsAbs(bin) || filepath.VolumeName(bin) != "":
-		reason = "it is an absolute path"
-	case pluginname.HasControlChar(bin):
-		reason = "it contains a control character"
-	case filepath.Base(bin) != bin:
-		reason = "it is not a single path element"
-	case !binaryNameRe.MatchString(bin):
-		reason = "binary names use letters, digits, '-', '_' and '.', and start with a letter or digit"
-	}
+	reason := pluginname.BinaryReason(bin)
 	if reason == "" {
 		return nil
 	}

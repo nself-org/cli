@@ -10,4 +10,4 @@ internal/config 7498
 internal/database 10048
 internal/deploy 6667
 internal/doctor 9414
-internal/plugin 10079
+internal/plugin 10068
