@@ -39,7 +39,7 @@ The lock is released when the command returns, fails or panics, and when the pro
 | v1.5 (`NSELF_V15=1`) | Fails at once with E460, exit 1, naming the holder: `wait for nself build (pid 4242) or stop it`. With `--json` the error envelope goes to stdout as usual. |
 | v1.4 (default) | Waits up to 30 seconds (one notice on stderr), then prints a warning on stderr and runs without the lock. |
 
-If the lock file cannot be created (read-only project folder) the command runs unlocked with a warning on stderr. The lock is a no-op on platforms without `flock` (Windows). Use WSL2 there. That platform notice prints once, and only to a terminal: never under `--quiet` or when stderr is a pipe or log. All notices go to stderr, never stdout.
+If the lock file cannot be created (read-only project folder) v1.4 runs the command unlocked with a warning on stderr; v1.5 fails with E460 and runs nothing. The lock is a no-op on platforms without `flock` (Windows). Use WSL2 there. That platform notice prints once, and only to a terminal: never under `--quiet` or when stderr is a pipe or log. All notices go to stderr, never stdout.
 
 ### Nested nself commands
 
