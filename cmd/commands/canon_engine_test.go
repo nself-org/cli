@@ -642,7 +642,7 @@ type safetyFacts struct {
 }
 
 func factsOf(c *cobra.Command) safetyFacts {
-	f := safetyFacts{flags: map[string]string{}, leaf: c.Name(), srcSafe: isSourceSafeCommand(c.Name()), repoScoped: isRepoScopedCommand(c.Name())}
+	f := safetyFacts{flags: map[string]string{}, leaf: c.Name(), srcSafe: isSourceSafeCommand(c.Name()), repoScoped: isRepoScopedInvocation(c)}
 	// The flags the command answers to: its own, plus the persistent flags of
 	// every ancestor. cobra's LocalFlags/InheritedFlags merge and cache, so a
 	// moved command would keep reporting the old parent's flags; read the

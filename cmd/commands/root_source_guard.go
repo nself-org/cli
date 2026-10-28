@@ -21,6 +21,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/spf13/cobra"
 )
 
 // checkNotInSourceRepo detects if the user is running nself from within the
@@ -103,28 +105,29 @@ func isSourceSafeCommand(name string) bool {
 	return safe[name]
 }
 
-// isRepoScopedCommand returns true for commands that operate on a source
-// repository rather than on a running nSelf stack.
-//
-// These must be exempt from two behaviours that exist for stack lifecycle
-// commands and are actively wrong here:
-//
-//   - The source-repo guard. Refusing to run inside a checkout is right for
-//     `nself start`; for `nself ci` the checkout IS the subject.
-//   - The monorepo redirect. PersistentPreRunE chdirs into the detected
-//     backend/ before RunE, so `nself ci` resolved "." — and any relative
-//     [repo-root] argument — against backend/ instead of the repo. From
-//     inside ntask it announced "Using backend as project root" and failed,
-//     because backend/ has no manifest while the repo root has package.json
-//     and pnpm-workspace.yaml. It silently overrode an explicitly passed
-//     path, which is the part that makes it a correctness bug rather than a
-//     convenience one.
-//
-// Keeping this separate from isSourceSafeCommand records WHY each name is
-// exempt, so a future addition to either list does not silently inherit the
-// other's semantics.
+// isRepoScopedCommand identifies source-repository operations. They skip both
+// the source checkout guard and the monorepo redirect: `ci [repo-root]` must
+// resolve relative paths against the caller's cwd rather than backend/.
+// Keep this separate from isSourceSafeCommand: allowing a command inside a
+// source checkout does not imply it operates on the whole repository.
 func isRepoScopedCommand(name string) bool {
-	return map[string]bool{
-		"ci": true,
-	}[name]
+	return name == "ci"
+}
+
+// isRepoScopedInvocation preserves the caller's cwd for repo-relative paths.
+// Inputs: the resolved Cobra command, including its parents.
+// Outputs: whether the monorepo redirect must be skipped.
+// Constraints: match secrets paths in both CLI modes, never unrelated leaf names.
+func isRepoScopedInvocation(cmd *cobra.Command) bool {
+	if isRepoScopedCommand(cmd.Name()) {
+		return true
+	}
+	path := strings.TrimPrefix(cmd.CommandPath(), cmd.Root().Name()+" ")
+	for _, prefix := range []string{"secrets", "config secrets"} {
+		if path == prefix+" resolve" || path == prefix+" recipients" ||
+			strings.HasPrefix(path, prefix+" recipients ") {
+			return true
+		}
+	}
+	return false
 }

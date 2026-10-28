@@ -14,13 +14,13 @@ import (
 )
 
 // argvEnv is a fake-ssh sandbox: HOME and PATH point at temp dirs, a fake ssh
-// records its argv (one word per line) and a fake ssh-keyscan leaves a marker.
+// records its argv (one word per line) and the SSH key-capture step leaves a marker.
 type argvEnv struct {
 	home, bin string
 }
 
 // hostKey places a throwaway key under alias: in ~/.ssh/known_hosts, or in the
-// nSelf pin file when pin is true. The fake ssh-keyscan returns the same key.
+// nSelf pin file when pin is true. The SSH scan returns the same key.
 type hostKey struct {
 	alias string
 	pin   bool
@@ -58,7 +58,7 @@ func mustNotExist(t *testing.T, path, why string) {
 }
 
 // newArgvEnv builds the sandbox. home "" means a fresh temp dir. A non-nil key
-// is written to the trust store it names and returned by the fake ssh-keyscan.
+// is written to the trust store it names and returned by the SSH scan.
 func newArgvEnv(t *testing.T, home string, key *hostKey) argvEnv {
 	t.Helper()
 	if runtime.GOOS == "windows" {
@@ -99,7 +99,7 @@ func newArgvEnv(t *testing.T, home string, key *hostKey) argvEnv {
 	if err := os.WriteFile(filepath.Join(e.bin, "ssh-keyscan"), []byte(scan), 0700); err != nil {
 		t.Fatal(err)
 	}
-	ssh := "#!/bin/sh\nprintf '%s\\n' \"$@\" > '" + e.argvPath() + "'\n"
+	ssh := adminScanStub(e, key) + "printf '%s\\n' \"$@\" > '" + e.argvPath() + "'\n"
 	if err := os.WriteFile(filepath.Join(e.bin, "ssh"), []byte(ssh), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +194,7 @@ func TestAdminSSHV15TrustedKeyExact(t *testing.T) {
 	if err := callEntry("verify", "u", "host.test", 2222); err != nil {
 		t.Fatal(err)
 	}
-	mustExist(t, e.scanMark(), "ssh-keyscan must run in v1.5 mode")
+	mustExist(t, e.scanMark(), "SSH key capture must run in v1.5 mode")
 	want := []string{
 		"-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=30",
 		"-o", "StrictHostKeyChecking=yes",

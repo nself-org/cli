@@ -141,15 +141,6 @@ func adminSSHArgs(ctx context.Context, user, host string, port int) ([]string, e
 
 // adminHostKeyOptions validates the live key against operator or nSelf pins.
 func adminHostKeyOptions(ctx context.Context, spec remote.HostSpec) ([]string, error) {
-	// Port 22 is the default: OpenSSH and the nSelf pin file store it under the
-	// bare host name, never [host]:22, so key lookups treat it like no port.
-	if spec.Port == 22 {
-		spec.Port = 0
-	}
-	port := spec.Port
-	if port == 0 {
-		port = 22
-	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
@@ -159,14 +150,23 @@ func adminHostKeyOptions(ctx context.Context, spec remote.HostSpec) ([]string, e
 	if err != nil {
 		return nil, err
 	}
-	keys, err := remote.ScanHostKeys(ctx, spec.Host, port)
+	keys, err := remote.ScanHostKeysSSHSpec(ctx, spec, "admin")
 	if err != nil {
-		return nil, errs.New("E487", fmt.Sprintf("host key scan for %s failed: %v", spec.Host, err))
+		return nil, errs.New("E487", fmt.Sprintf("host key scan for %s failed: %v", spec.Host, err)).WithFix("Check the SSH alias, port and ProxyJump configuration; verify the host fingerprint independently before adding its public key to ~/.ssh/known_hosts.")
 	}
-	operatorAlias := spec.Host
+	resolved, err := remote.ResolveSSHHost(ctx, spec.String())
+	if err != nil {
+		return nil, errs.New("E487", fmt.Sprintf("resolve SSH configuration for %s: %v", spec.Host, err)).WithFix("Check the host's SSH configuration with ssh -G.")
+	}
+	operatorAlias := resolved.Hostname
+	if resolved.Port != 0 && resolved.Port != 22 {
+		operatorAlias = "[" + operatorAlias + "]:" + strconv.Itoa(resolved.Port)
+	}
+	if resolved.HostKeyAlias != "" && resolved.HostKeyAlias != "none" {
+		operatorAlias = resolved.HostKeyAlias
+	}
 	pinAlias := spec.Host
-	if spec.Port != 0 {
-		operatorAlias = "[" + spec.Host + "]:" + strconv.Itoa(spec.Port)
+	if spec.Port != 0 && spec.Port != 22 {
 		pinAlias = "nself-" + strings.ReplaceAll(spec.Host, ":", "-") + "-" + strconv.Itoa(spec.Port)
 	}
 	operator := adminTrustedFingerprints(ctx, operatorAlias, filepath.Join(home, ".ssh", "known_hosts"))
@@ -179,14 +179,14 @@ func adminHostKeyOptions(ctx context.Context, spec remote.HostSpec) ([]string, e
 				"-o", "ControlMaster=no", "-o", "ControlPath=none",
 				"-o", pinOption,
 			}
-			if spec.Port != 0 && !operator[key.Fingerprint] {
+			if spec.Port != 0 && spec.Port != 22 && !operator[key.Fingerprint] {
 				opts = append(opts, "-o", "HostKeyAlias="+pinAlias)
 			}
 			return opts, nil
 		}
 	}
 	fingerprint := keys[0].Fingerprint
-	return nil, errs.New("E487", fmt.Sprintf("unknown host key %s for %s; verify it, then run nself env target add <env> <server> --trust-host-key %s", fingerprint, spec.String(), fingerprint))
+	return nil, errs.New("E487", fmt.Sprintf("unknown host key %s for %s", fingerprint, spec.String())).WithFix(fmt.Sprintf("Verify fingerprint %s independently, then add its verified public key under %q to %s. This operator known_hosts path also supports IP hosts; no nSelf environment is required.", fingerprint, operatorAlias, filepath.Join(home, ".ssh", "known_hosts")))
 }
 
 func adminTrustedFingerprints(ctx context.Context, alias, path string) map[string]bool {
