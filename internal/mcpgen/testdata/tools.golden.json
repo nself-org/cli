@@ -22834,6 +22834,15 @@
           "installCount": {
             "type": "integer"
           },
+          "next_steps": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
           "previewUrl": {
             "type": "string"
           },
@@ -22991,6 +23000,15 @@
                 },
                 "installCount": {
                   "type": "integer"
+                },
+                "next_steps": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
                 },
                 "previewUrl": {
                   "type": "string"

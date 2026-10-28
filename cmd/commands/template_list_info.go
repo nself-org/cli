@@ -114,6 +114,18 @@ func runTemplateList(cmd *cobra.Command, args []string) error {
 
 func runTemplateInfo(cmd *cobra.Command, args []string) error {
 	slug := args[0]
+	if m, err := clone.GetManifest(slug); err == nil {
+		e := templateEntry{Slug: m.Name, DisplayName: m.Name, Description: m.Description, Category: "bundled", Author: "nSelf", RequiredPlugins: nonNilStrings(m.RequiredPlugins), TemplateVersion: m.Version, NextSteps: templateNext(slug)}
+		if jsonEnvelopeOn(cmd) {
+			return emitEnv(cmd, e, true)
+		}
+		if asJSON, _ := cmd.Flags().GetBool("json"); asJSON {
+			return ui.PrintJSON(e)
+		}
+		fmt.Printf("\n  %s v%s (bundled, no network required)\n  %s\n", m.Name, m.Version, m.Description)
+		printTemplateNextSteps(os.Stdout, "<dest-dir>", m)
+		return nil
+	}
 	asJSON, _ := cmd.Flags().GetBool("json")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
