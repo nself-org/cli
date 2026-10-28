@@ -466,20 +466,13 @@ func TestLogsJSONFollowLegacyBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := ""
-	for _, line := range ioLogLines {
-		want += `{"message":` + strconv.Quote(line) + "}\n"
-	}
-	// Legacy level detection runs on the entire prefixed line.
-	want = strings.Replace(want, `{"message":"web-1  | 2026-01-02T03:04:05Z`, `{"level":"info","message":"web-1  | 2026-01-02T03:04:05Z`, 1)
-	want = strings.Replace(want, `{"message":"db-1  | 2026-01-02T03:04:07Z`, `{"level":"error","message":"db-1  | 2026-01-02T03:04:07Z`, 1)
-	want = strings.Replace(want, `{"message":"db-1  | 2026-01-02T03:04:08Z`, `{"level":"warn","message":"db-1  | 2026-01-02T03:04:08Z`, 1)
-	want = strings.ReplaceAll(want, `started"}`, `started","service":"web-1  |"}`)
-	want = strings.ReplaceAll(want, `200"}`, `200","service":"web-1  |"}`)
-	want = strings.ReplaceAll(want, `refused"}`, `refused","service":"db-1  |"}`)
-	want = strings.ReplaceAll(want, `done"}`, `done","service":"db-1  |"}`)
-	want = strings.ReplaceAll(want, `timestamp"}`, `timestamp","service":"web-1  |"}`)
-	want = strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(want, "<", `\u003c`), ">", `\u003e`), "&", `\u0026`)
+	want := strings.Join([]string{
+		`{"level":"info","message":"web-1  | 2026-01-02T03:04:05Z [info] server started","service":"web-1  |"}`,
+		`{"message":"web-1  | 2026-01-02T03:04:06Z GET /health 200","service":"web-1  |"}`,
+		`{"level":"error","message":"db-1  | 2026-01-02T03:04:07Z [error] connection refused","service":"db-1  |"}`,
+		`{"level":"warn","message":"db-1  | 2026-01-02T03:04:08Z [warn] slow query \u003cb\u003e \u0026 done","service":"db-1  |"}`,
+		`{"message":"web-1  | plain line without a timestamp","service":"web-1  |"}`,
+	}, "\n") + "\n"
 	if out != want {
 		t.Fatalf("legacy follow bytes changed: got %s want %s", out, want)
 	}

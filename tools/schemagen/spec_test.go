@@ -181,3 +181,19 @@ func TestCommittedSchemasAreCurrent(t *testing.T) {
 		t.Fatalf("schemas are stale (run `make schemas`): exit %d\n%s", code, msg)
 	}
 }
+
+func TestStreamRecordOut(t *testing.T) {
+	if got := recordOut("logs"); got != "commands/logs.record.v1.schema.json" {
+		t.Fatalf("record path = %q", got)
+	}
+	ss := newSpecSet()
+	ss.register(scratchSpec(recordOut("logs")))
+	if problems := ss.problemList(); len(problems) != 0 {
+		t.Fatalf("record schema rejected: %v", problems)
+	}
+	for _, path := range []string{"../logs.v1.schema.json", "commands/logs..record.v1.schema.json"} {
+		if outPattern.MatchString(path) {
+			t.Errorf("unsafe path accepted: %q", path)
+		}
+	}
+}
