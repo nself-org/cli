@@ -223,6 +223,18 @@ jobs:
 
       # D-0140: `make contract-check` (P7-REG-10) runs in the required `nself-ci`
       # job (.nself/ci.yaml `contract-check`); only the smoke below stays here.
+
+      # D-0204: docker-publish-version.sh stub-gh test (P7-HYG-06 follow-up).
+      - name: Docker publish version script test
+        run: bash scripts/ci/docker-publish-version_test.sh
+
+      # P7-REG-10: the machine-contract gate. Linux legs only (Windows has no
+      # POSIX shell here and macOS legs add nothing the Linux proof lacks).
+      # jq and make ship on the GitHub-hosted ubuntu images.
+      - name: Contract gate (make contract-check)
+        if: runner.os == 'Linux'
+        run: make contract-check
+
       - name: Contract smoke (Linux, both compat modes)
         if: runner.os == 'Linux'
         run: bash scripts/ci/contract-smoke.sh
