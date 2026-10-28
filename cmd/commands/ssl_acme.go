@@ -245,8 +245,14 @@ func (r *acmeRun) issueInstall(ctx context.Context, l *acme.Lineage, tos bool) e
 // install switches l's targets to the certificate, reloads the proxy and verifies
 // the fingerprint it serves; a failure restores the previous generation.
 func (r *acmeRun) install(ctx context.Context, l acme.Lineage, cert, key []byte) error {
+	// Migrate generations written by older CLIs, including rollback targets.
+	if r.provider == "traefik" {
+		if err := prepareGenerations(r.workdir, r.res.SSLDir); err != nil {
+			return e151(err)
+		}
+	}
 	gens, err := acme.Install(ctx, acme.InstallReq{SSLDir: r.res.SSLDir, Targets: l.Targets, Cert: cert, Key: key,
-		Reloader: r.reloader(), Verify: r.verifier(l, cert), Fault: r.hooks.Fault, Exit: acmeD.exit})
+		DirMode: r.installDirMode(), Owner: r.installOwner(), Reloader: r.reloader(), Verify: r.verifier(l, cert), Fault: r.hooks.Fault, Exit: acmeD.exit})
 	if err != nil {
 		return e151(r.afterFailedInstall(ctx, err))
 	}
@@ -266,7 +272,7 @@ func (r *acmeRun) verifier(l acme.Lineage, cert []byte) func(context.Context) er
 	addr, snis := ssl.ServedAddr(r.servedEnv()), r.probeHosts(l)
 	return func(ctx context.Context) error {
 		for _, sni := range snis {
-			if err := pollServed(ctx, addr, sni, hex.EncodeToString(sum[:])); err != nil {
+			if err := pollServed(ctx, addr, sni, hex.EncodeToString(sum[:]), r.proxyName()); err != nil {
 				return err
 			}
 		}

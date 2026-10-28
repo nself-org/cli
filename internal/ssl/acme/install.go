@@ -48,9 +48,14 @@ func (n NginxReloader) Reload(ctx context.Context) error {
 	return nil
 }
 
+// FileOwner selects ownership explicitly; nil preserves the running user's ownership.
+type FileOwner struct{ UID, GID int }
+
 // InstallReq is one install of one certificate into one or more targets.
 // Verify (optional) runs after the reload; Fault and Exit are the test hook.
 type InstallReq struct {
+	DirMode   os.FileMode // generation mode; zero defaults to 0700
+	Owner     *FileOwner  // owner of the generation and all certificate files
 	SSLDir    string
 	Targets   []string // dirs relative to SSLDir, e.g. certificates/api-example-org
 	Cert, Key []byte
@@ -188,7 +193,11 @@ func Install(ctx context.Context, r InstallReq) (map[string]int, error) {
 // and checks its pair; it does not switch.
 func prepare(r InstallReq, target string) (swap, error) {
 	link, parent, base := split(r.SSLDir, target)
-	if err := os.MkdirAll(parent, 0o750); err != nil {
+	parentMode := os.FileMode(0o750)
+	if r.DirMode != 0 {
+		parentMode |= r.DirMode & 0o011
+	}
+	if err := os.MkdirAll(parent, parentMode); err != nil {
 		return swap{}, err
 	}
 	gens, prev := generations(parent, base), current(link, base)
@@ -217,7 +226,11 @@ func prepare(r InstallReq, target string) (swap, error) {
 		return swap{}, err
 	}
 	dir := filepath.Join(parent, genName(base, next))
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	mode := r.DirMode
+	if mode == 0 {
+		mode = 0o700
+	}
+	if err := os.MkdirAll(dir, mode); err != nil {
 		return swap{}, err
 	}
 	// Same file set as certbot's live/ dir, so confs naming cert.pem or chain.pem keep loading.
@@ -236,6 +249,20 @@ func prepare(r InstallReq, target string) (swap, error) {
 	if !pairOK(dir) {
 		_ = os.RemoveAll(dir)
 		return swap{}, fmt.Errorf("issued certificate and key for %s do not match; nothing installed", target)
+	}
+	// Apply the reader's permissions before exposing the generation.
+	if err := os.Chmod(dir, mode); err != nil {
+		return swap{}, err
+	}
+	if r.Owner != nil {
+		for name := range files {
+			if err := os.Chown(filepath.Join(dir, name), r.Owner.UID, r.Owner.GID); err != nil {
+				return swap{}, err
+			}
+		}
+		if err := os.Chown(dir, r.Owner.UID, r.Owner.GID); err != nil {
+			return swap{}, err
+		}
 	}
 	return swap{link: link, prev: prev, new: next}, nil
 }

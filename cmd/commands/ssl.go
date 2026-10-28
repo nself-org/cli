@@ -245,16 +245,15 @@ func certbotOverlap(dir string, l acme.Lineage) (confs []string) {
 	return confs
 }
 
-// pollServed waits for nginx to serve the certificate with fingerprint want for
-// sni: `nginx -s reload` returns before the old workers stop answering.
-func pollServed(ctx context.Context, addr, sni, want string) (err error) {
+// pollServed waits for the serving proxy to present the installed fingerprint.
+func pollServed(ctx context.Context, addr, sni, want, proxy string) (err error) {
 	for i := 0; i < 20; i++ {
 		got, perr := acmeD.probe(ctx, addr, sni, 10*time.Second)
 		if err = perr; err == nil {
 			if got.SHA256 == want {
 				return nil
 			}
-			err = fmt.Errorf("nginx at %s serves another certificate for %s than the one just installed", addr, sni)
+			err = fmt.Errorf("%s at %s serves another certificate for %s than the one just installed", proxy, addr, sni)
 		}
 		select {
 		case <-ctx.Done():

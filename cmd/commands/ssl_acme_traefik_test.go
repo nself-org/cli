@@ -356,3 +356,38 @@ func TestAcmeTraefikSpecRefusesSymlinkEscape(t *testing.T) {
 		t.Error("a mount source that is a symlink out of the project was accepted")
 	}
 }
+
+func TestAcmeInstallProxyPermissions(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".nself"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".nself", "compose.env"), []byte("NSELF_HOST_UID=1001\nNSELF_HOST_GID=1002\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	old := traefikEuid
+	t.Cleanup(func() { traefikEuid = old })
+	traefikEuid = func() int { return 0 }
+	r := &acmeRun{provider: "traefik", workdir: root}
+	owner := r.installOwner()
+	if r.installDirMode() != 0711 || owner == nil || owner.UID != 1001 || owner.GID != 1002 {
+		t.Fatalf("traefik install policy: %o %+v", r.installDirMode(), owner)
+	}
+	r.provider = "nginx"
+	if r.installDirMode() != 0700 || r.installOwner() != nil {
+		t.Fatal("unexpected nginx install policy")
+	}
+}
+
+func TestPollServedNamesProxy(t *testing.T) {
+	old, wait := acmeD.probe, acmeVerifyWait
+	t.Cleanup(func() { acmeD.probe, acmeVerifyWait = old, wait })
+	acmeVerifyWait = 0
+	acmeD.probe = func(context.Context, string, string, time.Duration) (ssl.ServedCert, error) {
+		return ssl.ServedCert{SHA256: "old"}, nil
+	}
+	err := pollServed(context.Background(), "localhost:443", "example.org", "new", "traefik")
+	if err == nil || !strings.Contains(err.Error(), "traefik at") || strings.Contains(err.Error(), "nginx") {
+		t.Fatalf("wrong proxy diagnostic: %v", err)
+	}
+}

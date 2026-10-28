@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -63,9 +64,6 @@ type traefikReloader struct {
 // previous dynamic.yml in place (the renderer writes atomically), so a failure
 // here means nothing was reloaded.
 func (t traefikReloader) Reload(ctx context.Context) error {
-	if err := prepareGenerations(t.workdir, t.sslDir); err != nil {
-		return err
-	}
 	raw, err := t.config(ctx, t.workdir)
 	if err != nil {
 		return fmt.Errorf("resolving %s: %w", traefikConfigService, err)
@@ -201,4 +199,22 @@ func (r *acmeRun) probeHosts(l acme.Lineage) (out []string) {
 		out = append(out, cmp.Or(pick, strings.Replace(l.Domains[0], "*.", "check.", 1)))
 	}
 	return out
+}
+
+// Installation permissions are chosen by the serving proxy, before the switch.
+func (r *acmeRun) installDirMode() os.FileMode {
+	if r.provider == "traefik" {
+		return 0o711
+	}
+	return 0o700
+}
+func (r *acmeRun) installOwner() *acme.FileOwner {
+	if r.provider != "traefik" || traefikEuid() != 0 {
+		return nil
+	}
+	uid, gid := hostOwner(r.workdir)
+	if uid < 0 {
+		return nil
+	}
+	return &acme.FileOwner{UID: uid, GID: gid}
 }
