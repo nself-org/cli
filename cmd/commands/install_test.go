@@ -8,6 +8,24 @@ import (
 	"github.com/nself-org/cli/internal/plugin"
 )
 
+// TestRemoveDeleteDataHelp describes both compatibility modes so operators do
+// not mistake v1.4's implicit data deletion for the v1.5 removal policy.
+func TestRemoveDeleteDataHelp(t *testing.T) {
+	flag := removeCmd.Flags().Lookup("delete-data")
+	if flag == nil {
+		t.Fatal("remove is missing --delete-data")
+	}
+	for _, policy := range []string{
+		"v1.5 keeps data unless --delete-data",
+		"asks for confirmation (or pass --yes)",
+		"v1.4 plugin remove never asks and drops data unless --keep-data",
+	} {
+		if !strings.Contains(flag.Usage, policy) {
+			t.Errorf("--delete-data help missing %q: %s", policy, flag.Usage)
+		}
+	}
+}
+
 // TestInstallResolvesBundlesBeforePlugins pins the resolution order CLI-R19
 // depends on. A bundle and a plugin can share a name; `nself install nchat`
 // must install the bundle, not a single plugin that happens to match.

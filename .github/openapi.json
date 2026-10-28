@@ -47459,7 +47459,7 @@
                     "properties": {
                       "delete-data": {
                         "default": false,
-                        "description": "Delete plugin data (schema/tables). A bundle remove asks for confirmation (or pass --yes); a plugin remove never asks and drops data unless --keep-data",
+                        "description": "Delete plugin data (schema/tables). v1.5 keeps data unless --delete-data and asks for confirmation (or pass --yes); v1.4 plugin remove never asks and drops data unless --keep-data. Bundle data deletion asks for confirmation (or pass --yes) in both modes",
                         "type": "boolean"
                       },
                       "dry-run": {
