@@ -5,6 +5,9 @@ package commands
 // Inputs: fake values on an in-memory reader or a real pipe. Outputs: pass/fail.
 
 import (
+	"errors"
+	"github.com/nself-org/cli/internal/errs"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -98,6 +101,39 @@ func TestSecretsSet_ValueFromStdin(t *testing.T) {
 		empty.SetErr(&strings.Builder{})
 		if err := secretsSetCmd.RunE(empty, []string{"FAKE_EMPTY"}); err == nil {
 			t.Error("an empty stdin value must be refused")
+		}
+	})
+}
+
+func TestSecretStdinErrorsAreCoded(t *testing.T) {
+	for _, in := range []io.Reader{strings.NewReader(""), strings.NewReader(strings.Repeat("a", maxSecretStdinBytes+1)), brokenSecretInput{}} {
+		c := &cobra.Command{}
+		c.SetIn(in)
+		_, err := readSecretValue(c, "FIXTURE")
+		var coded *errs.CLIError
+		if !errors.As(err, &coded) || coded.Code != "E401" {
+			t.Errorf("want E401, got %v", err)
+		}
+	}
+}
+
+type brokenSecretInput struct{}
+
+func (brokenSecretInput) Read([]byte) (int, error) { return 0, io.ErrUnexpectedEOF }
+
+func TestSecretsSetMachineLiteralDash(t *testing.T) {
+	requireAge(t)
+	withProjectRoot(t, func(root string) {
+		initSecretsProject(t, root)
+		old := restoredInvokeSecrets
+		t.Cleanup(func() { restoredInvokeSecrets = old })
+		restoredInvokeSecrets = true
+		cmd := stdinCmd("")
+		// A literal dash is too short for the secret store. Reaching that
+		// validation proves VALUE was preserved instead of reading empty stdin.
+		err := secretsSetCmd.RunE(cmd, []string{"FAKE_MACHINE_DASH", "-"})
+		if err == nil || !strings.Contains(err.Error(), "value is only 1 characters") {
+			t.Fatalf("literal dash did not reach secret validation: %v", err)
 		}
 	})
 }

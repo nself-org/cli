@@ -54,7 +54,7 @@ command line, where the shell history and the process list can show it.`,
 		}
 		key := args[0]
 		var value string
-		if len(args) > 1 && args[1] != "-" {
+		if len(args) > 1 && (args[1] != "-" || restoredInvokeSecrets) {
 			value = args[1]
 		} else {
 			v, err := readSecretValue(cmd, key)
