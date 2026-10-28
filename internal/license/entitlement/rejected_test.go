@@ -179,3 +179,36 @@ func TestLoadRejectedFailsClosedWhenDirectoryCannotBeListed(t *testing.T) {
 		t.Fatal("an unlistable cache directory was read as having no rejection markers")
 	}
 }
+
+// A marker whose name is exactly prefix+suffix (no hash) must not be loaded:
+// len(name) <= len(prefix)+len(suffix) is the guard. Mutation at rejected.go:83:29
+// flips <= to <, which would accept an empty-hash marker and produce a "" key in
+// the rejection set.
+func TestLoadRejectedIgnoresMarkerWithEmptyHash(t *testing.T) {
+	dir := useRejectedDir(t)
+	empty := filepath.Join(dir, markerPrefix+markerSuffix)
+	if err := os.WriteFile(empty, []byte{}, 0600); err != nil {
+		t.Fatal(err)
+	}
+	set, err := loadRejected()
+	if err != nil {
+		t.Fatalf("load failed: %v", err)
+	}
+	if set[""] {
+		t.Fatal("empty-hash marker was loaded as a rejection")
+	}
+}
+
+// writeMarker must report an OpenFile failure. The mutant at rejected.go:99:9
+// is killed by rejected_marker_test.go, which checks which error comes back.
+func TestWriteMarkerReportsOpenFailure(t *testing.T) {
+	dir := useRejectedDir(t)
+	// Block the marker path with a directory so OpenFile cannot create it.
+	blocked := filepath.Join(dir, markerPrefix+"blocked"+markerSuffix)
+	if err := os.Mkdir(blocked, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeMarker(filepath.Join(dir, rejectedFile), "blocked"); err == nil {
+		t.Fatal("writeMarker did not report OpenFile failure")
+	}
+}
