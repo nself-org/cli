@@ -26,6 +26,10 @@ func TestUpdatePlanHasuraRow(t *testing.T) {
 		pin        string
 		want, note string // want "" = no value; the reason must then contain the note text
 	}{
+		{"fork is not upstream", false, "ghcr.io/acme/hasura-fork:v2.60.0", "", "repository"},
+		{"migration suffix", false, "hasura/graphql-engine:v2.44.0.cli-migrations-v3", "", "tag"},
+		{"ce suffix", true, "hasura/graphql-engine:v2.51.0-ce", "", "tag"},
+		{"latest tag", false, "hasura/graphql-engine:latest", "", "tag"},
 		{"v1.4 keeps v2.44.0", false, v14.String(), v14.String(), ""},
 		{"v1.4 moves an older pin to v2.44.0 without a note", false, older, v14.String(), ""},
 		{"v1.4 never moves a v2.51.0 pin back", false, cur.String(), "", "backup restored"},

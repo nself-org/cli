@@ -12,6 +12,7 @@ package commands
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/nself-org/cli/internal/compose"
@@ -25,6 +26,18 @@ func hasuraCandidate(pin string) plan.Candidate {
 	cur, _ := compose.LockedRef("hasura")
 	if !ok {
 		return plan.Candidate{Reason: plan.ReasonNoImage}
+	}
+	base, _, _ := strings.Cut(pin, "@")
+	repo := base
+	tag := ""
+	if i := strings.LastIndex(base, ":"); i > strings.LastIndex(base, "/") {
+		repo, tag = base[:i], base[i+1:]
+	}
+	if repo != "hasura/graphql-engine" && repo != "docker.io/hasura/graphql-engine" {
+		return plan.Candidate{Reason: "the Hasura pin uses a different repository; it is left as is"}
+	}
+	if tag != "" && !plainHasuraTag.MatchString(tag) {
+		return plan.Candidate{Reason: "the Hasura tag is not a plain vX.Y.Z release tag; update cannot replace a variant or moving tag with the upstream image; it is left as is"}
 	}
 	cmp, known := hasuraPinOrder(pin, r, v14, cur)
 	switch {
@@ -47,6 +60,16 @@ func hasuraCandidate(pin string) plan.Candidate {
 // the tag decides only when the digest is absent or not in the lock.
 func hasuraPinOrder(pin string, cand, v14, cur compose.Ref) (order int, known bool) {
 	base, digest, _ := strings.Cut(pin, "@")
+	repo := base
+	if i := strings.LastIndex(base, ":"); i > strings.LastIndex(base, "/") {
+		repo = base[:i]
+		if !plainHasuraTag.MatchString(base[i+1:]) {
+			return 0, false
+		}
+	}
+	if repo != "hasura/graphql-engine" && repo != "docker.io/hasura/graphql-engine" {
+		return 0, false
+	}
 	for _, e := range []compose.Ref{v14, cur} {
 		if digest != "" && digest == e.IndexDigest {
 			return compareHasuraVersion(e.Version, cand.Version)
@@ -60,8 +83,13 @@ func hasuraPinOrder(pin string, cand, v14, cur compose.Ref) (order int, known bo
 	return 0, false
 }
 
+var plainHasuraTag = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+$`)
+
 // compareHasuraVersion orders two vMAJOR.MINOR.PATCH tags; ok is false for anything else.
 func compareHasuraVersion(a, b string) (int, bool) {
+	if !plainHasuraTag.MatchString(a) || !plainHasuraTag.MatchString(b) {
+		return 0, false
+	}
 	var x, y [3]int
 	if _, err := fmt.Sscanf(a, "v%d.%d.%d", &x[0], &x[1], &x[2]); err != nil {
 		return 0, false

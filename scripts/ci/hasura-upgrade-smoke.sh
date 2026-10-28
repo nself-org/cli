@@ -53,8 +53,34 @@ FIX="$ROOT/scripts/ci/testdata/hasura-smoke"
 PASSED=0
 FAILED=0
 pass() { printf 'PASS %s\n' "$1"; PASSED=$((PASSED + 1)); }
-# redact: strip anything that looks like a JWT or a long hex secret from detail lines.
-redact() { sed -E 's/eyJ[A-Za-z0-9_.-]+/<jwt>/g; s/[A-Fa-f0-9]{32,}/<hex>/g'; }
+# Match runtime secrets literally, before masking token-shaped values.
+redact() {
+  python3 -c '
+import json, pathlib, re, sys
+text = sys.stdin.read()
+p = pathlib.Path(sys.argv[1]) / ".env"
+values = []
+if p.is_file():
+    for line in p.read_text().splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key in ("HASURA_GRAPHQL_ADMIN_SECRET", "HASURA_GRAPHQL_JWT_SECRET", "HASURA_JWT_KEY"):
+            value = value.strip().strip(chr(34)).strip(chr(39))
+            if value:
+                values.append(value)
+                try:
+                    jwt = json.loads(value)
+                    if isinstance(jwt, dict) and isinstance(jwt.get("key"), str):
+                        values.append(jwt["key"])
+                except ValueError:
+                    pass
+for value in sorted(set(values), key=len, reverse=True):
+    if value:
+        text = text.replace(value, "<secret>")
+text = re.sub(r"eyJ[A-Za-z0-9_.-]+", "<jwt>", text)
+text = re.sub(r"[A-Fa-f0-9]{32,}", "<hex>", text)
+sys.stdout.write(text)
+' "${PDIR:-/nonexistent}"
+}
 fail() {
   printf 'FAIL %s\n' "$1"
   FAILED=$((FAILED + 1))
@@ -474,13 +500,13 @@ if export_json "$WORK/meta-post.json" && cmp -s "$WORK/meta-pre.json" "$WORK/met
 else
   fail "metadata export (API JSON, normalised) equals the pre-switch export" "$(diff "$WORK/meta-pre.json" "$WORK/meta-post.json" 2>&1 | head -n 8 | tr '\n' '|')"
 fi
+nsf db hasura diff
+if [ "$RC" -eq 0 ]; then pass "nself db hasura diff exits 0 (live metadata equals the on-disk export)"; else fail "nself db hasura diff exits 0" "rc=$RC $(nsf_tail)"; fi
 if export_tree "$WORK/meta-post" && cmp -s "$WORK/meta-pre.txt" "$WORK/meta-post.txt"; then
   pass "nself db hasura metadata export tree equals the pre-switch export"
 else
   fail "nself db hasura metadata export tree equals the pre-switch export" "$(diff "$WORK/meta-pre.txt" "$WORK/meta-post.txt" 2>&1 | head -n 8 | tr '\n' '|')"
 fi
-nsf db hasura diff
-if [ "$RC" -eq 0 ]; then pass "nself db hasura diff exits 0 (live metadata equals the on-disk export)"; else fail "nself db hasura diff exits 0" "rc=$RC $(nsf_tail)"; fi
 nsf db hasura metadata apply
 if [ "$RC" -eq 0 ] && export_tree "$WORK/meta-rt2" && cmp -s "$WORK/meta-pre.txt" "$WORK/meta-rt2.txt"; then
   pass "v2.51 round trip: apply the exported tree, export again, identical to the pre-switch export"
