@@ -177,3 +177,68 @@ func TestPlatformSignaturesAbsentUnchanged(t *testing.T) {
 		t.Fatal("release_signature must still be projected")
 	}
 }
+
+// A licensed row has no platform_checksums, so platform_signatures on it is refused
+// instead of being written next to checksums null (D-1311).
+func TestPlatformSignaturesRefusedOnLicensedRow(t *testing.T) {
+	dir := tree(t, "licensed", "claw")
+	rel := decodeMap(t, readFile(t, filepath.Join(dir, "releases.json")))
+	row := rel["releases"].(map[string]any)["claw"].(map[string]any)
+	row["release_signature"] = fakeSig("source")
+	row["platform_checksums"] = map[string]any{"linux-amd64": strings.Repeat("ab", 32)}
+	row["platform_signatures"] = map[string]any{"linux-amd64": fakeSig("linux-amd64")}
+	b, err := json.Marshal(rel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeReleases(t, dir, string(b))
+	expectProblem(t, "claw: platform_signatures is not allowed on a licensed row", tierArgs("licensed", dir, t.TempDir(), "")...)
+}
+
+// Catalog mode reads registry entries a person may have edited; it applies the
+// same platform signature checks releases.go applies (D-1311).
+func TestCatalogModeChecksRegistryPlatformSignatures(t *testing.T) {
+	root := t.TempDir()
+	free, lic := filepath.Join(root, "free"), filepath.Join(root, "licensed")
+	good := map[string]any{"linux-amd64": fakeSig("linux-amd64")}
+	mustGen(t, tierArgs("free", signedTree(t, good), free, "")...)
+	mustGen(t, tierArgs("licensed", tree(t, "licensed", "claw"), lic, "")...)
+	bundles := filepath.Join(root, "bundles.json")
+	if err := os.WriteFile(bundles, []byte(`{"schema_version":"2.0.0","bundles":{}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	editedEntry := func(path, slug string, edit func(entry map[string]any)) string {
+		reg := decodeMap(t, readFile(t, path))
+		edit(reg["plugins"].(map[string]any)[slug].(map[string]any))
+		b, err := json.Marshal(reg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := filepath.Join(t.TempDir(), "registry.json")
+		if err := os.WriteFile(out, b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	catalogArgs := func(freeReg, licReg string) []string {
+		return []string{"-mode", "catalog", "-free-registry", freeReg, "-licensed-registry", licReg, "-bundles", bundles, "-out", t.TempDir()}
+	}
+	freeReg, licReg := filepath.Join(free, "registry.json"), filepath.Join(lic, "registry.json")
+	mustGen(t, catalogArgs(freeReg, licReg)...)
+
+	badAlg := editedEntry(freeReg, "ai-cli", func(e map[string]any) {
+		e["platform_signatures"].(map[string]any)["linux-amd64"].(map[string]any)["alg"] = "rsa"
+	})
+	expectProblem(t, "ai-cli (free): platform_signatures.linux-amd64 needs key_id, sig and alg ed25519", catalogArgs(badAlg, licReg)...)
+
+	noChecksum := editedEntry(freeReg, "ai-cli", func(e map[string]any) {
+		delete(e["checksums"].(map[string]any)["platforms"].(map[string]any), "linux-amd64")
+	})
+	expectProblem(t, "ai-cli (free): platform_signatures.linux-amd64 has no platform_checksums.linux-amd64", catalogArgs(noChecksum, licReg)...)
+
+	noAnchor := editedEntry(freeReg, "ai-cli", func(e map[string]any) { e["release_signature"] = nil })
+	expectProblem(t, "ai-cli (free): platform_signatures needs a release_signature", catalogArgs(noAnchor, licReg)...)
+
+	licSigned := editedEntry(licReg, "claw", func(e map[string]any) { e["platform_signatures"] = good })
+	expectProblem(t, "claw (licensed): platform_signatures is not allowed on a licensed entry", catalogArgs(freeReg, licSigned)...)
+}

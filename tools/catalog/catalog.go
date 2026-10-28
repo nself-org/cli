@@ -30,7 +30,12 @@ func buildCatalog(free, licensed *model.Registry, b *model.Bundles, from model.G
 		tier string
 	}{{free, model.TierFree}, {licensed, model.TierLicensed}} {
 		for _, slug := range sortedKeys(side.reg.Plugins) {
-			row, p := rowOf(slug, side.tier, side.reg.Plugins[slug], b)
+			e := side.reg.Plugins[slug]
+			if p := signatureProblems(slug, side.tier, e); len(p) > 0 {
+				probs = append(probs, p...)
+				continue
+			}
+			row, p := rowOf(slug, side.tier, e, b)
 			if p != "" {
 				probs = append(probs, p)
 				continue
@@ -90,6 +95,24 @@ func rowOf(slug, tier string, e model.RegistryEntry, b *model.Bundles) (model.Ca
 		row.DocsURL = &in.DocsURL
 	}
 	return row, ""
+}
+
+// signatureProblems applies to a registry entry the checks releases.go applies to
+// a release row, so a hand-edited registry cannot yield a catalog row that fails
+// the catalog schema. A licensed entry never carries platform_signatures.
+func signatureProblems(slug, tier string, e model.RegistryEntry) []string {
+	label := fmt.Sprintf("%s (%s)", slug, tier)
+	if tier == model.TierLicensed {
+		if len(e.PlatformSignatures) > 0 {
+			return []string{label + ": platform_signatures is not allowed on a licensed entry"}
+		}
+		return nil
+	}
+	rel := model.Release{ReleaseSignature: e.ReleaseSignature, PlatformSignatures: e.PlatformSignatures}
+	if e.Checksums != nil {
+		rel.PlatformChecksums = e.Checksums.Platforms
+	}
+	return platformSignatureProblems(label, rel)
 }
 
 // sharedSlugs is the set of slugs present in both registries.
