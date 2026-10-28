@@ -45,11 +45,15 @@ const maxLogLineBytes = 4 << 20
 // parent context ends the stream without an error.
 func streamLogLines(parent context.Context, workdir string, composeArgs []string, opts LogsOptions, fn func(line string) error) error {
 	return docker.StreamLines(parent, workdir, composeArgs, os.Stderr, false, maxLogLineBytes, func(line string) error {
-		filtered, ok := filterLogLine(line, opts)
+		text := line
+		if logsEnvelopeMode(opts.JSON) {
+			text = composePrefixRE.ReplaceAllString(line, "")
+		}
+		_, ok := filterLogLine(text, opts)
 		if !ok {
 			return nil
 		}
-		return fn(filtered)
+		return fn(line)
 	})
 }
 

@@ -41,7 +41,7 @@ type Spec struct {
 }
 
 // outPattern is the only accepted shape of Spec.Out.
-var outPattern = regexp.MustCompile(`^[a-z0-9/_-]+\.v[0-9]+\.schema\.json$`)
+var outPattern = regexp.MustCompile(`^[a-z0-9/_-]+(?:\.[a-z0-9_-]+)*\.v[0-9]+\.schema\.json$`)
 
 // typeOverrides holds overrides keyed by Go type; build applies them before a
 // spec's own Overrides, so every schema generated from the same type (for

@@ -39,3 +39,18 @@ func TestExposureRefusesFlagJSONOverride(t *testing.T) {
 		}
 	}
 }
+
+func TestExposedFlagsExcludeNonEnvelopeJSON(t *testing.T) {
+	str := func(s string) *string { return &s }
+	cmd := &cmdregistry.Command{Flags: []cmdregistry.Flag{
+		{Name: "status", Type: "bool", JSON: str(canon.JSONNone)},
+		{Name: "legacy", Type: "bool", JSON: str(canon.JSONLegacy)},
+		{Name: "tail", Type: "int"},
+	}}
+	for _, transport := range []string{TransportMCP, TransportHTTP, TransportHTTPStream} {
+		flags := ExposedFlags(cmd, transport)
+		if len(flags) != 1 || flags[0].Name != "tail" {
+			t.Fatalf("%s flags = %v", transport, flags)
+		}
+	}
+}

@@ -22,8 +22,8 @@
       "id": "urn:nself:cli:schema:commands:admin-health:v1"
     },
     {
-      "path": "commands/admin-logs-record.v1.schema.json",
-      "id": "urn:nself:cli:schema:commands:admin-logs-record:v1"
+      "path": "commands/admin-logs.record.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:admin-logs.record:v1"
     },
     {
       "path": "commands/admin-logs.v1.schema.json",
@@ -1098,8 +1098,8 @@
       "id": "urn:nself:cli:schema:commands:license:v1"
     },
     {
-      "path": "commands/logs-record.v1.schema.json",
-      "id": "urn:nself:cli:schema:commands:logs-record:v1"
+      "path": "commands/logs.record.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:logs.record:v1"
     },
     {
       "path": "commands/logs.v1.schema.json",

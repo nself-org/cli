@@ -194,7 +194,7 @@ func TestEffectivePresplitEquivalence(t *testing.T) {
 					// stream, --status/--summary/--top are json none); the frozen
 					// pre-split table says stream/legacy.
 					got.Flags = nil
-					want.Output, want.JSON = "", ""
+					want.Output, want.JSON = "", JSONLegacy
 				case "exec":
 					// P7-SURF-27: exec is interactive (runs a TTY command in a container).
 					want.Output = OutputInteractive
