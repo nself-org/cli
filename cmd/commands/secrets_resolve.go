@@ -7,6 +7,7 @@ package commands
 // SPORT: P7-TRUST-03, contract:cli.secret-resolve/v1.
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -53,6 +54,22 @@ func auditResolveFlagError(cmd *cobra.Command, _ error) error {
 		return err
 	}
 	return errs.New("E401", "Invalid resolve flags")
+}
+
+// auditResolvePreRunError records refusals before RunE without changing the error.
+func auditResolvePreRunError(cmd *cobra.Command, args []string, err error) error {
+	project, _ := cmd.Flags().GetString("project")
+	attempt, _ := cmd.Flags().GetString("for-attempt")
+	code := "E401"
+	var ce *errs.CLIError
+	if errors.As(err, &ce) {
+		code = ce.Code
+	}
+	req := secrets.ResolveRequest{ProjectRoot: project, AttemptID: attempt, Refs: args}
+	if auditErr := secrets.AuditResolve(audit.Write, req, code); auditErr != nil {
+		return auditErr
+	}
+	return err
 }
 
 func init() { secretsCmd.AddCommand(secretsResolveCmd) }

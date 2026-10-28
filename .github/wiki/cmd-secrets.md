@@ -39,6 +39,8 @@ Resolve and recipient commands refuse symlinked store directories and files with
 
 Every resolver call records exactly one `secret-resolve` audit event with grammar-valid refs, a valid attempt ID, absolute project, user and outcome, including refusals. Invalid refs are represented by their count and SHA-256 prefixes; invalid attempt IDs are represented by a SHA-256 prefix. Values never enter the audit record; an audit failure prevents value delivery. Resolve is CLI-only and refused over MCP and HTTP.
 
+Inherited pre-run refusals, including the CLI source-directory guard, also record that event before returning. The outcome uses the refusal's structured error code, or `E401` when it has none.
+
 ### Manage recipients
 
 `nself config secrets recipients add --project <directory> --file ci <age-public-key>` grants access to an existing store. `remove --file ci <age-public-key>` removes a recipient; `list --file ci` prints public recipients. `--project` defaults to the current directory, is made absolute, and must name an existing directory for every action. In v1.4 use `nself secrets recipients`. In v1.5 `--json` emits recipient envelopes.

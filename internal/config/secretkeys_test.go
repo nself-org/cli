@@ -92,6 +92,9 @@ func TestMaskURLCredentials(t *testing.T) {
 		{"https://h/?pw=FAKE34&x=1", "https://h/?pw=****&x=1"},
 		{"https://h/?signup=true&design=1&country_code=us", "https://h/?signup=true&design=1&country_code=us"},
 		{"https://h/?Sig=FAKE35", "https://h/?Sig=****"},
+		{"https://h/?jwt=FAKEJWT36&x=1", "https://h/?jwt=****&x=1"},
+		{"https://h/p;user_jwt=FAKEJWT37", "https://h/p;user_jwt=****"},
+		{"https://h/#jwt=FAKEJWT38&state=s", "https://h/#jwt=****&state=s"},
 		// Opus adversarial inputs (cli#724).
 		{"https://h/app/page;jsessionid=ABC?access_token=FAKE23", "https://h/app/page;jsessionid=****"},
 		{"https://h/app/page;v=ABC?access_token=FAKE24", "https://h/app/page;v=ABC?access_token=****"},
