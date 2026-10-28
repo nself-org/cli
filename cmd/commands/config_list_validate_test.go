@@ -10,7 +10,7 @@ import (
 )
 
 // d0430Scalars are synthetic credential-shaped scalars written into nself.yaml
-// where build's validator echoes a value: a string where a map or list
+// where a validator must not echo a value: a string where a map or list
 // belongs, and non-string scalars where a string belongs.
 var d0430Scalars = []string{"fake-scalar-d0430-0000", "fake-list-d0430-0000", "8675309123", "fake-true",
 	"fake-pem-d0430-0000", "fake-pem-d0430-0001", "fake-tag-d0430-0000", "fake-fold-d0430-0000", "fake-fold-d0430-0001",
@@ -25,44 +25,27 @@ var d0430Manifests = []string{
 	"app: !<tag:example.test,2000:s> fake-vtag-d0430-0000\nbundle: \"a\\nfake-esc-d0430-0000\"\nplugins: !x-y |\n  fake-tblk-d0430-0000\n",
 }
 
-// TestRedactManifestFinding runs build.ValidateManifestFile on a manifest that
-// holds synthetic scalars in every echoing shape (D-0430). The raw findings
-// must carry the scalars (positive control: the guard tracks build's wording)
-// and the redacted findings must not, while file, line and path stay.
-func TestRedactManifestFinding(t *testing.T) {
-	var findings []build.Finding
-	for i, m := range d0430Manifests {
+// TestManifestFindingsHideScalars guards all callers of the build validator.
+func TestManifestFindingsHideScalars(t *testing.T) {
+	for i, manifest := range d0430Manifests {
 		path := filepath.Join(t.TempDir(), "nself.yaml")
-		if err := os.WriteFile(path, []byte(m), 0o600); err != nil {
+		if err := os.WriteFile(path, []byte(manifest), 0600); err != nil {
 			t.Fatal(err)
 		}
-		if fs := build.ValidateManifestFile(path); len(fs) > 0 {
-			findings = append(findings, fs...)
-		} else {
+		findings := build.ValidateManifestFile(path)
+		if len(findings) == 0 {
 			t.Fatalf("manifest %d gives no finding", i)
 		}
-	}
-	var raw, redacted strings.Builder
-	for _, f := range findings {
-		raw.WriteString(f.String() + "\n")
-		r := redactManifestFinding(f)
-		if r.File != f.File || r.Line != f.Line || r.Path != f.Path || r.Code != f.Code {
-			t.Errorf("redaction changed the location: %+v -> %+v", f, r)
+		for _, finding := range findings {
+			if finding.Line == 0 || finding.Path == "" {
+				t.Fatal("missing finding location")
+			}
+			for _, value := range d0430Scalars {
+				if strings.Contains(finding.String(), value) {
+					t.Error("finding echoes a scalar")
+				}
+			}
 		}
-		redacted.WriteString(r.String() + "\n")
-	}
-	for _, v := range d0430Scalars {
-		if v != "fake-true" && !strings.Contains(raw.String(), v) {
-			t.Fatalf("positive control: build no longer echoes %q, so this guard tests nothing; update redactManifestFinding\n%s", v, raw.String())
-		}
-	}
-	for _, v := range d0430Scalars {
-		if strings.Contains(redacted.String(), v) {
-			t.Errorf("redacted findings still hold %q:\n%s", v, redacted.String())
-		}
-	}
-	if !strings.Contains(redacted.String(), "(value hidden)") {
-		t.Errorf("redacted findings lack the (value hidden) marker:\n%s", redacted.String())
 	}
 }
 
