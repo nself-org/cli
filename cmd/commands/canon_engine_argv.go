@@ -293,10 +293,3 @@ func rootFlag(root *cobra.Command, a string) *pflag.Flag {
 	}
 	return nil
 }
-
-// boolValue is a stand-in bool flag value for the implicit help flags.
-type boolValue struct{}
-
-func (boolValue) String() string   { return "false" }
-func (boolValue) Set(string) error { return nil }
-func (boolValue) Type() string     { return "bool" }
