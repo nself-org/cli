@@ -12,7 +12,8 @@ package database
 // style) instead. The same JSON form is used when the body contains the text
 // "!include", with each "!include" written as "\u0021include", so a string value
 // is never mistaken for an include directive; YAML decodes it back to "!".
-// Multi-line bodies without "!include" stay block YAML.
+// Keep-chomp scalars also use JSON because the resolver trims trailing newlines.
+// Other multi-line bodies without "!include" stay block YAML.
 // Pure and deterministic (sorted keys, no clock, no disk) except
 // writeMetadataTree, which only writes the files it is given. A key that is not
 // a safe file name is rejected. The layout is what applyViaIncludeResolver reads.
@@ -22,6 +23,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -29,6 +31,8 @@ import (
 )
 
 const metadataIndexFile = "config.yaml"
+
+var metadataKeepChomp = regexp.MustCompile(`(?m)[|>](?:[1-9]?\+|\+[1-9])\n`)
 
 // metadataFile is one file of the layout; Name is relative to the metadata dir.
 type metadataFile struct {
@@ -68,7 +72,7 @@ func metadataLayout(data []byte) ([]metadataFile, error) {
 }
 
 // marshalMetadataValue encodes one top-level value for its <key>.yaml file:
-// block YAML, except single-line bodies and bodies containing "!include", which
+// block YAML, except single-line bodies, keep-chomp scalars, and "!include", which
 // become one line of JSON with "!include" escaped (see the header for why).
 func marshalMetadataValue(v interface{}) ([]byte, error) {
 	body, err := yaml.Marshal(v)
@@ -76,7 +80,9 @@ func marshalMetadataValue(v interface{}) ([]byte, error) {
 		return nil, err
 	}
 	oneLine := strings.Count(strings.TrimRight(string(body), "\n"), "\n") == 0
-	if !oneLine && !strings.Contains(string(body), "!include") {
+	// The textual include resolver trims terminal newlines, so keep-chomp
+	// scalars must use JSON escapes to preserve their exact string values.
+	if !oneLine && !strings.Contains(string(body), "!include") && !metadataKeepChomp.Match(body) {
 		return body, nil
 	}
 	js, err := json.Marshal(v)

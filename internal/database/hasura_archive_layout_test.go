@@ -153,6 +153,24 @@ func TestHasuraLayoutExportEqualsArchive(t *testing.T) {
 	}
 }
 
+// Keep-chomp YAML strings must preserve every trailing newline through includes.
+func TestHasuraLayoutPreservesTrailingNewlines(t *testing.T) {
+	data := []byte(`{"actions":[{"definition":{"handler":"https://example.test\n\n\n"}}]}`)
+	dir := t.TempDir()
+	if err := writeMetadataTree(dir, data); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := resolveIncludes(dir, filepath.Join(dir, metadataIndexFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc interface{}
+	if err := yaml.Unmarshal(resolved, &doc); err != nil {
+		t.Fatal(err)
+	}
+	sameJSON(t, convertYAMLToJSON(doc), data)
+}
+
 // An older monolithic archive (one config.yaml, everything inline) still resolves.
 func TestHasuraLayoutLegacyMonolithicStillResolves(t *testing.T) {
 	data := layoutInput(t)
