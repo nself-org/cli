@@ -22,7 +22,12 @@ func enterInstalledInvocation(cmd *cobra.Command, args []string) error {
 
 // guardedPre checks before hooks can fetch, cache, or change directories.
 func guardedPre(orig func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
-	return func(cmd *cobra.Command, args []string) error {
+	return func(cmd *cobra.Command, args []string) (err error) {
+		defer func() {
+			if err != nil && cmd == secretsResolveCmd {
+				err = auditResolvePreRunError(cmd, args, err)
+			}
+		}()
 		if cmd.Annotations["nself.mount.source"] == "installed" {
 			if err := enterInstalledInvocation(cmd, args); err != nil {
 				return err

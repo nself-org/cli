@@ -321,3 +321,35 @@ func TestSecretsResolveFlagErrorAudit(t *testing.T) {
 		}
 	}
 }
+
+// TestSecretsResolveSourceGuardAudit exercises the inherited refusal before RunE.
+func TestSecretsResolveSourceGuardAudit(t *testing.T) {
+	for _, v15 := range []bool{false, true} {
+		t.Run(map[bool]string{false: "v14", true: "v15"}[v15], func(t *testing.T) {
+			root := t.TempDir()
+			for _, dir := range []string{"cmd/commands", "internal"} {
+				if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module nself\n\ngo 1.26.10\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			args := []string{"secrets", "resolve", "--for-attempt", "source-guard", "--json", "project/FOO", resolveFakeValue}
+			if v15 {
+				args = append([]string{"config"}, args...)
+			}
+			r := runPilot(t, root, v15, nil, args...)
+			if r.code != 1 || !strings.Contains(r.stdout+r.stderr, "cannot run nself commands inside the CLI source repository") || strings.Contains(r.stdout+r.stderr, resolveFakeValue) {
+				t.Fatalf("source guard refusal: exit=%d stdout=%s stderr=%s", r.code, r.stdout, r.stderr)
+			}
+			b, err := os.ReadFile(filepath.Join(filepath.Dir(root), "home", ".nself", "audit.log"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if bytes.Count(b, []byte(`"event":"secret-resolve"`)) != 1 || !bytes.Contains(b, []byte(`"outcome":"E401"`)) || bytes.Contains(b, []byte(resolveFakeValue)) {
+				t.Fatalf("source guard must audit exactly one value-free refusal: %s", b)
+			}
+		})
+	}
+}
