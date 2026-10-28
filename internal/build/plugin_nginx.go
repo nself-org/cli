@@ -109,8 +109,8 @@ func InjectPluginNginxRoutes(workdir, pluginDir string, cfg *config.Config) (int
 	return injectPluginNginxRoutesVia(newDiskSink(workdir), workdir, pluginDir, cfg, true)
 }
 
-// placeholderRE matches a ${NAME} template variable buildTemplateVars does
-// not provide. nginx's own variables are lower case, so ${host} is left alone.
+// placeholderRE finds template-shaped variables; the parsed directive and
+// known template vocabulary distinguish them from comments and nginx variables.
 var placeholderRE = regexp.MustCompile(`\$\{[A-Z][A-Z0-9_]*\}`)
 
 // serverOnly lists directives nginx accepts only inside server (or deeper):
@@ -124,7 +124,7 @@ var serverOnly = map[string]bool{"location": true, "if": true, "listen": true, "
 // nginx/sites, or "" to inject it. One bad file in nginx/sites stops nginx,
 // taking every route down, and installed plugin copies can be old, so the
 // build checks what it can before nginx does (D-0478 review):
-//   - a ${NAME} the CLI does not render (nginx reads it as an unknown variable);
+//   - a known template name that remains unrendered in directive arguments;
 //   - text that does not parse, or a top-level directive that is valid only
 //     inside a server block (a bare location block);
 //   - a load of the base domain's certificate pair (the ${SSL_DIR} path) while
@@ -132,12 +132,18 @@ var serverOnly = map[string]bool{"location": true, "if": true, "listen": true, "
 //     custom before the pair exists), which would also block the ACME
 //     challenge that issues it.
 func pluginSnippetSkip(rendered string, vars map[string]string, hasSSL bool) string {
-	if m := placeholderRE.FindString(rendered); m != "" {
-		return "it uses " + m + ", which nself does not provide"
-	}
 	tree, err := routemodel.Parse(rendered)
 	if err != nil {
 		return "it does not parse: " + err.Error()
+	}
+	for _, b := range tree {
+		for _, m := range placeholderRE.FindAllString(b.Render(), -1) {
+			name := strings.TrimSuffix(strings.TrimPrefix(m, "${"), "}")
+			_, known := vars[name]
+			if known || name == "DOMAIN" || name == "NSELF_DOMAIN" || name == "GRAFANA_ROUTE" {
+				return "it uses " + m + ", which nself does not provide"
+			}
+		}
 	}
 	for _, b := range tree {
 		if serverOnly[b.Name] {
