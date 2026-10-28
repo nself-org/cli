@@ -99,6 +99,36 @@ func SlugReason(name string) string {
 	return ""
 }
 
+// BinaryRe is the allowed shape of a published command binary name (one path
+// element). It is wider than a plugin slug only for '.', '_' and capitals.
+var BinaryRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// BinaryReason returns why bin is not a single plain path element that is safe
+// to join to the plugin bin directory, or "". Same checks as a plugin name (no
+// separator, no dot reference, no control character, Base unchanged) with the
+// BinaryRe alphabet.
+func BinaryReason(bin string) string {
+	switch {
+	case bin == "":
+		return "it is empty"
+	case bin == "." || bin == "..":
+		return "it is a directory reference"
+	case len(bin) > MaxLen:
+		return "it is too long"
+	case strings.ContainsAny(bin, `/\`) || strings.ContainsRune(bin, filepath.Separator):
+		return "it contains a path separator"
+	case filepath.IsAbs(bin) || filepath.VolumeName(bin) != "":
+		return "it is an absolute path"
+	case HasControlChar(bin):
+		return "it contains a control character"
+	case filepath.Base(bin) != bin:
+		return "it is not a single path element"
+	case !BinaryRe.MatchString(bin):
+		return "binary names use letters, digits, '-', '_' and '.', and start with a letter or digit"
+	}
+	return ""
+}
+
 // Reason returns why name is not a plain plugin slug that is safe to join to
 // the plugin directory and not a reserved infrastructure name, or "" when it is.
 // It rejects the empty string, ".", "..", any path separator (slash or
