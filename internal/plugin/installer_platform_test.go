@@ -54,6 +54,7 @@ type platRegistry struct {
 	sourceHits, binaryHits int32
 	sourceSig              any
 	platformSigs           any
+	binaryMissing          bool // the platform release asset 404s, forcing the source fallback
 }
 
 func (p *platRegistry) serve(t *testing.T) {
@@ -62,6 +63,10 @@ func (p *platRegistry) serve(t *testing.T) {
 		switch {
 		case strings.Contains(r.URL.Path, "/releases/download/"):
 			atomic.AddInt32(&p.binaryHits, 1)
+			if p.binaryMissing {
+				http.NotFound(w, r)
+				return
+			}
 			_, _ = w.Write(p.binary)
 		case strings.HasSuffix(r.URL.Path, "/tarball"):
 			atomic.AddInt32(&p.sourceHits, 1)
@@ -217,6 +222,54 @@ func TestInstallBinaryPackageNoSourceFallback(t *testing.T) {
 		}
 		if n := atomic.LoadInt32(&p.sourceHits); n != 0 {
 			t.Fatalf("the source package was downloaded %d time(s) after the platform package failed", n)
+		}
+	})
+}
+
+// TestInstallSourceFallbackRefusedE121 (D-1415): when the platform package
+// 404s, the validly signed source package must not install a command plugin
+// whose entry advertises platform_signatures for this platform, whether or not
+// that source tarball holds a binary, and the dev bypass does not open it.
+func TestInstallSourceFallbackRefusedE121(t *testing.T) {
+	compattest.Both(t, func(t *testing.T) {
+		for name, withBinary := range map[string]bool{"source without binary": false, "source with binary": true} {
+			t.Run(name, func(t *testing.T) {
+				p, dir, err := platCase(t, func(p *platRegistry, signer signing.Signer, _ string) {
+					p.binaryMissing = true
+					if withBinary {
+						p.source = binTarball(t, "# smuggled\n")
+						p.sourceSig = sigObj(signaturetest.Sign(t, signer, sigPlugin, "1.0.0", sha256Hex(p.source)))
+					}
+				})
+				if codeOf(err) != "E121" || !dirEmpty(t, dir) {
+					t.Fatalf("want E121 and an empty plugin dir, got %v", err)
+				}
+				if atomic.LoadInt32(&p.binaryHits) == 0 || atomic.LoadInt32(&p.sourceHits) == 0 {
+					t.Fatalf("the test did not exercise the fallback: binary=%d source=%d", p.binaryHits, p.sourceHits)
+				}
+				if _, statErr := os.Stat(filepath.Join(dir, "bin", "nself-"+sigPlugin)); statErr == nil {
+					t.Fatal("a binary was published from the source fallback")
+				}
+			})
+		}
+	})
+}
+
+// TestInstallSourceFallbackWithoutPlatformSignaturesInstalls: the refusal only
+// applies to an entry that advertises platform_signatures; a plugin that never
+// shipped them keeps installing from its signed source package.
+func TestInstallSourceFallbackWithoutPlatformSignaturesInstalls(t *testing.T) {
+	compattest.Both(t, func(t *testing.T) {
+		_, dir, err := platCase(t, func(p *platRegistry, signer signing.Signer, _ string) {
+			p.binaryMissing, p.platformSigs = true, nil
+			p.source = binTarball(t, "")
+			p.sourceSig = sigObj(signaturetest.Sign(t, signer, sigPlugin, "1.0.0", sha256Hex(p.source)))
+		})
+		if err != nil {
+			t.Fatalf("a signed source package for an entry with no platform_signatures must install: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, sigPlugin, "plugin.json")); err != nil {
+			t.Fatalf("not extracted: %v", err)
 		}
 	})
 }
