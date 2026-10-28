@@ -3,6 +3,7 @@ package stack
 import (
 	"context"
 	"encoding/json"
+	"github.com/nself-org/cli/internal/errs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,7 +11,7 @@ import (
 )
 
 func TestJournalRejectsContradictoryResume(t *testing.T) {
-	for _, fault := range []string{"order", "unknown-result", "success-gap", "complete-pending", "missing-run"} {
+	for _, fault := range []string{"order", "unknown-result", "success-gap", "complete-pending", "missing-run", "run-id-space", "run-id-shell", "run-id-separator"} {
 		t.Run(fault, func(t *testing.T) {
 			project := t.TempDir()
 			j := newJournal(false)
@@ -25,6 +26,12 @@ func TestJournalRejectsContradictoryResume(t *testing.T) {
 				j.Status = "complete"
 			case "missing-run":
 				j.RunID = ""
+			case "run-id-space":
+				j.RunID = "1 2"
+			case "run-id-shell":
+				j.RunID = "1;rm -rf $HOME"
+			case "run-id-separator":
+				j.RunID = "../1"
 			}
 			if err := saveJournal(project, j); err != nil {
 				t.Fatal(err)
@@ -169,5 +176,17 @@ func TestJournalRejectsRedirectedState(t *testing.T) {
 				t.Fatalf("redirected state wrote outside project: %v %v %v", entries, b.calls, err)
 			}
 		})
+	}
+}
+
+func TestE139DefaultFixIncludesArchiveStep(t *testing.T) {
+	e, ok := errs.Registry["E139"]
+	if !ok {
+		t.Fatal("E139 is not registered")
+	}
+	for _, want := range []string{"update-stack.json", "archive"} {
+		if !strings.Contains(e.DefaultFix, want) {
+			t.Errorf("E139 DefaultFix lacks %q: %s", want, e.DefaultFix)
+		}
 	}
 }
