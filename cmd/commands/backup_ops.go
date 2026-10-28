@@ -77,7 +77,7 @@ func init() {
 	backupStatusCmd.Flags().String("format", "", "Output format: json")
 
 	// backup stream flags
-	backupStreamCmd.Flags().String("to", "", "Destination URL (rclone remote path, e.g. s3:bucket/prefix)")
+	backupStreamCmd.Flags().String("to", "", "Destination (BACKUP_REMOTE default): rclone remote:path, path:///absolute/dir, or host://alias/absolute/dir")
 	backupStreamCmd.Flags().StringArray("recipient", nil, "Encryption recipient: age key, SSH key, or github:<username> (repeatable)")
 	backupStreamCmd.Flags().Bool("dry-run", false, "Preview without running")
 	backupStreamCmd.Flags().Bool("no-encrypt", false,
@@ -87,7 +87,7 @@ func init() {
 
 	// backup schedule flags
 	backupScheduleCmd.Flags().String("cron", "", "Cron expression (e.g. '0 2 * * *')")
-	backupScheduleCmd.Flags().String("to", "", "Destination URL (rclone remote path)")
+	backupScheduleCmd.Flags().String("to", "", "Destination: rclone remote:path, path:///absolute/dir, or host://alias/absolute/dir")
 	backupScheduleCmd.Flags().StringArray("recipient", nil, "Encryption recipient: age key, SSH key, or github:<username> (repeatable)")
 	backupScheduleCmd.Flags().String("unit-dir", "/etc/systemd/system", "Systemd unit directory")
 	backupScheduleCmd.Flags().Bool("dry-run", false, "Print unit files without writing")

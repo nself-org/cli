@@ -17210,7 +17210,7 @@
                       },
                       "to": {
                         "default": "",
-                        "description": "Destination URL (rclone remote path)",
+                        "description": "Destination: rclone remote:path, path:///absolute/dir, or host://alias/absolute/dir",
                         "type": "string"
                       },
                       "unit-dir": {

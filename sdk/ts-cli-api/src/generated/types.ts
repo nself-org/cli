@@ -626,7 +626,7 @@ export type BackupScheduleFlags = {
   "heartbeat-to"?: string;
   /** Encryption recipient: age key, SSH key, or github:<username> (repeatable) */
   recipient?: Array<string>;
-  /** Destination URL (rclone remote path) */
+  /** Destination: rclone remote:path, path:///absolute/dir, or host://alias/absolute/dir */
   to?: string;
   /** Systemd unit directory */
   "unit-dir"?: string;
