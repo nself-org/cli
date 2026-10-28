@@ -2,7 +2,6 @@ package compose
 
 import (
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
@@ -219,37 +218,14 @@ func HasuraEntry() string {
 
 // hasuraImage renders HASURA_VERSION. Blank selects the mode default, yielding
 // to a project pin. Known releases select their own lock entry in either mode,
-// and other tags render unpinned. Migration: when the project pin is hasura
-// (v2.51.0) and HASURA_VERSION holds the old init default v2.44.0 (hasura-v14's
-// legacy_ref), that value is treated as non-explicit so the newer pin wins;
-// projects upgraded by `nself update` keep their v2.51.0 pin without requiring
-// users to clear stale .env values written by older `nself init` runs.
+// and other tags render unpinned. Every nonblank HASURA_VERSION is explicit and
+// overrides a project pin; use `nself service upgrade hasura <tag>` or set
+// HASURA_VERSION in .env to move a pinned project.
 func hasuraImage(version string) string {
 	version = strings.TrimSpace(version)
 	entry := HasuraEntry()
 	v14, _ := LockedRef("hasura-v14")
 	cur, _ := LockedRef("hasura")
-	// Migration: a project pinned to hasura (v2.51.0) keeps that pin when
-	// HASURA_VERSION still carries the old init default v2.44.0. Without this,
-	// v14.IsDefaultVersion would switch entry to hasura-v14 and downgrade, and
-	// projectPin would see the env var as explicit and drop the pin with a notice.
-	pin, hasPin := ProjectPins()["hasura"]
-	staleInitDefault := hasPin && pin == cur.String() && version != "" && v14.IsDefaultVersion(version) && !cur.IsDefaultVersion(version)
-	if staleInitDefault {
-		// Treat the stale init default as blank: the pin wins, no notice.
-		version = ""
-		// Temporarily clear the env var so projectPin does not see it as
-		// explicit and drop the pin with a notice. Restore after resolve.
-		prev, wasSet := os.LookupEnv("HASURA_VERSION")
-		os.Unsetenv("HASURA_VERSION")
-		defer func() {
-			if wasSet {
-				os.Setenv("HASURA_VERSION", prev)
-			} else {
-				os.Unsetenv("HASURA_VERSION")
-			}
-		}()
-	}
 	switch {
 	case version != "" && v14.IsDefaultVersion(version):
 		entry = "hasura-v14"
@@ -257,7 +233,28 @@ func hasuraImage(version string) string {
 		entry = "hasura"
 	}
 	if entry == "hasura" {
-		return ResolveImage("hasura", ImageRef("hasura", version))
+		return resolveHasuraImage("hasura", ImageRef("hasura", version), version)
 	}
-	return ResolveImage("hasura", ImageRef("hasura-v14", version))
+	return resolveHasuraImage("hasura", ImageRef("hasura-v14", version), version)
+}
+
+// resolveHasuraImage resolves the hasura image with an explicit version override.
+// Unlike ResolveImage, it passes the caller-supplied version to projectPin so an
+// explicit HASURA_VERSION (including v2.44.0) overrides a project pin without
+// mutating the process environment.
+func resolveHasuraImage(service, image, version string) string {
+	if pin, ok := projectPinWithVersion(service, image, version); ok {
+		return pin
+	}
+	resolved := image
+	if resolved == "" {
+		resolved = DefaultImage(service)
+	}
+	if strings.Contains(resolved, "@sha256:") {
+		return resolved
+	}
+	if digest, ok := ImageDigests[service]; ok && digest != "" {
+		resolved = resolved + "@sha256:" + digest
+	}
+	return resolved
 }

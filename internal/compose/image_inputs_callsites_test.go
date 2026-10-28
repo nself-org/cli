@@ -93,7 +93,7 @@ func scanCallSites(t *testing.T) (resolve, bare []callSite, problems []string) {
 					} else if !lookupFiles[filepath.Base(path)] || !strings.Contains(filepath.ToSlash(path), "internal/compose/") {
 						problems = append(problems, pos+": ImageRef with a non-literal entry name")
 					}
-				case "ResolveImage":
+				case "ResolveImage", "resolveHasuraImage":
 					if len(call.Args) < 2 {
 						return true
 					}

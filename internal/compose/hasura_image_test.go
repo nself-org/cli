@@ -127,9 +127,9 @@ func TestHasuraLockPinKept(t *testing.T) {
 }
 
 // TestHasuraLockPinKeptAfterUpdate: a project `nself update` moved to v2.51.0 keeps
-// that pin whether .env leaves the version blank, names the same release, or
-// still carries the old init default v2.44.0 (migration: stale init defaults
-// do not downgrade an upgraded project).
+// that pin when .env leaves the version blank or names the same release.
+// Every nonblank HASURA_VERSION is explicit and overrides the pin, including
+// v2.44.0 written by `nself service upgrade hasura v2.44.0`.
 func TestHasuraLockPinKeptAfterUpdate(t *testing.T) {
 	cur, _ := LockedRef("hasura")
 	v14, _ := LockedRef("hasura-v14")
@@ -138,11 +138,8 @@ func TestHasuraLockPinKeptAfterUpdate(t *testing.T) {
 		var notices bytes.Buffer
 		defer PinNoticeSink(&notices)()
 		defer SetProjectPins(map[string]string{"hasura": cur.String()})()
-		// Blank, the pin's own version, and the old init default v2.44.0 all
-		// keep the v2.51.0 pin. The last case is the migration: projects whose
-		// .env still says HASURA_VERSION=v2.44.0 from an older `nself init`
-		// must not be downgraded after `nself update` moves the pin to v2.51.0.
-		for _, v := range []string{"", cur.Version, v14.Version} {
+		// Blank and the pin's own version keep the v2.51.0 pin silently.
+		for _, v := range []string{"", cur.Version} {
 			t.Setenv("HASURA_VERSION", v)
 			if got := hasuraImageFor(t, v); got != cur.String() {
 				t.Errorf("HASURA_VERSION=%q: hasura image = %q, want the pin %q", v, got, cur.String())
@@ -150,6 +147,16 @@ func TestHasuraLockPinKeptAfterUpdate(t *testing.T) {
 		}
 		if notices.Len() != 0 {
 			t.Errorf("a kept pin printed a notice: %q", notices.String())
+		}
+		// v2.44.0 is explicit: it overrides the v2.51.0 pin with a notice.
+		notices.Reset()
+		t.Setenv("HASURA_VERSION", v14.Version)
+		want := v14.String()
+		if got := hasuraImageFor(t, v14.Version); got != want {
+			t.Errorf("HASURA_VERSION=%q: hasura image = %q, want %q", v14.Version, got, want)
+		}
+		if notices.Len() == 0 {
+			t.Error("expected a pin-drop notice for explicit v2.44.0 override")
 		}
 	})
 }

@@ -102,11 +102,11 @@ The lock carries two Hasura entries on `docker.io/hasura/graphql-engine`: `hasur
 | v1.5, no lock pin yet (a new project) | `hasura` (v2.51.0) |
 | the project lock pins v2.44.0 | the pin, in both modes, until `nself update` moves it |
 | `HASURA_VERSION=` (what `nself init` writes into `.env`) or unset | the mode default, or the pin if there is one |
-| `HASURA_VERSION=v2.44.0` | `hasura-v14` when there is no newer pin; when the project pin is `hasura` (v2.51.0), this old init default is treated as non-explicit and the v2.51.0 pin wins (migration for projects upgraded by `nself update` or `nself init`) |
+| `HASURA_VERSION=v2.44.0` | `hasura-v14`; explicit override that drops a v2.51.0 project pin with one notice |
 | `HASURA_VERSION=v2.51.0` | `hasura` in any mode; it is an override, so it drops a lock pin of v2.44.0 with one notice |
 | any other `HASURA_VERSION` (`v2.45.0`) | `hasura/graphql-engine:<tag>`, unpinned, in any mode |
 
-Existing env files containing `HASURA_VERSION=v2.44.0` from older `nself init` runs are treated as the old init default, not as an explicit pin, when the project lock pins v2.51.0; the newer pin wins without requiring users to clear `.env`. Projects without a v2.51.0 pin still resolve `v2.44.0` to `hasura-v14`. To force v2.44.0 on a v2.51.0-pinned project, use `nself service upgrade hasura v2.44.0` (writes an explicit selection) or set `IMAGE_PINNING=legacy`.
+Every nonblank `HASURA_VERSION` is explicit and overrides a project pin, including `v2.44.0`. Projects without a v2.51.0 pin resolve `v2.44.0` to `hasura-v14`. To move a v2.51.0-pinned project to v2.44.0, use `nself service upgrade hasura v2.44.0` or set `HASURA_VERSION=v2.44.0` in `.env`.
 
 Hasura v2.51.0 does not change the metadata format or the migration contract. `scripts/ci/hasura-upgrade-smoke.sh` starts a project on v2.44.0 with a migrated fixture (tables and rows) and metadata (tracked tables, a relationship, a select permission, an event trigger to a webhook, a remote schema), takes a verified backup, switches the pin to v2.51.0 and checks that the rows are readable, that the metadata export is identical before and after (the `nself db hasura metadata export` tree and the normalised API JSON), that apply then export round-trips, and that a mutation, a subscription event, a remote schema call and an event trigger delivery work. The metadata catalog version is 48 on both releases.
 

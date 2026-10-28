@@ -138,6 +138,15 @@ func PinNoticeSink(w io.Writer) (restore func()) {
 // comparison is on the rendered reference, never on the raw env text. Dropping
 // a pin prints a one-line notice on stderr.
 func projectPin(service, image string) (string, bool) {
+	return projectPinWithVersion(service, image, "")
+}
+
+// projectPinWithVersion is like projectPin but treats a nonblank version as an
+// explicit override of the env variable for this service, without mutating the
+// process environment. Hasura uses this so an explicit HASURA_VERSION (including
+// v2.44.0 written by `nself service upgrade`) overrides a project pin; other
+// services keep reading the env directly.
+func projectPinWithVersion(service, image, version string) (string, bool) {
 	pinsMu.RLock()
 	pin, ok := projectPins[service]
 	pinsMu.RUnlock()
@@ -148,7 +157,20 @@ func projectPin(service, image string) (string, bool) {
 		image = DefaultImage(service)
 	}
 	in := inputFor(service, image)
-	name := in.Set(os.Getenv)
+	var name string
+	if version != "" {
+		// Treat the caller-supplied version as if the env var were set to it.
+		// A non-default value is explicit and drops the pin with a notice; a
+		// default value keeps the pin silently.
+		if !in.isDefault(version) {
+			for _, v := range in.Vars {
+				name = v
+				break
+			}
+		}
+	} else {
+		name = in.Set(os.Getenv)
+	}
 	switch {
 	case repoOf(image) != repoOf(pin):
 		if name == "" {
