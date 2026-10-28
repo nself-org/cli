@@ -33,6 +33,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/term"
+
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
 )
@@ -163,15 +165,14 @@ func noteUnsupported(quiet bool) {
 	})
 }
 
-// stderrIsTerminal reports whether Stderr is a character device. A variable so
+// stderrIsTerminal reports whether Stderr is a terminal. A variable so
 // tests can pretend to be a terminal.
 var stderrIsTerminal = func() bool {
 	f, ok := Stderr.(*os.File)
 	if !ok {
 		return false
 	}
-	fi, err := f.Stat()
-	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+	return term.IsTerminal(int(f.Fd()))
 }
 
 func isHeld(err error) bool { _, ok := err.(*HeldError); return ok }
