@@ -465,3 +465,17 @@ func TestCloneGettingStartedCanon(t *testing.T) {
 		}
 	}
 }
+
+// TestInitWikiDoesNotListRetiredFlutterStarter keeps the `nself init` wiki page
+// in line with what the clone templates scaffold (D-0566 retired flutter/).
+func TestInitWikiDoesNotListRetiredFlutterStarter(t *testing.T) {
+	data, err := os.ReadFile("../../../.github/wiki/cmd-init.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{"flutter/", "pubspec.yaml", "lib/main.dart", "Flutter UI starter"} {
+		if strings.Contains(string(data), bad) {
+			t.Errorf("cmd-init.md still mentions %q", bad)
+		}
+	}
+}

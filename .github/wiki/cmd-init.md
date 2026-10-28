@@ -42,7 +42,7 @@ rather than at first start.
 
 ## Clone Templates
 
-Clone templates are full-stack app starters embedded in the CLI binary. They include a Postgres schema with RLS policies, Hasura metadata, seed data, and a Flutter UI starter. The files are embedded, so scaffolding downloads nothing; the plugin check below reads the plugin catalog (the cached copy works offline).
+Clone templates are app starters embedded in the CLI binary. They include a Postgres schema with RLS policies, Hasura metadata, and seed data. They are backend scaffolds only; no frontend starter is bundled. The files are embedded, so scaffolding downloads nothing; the plugin check below reads the plugin catalog (the cached copy works offline).
 
 ### Available clone templates
 
@@ -102,9 +102,6 @@ Each clone template writes:
     002_seed.sql     — demo data (omitted with --no-seed)
   hasura/
     metadata.json    — Hasura permissions and relationships
-  flutter/
-    pubspec.yaml
-    lib/main.dart    — starter app with GraphQL client and skeleton screens
   nself.yml          — project config with required plugins list
   .env.example       — environment variable template
   README.md          — getting started guide
