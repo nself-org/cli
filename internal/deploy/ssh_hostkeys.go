@@ -98,9 +98,30 @@ func deployPinnedFingerprints(ctx context.Context, spec remote.HostSpec) (string
 	if err != nil || len(pinned) != 0 || alias == spec.Host {
 		return alias, pinned, err
 	}
-	legacy := "nself-" + strings.ReplaceAll(spec.Host, ":", "-") + "-" + strconv.Itoa(deployHostPort(spec))
+	legacy := legacyKeyAlias(spec)
 	pinned, err = pinnedFingerprints(ctx, legacy)
 	return legacy, pinned, err
+}
+
+// legacyKeyAlias is the v1.4.13 spelling of the IP/port pin alias. It can equal
+// a real host name, so it is only ever read, and only when no pin exists under
+// the new alias (D-0696).
+func legacyKeyAlias(spec remote.HostSpec) string {
+	return "nself-" + strings.ReplaceAll(spec.Host, ":", "-") + "-" + strconv.Itoa(deployHostPort(spec))
+}
+
+// PinAlias returns the HostKeyAlias to give ssh for a host with an explicit
+// port or an IP literal, for callers that do their own pin lookup (admin
+// connect, access). It is the new alias unless only a v1.4.13 pin exists.
+func PinAlias(ctx context.Context, spec remote.HostSpec) string {
+	alias := deployKeyAlias(spec)
+	if alias == spec.Host || len(deployTrustedFingerprints(ctx, alias, DeployKnownHostsPath())) != 0 {
+		return alias
+	}
+	if legacy := legacyKeyAlias(spec); len(deployTrustedFingerprints(ctx, legacy, DeployKnownHostsPath())) != 0 {
+		return legacy
+	}
+	return alias
 }
 
 // hostKeyPolicy is the unexported spelling of HostKeyPolicy, kept for the

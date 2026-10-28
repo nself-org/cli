@@ -97,3 +97,28 @@ func TestDeployNewAliasOverridesLegacy(t *testing.T) {
 		t.Fatal("stale legacy key accepted despite a new pin")
 	}
 }
+
+func TestPinAliasLegacyFallbackForOtherCallers(t *testing.T) {
+	requireKeygen(t)
+	t.Setenv("HOME", pinHome(t))
+	spec := mustSpec(t, "u@example.test:2222")
+	if got := PinAlias(context.Background(), spec); got != "nself+example.test+2222" {
+		t.Fatalf("no pins: alias %q", got)
+	}
+	pin := remote.PinnedHostKeys{Path: DeployKnownHostsPath()}
+	if err := pin.Add("nself-example.test-2222", "ssh-ed25519 AQID"); err != nil {
+		t.Fatal(err)
+	}
+	if got := PinAlias(context.Background(), spec); got != "nself-example.test-2222" {
+		t.Fatalf("legacy-only pin: alias %q", got)
+	}
+	if err := pin.Add("nself+example.test+2222", "ssh-ed25519 AQIE"); err != nil {
+		t.Fatal(err)
+	}
+	if got := PinAlias(context.Background(), spec); got != "nself+example.test+2222" {
+		t.Fatalf("new pin must win: alias %q", got)
+	}
+	if got := PinAlias(context.Background(), mustSpec(t, "example.test")); got != "example.test" {
+		t.Fatalf("plain host alias %q", got)
+	}
+}
