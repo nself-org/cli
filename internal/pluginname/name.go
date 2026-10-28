@@ -103,6 +103,12 @@ func SlugReason(name string) string {
 // element). It is wider than a plugin slug only for '.', '_' and capitals.
 var BinaryRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
+// IsCommandBinary reports whether name is "nself-" plus a plugin slug, the shape
+// of every command binary the router will exec.
+func IsCommandBinary(name string) bool {
+	return strings.HasPrefix(name, "nself-") && SlugRe.MatchString(name[len("nself-"):])
+}
+
 // BinaryReason returns why bin is not a single plain path element that is safe
 // to join to the plugin bin directory, or "". Same checks as a plugin name (no
 // separator, no dot reference, no control character, Base unchanged) with the

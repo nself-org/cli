@@ -41,3 +41,16 @@ func TestBinaryReason(t *testing.T) {
 		}
 	}
 }
+
+func TestIsCommandBinary(t *testing.T) {
+	for _, ok := range []string{"nself-a", "nself-foo-2"} {
+		if !IsCommandBinary(ok) {
+			t.Errorf("IsCommandBinary(%q) = false, want true", ok)
+		}
+	}
+	for _, bad := range []string{"", "nself-", "nself-2x", "nself-Foo", "nself-a_b", "nself-a.b", "nself-a\n", "foo-bar", "nself-../x"} {
+		if IsCommandBinary(bad) {
+			t.Errorf("IsCommandBinary(%q) = true, want false", bad)
+		}
+	}
+}

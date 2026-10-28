@@ -6,11 +6,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/plugin/catalog"
+	"github.com/nself-org/cli/internal/pluginname"
+	"github.com/nself-org/cli/internal/pluginperm"
 )
 
 // ExitCodeError is returned when a plugin process exits with a non-zero code.
@@ -31,30 +32,15 @@ func (e *ExitCodeError) ExitCode() int { return e.Code }
 // inherited stdout/stderr and has already reported the failure itself.
 func (e *ExitCodeError) Silent() bool { return true }
 
-// errHomeUnset is returned when HOME cannot be resolved. The previous /tmp
-// fallback let any local user plant a binary that cron or systemd would run
-// with the caller's secrets (D-1396).
-var errHomeUnset = errs.Newf("E406", "HOME is not set; refusing to resolve plugin binaries in a shared directory")
-
-// pluginBinDir returns the directory where plugin binaries are installed.
-// It refuses to fall back to a shared directory when HOME is unset (D-1396):
-// callers without HOME must set it explicitly rather than risk executing a
-// binary planted by another local user.
+// pluginBinDir returns ~/.nself/plugins/bin/. With HOME unset it refuses rather
+// than fall back to a shared directory such as /tmp, where any local user could
+// plant a binary that cron or systemd would run with the caller's secrets (D-1396).
 func pluginBinDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", errHomeUnset
+		return "", errs.Newf("E406", "HOME is not set; refusing to resolve plugin binaries in a shared directory")
 	}
 	return filepath.Join(home, ".nself", "plugins", "bin"), nil
-}
-
-// verifyPluginPathOwnership checks that every component of path up to and
-// including root is safe for plugin execution. On Unix this means owned by
-// the current uid and not writable by anyone else (group-write is allowed
-// only when the group is the user's own private group, matching umask 002).
-// A missing or unstat-able component fails closed. Windows skips the check.
-func verifyPluginPathOwnership(path, root string) error {
-	return verifyPluginPathOwnershipPlatform(path, root)
 }
 
 // ProxyCommand checks if a plugin binary exists and executes it.
@@ -141,7 +127,7 @@ func ProxyBinary(binName, slug string, args []string) error {
 	if err != nil {
 		return err
 	}
-	if !safeBinaryName(binName) {
+	if !pluginname.IsCommandBinary(binName) {
 		return errs.Newf("E406", "plugin %q binary %q has an invalid name", slug, binName)
 	}
 	fileName := binName
@@ -155,41 +141,10 @@ func ProxyBinary(binName, slug string, args []string) error {
 // The plugins directory owner can replace the file between check and exec;
 // this accepted window does not cross a different trust boundary.
 func ProxyBinaryAt(candidate, rootDir, slug string, args []string) error {
-	resolvedRoot, err := filepath.EvalSymlinks(rootDir)
-	if err != nil {
-		return errs.Newf("E406", "plugin %q binary directory is unavailable", slug)
-	}
-	resolved, err := filepath.EvalSymlinks(candidate)
-	if err != nil {
-		return errs.Newf("E406", "plugin %q binary is unavailable", slug)
-	}
-	rel, err := filepath.Rel(resolvedRoot, resolved)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return errs.Newf("E406", "plugin %q binary resolves outside the plugins directory", slug)
-	}
-	if err := verifyPluginPathOwnership(resolved, resolvedRoot); err != nil {
-		return err
-	}
-	info, err := os.Stat(resolved)
-	if err != nil || !info.Mode().IsRegular() || (runtime.GOOS != "windows" && info.Mode().Perm()&0111 == 0) {
-		return errs.Newf("E406", "plugin %q binary is not executable", slug)
+	if _, err := pluginperm.Resolve(candidate, rootDir, slug); err != nil {
+		return errs.Newf("E406", "%v", err)
 	}
 	return execPluginBinary(candidate, slug, args)
-}
-
-func safeBinaryName(name string) bool {
-	if !strings.HasPrefix(name, "nself-") || len(name) <= len("nself-") {
-		return false
-	}
-	if name[len("nself-")] < 'a' || name[len("nself-")] > 'z' {
-		return false
-	}
-	for _, r := range name[len("nself-"):] {
-		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {
-			return false
-		}
-	}
-	return true
 }
 
 // execPluginBinary is the shared run of a plugin binary: inherited stdio, the
