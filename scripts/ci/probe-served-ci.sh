@@ -2,7 +2,7 @@
 # Purpose: authenticate served ci releases before archive inspection or execution.
 # Usage: --min-version VERSION [--registry-url URL] [--skip-run] [--ci-args ARGS]
 #        --self-test (loopback only; fixture trust; never executes downloaded code).
-# Inputs: catalogue and four platform tarballs; compiled-in signature trust root. Contract plugins.release-signature v1.1:
+# Inputs: catalogue, source and five platform tarballs; compiled-in signature trust root. Contract plugins.release-signature v1.1:
 #   release_signature covers the source checksum; each platform tarball is covered by its platform_signatures entry.
 # Outputs: check results; exit 0 success, 1 failed check, 2 usage/missing tool.
 # Constraints: Bash 3.2; jq/curl/tar/go; python3 for self-test; git/docker for runs.
@@ -10,7 +10,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 FIX="${ROOT}/scripts/ci/testdata/ci-bootstrap"
-PLATFORMS="linux-amd64 linux-arm64 darwin-amd64 darwin-arm64"
+PLATFORMS="linux-amd64 linux-arm64 darwin-amd64 darwin-arm64 windows-amd64"
 BIN="nself-ci"
 REGISTRY_URL="https://plugins.nself.org"; MIN_VERSION=""; SELF_TEST=0; SKIP_RUN=0
 CI_ARGS="--check --no-status --no-gitleaks"; WORK=""; SERVER_PID=""
@@ -24,7 +24,9 @@ trap cleanup EXIT
 need() { command -v "$1" >/dev/null 2>&1 || die "needs $1 on PATH"; }
 ver_ge() {
   local a="${1#v}" b="${2#v}" i x y
-  a="${a%%[-+]*}"; b="${b%%[-+]*}"
+  # Only stable releases satisfy the probe floor; prereleases fail closed.
+  a="${a%%+*}"; b="${b%%+*}"
+  case "${a} ${b}" in *-*) return 1 ;; esac
   local IFS=.
   # shellcheck disable=SC2086 # word splitting on IFS=. is the point
   set -- $a; local -a pa=("$@")
@@ -126,8 +128,18 @@ check_catalogue() {
   if ! printf '%s' "${entry}" | "${WORK}/verify" verify; then fail "the ci release_signature does not verify"; return 1; fi
   echo "ok   catalogue: ci ${CI_VERSION} is free, signed, checksummed (>= ${min})"
 }
+check_source() {
+  local f="${WORK}/source.tar.gz" url="${CI_REPO}/releases/download/v${CI_VERSION}/ci-${CI_VERSION}.tar.gz" want
+  want="$(printf '%s' "${CI_ENTRY}" | jq -r '.checksum')"
+  # release_signature was verified before fetching these bytes.
+  # shellcheck disable=SC2086
+  if ! curl -fsSL ${CURL_PROTO} --retry 3 --retry-delay 2 --retry-all-errors --max-time 300 -o "${f}" "${url}"; then fail "cannot download source tarball"; return 1; fi
+  if [ "$(sha256_of "${f}")" != "${want}" ]; then fail "source tarball does not match its checksum"; return 1; fi
+  if ! tar -tzf "${f}" >/dev/null 2>&1; then fail "source tarball is not a readable tar.gz"; return 1; fi
+  echo "ok   source tarball: signed checksum matches"
+}
 check_tarballs() {
-  local p url f entries want bad=0
+  local p url f entries want binary bad=0
   for p in ${PLATFORMS}; do
     url="${CI_REPO}/releases/download/v${CI_VERSION}/ci-${CI_VERSION}-${p}.tar.gz"
     f="${WORK}/tar-${p}.tar.gz"
@@ -138,7 +150,10 @@ check_tarballs() {
     if [ "$(sha256_of "${f}")" != "${want}" ]; then fail "the ${p} tarball does not match its checksums.platforms entry"; bad=1; rm -f "${f}"; continue; fi
     if ! printf '%s' "${CI_ENTRY}" | "${WORK}/verify" verify-platform "${p}" "${want}"; then fail "the ${p} tarball is not covered by its platform_signatures entry"; bad=1; continue; fi
     if ! entries="$(tar -tzf "${f}" 2>/dev/null)"; then fail "the ${p} tarball is not a readable tar.gz"; bad=1; continue; fi
-    if ! tar -tvzf "${f}" 2>/dev/null | awk -v b="${BIN}" '$1 ~ /^-..x/ && $NF ~ ("(^|/)" b "$") { ok = 1 } END { exit ok ? 0 : 1 }'; then fail "the ${p} tarball holds no executable ${BIN} file"; bad=1; continue; fi
+    binary="${BIN}"; if [ "${p}" = windows-amd64 ]; then binary="${BIN}.exe"; fi
+    # The CLI also walks nested directories after root/bin candidates. Windows
+    # executables need not carry Unix execute permission in the archive.
+    if ! tar -tvzf "${f}" 2>/dev/null | awk -v b="${binary}" -v p="${p}" '$1 ~ /^-/ && (p == "windows-amd64" || $1 ~ /^-..x/) && $NF ~ ("(^|/)" b "$") { ok = 1 } END { exit ok ? 0 : 1 }'; then fail "the ${p} tarball holds no executable ${BIN} file"; bad=1; continue; fi
     if printf '%s\n' "${entries}" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then fail "the ${p} tarball has an absolute or .. entry"; bad=1; continue; fi
     echo "ok   tarball ${p}: platform-signed, holds an executable ${BIN}"
   done
@@ -154,12 +169,24 @@ unpack() {
   local p="$1" dir="$2" found
   mkdir -p "${dir}"
   tar -xzf "${WORK}/tar-${p}.tar.gz" -C "${dir}"
-  found="$(find "${dir}" -type f -name "${BIN}" | head -n 1)"
+  for found in "${dir}/${BIN}" "${dir}/bin/${BIN}" "${dir}/${BIN}.exe" "${dir}/bin/${BIN}.exe"; do
+    if [ -f "${found}" ]; then chmod +x "${found}"; echo "${found}"; return 0; fi
+  done
+  found="$(find "${dir}" -type f \( -name "${BIN}" -o -name "${BIN}.exe" \) | LC_ALL=C sort | head -n 1)"
   if [ -z "${found}" ]; then return 1; fi
   chmod +x "${found}"
   echo "${found}"
 }
-normalize() { sed -e "s#${WORK}#<work>#g" -e 's#/work#<work>#g'; }
+normalize() {
+  # Gate timings are measurements, not parity output. Keep verdicts and names.
+  sed -E -e "s#${WORK}#<work>#g" -e 's#/work#<work>#g' -e 's/\([0-9.]+(ns|µs|us|ms|s|m)\)/(elapsed)/g'
+}
+fixture_verdict() {
+  local output="$1" rc="$2" verdict="$3"
+  [ "${rc}" = "${verdict}" ] && printf '%s\n' "${output}" | grep -Eq 'go:vendor-sync +FAIL' &&
+    printf '%s\n' "${output}" | grep -Fq 'probe fixture: expected gate failure' &&
+    printf '%s\n' "${output}" | grep -Fq 'Overall: FAILED'
+}
 check_run() {
   local host_p linux_p hostbin linuxbin repo ref d rc out_h out_c bad=0
   need git; need docker
@@ -190,6 +217,7 @@ check_run() {
     # shellcheck disable=SC2086
     out_c="$(docker run --rm -v "$(dirname "${linuxbin}"):/probe:ro" -v "${d}:/work" -w /work -e HOME=/tmp \
       "${PROBE_IMAGE:-debian:stable-slim}" "/probe/${BIN}" ${CI_ARGS} 2>&1)" || rc=$?
+    if ! fixture_verdict "${out_h}" "${rc_h}" 1 || ! fixture_verdict "${out_c}" "${rc}" 1; then fail "${ref}: missing expected fixture gate verdict"; bad=1; continue; fi
     if [ "${rc_h}" != "${rc}" ]; then fail "${ref}: host exit ${rc_h} differs from container exit ${rc}"; bad=1; continue; fi
     if [ "$(printf '%s' "${out_h}" | sed "s#${d}#/work#g" | normalize)" != "$(printf '%s' "${out_c}" | normalize)" ]; then fail "${ref}: host and container output differ"; bad=1; continue; fi
     echo "ok   run ${ref}: host and container agree (exit ${rc})"
@@ -201,7 +229,7 @@ check_run() {
 # (gate from PATH) on the same fixture, on the host and in a clean golang container.
 # Runs when NSELF_BIN and NSELF_BASE_BIN are set; NSELF_LINUX_BIN adds the container leg.
 check_cli_parity() {
-  local host_p hostbin d rc_b rc_h rc_c out_b out_h out_c p img="${PARITY_IMAGE:-golang:1.26.6}" bad=0 pathdir
+  local host_p hostbin d rc_b rc_h rc_c out_b out_h out_c img="${PARITY_IMAGE:-golang:1.26.6}" bad=0 pathdir
   if [ -z "${NSELF_BIN:-}" ] || [ -z "${NSELF_BASE_BIN:-}" ]; then return 0; fi
   need git
   host_p="$(host_platform)"
@@ -212,64 +240,74 @@ check_cli_parity() {
   git -C "${WORK}/parity-src" config user.email probe@example.invalid; git -C "${WORK}/parity-src" config user.name probe
   cp -R "${FIX}/repo/head/." "${WORK}/parity-src/"; git -C "${WORK}/parity-src" add -A; git -C "${WORK}/parity-src" commit -q -m fixture
   git clone -q "${WORK}/parity-src" "${d}"
-  # The fixture has no supported stack on purpose (no toolchain needed): a run that really
-  # started the gate prints the `nself-ci gate` section and ends in "no supported stack".
-  # Equal exit codes and stdout that both come from a failed start would prove nothing.
+  # A Go manifest selects the stack; a pinned repo script checks fixture.go
+  # and deliberately fails with a marker. Missing toolchains may skip Go tools,
+  # but a startup error or zero executed gates cannot produce this verdict.
   rc_b=0; mkdir -p "${WORK}/home-base"
   # shellcheck disable=SC2086
   out_b="$(cd "${d}" && env -i PATH="${pathdir}:/usr/bin:/bin" HOME="${WORK}/home-base" "${NSELF_BASE_BIN}" ci ${CI_ARGS} "${d}" 2>"${WORK}/err-base")" || rc_b=$?
   rc_h=0; mkdir -p "${WORK}/home-head"
   # shellcheck disable=SC2086
   out_h="$(cd "${d}" && env -i PATH=/usr/bin:/bin HOME="${WORK}/home-head" NSELF_PLUGIN_REGISTRY="${REGISTRY_URL}" "${NSELF_BIN}" ci ${CI_ARGS} "${d}" 2>"${WORK}/err-head")" || rc_h=$?
-  for p in base head; do
-    if ! grep -Fq "no supported stack detected" "${WORK}/err-${p}"; then fail "${p}: the gate did not run to its fixture verdict (stderr: $(head -c 300 "${WORK}/err-${p}"))"; bad=1; fi
-  done
+  if ! fixture_verdict "${out_b}" "${rc_b}" 1; then fail "base: missing expected fixture gate verdict"; bad=1; fi
+  if ! fixture_verdict "${out_h}" "${rc_h}" 1; then fail "head: missing expected fixture gate verdict"; bad=1; fi
   if [ ! -x "${WORK}/home-head/.nself/plugins/bin/${BIN}" ]; then fail "the head binary did not install ${BIN} through the plugin seam"; bad=1; fi
   if [ "${rc_b}" != "${rc_h}" ]; then fail "host: head exit ${rc_h} differs from base exit ${rc_b}"; bad=1
-  elif [ "${out_b}" != "${out_h}" ]; then fail "host: head stdout differs from base stdout"; bad=1
+  elif [ "$(printf '%s' "${out_b}" | normalize)" != "$(printf '%s' "${out_h}" | normalize)" ]; then fail "host: head stdout differs from base stdout"; bad=1
   else echo "ok   cli parity (host): head and base agree (exit ${rc_h})"; fi
   if [ -n "${NSELF_LINUX_BIN:-}" ]; then
     need docker
     if ! docker image inspect "${img}" >/dev/null 2>&1; then docker pull -q "${img}" >/dev/null || { fail "cannot pull ${img}"; return 1; }; fi
     rc_c=0
     # shellcheck disable=SC2086
-    out_c="$(docker run --rm -v "$(dirname "${NSELF_LINUX_BIN}"):/probe:ro" -v "${d}:/work" -w /work -e HOME=/tmp/home -e NSELF_PLUGIN_REGISTRY="${REGISTRY_URL}" \
+    out_c="$(docker run --rm -v "$(dirname "${NSELF_LINUX_BIN}"):/probe:ro" -v "${d}:/work" -w /work -e HOME=/tmp/home -e PATH=/usr/bin:/bin -e NSELF_PLUGIN_REGISTRY="${REGISTRY_URL}" \
       "${img}" "/probe/$(basename "${NSELF_LINUX_BIN}")" ci ${CI_ARGS} /work 2>"${WORK}/err-container")" || rc_c=$?
-    if ! grep -Fq "no supported stack detected" "${WORK}/err-container"; then fail "container: the gate did not run to its fixture verdict (stderr: $(head -c 300 "${WORK}/err-container"))"; bad=1; fi
+    if ! fixture_verdict "${out_c}" "${rc_c}" 1; then fail "container: missing expected fixture gate verdict"; bad=1; fi
     if [ "${rc_b}" != "${rc_c}" ]; then fail "container: head exit ${rc_c} differs from base exit ${rc_b}"; bad=1
-    elif [ "$(printf '%s' "${out_b}" | sed "s#${d}#/work#g")" != "${out_c}" ]; then fail "container: head stdout differs from base stdout"; bad=1
+    elif [ "$(printf '%s' "${out_b}" | sed "s#${d}#/work#g" | normalize)" != "$(printf '%s' "${out_c}" | normalize)" ]; then fail "container: head stdout differs from base stdout"; bad=1
     else echo "ok   cli parity (container ${img}): head and base agree (exit ${rc_c})"; fi
   fi
   if [ "${bad}" -ne 0 ]; then return 1; fi
 }
 probe() { # BASE MIN
   check_catalogue "$1" "$2" || return 1
+  check_source || return 1
   check_tarballs || return 1
   if [ "${SKIP_RUN}" -eq 0 ]; then check_run || return 1; check_cli_parity || return 1; fi
 }
 serve_case() {
-  local root="$1" name="$2" ver tb p f sum sums stage sig psigs
-  ver="$(jq -r '.plugins[0].version' "${FIX}/catalogues/${name}/registry.json")"
+  local root="$1" name="$2" ver tb p f sum sums stage sig psigs catalogue
+  catalogue="${FIX}/catalogues/${name}/registry.json"
+  if [ ! -f "${catalogue}" ]; then catalogue="${FIX}/catalogues/good/registry.json"; fi
+  ver="$(jq -r '.plugins[0].version' "${catalogue}")"
+  if [ "${name}" = prerelease ]; then ver="1.0.0-rc1"; fi
   tb="with-binary"; if [ "${name}" = "no-binary" ]; then tb="without-binary"; fi
   mkdir -p "${root}/${name}/releases/download/v${ver}"
-  sed "s#@BASE@#http://127.0.0.1:${PORT}/${name}#" "${FIX}/catalogues/${name}/registry.json" > "${root}/${name}/registry.json"
+  sed "s#@BASE@#http://127.0.0.1:${PORT}/${name}#" "${catalogue}" | jq --arg ver "${ver}" '.plugins[0].version = $ver' > "${root}/${name}/registry.json"
   stage="${root}/.stage-${name}"
   mkdir -p "${stage}"
   cp -R "${FIX}/tarballs/${tb}/." "${stage}/"
+  if [ "${name}" = nested-binary ]; then mkdir -p "${stage}/platform/bin"; mv "${stage}/${BIN}" "${stage}/platform/bin/"; fi
   sums='{}'
   for p in ${PLATFORMS}; do
     f="${root}/${name}/releases/download/v${ver}/ci-${ver}-${p}.tar.gz"
-    if [ "${p}" = linux-amd64 ]; then tar -czf "${f}" -C "${stage}" .
-    else cp "${root}/${name}/releases/download/v${ver}/ci-${ver}-linux-amd64.tar.gz" "${f}"; fi
+    if [ "${p}" = windows-amd64 ] && [ -f "${stage}/${BIN}" ]; then
+      mv "${stage}/${BIN}" "${stage}/${BIN}.exe"; chmod -x "${stage}/${BIN}.exe"
+    elif [ "${p}" = windows-amd64 ] && [ "${name}" = nested-binary ]; then
+      mv "${stage}/platform/bin/${BIN}" "${stage}/platform/bin/${BIN}.exe"
+    fi
+    tar -czf "${f}" -C "${stage}" .
     sum="$(sha256_of "${f}")"
     if [ "${name}" = "tampered" ]; then sum="0000000000000000000000000000000000000000000000000000000000000000"; fi
     sums="$(printf '%s' "${sums}" | jq -c --arg p "${p}" --arg s "${sum}" '. + {($p): $s}')"
   done
   jq --argjson s "${sums}" '.plugins[0].checksums = {sha256: .plugins[0].checksum, platforms: $s}' "${root}/${name}/registry.json" > "${root}/${name}/registry.tmp"
   mv "${root}/${name}/registry.tmp" "${root}/${name}/registry.json"
+  f="${root}/${name}/releases/download/v${ver}/ci-${ver}.tar.gz"
+  tar -czf "${f}" -C "${FIX}/repo/head" .
   if [ "${name}" != "no-signature" ]; then
     sum="$(sha256_of "${f}")"
-    jq --arg sum "${sum}" '.plugins[0].checksum = $sum' "${root}/${name}/registry.json" > "${root}/${name}/registry.tmp"
+    jq --arg sum "${sum}" '.plugins[0].checksum = $sum | .plugins[0].checksums.sha256 = $sum' "${root}/${name}/registry.json" > "${root}/${name}/registry.tmp"
     sig="$(jq -c '.plugins[0]' "${root}/${name}/registry.tmp" | "${WORK}/verify" sign)"
     jq --argjson sig "${sig}" '.plugins[0].release_signature = $sig' "${root}/${name}/registry.tmp" > "${root}/${name}/registry.json"
     psigs='{}'
@@ -281,6 +319,10 @@ serve_case() {
     jq --argjson s "${psigs}" '.plugins[0].platform_signatures = $s' "${root}/${name}/registry.json" > "${root}/${name}/registry.tmp"
     mv "${root}/${name}/registry.tmp" "${root}/${name}/registry.json"
   fi
+  case "${name}" in
+    source-tampered) printf 'tampered' >> "${f}" ;;
+    windows-tampered) printf 'tampered' >> "${root}/${name}/releases/download/v${ver}/ci-${ver}-windows-amd64.tar.gz" ;;
+  esac
   if [ "${name}" = "good" ]; then
     mkdir -p "${root}/forged-signature"
     cp -R "${root}/good/releases" "${root}/forged-signature/"
@@ -298,8 +340,8 @@ serve_case() {
         else .plugins[0].checksums.platforms["linux-amd64"] = ("0" * 64) end' \
         "${root}/good/registry.json" > "${root}/${variant}/registry.json"
     done
-    mkdir -p "${root}/unsigned-platform/releases/download/v${ver}"
-    cp "${stage}/nself-ci" "${root}/unsigned-platform/nself-ci"
+    cp -R "${root}/good/releases" "${root}/unsigned-platform/"
+    cp "${FIX}/tarballs/with-binary/nself-ci" "${root}/unsigned-platform/nself-ci"
     printf '\n# attacker bytes\n' >> "${root}/unsigned-platform/nself-ci"
     f="${root}/unsigned-platform/releases/download/v${ver}/ci-${ver}-linux-amd64.tar.gz"
     tar -czf "${f}" -C "${root}/unsigned-platform" nself-ci
@@ -311,10 +353,36 @@ serve_case() {
 }
 self_test() {
   need python3
+  local verdict ref rc output layout candidate selected
+  verdict="$(printf '  go:vendor-sync  FAIL  (1ms)\n    probe fixture: expected gate failure\n  Overall: FAILED\n')"
+  fixture_verdict "${verdict}" 1 1 || die "self-test: valid fixture verdict rejected"
+  if fixture_verdict "${verdict}" 0 1 || fixture_verdict 'no supported stack detected' 1 1 ||
+    fixture_verdict "$(printf '%s' "${verdict}" | sed 's/FAIL/PASS/g')" 1 1; then
+    die "self-test: startup/exit/verdict mismatch accepted"
+  fi
+  echo "self-test ok: substantive fixture verdict required"
+  for ref in base head; do
+    grep -q '^module ' "${FIX}/repo/${ref}/go.mod" || die "self-test: missing Go stack"
+    rc=0
+    output="$(cd "${FIX}/repo/${ref}" && env -i PATH=/usr/bin:/bin bash scripts/ci/vendor-sync-check.sh)" || rc=$?
+    if [ "${rc}" != 1 ] || [ "${output}" != 'probe fixture: expected gate failure' ]; then die "self-test: fixture gate changed"; fi
+  done
+  echo "self-test ok: pinned fixture gate runs without Go"
+  layout="${WORK}/layout"; mkdir -p "${layout}/bin" "${layout}/platform"
+  for candidate in "${BIN}" "bin/${BIN}" "${BIN}.exe" "bin/${BIN}.exe" "platform/${BIN}.exe"; do
+    printf 'fixture only\n' > "${layout}/${candidate}"
+  done
+  for candidate in "${BIN}" "bin/${BIN}" "${BIN}.exe" "bin/${BIN}.exe" "platform/${BIN}.exe"; do
+    tar -czf "${WORK}/tar-layout.tar.gz" -C "${layout}" .
+    selected="$(unpack layout "${WORK}/layout-out")" || die "self-test: unpack failed"
+    [ "${selected}" = "${WORK}/layout-out/${candidate}" ] || die "self-test: binary candidate order changed"
+    rm -rf "${WORK}/layout-out"; rm "${layout}/${candidate}"
+  done
+  echo "self-test ok: CLI binary lookup order and nested exe fallback"
   local root="${WORK}/serve" name want out i status=0
   mkdir -p "${root}"
   PORT="$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
-  for name in good no-signature no-binary low-version tampered licensed; do serve_case "${root}" "${name}"; done
+  for name in good no-signature no-binary low-version tampered licensed source-tampered windows-tampered nested-binary prerelease; do serve_case "${root}" "${name}"; done
   python3 -m http.server "${PORT}" --bind 127.0.0.1 --directory "${root}" >"${WORK}/server.log" 2>&1 &
   SERVER_PID=$!
   for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
@@ -324,9 +392,12 @@ self_test() {
   curl -fsS --max-time 2 -o /dev/null "http://127.0.0.1:${PORT}/good/registry.json" || die "the fixture server did not start"
   SKIP_RUN=1
   CURL_PROTO="--proto =http,https --proto-redir =http,https"
-  for name in good forged-signature unknown-alg unknown-key invalid-signature unsigned-platform no-platform-signatures wrong-command no-signature no-binary low-version tampered licensed; do
+  for name in good forged-signature unknown-alg unknown-key invalid-signature unsigned-platform no-platform-signatures wrong-command no-signature no-binary low-version tampered licensed source-tampered windows-tampered nested-binary prerelease; do
     case "${name}" in
-      good) want="" ;;
+      good|nested-binary) want="" ;;
+      source-tampered) want="source tarball does not match its checksum" ;;
+      windows-tampered) want="windows-amd64 tarball does not match" ;;
+      prerelease) want="below --min-version" ;;
       forged-signature|unknown-alg|unknown-key|invalid-signature) want="release_signature" ;;
       unsigned-platform) want="platform_signature" ;;
       no-platform-signatures) want="platform_signatures entry" ;;
