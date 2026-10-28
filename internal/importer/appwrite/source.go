@@ -68,15 +68,15 @@ func (Source) Detect(ctx context.Context, in importer.Input) (importer.Detection
 	if err != nil {
 		return d, err
 	}
-	var users page
-	if users, err = c.listPage(ctx, "/users", "users", "", 0); err != nil {
+	users, err := c.userCount(ctx)
+	if err != nil {
 		return d, errs.New("E517", "source auth lookup failed")
 	}
-	d.SourceUsers = int(users.Total)
+	d.SourceUsers = int(users)
 	if d.Objects, err = c.listObjects(ctx); err != nil {
 		return d, err
 	}
-	d.Notes = append(d.Notes, fmt.Sprintf("%d users; document permissions are reported, not mapped", users.Total))
+	d.Notes = append(d.Notes, fmt.Sprintf("%d users; document permissions are reported, not mapped", users))
 	return d, nil
 }
 

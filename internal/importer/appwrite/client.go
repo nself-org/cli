@@ -8,6 +8,7 @@ package appwrite
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -24,6 +25,8 @@ const (
 	pageSize     = 100
 	maxPageBytes = 64 << 20
 )
+
+var errPageOverflow = errs.New("E517", "source schema lookup failed")
 
 // client is a minimal Appwrite REST client. The key is held only in the request header.
 type client struct {
@@ -92,7 +95,14 @@ func (c *client) getJSON(ctx context.Context, path string, q url.Values, out any
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if json.NewDecoder(io.LimitReader(resp.Body, maxPageBytes)).Decode(out) != nil {
+	b, err := io.ReadAll(io.LimitReader(resp.Body, maxPageBytes+1))
+	if err != nil {
+		return errs.New("E517", "source schema lookup failed")
+	}
+	if len(b) > maxPageBytes {
+		return errPageOverflow
+	}
+	if json.Unmarshal(b, out) != nil {
 		return errs.New("E517", "source schema lookup failed")
 	}
 	return nil
@@ -108,13 +118,21 @@ func queryJSON(method string, values ...any) string {
 type page struct {
 	Total int64
 	Items []json.RawMessage
+	Limit int
 }
 
 // listPage fetches one page of the collection under key. A non-empty after is a $id cursor;
 // a positive offset pages by position instead (attribute documents carry no $id).
 func (c *client) listPage(ctx context.Context, path, key, after string, offset int) (page, error) {
+	return c.listPageLimit(ctx, path, key, after, offset, pageSize)
+}
+
+// listPageLimit retries oversized responses at the same position, down to one item.
+// Inputs: list location and requested limit. Outputs: items and the effective limit.
+// Constraints: only byte-cap overflow is retried; other source failures are returned.
+func (c *client) listPageLimit(ctx context.Context, path, key, after string, offset, limit int) (page, error) {
 	q := url.Values{}
-	q.Add("queries[]", queryJSON("limit", pageSize))
+	q.Add("queries[]", queryJSON("limit", limit))
 	if after != "" {
 		q.Add("queries[]", queryJSON("cursorAfter", after))
 	}
@@ -123,9 +141,12 @@ func (c *client) listPage(ctx context.Context, path, key, after string, offset i
 	}
 	var raw map[string]json.RawMessage
 	if err := c.getJSON(ctx, path, q, &raw); err != nil {
+		if errors.Is(err, errPageOverflow) && limit > 1 {
+			return c.listPageLimit(ctx, path, key, after, offset, limit/2)
+		}
 		return page{}, err
 	}
-	var p page
+	p := page{Limit: limit}
 	if t, ok := raw["total"]; ok && json.Unmarshal(t, &p.Total) != nil {
 		return page{}, errs.New("E517", "source schema lookup failed")
 	}
@@ -143,19 +164,20 @@ func (c *client) each(ctx context.Context, path, key string, fn func(json.RawMes
 
 // walk is each with a choice of cursor ($id) or offset paging.
 func (c *client) walk(ctx context.Context, path, key string, cursor bool, fn func(json.RawMessage) error) (int64, error) {
-	after, total, seen := "", int64(0), 0
+	after, total, seen, limit := "", int64(0), 0, pageSize
 	for first := true; ; first = false {
 		offset, prev := 0, after
 		if !cursor {
 			offset = seen
 		}
-		p, err := c.listPage(ctx, path, key, after, offset)
+		p, err := c.listPageLimit(ctx, path, key, after, offset, limit)
 		if err != nil {
 			return 0, err
 		}
 		if first {
 			total = p.Total
 		}
+		limit = p.Limit
 		for _, item := range p.Items {
 			if cursor {
 				var id struct {
@@ -178,7 +200,7 @@ func (c *client) walk(ctx context.Context, path, key string, cursor bool, fn fun
 		if !cursor && int64(seen) > total+pageSize {
 			return 0, errs.New("E517", "source schema lookup failed")
 		}
-		if len(p.Items) < pageSize {
+		if len(p.Items) < limit {
 			return total, nil
 		}
 	}
