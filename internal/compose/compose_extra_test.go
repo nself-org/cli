@@ -16,7 +16,7 @@ func TestResolveImage_WithDigest(t *testing.T) {
 	defer func() { ImageDigests = old }()
 
 	ImageDigests = map[string]string{
-		"redis": "abc123def456",
+		"redis:7.2-alpine": "abc123def456",
 	}
 	got := ResolveImage("redis", "redis:7.2-alpine")
 	if !strings.Contains(got, "@sha256:abc123def456") {

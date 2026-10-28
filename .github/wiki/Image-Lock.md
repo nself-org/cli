@@ -35,7 +35,7 @@ A `*_VERSION` key in the env cascade is an explicit override and is used as give
 
 An `IMAGE_PINNING` value other than `lock` or `legacy` (case ignored) is an error: `nself build` and every command that loads the config refuse to run rather than fall back silently.
 
-`nself update images` writes a project digest file (`.nself-image-digests.json`); `nself build` does not read it today (debt D-0673). A lock reference already carries its digest.
+`nself update images` writes a project digest file (`.nself-image-digests.json`) keyed by exact image reference, so auth versions and Redis/Valkey keep separate digests. Old service-keyed records are ignored because they cannot identify the inspected image; rerun `nself update images` to refresh them. `nself build` does not read this file today. A lock reference already carries its digest.
 
 ## Valkey, the default cache
 
