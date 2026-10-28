@@ -1,4 +1,4 @@
-# Hasura table metadata for nself db reconcile. Keep in sync with hasura/metadata.json.
+# Hasura table metadata for nself db reconcile.
 - table:
     schema: "public"
     name: "notes"

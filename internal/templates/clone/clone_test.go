@@ -171,28 +171,33 @@ func maDecode(t *testing.T, raw json.RawMessage) interface{} {
 	return v
 }
 
-// maTables loads the shipped hasura/metadata.json as table name -> fields.
+// maTables loads the shipped tables.yaml (the file `nself db reconcile`
+// reads) as table name -> fields.
 func maTables(t *testing.T) map[string]map[string]json.RawMessage {
 	t.Helper()
-	data, err := templateFS.ReadFile("multi-app/hasura/metadata.json")
+	data, err := templateFS.ReadFile("multi-app/hasura/metadata/databases/default/tables/tables.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var doc struct {
-		Sources []struct {
-			Tables []map[string]json.RawMessage `json:"tables"`
-		} `json:"sources"`
-	}
-	if err := json.Unmarshal(data, &doc); err != nil {
+	var doc []map[string]interface{}
+	if err := yaml.Unmarshal(data, &doc); err != nil {
 		t.Fatal(err)
 	}
 	out := map[string]map[string]json.RawMessage{}
-	for _, tb := range doc.Sources[0].Tables {
+	for _, tb := range doc {
+		fields := map[string]json.RawMessage{}
+		for k, v := range tb {
+			raw, err := json.Marshal(v)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fields[k] = raw
+		}
 		var ref struct{ Name string }
-		if err := json.Unmarshal(tb["table"], &ref); err != nil {
+		if err := json.Unmarshal(fields["table"], &ref); err != nil {
 			t.Fatal(err)
 		}
-		out[ref.Name] = tb
+		out[ref.Name] = fields
 	}
 	return out
 }
@@ -213,7 +218,7 @@ func TestMultiAppFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]bool{".env.example": true, "README.md": true, "hasura/metadata.json": true,
+	want := map[string]bool{".env.example": true, "README.md": true,
 		"hasura/metadata/databases/default/tables/tables.yaml": true,
 		"manifest.json": true, "migrations/001_multi_app.sql": true, "nself.yml": true}
 	if len(got) != len(want) {
@@ -302,24 +307,22 @@ func TestMultiAppNoSpoofing(t *testing.T) {
 	}
 }
 
-// TestMultiAppMetadataInSync: the YAML that `nself db reconcile` reads and the
-// required hasura/metadata.json describe the same tables.
+// TestMultiAppMetadataInSync (D-0917): tables.yaml, which `nself db reconcile`
+// reads, is the only table metadata the template ships. A hasura/metadata.json
+// would be read only by replace_metadata (`nself db hasura metadata apply`),
+// which untracks the hasura-auth tables, so it must not come back.
 func TestMultiAppMetadataInSync(t *testing.T) {
-	raw, err := templateFS.ReadFile("multi-app/hasura/metadata/databases/default/tables/tables.yaml")
-	if err != nil {
-		t.Fatal(err)
+	if _, err := templateFS.ReadFile("multi-app/hasura/metadata.json"); err == nil {
+		t.Error("multi-app ships hasura/metadata.json; tables.yaml is the one source")
 	}
-	var fromYAML interface{}
-	if err := yaml.Unmarshal(raw, &fromYAML); err != nil {
-		t.Fatal(err)
+	tables := maTables(t)
+	if len(tables) != 3 {
+		t.Errorf("tables.yaml describes %d tables, want notes, projects, app_members", len(tables))
 	}
-	jsonTables := []map[string]json.RawMessage{}
 	for _, name := range []string{"notes", "projects", "app_members"} {
-		jsonTables = append(jsonTables, maTables(t)[name])
-	}
-	b, _ := json.Marshal(jsonTables)
-	if !reflect.DeepEqual(fromYAML, maDecode(t, b)) {
-		t.Errorf("tables.yaml and metadata.json differ:\nyaml: %v\njson: %s", fromYAML, b)
+		if tables[name] == nil {
+			t.Errorf("tables.yaml has no %s table", name)
+		}
 	}
 }
 
