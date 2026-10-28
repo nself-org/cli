@@ -55,7 +55,13 @@ log_fail() { printf "[release-create] FAIL: %s\n" "$*" >&2; }
 
 # Returns 0 if rule passes, 1 if it triggers (block).
 check_rule_signature() {
-  # DENY-001: signature-check. Look for any *.cosign.bundle in dist/.
+  # DENY-001: signature-check. Look for any *.cosign.bundle in dist/. The bundles exist only
+  # after release.yml builds, so at tag time (no dist/) the rule is skipped; the Pre-Release
+  # Gate in release.yml enforces it post-build (D-0727).
+  if [ ! -d "${REPO_ROOT}/dist" ]; then
+    log_info "no dist/ yet; DENY-001 is enforced post-build by release.yml (skipped)"
+    return 0
+  fi
   if [ -d "${REPO_ROOT}/dist" ] && ls "${REPO_ROOT}/dist"/*.cosign.bundle >/dev/null 2>&1; then
     return 0
   fi
@@ -63,7 +69,12 @@ check_rule_signature() {
 }
 
 check_rule_sbom() {
-  # DENY-002: missing-sbom. Require both SPDX + CycloneDX in dist/ or repo root.
+  # DENY-002: missing-sbom. Require both SPDX + CycloneDX in dist/ or repo root. Like DENY-001
+  # it needs the build output, so it is skipped when there is no dist/ (D-0727).
+  if [ ! -d "${REPO_ROOT}/dist" ]; then
+    log_info "no dist/ yet; DENY-002 is enforced post-build by release.yml (skipped)"
+    return 0
+  fi
   for f in sbom.spdx.json sbom.cdx.json; do
     if [ ! -f "${REPO_ROOT}/dist/${f}" ] && [ ! -f "${REPO_ROOT}/${f}" ]; then
       return 1
@@ -89,13 +100,14 @@ check_rule_commits_since_prior() {
 }
 
 check_rule_license_scan() {
-  # DENY-004: failed-license-scan. Query latest license-audit.yml run.
+  # DENY-004: failed-license-scan. Query the latest license-audit.yml run on main (a run on
+  # another branch says nothing about the release).
   if ! command -v gh >/dev/null 2>&1; then
     log_warn "gh CLI not found; cannot verify license-audit. Treating as PASS (CI gate handles it)."
     return 0
   fi
   local conclusion
-  conclusion=$(gh run list --workflow license-audit.yml --limit 1 --json conclusion -q '.[0].conclusion' 2>/dev/null || echo "")
+  conclusion=$(gh run list --workflow license-audit.yml --branch main --limit 1 --json conclusion -q '.[0].conclusion' 2>/dev/null || echo "")
   if [ "${conclusion}" = "success" ]; then
     return 0
   fi
