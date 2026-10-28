@@ -129,3 +129,37 @@ func TestInvokePinExposureCore(t *testing.T) {
 	}
 	t.Log("CHECKED-TestInvokePinExposureCore")
 }
+
+// TestInvokeExposureDisabledBuiltinFamily proves the child registry is built
+// with disabled builtin families mounted, so a pinned MCP/HTTP child whose
+// path lives under a disabled builtin family does not fail E421. Without the
+// mount step in checkInvokeExposure, the lookup returns no row and the pin
+// refuses even though the parent classified the command as exposed (D-0863).
+func TestInvokeExposureDisabledBuiltinFamily(t *testing.T) {
+	if !inFreshProcess(t, "TestInvokeExposureDisabledBuiltinFamily") {
+		return
+	}
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("NSELF_V15", "1")
+	// Disable the admin builtin family via its plugin disable marker so the
+	// runtime tree omits it but the registry must still contain its commands.
+	pluginDir := filepath.Join(os.Getenv("HOME"), ".nself", "plugins")
+	if err := os.MkdirAll(filepath.Join(pluginDir, "admin"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "admin", ".disabled"), []byte("review regression"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(invoke.PathEnv, "admin health")
+	t.Setenv(invoke.InvokedByEnv, "mcp")
+	t.Setenv(invoke.TransportEnv, invoke.TransportMCP)
+	defer PrepareTreeForGeneration()()
+	installInvocationDecorator(RootCmd)
+	// The admin subtree is not mounted on RootCmd because of the disable
+	// marker; checkInvokeExposure must still resolve "admin status" by
+	// mounting disabled builtin families for the child registry build.
+	if err := checkInvokePin(RootCmd, []string{"admin", "health"}); err != nil {
+		t.Fatalf("disabled builtin family must remain exposed to pinned children: %v", err)
+	}
+	t.Log("CHECKED-TestInvokeExposureDisabledBuiltinFamily")
+}

@@ -34,6 +34,13 @@ func checkInvokeExposure(root *cobra.Command, argv []string, path string) error 
 	if transport != invoke.TransportMCP && transport != invoke.TransportHTTP && transport != invoke.TransportHTTPStream {
 		return refuse("unknown child invocation transport")
 	}
+	// A disabled builtin family keeps its canon entries and data types, so the
+	// child registry must be built with every family mounted, exactly as the
+	// parent does (D-0863). Without this, a pinned MCP/HTTP child whose path
+	// lives under a disabled builtin family fails E421 even though the parent
+	// classified it as exposed.
+	undoFamilies := mountDisabledBuiltinFamilies(root)
+	defer undoFamilies()
 	c, err := canonLoad(true)
 	if err != nil {
 		return refuse("child command canon: " + err.Error())

@@ -35,6 +35,11 @@ func checkInvokePin(root *cobra.Command, argv []string) error {
 		return nil
 	}
 	_ = os.Unsetenv(invoke.PathEnv)
+	// A disabled builtin family keeps its canon entries, so the child tree
+	// must include it for the duration of the pin check; otherwise Find
+	// cannot resolve a path the parent classified as exposed (D-0863).
+	undoFamilies := mountDisabledBuiltinFamilies(root)
+	defer undoFamilies()
 	got := ""
 	if c, _, _ := root.Find(argv); c != nil {
 		got = strings.TrimSpace(strings.TrimPrefix(c.CommandPath(), root.Name()))
