@@ -11,6 +11,7 @@ import { join } from "node:path";
 
 import { ConfirmationRequired, NselfError, createClient } from "./index";
 import type { Client } from "./index";
+import { isolatedEnv } from "./isolated-env";
 
 const bin = process.env.NSELF_BIN;
 const suite = bin ? describe : describe.skip;
@@ -50,9 +51,8 @@ suite("live nself admin serve", () => {
     for (const d of [home, proj, shimDir]) mkdirSync(d, { recursive: true });
     writeFileSync(join(shimDir, "docker"), SHIM);
     chmodSync(join(shimDir, "docker"), 0o755);
-    // Drop NSELF_* and XDG_* so a developer's own token or config never reaches the throwaway server.
-    const inherited = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("NSELF_") && !k.startsWith("XDG_")));
-    const env = { ...inherited, HOME: home, NSELF_V15: "1", NSELF_PLUGIN_DIR: join(home, "plugins"), PATH: `${shimDir}:${process.env.PATH ?? ""}` };
+    // Drop NSELF_*, XDG_* and SECRETS_* so a developer's own token, config or age key path never reaches the throwaway server.
+    const env = { ...isolatedEnv(process.env), HOME: home, NSELF_V15: "1", NSELF_PLUGIN_DIR: join(home, "plugins"), PATH: `${shimDir}:${process.env.PATH ?? ""}` };
     execFileSync(bin as string, ["init", "--non-interactive", "--domain", "fixture.test"], { cwd: proj, env, stdio: "pipe" });
     try {
       execFileSync("age", ["--version"], { stdio: "pipe" });
