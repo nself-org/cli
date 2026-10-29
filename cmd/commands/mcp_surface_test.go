@@ -10,6 +10,7 @@ package commands
 // from internal/invoke/testdata/stubcli; no network, no sleeps.
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -21,18 +22,37 @@ import (
 	"github.com/nself-org/cli/internal/invoke"
 )
 
-// waitListChanged reads until the server has sent tools/list_changed, with
-// ping round trips (a notification and a response may interleave).
+// waitListChanged waits for tools/list_changed. The server queues it on its
+// own writer goroutine, so it can arrive after the response of the call that
+// caused it: with no request outstanding, the next line on the stream can
+// only be a notification, so read lines until it comes, bounded by a deadline.
 func waitListChanged(t *testing.T, sess *stdioSession) {
 	t.Helper()
-	for i := 0; i < 20; i++ {
-		if slices.Contains(sess.notes, "notifications/tools/list_changed") {
-			sess.notes = nil
-			return
+	const method = "notifications/tools/list_changed"
+	lines := make(chan []byte)
+	go func() {
+		for !slices.Contains(sess.notes, method) {
+			raw, err := sess.out.ReadBytes('\n')
+			if err != nil {
+				break
+			}
+			var msg struct {
+				Method string `json:"method"`
+			}
+			_ = json.Unmarshal(raw, &msg)
+			sess.notes = append(sess.notes, msg.Method)
 		}
-		sess.call("ping", `{}`)
+		close(lines)
+	}()
+	select {
+	case <-lines:
+	case <-time.After(30 * time.Second):
+		t.Fatalf("no %s within 30s; notifications seen: %v", method, sess.notes)
 	}
-	t.Fatalf("no notifications/tools/list_changed; notifications seen: %v", sess.notes)
+	if !slices.Contains(sess.notes, method) {
+		t.Fatalf("the stream ended before %s; notifications seen: %v", method, sess.notes)
+	}
+	sess.notes = nil
 }
 
 func TestMCPSurfaceWithoutProjectThenRefresh(t *testing.T) {
