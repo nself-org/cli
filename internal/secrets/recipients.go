@@ -92,6 +92,9 @@ func Recipients(req RecipientsRequest, sink AuditFunc) ([]string, bool, error) {
 		return nil, false, err
 	}
 	if req.Action != "list" {
+		if err := ensureGitignore(filepath.Join(req.ProjectRoot, ".secrets")); err != nil {
+			return nil, false, errs.New("E401", "Cannot update .secrets/.gitignore for recipient change")
+		}
 		unlock, err := lockRecipientStore(path + ".lock")
 		if err != nil {
 			return nil, false, errs.New("E401", "Cannot lock secret store for recipient change")

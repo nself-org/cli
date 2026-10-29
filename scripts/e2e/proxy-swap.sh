@@ -254,6 +254,9 @@ wait_healthy() {
 nself "$W/a" add echo --force --yes
 nself "$W/a" build --yes
 pin_fixture_credentials "$W/a"
+# D2 snippet cert parsing accepts the flat cert dir; core writes certificates/<dir>.
+# Alias only fixture certificate bytes, without editing generated configuration.
+ln -s certificates/proxy-test "$W/a/ssl/proxy-test"
 # traefik-acme mounts ssl/.acme-webroot; Docker would create it root-owned and lego (running as this uid) could not
 # write challenge tokens into it, so the renew leg creates it first (nginx never needed this: the CLI creates it).
 [[ $MODE != renew ]] || install -d -m 755 "$W/a/ssl/.acme-webroot"
