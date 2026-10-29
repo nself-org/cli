@@ -68,6 +68,9 @@ type Hooks struct {
 	Timeout time.Duration
 	// Interval is the poll interval; tests set milliseconds.
 	Interval time.Duration
+	// now is the clock the step deadlines read; nil means time.Now. Tests
+	// replace it so a shared-deadline check never depends on wall time.
+	now func() time.Time
 }
 
 // Member is one installed plugin of the bundle.
@@ -134,6 +137,14 @@ func (h Hooks) healthURL(m Member) string {
 		return h.HealthURL(m)
 	}
 	return DefaultHealthURL(m)
+}
+
+// clock returns the current time from the injected clock, or the wall clock.
+func (h Hooks) clock() time.Time {
+	if h.now != nil {
+		return h.now()
+	}
+	return time.Now()
 }
 
 func (h Hooks) timeout() time.Duration {
