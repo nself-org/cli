@@ -163,11 +163,8 @@ func renderCron(bin, dir, hash string) (string, error) {
 	}
 	minute, _ := strconv.ParseUint(hash[:2], 16, 8)
 	tag := entCronTag + hash
-	// The lock (fd 9) spans the whole read-modify-write, so a concurrent install is never overwritten
-	// with a stale read. Without flock the removal runs unlocked so the job does not run forever.
-	drop := fmt.Sprintf(`{ mkdir -p "$HOME/.nself" && { if command -v flock >/dev/null 2>&1; then flock -x 9; fi; t=$(crontab -l 2>/dev/null) && printf '%%s\n' "$t" | grep -vF %s | crontab -; } 9>"$HOME/.nself/entitlement-cron.lock"; }`, shQuote(tag))
 	line := fmt.Sprintf("%d */6 * * * if test -e %s && test -d %s; then %s >/dev/null; else %s; fi %s",
-		minute%60, shQuote(bin), shQuote(dir), refreshCmd(bin, dir), drop, tag)
+		minute%60, shQuote(bin), shQuote(dir), refreshCmd(bin, dir), cronDropCmd(tag), tag)
 	return cronEscape(line), nil
 }
 
