@@ -199,14 +199,3 @@ func (r *acmeRun) probeHosts(l acme.Lineage) (out []string) {
 	}
 	return out
 }
-
-func (r *acmeRun) installOwner() *acme.FileOwner {
-	if r.provider != "traefik" || traefikEuid() != 0 {
-		return nil
-	}
-	uid, gid := hostOwner(r.workdir)
-	if uid < 0 {
-		return nil
-	}
-	return &acme.FileOwner{UID: uid, GID: gid}
-}

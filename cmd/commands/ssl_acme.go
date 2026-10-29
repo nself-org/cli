@@ -252,7 +252,7 @@ func (r *acmeRun) install(ctx context.Context, l acme.Lineage, cert, key []byte)
 		}
 	}
 	gens, err := acme.Install(ctx, acme.InstallReq{SSLDir: r.res.SSLDir, Targets: l.Targets, Cert: cert, Key: key,
-		DirMode: acme.GenerationDirMode(r.provider), Owner: r.installOwner(), Reloader: r.reloader(), Verify: r.verifier(l, cert), Fault: r.hooks.Fault, Exit: acmeD.exit})
+		DirMode: acme.GenerationDirMode(r.provider), Owner: acme.GenerationOwner(r.provider, traefikEuid(), r.workdir, hostOwner), Reloader: r.reloader(), Verify: r.verifier(l, cert), Fault: r.hooks.Fault, Exit: acmeD.exit})
 	if err != nil {
 		return e151(r.afterFailedInstall(ctx, err))
 	}
