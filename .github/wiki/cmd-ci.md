@@ -133,7 +133,7 @@ Node setup, enrollment and the runner migration (`nself runner` is now
 |---|---|
 | `build` | Build a signed release artifact locally (Android only) |
 | `eval` | Run eval-gate suite or validate an eval-set YAML |
-| `forgejo` | Show Forgejo server + runner health (ops profile) |
+| `forgejo` | Show Forgejo server health (ops profile) |
 | `serve` | Start the nself-ci webhook listener daemon (port 3845) |
 <!-- END GENERATED:subcommands -->
 

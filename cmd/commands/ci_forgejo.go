@@ -25,7 +25,7 @@ import (
 
 var ciForgejoCmd = &cobra.Command{
 	Use:   "forgejo",
-	Short: "Show Forgejo server + runner health (ops profile)",
+	Short: "Show Forgejo server health (ops profile)",
 	Long: `Query the Forgejo server health endpoint and the forgejo-runner
 container status. Designed for the ops profile where Forgejo provides
 offline CI that runs .github/workflows/*.yml with zero GitHub Actions

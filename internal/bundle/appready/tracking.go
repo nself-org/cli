@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 )
 
 // DefaultSource is the Hasura source nself tracks plugin tables on
@@ -137,7 +136,7 @@ func waitTracked(ctx context.Context, h Hooks, members []Member) (string, error)
 	if total == 0 {
 		return "no member declares tables", nil
 	}
-	deadline := time.Now().Add(h.timeout())
+	deadline := h.clock().Add(h.timeout())
 	var last error
 	for {
 		raw, err := h.ExportMetadata(ctx)
@@ -155,7 +154,7 @@ func waitTracked(ctx context.Context, h Hooks, members []Member) (string, error)
 		if ctx.Err() != nil {
 			return "", ctx.Err()
 		}
-		if time.Now().Add(h.interval()).After(deadline) {
+		if h.clock().Add(h.interval()).After(deadline) {
 			return "", last
 		}
 		pause(ctx, h.interval())

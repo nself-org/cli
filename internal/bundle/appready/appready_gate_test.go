@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -91,14 +92,32 @@ func TestStepNamesPluginThroughWrapping(t *testing.T) {
 	}
 }
 
-// delayedHealth answers ready only once delay has passed since creation.
-func delayedHealth(t *testing.T, delay time.Duration) *httptest.Server {
+// fakeClock is a controllable time source: it moves only when the test says so.
+type fakeClock struct {
+	mu sync.Mutex
+	t  time.Time
+}
+
+func (c *fakeClock) Now() time.Time { c.mu.Lock(); defer c.mu.Unlock(); return c.t }
+func (c *fakeClock) Advance(d time.Duration) {
+	c.mu.Lock()
+	c.t = c.t.Add(d)
+	c.mu.Unlock()
+}
+
+// healthServer answers a ready /health (and runs onReady once, on the first
+// ready answer), or a never-ready one when ready is false. Readiness is set by
+// the test, never by elapsed wall time.
+func healthServer(t *testing.T, ready bool, onReady func()) *httptest.Server {
 	t.Helper()
-	born := time.Now()
+	var once sync.Once
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		applied := 0
-		if time.Since(born) >= delay {
+		if ready {
 			applied = 1
+			if onReady != nil {
+				once.Do(onReady)
+			}
 		}
 		_, _ = fmt.Fprintf(w, `{"status":"ok","migrations":{"applied":%d,"expected":1}}`, applied)
 	}))
@@ -107,17 +126,21 @@ func delayedHealth(t *testing.T, delay time.Duration) *httptest.Server {
 }
 
 // TestReadinessSharesOneDeadline: the readiness step has one bound for all
-// members. The second member would be ready inside its own full timeout, but
-// not inside the step's.
+// members. Member a becomes ready and, on the injected clock, spends 250ms of
+// the 300ms step budget; member b then gets only the 50ms left, not a fresh
+// 300ms. b's E118 names the budget it was given, so the check reads the
+// deadline arithmetic, not how long the machine took.
 func TestReadinessSharesOneDeadline(t *testing.T) {
+	const budget, spent = 300 * time.Millisecond, 250 * time.Millisecond
 	dir := t.TempDir()
 	writeManifest(t, dir, "a", nil)
 	writeManifest(t, dir, "b", nil)
+	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
 	urls := map[string]string{
-		"a": delayedHealth(t, 150*time.Millisecond).URL,
-		"b": delayedHealth(t, 400*time.Millisecond).URL,
+		"a": healthServer(t, true, func() { clk.Advance(spent) }).URL,
+		"b": healthServer(t, false, nil).URL,
 	}
-	h := Hooks{Timeout: 300 * time.Millisecond, Interval: 10 * time.Millisecond, HealthURL: func(m Member) string { return urls[m.Name] }}
+	h := Hooks{Timeout: budget, Interval: 10 * time.Millisecond, now: clk.Now, HealthURL: func(m Member) string { return urls[m.Name] }}
 	ms, err := LoadMembers(dir, []string{"a", "b"})
 	if err != nil {
 		t.Fatal(err)
@@ -125,6 +148,9 @@ func TestReadinessSharesOneDeadline(t *testing.T) {
 	_, err = waitMembers(context.Background(), h, ms)
 	var se *StepError
 	if !errors.As(err, &se) || se.Plugin != "b" {
-		t.Fatalf("want a readiness failure naming b inside the shared 300ms, got %v", err)
+		t.Fatalf("want a readiness failure naming b, got %v", err)
+	}
+	if want := "after " + (budget - spent).String(); !strings.Contains(err.Error(), want) {
+		t.Fatalf("b was given %q, want the shared remainder (%s): a per-member budget would say after %s", err, want, budget)
 	}
 }
