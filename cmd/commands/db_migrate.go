@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/database"
+	"github.com/nself-org/cli/internal/plugin"
 
 	"github.com/spf13/cobra"
 )
@@ -54,9 +55,11 @@ func runDBMigrateUp(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("PostgreSQL is not running — start with 'nself start' first")
 	}
 
-	plugin, _ := cmd.Flags().GetString("plugin")
-	if err := validatePluginFlag(plugin); err != nil {
-		return err
+	pluginName, _ := cmd.Flags().GetString("plugin")
+	if pluginName != "" {
+		if err := plugin.ValidateName(pluginName); err != nil {
+			return err
+		}
 	}
 
 	// --migration-dir: apply all .sql files in the given directory (G-008).
@@ -96,7 +99,7 @@ func runDBMigrateUp(cmd *cobra.Command, _ []string) error {
 	// Default directory dry-run: PendingMigrations issues SELECTs only and
 	// creates nothing (P7-PROD-84); it never reaches MigrateUp.
 	if dryRun {
-		pending, err := database.PendingMigrations(cmd.Context(), cfg, plugin)
+		pending, err := database.PendingMigrations(cmd.Context(), cfg, pluginName)
 		if err != nil {
 			return fmt.Errorf("pending migrations: %w", err)
 		}
@@ -110,7 +113,7 @@ func runDBMigrateUp(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	count, err := database.MigrateUp(cmd.Context(), cfg, plugin)
+	count, err := database.MigrateUp(cmd.Context(), cfg, pluginName)
 	if err != nil {
 		return fmt.Errorf("migrate up: %w", err)
 	}

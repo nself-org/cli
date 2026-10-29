@@ -59,6 +59,8 @@ Both `DELETE` statements execute inside the same transaction as the down DDL. Ei
 
 Both subcommands accept `--migration-dir <dir>` to override auto-detection. On remote targets (`--env staging|prod`) the flag is forwarded to the remote CLI; the pre-flight version-drift check guarantees the remote binary understands it.
 
+Remote migration commands validate `--plugin` locally before dispatch and forward it once. A directory value equal to `--plugin` remains a directory value and does not suppress plugin validation or forwarding.
+
 ## Migration file naming
 
 | Pattern | Meaning |

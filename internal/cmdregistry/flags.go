@@ -68,3 +68,14 @@ func strPtr(s string) *string {
 	}
 	return &s
 }
+
+// NoopBoolValue is a stand-in bool flag value for implicit flags that should
+// never be set by the user (e.g. suppressed help flags). It satisfies
+// pflag.Value but ignores all writes.
+type NoopBoolValue struct{}
+
+func (NoopBoolValue) String() string   { return "false" }
+func (NoopBoolValue) Set(string) error { return nil }
+func (NoopBoolValue) Type() string     { return "bool" }
+
+var _ pflag.Value = NoopBoolValue{}

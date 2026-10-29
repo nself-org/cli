@@ -22,6 +22,7 @@ package commands
 import (
 	"strings"
 
+	"github.com/nself-org/cli/internal/cmdregistry"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -71,6 +72,10 @@ func rewriteOldToNew(t *canonTableT, root *cobra.Command, args []string, start i
 	}
 	if kind == "removed" {
 		return nil, nil, removedError(best)
+	}
+	// Identity breakouts keep their spelling and need no deprecation warning.
+	if strings.Join(best.From, " ") == strings.Join(best.To, " ") {
+		return args, nil, nil
 	}
 	removal := best.RemovalAt
 	if removal == "" {
@@ -285,14 +290,7 @@ func rootFlag(root *cobra.Command, a string) *pflag.Flag {
 		return f
 	}
 	if a == "--help" || a == "-h" || a == "--version" {
-		return &pflag.Flag{Name: strings.TrimLeft(a, "-"), Value: boolValue{}}
+		return &pflag.Flag{Name: strings.TrimLeft(a, "-"), Value: cmdregistry.NoopBoolValue{}}
 	}
 	return nil
 }
-
-// boolValue is a stand-in bool flag value for the implicit help flags.
-type boolValue struct{}
-
-func (boolValue) String() string   { return "false" }
-func (boolValue) Set(string) error { return nil }
-func (boolValue) Type() string     { return "bool" }

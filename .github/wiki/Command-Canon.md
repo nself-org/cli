@@ -76,6 +76,8 @@ Total rows: 60
 ## Removal plan
 
 <!-- BEGIN PROSE:removal-plan -->
+Identity break-outs (`ci` to `ci`, `functions` to `functions`) keep their spelling and do not emit a deprecation warning, as an exception to the old-spelling warnings below. Longer moves beneath them, such as `ci eval` to `eval`, still warn.
+
 v1.5.0 ships this canon. Every old spelling above keeps working through all v1.5.x releases and prints a deprecation warning. **v1.6.0 removes every move, shim and retired hub in the table**: delete the rows from the canon fragments (`internal/canon/domains/`), run `make canon cmd-inventory wiki-commands parity`, and the old spellings are gone. `TestCanonShimLifetime` fails the build once the running version reaches a row's `removal_at`, so no shim can outlive v1.6.0 by accident. Break-outs and removals have no removal date: the command leaves core at v1.5.0. `scripts/ci/old-spellings.sh` prints every Go string literal and doc line that still names an old spelling (`<file>:<line> <old path> -> <new path>`); run it before the v1.6.0 removal and when updating docs.
 <!-- END PROSE:removal-plan -->
 

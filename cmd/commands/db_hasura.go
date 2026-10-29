@@ -11,6 +11,7 @@ import (
 	"os/exec"
 
 	"github.com/nself-org/cli/internal/database"
+	"github.com/nself-org/cli/internal/plugin"
 
 	"github.com/spf13/cobra"
 )
@@ -90,15 +91,17 @@ func runDBHasuraMetadataReload(cmd *cobra.Command, _ []string) error {
 }
 
 func runDBVerifyChecksums(cmd *cobra.Command, _ []string) error {
-	plugin, _ := cmd.Flags().GetString("plugin")
-	if err := validatePluginFlag(plugin); err != nil {
-		return err
+	pluginName, _ := cmd.Flags().GetString("plugin")
+	if pluginName != "" {
+		if err := plugin.ValidateName(pluginName); err != nil {
+			return err
+		}
 	}
 	cfg, err := loadProjectConfig()
 	if err != nil {
 		return err
 	}
-	mismatches, err := database.VerifyChecksums(cmd.Context(), cfg, plugin)
+	mismatches, err := database.VerifyChecksums(cmd.Context(), cfg, pluginName)
 	if err != nil {
 		return fmt.Errorf("verify checksums: %w", err)
 	}
