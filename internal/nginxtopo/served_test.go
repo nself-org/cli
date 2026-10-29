@@ -179,3 +179,47 @@ func TestContained(t *testing.T) {
 		t.Fatal("a linked parent that leaves the project must be refused even when sites does not exist")
 	}
 }
+
+// Contained fails closed: a project root, a path component, or a link it cannot
+// resolve is an error, never a silent pass (D-0757).
+func TestContained_UnresolvablePaths(t *testing.T) {
+	root := t.TempDir()
+
+	t.Run("project root missing", func(t *testing.T) {
+		gone := filepath.Join(root, "no-such-project")
+		err := Contained(gone, filepath.Join(gone, "nginx"))
+		if err == nil || !strings.Contains(err.Error(), "resolving the project directory") {
+			t.Fatalf("a missing project root: %v", err)
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("the cause must stay in the chain: %v", err)
+		}
+	})
+
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks and ENOTDIR semantics differ on Windows")
+	}
+
+	t.Run("parent is a regular file", func(t *testing.T) {
+		file := filepath.Join(root, "plain-file")
+		if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		dir := filepath.Join(file, "sites")
+		err := Contained(root, dir)
+		if err == nil || !strings.Contains(err.Error(), "checking "+dir) {
+			t.Fatalf("a directory below a regular file: %v", err)
+		}
+	})
+
+	t.Run("symlink loop", func(t *testing.T) {
+		loop := filepath.Join(root, "loop")
+		if err := os.Symlink(loop, loop); err != nil {
+			t.Fatal(err)
+		}
+		err := Contained(root, loop)
+		if err == nil || !strings.Contains(err.Error(), "resolving "+loop) {
+			t.Fatalf("a self-referencing link: %v", err)
+		}
+	})
+}
