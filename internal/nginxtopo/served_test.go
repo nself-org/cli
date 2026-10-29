@@ -40,6 +40,11 @@ func TestServedDirs(t *testing.T) {
 		errContain []string
 	}{
 		{
+			name:      "empty project uses relative directories",
+			wantNginx: "nginx",
+			wantSSL:   "ssl",
+		},
+		{
 			name:      "own stack when frontedBy is empty",
 			project:   standalone,
 			wantRoot:  standalone,
@@ -222,4 +227,40 @@ func TestContained_UnresolvablePaths(t *testing.T) {
 			t.Fatalf("a self-referencing link: %v", err)
 		}
 	})
+}
+
+func TestSharedOwnerRegistered_Layouts(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		marker  bool
+		blocked bool
+		want    bool
+	}{
+		{name: "missing registration"},
+		{name: "registered owner", marker: true, want: true},
+		{name: "non-directory nginx path", blocked: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			nginx := filepath.Join(root, "nginx")
+			if tc.blocked {
+				if err := os.WriteFile(nginx, nil, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				shared := filepath.Join(nginx, SharedDir)
+				if err := os.MkdirAll(shared, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if tc.marker {
+					if err := os.WriteFile(filepath.Join(shared, SharedOwnerFile), []byte("{}"), 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			if got := SharedOwnerRegistered(root); got != tc.want {
+				t.Errorf("SharedOwnerRegistered(%q) = %v, want %v", root, got, tc.want)
+			}
+		})
+	}
 }
