@@ -139,14 +139,6 @@ func retireLegacyCICache() {
 	})
 }
 
-// isRegularFile reports whether path is itself a regular file. A symlink does
-// not count: the installer publishes a copy, so a link there was not put by a
-// verified install and falls through to the seam, which replaces it.
-func isRegularFile(path string) bool {
-	info, err := os.Lstat(path)
-	return err == nil && info.Mode().IsRegular()
-}
-
 // needsBuild returns true if the binary is missing or any source file is newer.
 func needsBuild(binary, pluginDir string) bool {
 	info, err := os.Stat(binary)
