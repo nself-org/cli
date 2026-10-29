@@ -154,7 +154,13 @@ func TestNextStep(t *testing.T) {
 		t.Run(tc.stage+"_"+tc.mode, func(t *testing.T) {
 			nextStepFixture(t, tc.stage)
 			t.Setenv("NEXTSTEP_DOCKER", tc.mode)
-			ctx, cancel := context.WithTimeout(context.Background(), nextStepTimeout)
+			// Only the slow stub (it sleeps 10s) may reach the production deadline;
+			// a loaded Windows runner needs far more than 3s to start the helper.
+			timeout := 60 * time.Second
+			if tc.mode == "slow" {
+				timeout = nextStepTimeout
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			defer cancel()
 			if got := nextStep(ctx); got != "Next: nself "+tc.want {
 				t.Errorf("got %q, want %q", got, tc.want)
