@@ -7,7 +7,8 @@ ROOT=$(pwd)
 export TMPDIR="$W"
 export FIXTURE_PASSWORD
 FIXTURE_PASSWORD=$(python3 -c 'import secrets;print(secrets.token_hex(24))')
-export FIXTURE_PORT=${FIXTURE_PORT:-$((22000 + RANDOM % 20000))}
+# Fixture ports stay below 32768, the bottom of the Linux ephemeral range: a higher port can be taken by an outbound connection (image pulls) between pick and bind.
+export FIXTURE_PORT=${FIXTURE_PORT:-$((20000 + RANDOM % 10000))}
 export FIXTURE17_PORT=${FIXTURE17_PORT:-$((FIXTURE_PORT + 1))}
 export TARGET_PG_PORT=$((FIXTURE_PORT + 2)) TARGET_HASURA_PORT=$((FIXTURE_PORT + 3)) TARGET_AUTH_PORT=$((FIXTURE_PORT + 4)) TARGET_HTTP_PORT=$((FIXTURE_PORT + 5)) TARGET_HTTPS_PORT=$((FIXTURE_PORT + 6))
 FIXTURE=$ROOT/test/fixtures/import/postgres/compose.yml

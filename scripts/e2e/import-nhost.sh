@@ -16,7 +16,8 @@ FIXTURE=$ROOT/test/fixtures/import/nhost
 rand() { python3 -c 'import secrets;print(secrets.token_hex(24))'; }
 export FIXTURE_PASSWORD FIXTURE_ADMIN_SECRET FIXTURE_JWT_KEY FIXTURE_S3_ACCESS FIXTURE_S3_SECRET FIXTURE_S3_BUCKET=nhost
 FIXTURE_PASSWORD=$(rand) FIXTURE_ADMIN_SECRET=$(rand) FIXTURE_JWT_KEY=$(rand) FIXTURE_S3_ACCESS=$(rand) FIXTURE_S3_SECRET=$(rand)
-export FIXTURE_PORT=${FIXTURE_PORT:-$((22000 + RANDOM % 20000))}
+# Fixture ports stay below 32768, the bottom of the Linux ephemeral range: a higher port can be taken by an outbound connection (image pulls) between pick and bind.
+export FIXTURE_PORT=${FIXTURE_PORT:-$((20000 + RANDOM % 10000))}
 export FIXTURE_HASURA_PORT=$((FIXTURE_PORT + 1)) FIXTURE_AUTH_PORT=$((FIXTURE_PORT + 7)) FIXTURE_STORAGE_PORT=$((FIXTURE_PORT + 8)) FIXTURE_S3_PORT=$((FIXTURE_PORT + 9))
 export TARGET_PG_PORT=$((FIXTURE_PORT + 2)) TARGET_HASURA_PORT=$((FIXTURE_PORT + 3)) TARGET_AUTH_PORT=$((FIXTURE_PORT + 4)) TARGET_HTTP_PORT=$((FIXTURE_PORT + 5)) TARGET_HTTPS_PORT=$((FIXTURE_PORT + 6)) TARGET_S3_PORT=$((FIXTURE_PORT + 10))
 PROJECT=a11nh-$(date +%s)-$RANDOM

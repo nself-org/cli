@@ -12,7 +12,8 @@ ROOT=$(pwd)
 export TMPDIR="$W"
 export FIXTURE_PASSWORD
 FIXTURE_PASSWORD=$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')
-export FIXTURE_PORT=${FIXTURE_PORT:-$((22000 + RANDOM % 20000))}
+# Fixture ports stay below 32768, the bottom of the Linux ephemeral range: a higher port can be taken by an outbound connection (image pulls) between pick and bind.
+export FIXTURE_PORT=${FIXTURE_PORT:-$((20000 + RANDOM % 10000))}
 export TARGET_PG_PORT=$((FIXTURE_PORT + 2)) TARGET_HASURA_PORT=$((FIXTURE_PORT + 3)) TARGET_AUTH_PORT=$((FIXTURE_PORT + 4)) TARGET_HTTP_PORT=$((FIXTURE_PORT + 5)) TARGET_HTTPS_PORT=$((FIXTURE_PORT + 6))
 export SEAWEEDFS_PORT=$((FIXTURE_PORT + 7))
 FIXTURE=$ROOT/test/fixtures/import/appwrite/compose.yml
