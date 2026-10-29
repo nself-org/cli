@@ -116,3 +116,23 @@ func TestAuditProseLinksStaleTiers(t *testing.T) {
 		t.Errorf("bundle model flagged:\n%s", got)
 	}
 }
+
+// Bundle pages must not sell a retired Basic/Pro plan or the retired $1.99
+// Pro price; a negation ("no Basic tier") and non-bundle pages pass (D-1289).
+func TestAuditProseLinksBundlePagesStalePlans(t *testing.T) {
+	stale := "Pro tier is $1.99/mo or $19.99/yr.\n- Basic tier license key or higher\n# Pro tier required for tier: max plugins\n"
+	got := audit(t, map[string]string{
+		"bundle-nclaw.md": stale,
+		"Support.md":      stale,
+	})
+	if n := strings.Count(got, "bundle-nclaw.md: stale tier pricing line"); n != 3 {
+		t.Errorf("bundle-nclaw.md: want 3 findings, got %d in:\n%s", n, got)
+	}
+	if strings.Contains(got, "Support.md") {
+		t.Errorf("non-pricing page flagged:\n%s", got)
+	}
+	ok := "The ɳClaw bundle is $0.99/mo; there is no separate Basic or Pro plan.\nThere is no Basic tier.\n"
+	if got := audit(t, map[string]string{"bundle-nclaw.md": ok}); got != "" {
+		t.Errorf("bundle model flagged:\n%s", got)
+	}
+}

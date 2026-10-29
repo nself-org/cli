@@ -72,7 +72,7 @@ Bundles group plugins that work together to deliver a complete feature set. Per 
 | Bundle | Price | Plugins | Use Case |
 |--------|-------|---------|----------|
 | [[bundle-nclaw]] | $0.99/mo | ai, claw, claw-web, mux, voice, browser, google, notify, cron, claw-budget, claw-news | AI personal assistant: email, calendar, news, budget, tools |
-| [[bundle-clawde]] | $1.99/mo / $19.99/yr | TBD (cloud sync, premium models, team features) | ClawDE+ remote/mobile sync via API |
+| [[bundle-clawde]] | $0.99/mo / $9.99/yr | TBD (cloud sync, premium models, team features) | ClawDE+ remote/mobile sync via API |
 | [[bundle-nfamily]] | $0.99/mo | social, photos, activity-feed, moderation, realtime, cms, chat | Private family social, photo sharing, activity feeds |
 | [[bundle-nchat]] | $0.99/mo | chat, livekit, recording, moderation, bots, realtime, auth | Messaging with video calls, bots, and moderation |
 

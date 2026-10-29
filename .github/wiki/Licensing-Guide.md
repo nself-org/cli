@@ -40,7 +40,7 @@ There is no "Basic" or "Pro" tier. Paid bundles are independent purchases; ɳSel
 
 ## Per-Product Plugin Bundles
 
-Each bundle page lists its current plugin membership and purpose. Plugin lists change with releases; the live catalog at [nself.org/pricing](https://nself.org/pricing) is authoritative.
+Each bundle page lists its plugin set and purpose. Plugin lists change with releases, and the ClawDE set is provisional; the live catalog at [nself.org/pricing](https://nself.org/pricing) is authoritative.
 
 - [[bundle-nclaw]] — AI personal assistant
 - [[bundle-nchat]] — Messaging and voice
@@ -85,14 +85,7 @@ nself license remove
 
 ### Key Format
 
-Keys use a prefix format:
-
-| Prefix | Tier |
-|--------|------|
-| `nself_pro_` | Pro tier and above |
-| `nself_max_` | Pro tier |
-| `nself_ent_` | Enterprise tier |
-| `nself_owner_` | Owner/internal tier |
+Keys use a `nself_<product>_` prefix, for example `nself_plus_` for ɳSelf+. The prefix only names the key's product; the signed license response decides which plugins it unlocks. [[Plugin-Licensing]] lists every accepted prefix.
 
 Keys must be at least 32 characters total.
 

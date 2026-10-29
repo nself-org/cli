@@ -18,6 +18,10 @@ var (
 	// staleTierRe matches a pricing-table row for a retired tier, or the retired
 	// Basic-grandfathering line (D-1289).
 	staleTierRe = regexp.MustCompile(`(?i)^\|\s*\**(Elite|Business\+?|Enterprise)\**\s*\|.*\$|grandfathered to the Basic tier`)
+	// stalePlanRe matches a claim of the retired Basic/Pro plans or the retired
+	// $1.99 Pro price; noPlanRe exempts a sentence that denies them (D-1289).
+	stalePlanRe = regexp.MustCompile(`(?i)\b(basic|pro) tier\b|\$1\.99/mo`)
+	noPlanRe    = regexp.MustCompile(`(?i)\bno\b[^.]*\b(basic|pro)\b`)
 	// pricingPages are the pages whose tier tables must follow the bundle model.
 	pricingPages = map[string]bool{
 		"Plugin-Overview.md":  true,
@@ -55,7 +59,8 @@ func wikiPageSet(dir string) (map[string]bool, error) {
 // or when any wiki page has a [[wikilink]] whose target page does not exist.
 // Each class of link 404s in public renders (D-0717). It also fails when a
 // pricing page still carries a retired Elite/Business/Business+/Enterprise row
-// or the Basic-grandfathering line (D-1289).
+// or the Basic-grandfathering line, and when a pricing or bundle-*.md page
+// still sells a Basic/Pro tier or the $1.99 Pro price (D-1289).
 //
 // Inputs: the wiki directory (searched recursively). Outputs: one message per
 // problem, sorted by page. Constraints: fenced code blocks hold verbatim CLI
@@ -99,7 +104,9 @@ func auditProseLinks(dir string) ([]string, error) {
 			if inFence {
 				continue
 			}
-			if pricingPages[name] && staleTierRe.MatchString(trimmed) {
+			stalePlan := (pricingPages[name] || strings.HasPrefix(name, "bundle-")) &&
+				stalePlanRe.MatchString(trimmed) && !noPlanRe.MatchString(trimmed)
+			if stalePlan || (pricingPages[name] && staleTierRe.MatchString(trimmed)) {
 				bad = append(bad, fmt.Sprintf("%s: stale tier pricing line %q", name, trimmed))
 			}
 			for _, m := range docsLinkRe.FindAllString(line, -1) {

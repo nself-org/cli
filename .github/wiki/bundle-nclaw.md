@@ -17,7 +17,7 @@
 
 ## Plugins Included
 
-The bundle's licensed plugins are mostly `tier: max` (require Pro tier or higher); a few are `tier: pro` (Basic tier or higher).
+The bundle's licensed plugins carry a `tier: max` or `tier: pro` manifest label. Buying the ɳClaw bundle (or ɳSelf+) unlocks all of them; there is no separate Basic or Pro plan.
 
 | Plugin | Tier | Language | What It Does |
 |--------|------|----------|-------------|
@@ -67,7 +67,7 @@ Voice / Text input → AI gateway → Claw runtime → Tools (browser, google, m
 ## Installation
 
 ```bash
-# Pro tier required for tier: max plugins (ai, claw, claw-web, voice, browser, claw-budget)
+# ɳClaw bundle or ɳSelf+ license key
 nself license set nself_pro_xxxxx...
 nself plugin install ai claw claw-web claw-budget claw-news voice browser google mux notify cron
 
@@ -75,7 +75,7 @@ nself plugin install ai claw claw-web claw-budget claw-news voice browser google
 nself build && nself start
 ```
 
-Pro tier is $1.99/mo or $19.99/yr. See [Plugin-Licensing](Plugin-Licensing) for the tier comparison.
+The ɳClaw bundle is $0.99/mo or $9.99/yr; ɳSelf+ ($3.99/mo or $39.99/yr) includes it. See [Plugin-Licensing](Plugin-Licensing) for license keys.
 
 ## Getting Started
 
@@ -83,7 +83,7 @@ Pro tier is $1.99/mo or $19.99/yr. See [Plugin-Licensing](Plugin-Licensing) for 
 
 - ɳSelf CLI installed and a project initialized (`nself init`)
 - Backend running (`nself start`)
-- Pro tier license key (Basic does not include `tier: max` plugins)
+- ɳClaw bundle or ɳSelf+ license key
 - Provider API keys (Anthropic, OpenAI, etc.) for the `ai` plugin
 - Google OAuth credentials for the `google` plugin
 

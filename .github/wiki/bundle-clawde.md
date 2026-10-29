@@ -19,7 +19,7 @@ ClawDE itself runs free locally with limited functionality. The ClawDE bundle un
 
 ## Plugins Included
 
-Candidate set: licensed plugins, all `tier: pro`.
+Candidate set: licensed plugins, all with a `tier: pro` manifest label. Buying the ClawDE bundle (or ɳSelf+) unlocks them; there is no separate Basic plan.
 
 | Plugin | Tier | Language | What It Does |
 |--------|------|----------|-------------|
@@ -58,7 +58,7 @@ ClawDE Desktop ↔ realtime ↔ ClawDE Mobile
 ## Installation
 
 ```bash
-# Basic tier or higher (all ClawDE plugins are tier: pro)
+# ClawDE bundle or ɳSelf+ license key
 nself license set nself_pro_xxxxx...
 nself plugin install realtime auth cms notify
 
@@ -66,7 +66,7 @@ nself plugin install realtime auth cms notify
 nself build && nself start
 ```
 
-ClawDE subscription is $0.99/mo or $9.99/yr (separately bundled, see [Plugin-Licensing](Plugin-Licensing)).
+The ClawDE bundle is $0.99/mo or $9.99/yr; ɳSelf+ ($3.99/mo or $39.99/yr) includes it. See [Plugin-Licensing](Plugin-Licensing) for license keys.
 
 ## Getting Started
 

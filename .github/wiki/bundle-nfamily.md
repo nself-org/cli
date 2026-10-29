@@ -17,7 +17,7 @@ When the bundle is installed, your ɳSelf backend gains social posts, photo stor
 
 ## Plugins Included
 
-The bundle's licensed plugins are all `tier: pro` (Basic tier or higher).
+The bundle's licensed plugins all carry a `tier: pro` manifest label. Buying the ɳFamily bundle (or ɳSelf+) unlocks all of them; there is no separate Basic plan.
 
 | Plugin | Tier | Language | What It Does |
 |--------|------|----------|-------------|
@@ -64,7 +64,7 @@ Family member posts → social → activity-feed → realtime → other family m
 ## Installation
 
 ```bash
-# Basic tier or higher (all nFamily plugins are tier: pro)
+# ɳFamily bundle or ɳSelf+ license key
 nself license set nself_pro_xxxxx...
 nself plugin install social photos activity-feed moderation realtime cms chat
 
@@ -72,7 +72,7 @@ nself plugin install social photos activity-feed moderation realtime cms chat
 nself build && nself start
 ```
 
-Basic tier is $0.99/mo or $9.99/yr. See [Plugin-Licensing](Plugin-Licensing) for the tier comparison.
+The ɳFamily bundle is $0.99/mo or $9.99/yr; ɳSelf+ ($3.99/mo or $39.99/yr) includes it. See [Plugin-Licensing](Plugin-Licensing) for license keys.
 
 ## Getting Started
 
@@ -80,7 +80,7 @@ Basic tier is $0.99/mo or $9.99/yr. See [Plugin-Licensing](Plugin-Licensing) for
 
 - ɳSelf CLI installed and a project initialized (`nself init`)
 - Backend running (`nself start`)
-- Basic tier license key or higher
+- ɳFamily bundle or ɳSelf+ license key
 - Object storage (MinIO ships with the ɳSelf stack) for `photos`
 
 ### Step 1: Install the plugins
