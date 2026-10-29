@@ -105,7 +105,7 @@ func TestAccountLoginCmd_DeviceCodeFlow(t *testing.T) {
 	dcResp := auth.DeviceCodeResponse{
 		DeviceCode:      "device-code-abc",
 		UserCode:        "TEST-1234",
-		VerificationURL: "https://nself.org/auth/cli?code=TEST-1234",
+		VerificationURL: "https://nself.org/device?code=TEST-1234",
 		ExpiresInSec:    300,
 		IntervalSec:     5,
 	}
@@ -120,10 +120,25 @@ func TestAccountLoginCmd_DeviceCodeFlow(t *testing.T) {
 	setAuthServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
-		case "/auth/device/authorize":
+		case "/auth/device-code":
 			_ = json.NewEncoder(w).Encode(dcResp)
-		case "/auth/device/token":
-			_ = json.NewEncoder(w).Encode(tokenResp)
+		case "/auth/device-code/token":
+			// auth_server answers an approved poll with the device token only.
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"access_token": tokenResp.AccessToken,
+				"token_type":   "Bearer",
+				"expires_in":   7776000,
+			})
+		case "/auth/session":
+			// Identity comes from GET /auth/session, not from the poll reply.
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"authenticated": true,
+				"account": map[string]any{
+					"id":    "acct-1",
+					"email": tokenResp.Email,
+					"tier":  tokenResp.Tier,
+				},
+			})
 		default:
 			http.NotFound(w, r)
 		}
