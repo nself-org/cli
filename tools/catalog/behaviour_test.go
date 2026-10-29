@@ -20,7 +20,23 @@ func TestDeterministicAndCheck(t *testing.T) {
 			t.Fatalf("%s registry differs between two runs on identical inputs", f)
 		}
 	}
-	args := tierArgs("free", filepath.Join(td, "free"), filepath.Join(d1, "free"), filepath.Join(d1, "p1l", "registry.json"), "-check")
+	entries, err := os.ReadDir(filepath.Join(td, "free"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var slugs []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			slugs = append(slugs, entry.Name())
+		}
+	}
+	// Give -check its own committed baseline, independent of checkout refs.
+	dir := tree(t, "free", slugs...)
+	catalogGit(t, dir, "init", "-q")
+	catalogGit(t, dir, "add", "releases.json")
+	catalogGit(t, dir, "commit", "-qm", "Release fixture")
+	catalogGit(t, dir, "update-ref", "refs/heads/main", "HEAD")
+	args := tierArgs("free", dir, filepath.Join(d1, "free"), filepath.Join(d1, "p1l", "registry.json"), "-check")
 	if code, se := gen(t, args...); code != 0 {
 		t.Fatalf("-check on current output: exit %d\n%s", code, se)
 	}

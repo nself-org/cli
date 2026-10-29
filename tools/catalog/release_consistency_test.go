@@ -83,3 +83,13 @@ func TestCheckAllowsNewUnreleasedManifest(t *testing.T) {
 		t.Fatalf("new unreleased plugin: exit %d\n%s", code, se)
 	}
 }
+
+func TestCheckRefusesMissingMainBaseline(t *testing.T) {
+	dir := tree(t, "free", "ai-cli")
+	catalogGit(t, dir, "init", "-q", "-b", "fixture")
+	catalogGit(t, dir, "add", "releases.json")
+	catalogGit(t, dir, "commit", "-qm", "Release fixture")
+	args := tierArgs("free", dir, t.TempDir(), "")
+	mustGen(t, args...)
+	expectProblem(t, "-check needs origin/main or main", append(args, "-check")...)
+}
