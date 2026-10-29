@@ -1,0 +1,105 @@
+{
+  "schema_version": "1",
+  "command": "ci evidence verify",
+  "data": {
+    "revision": "4613469d35e5185e840146bb8029963dd98e117a",
+    "result": "pass",
+    "class": "default",
+    "binding": {
+      "state": "bound",
+      "reason": null
+    },
+    "freshness": {
+      "state": "current",
+      "reason": null
+    },
+    "quarantined": false,
+    "evidence": {
+      "schema": "ci.evidence/v1",
+      "revision": "4613469d35e5185e840146bb8029963dd98e117a",
+      "repo_id": "local:4710ee8d7d0fd5ea52e5912f29b59b25dde280901f343827487fce28e0a9fb5c",
+      "run_id": "r20261028T124124-6c6f249b",
+      "pipeline": {
+        "id": "default",
+        "name": "default",
+        "kind": "default"
+      },
+      "trigger": "local",
+      "source_trust": "owner",
+      "policy_digest": "9a1bfbc95f4d2fd4600559bea48a6e2e9a7112852fea1bd7898fb347ebd4f31f",
+      "input_digests": {
+        "config": "59deaad650ed51e4a92143e1ed3d51da2b7e795f388efca079d826ef17075830",
+        "lockfiles": [
+          {
+            "path": "go.sum",
+            "sha256": "363b7201a7fdf356fae5489cc44ec14f1526cb7fa905728bbec28a155967e755"
+          }
+        ],
+        "generated": []
+      },
+      "worktree_state": "clean",
+      "tracked_changes_digest": null,
+      "binding": {
+        "state": "bound",
+        "reason": null
+      },
+      "runner": {
+        "id": "local",
+        "provider": "local",
+        "platform": "darwin/arm64",
+        "isolation": "process"
+      },
+      "producer": {
+        "kind": "coordinator-recorded",
+        "version": "1"
+      },
+      "timings": {
+        "queued_at": "2026-10-28T12:41:24Z",
+        "started_at": "2026-10-28T12:41:24Z",
+        "finished_at": "2026-10-28T12:41:25Z",
+        "duration_ms": 240
+      },
+      "tool_versions": {
+        "git": "2.56.0"
+      },
+      "checks": [
+        {
+          "id": "unit",
+          "job_id": "unit",
+          "kind": "test",
+          "tool": "",
+          "tool_version": null,
+          "required": true,
+          "substantive": true,
+          "result": "pass",
+          "findings": 0,
+          "excerpt": "",
+          "log_ref": null
+        }
+      ],
+      "artifacts": [],
+      "retries": [],
+      "selection": {
+        "mode": "full",
+        "reason": "selection.no_base",
+        "digest": "247589de6d9f5793deeafb412aad0162a418d4caf0c5d0d38881e1af2e3cb82b"
+      },
+      "placement_ref": "sched:decision/r20261028T124124-6c6f249b.unit-385cfdbc.a1",
+      "result": "pass",
+      "counts": {
+        "pass": 1,
+        "fail": 0,
+        "skip": 0,
+        "error": 0,
+        "total": 1
+      },
+      "freshness": {
+        "state": "current",
+        "reason": null
+      },
+      "signature": {
+        "kind": "coordinator-recorded"
+      }
+    }
+  }
+}

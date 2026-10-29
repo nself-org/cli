@@ -238,7 +238,10 @@ func (fa *frontApply) sync(ctx context.Context, o ApplyOptions, res *ApplyResult
 	for _, k := range kept {
 		emit(o.Out, "  %s", k)
 	}
-	pruned, err := pruneFrontMarked(ctx, r, front, prune)
+	pruned, kept2, err := pruneFrontMarked(ctx, r, front, prune, fa.names)
+	for _, k := range kept2 {
+		emit(o.Out, "  %s", k)
+	}
 	for _, f := range pruned {
 		emit(o.Out, "  [pruned] %s/%s (generated file the new set dropped)", front, f)
 		fa.changed = append(fa.changed, f)

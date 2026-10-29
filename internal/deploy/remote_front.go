@@ -107,7 +107,8 @@ func describeRows(rows []psRow) string {
 }
 
 // checkMounts requires a bind mount of <front>/nginx or <front>/nginx/sites
-// (given or real path), so a file shipped there is the file the container reads.
+// (given or real path) at /etc/nginx or below it in the container, so a file
+// shipped there is the file the container reads.
 func (c frontContainer) checkMounts(ctx context.Context, r Remote, front, realFront string, linked map[string]string) error {
 	out, err := r.Run(ctx, shScript(fmt.Sprintf(`docker inspect --type container --format %s %s`, q(`{{range .Mounts}}{{.Type}}|{{.Source}}|{{.Destination}}{{"\n"}}{{end}}`), q(c.ID))))
 	if err != nil {
@@ -130,6 +131,9 @@ func (c frontContainer) checkMounts(ctx context.Context, r Remote, front, realFr
 		}
 		src := path.Clean(parts[1])
 		seen = append(seen, safeText(parts[1])+" -> "+safeText(parts[2]))
+		if dst := path.Clean(parts[2]); dst != "/etc/nginx" && !strings.HasPrefix(dst, "/etc/nginx/") {
+			continue // the container does not read nginx config from there
+		}
 		roots = append(roots, src)
 		found = found || ok[src]
 		for _, d := range frontDirs { // a mounted source that is itself a link reaches that link's real dir

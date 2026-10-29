@@ -79,7 +79,35 @@ func CaptureSourceManifest(ctx context.Context, run Runner, root string) (Runner
 		return run(c, command)
 	}
 	raw, err := captured(ctx, "docker compose images --format json")
-	return captured, raw, err
+	if err != nil {
+		return captured, raw, err
+	}
+	// Images rows without a service are mapped through ps. Capture that listing
+	// now and replay it, so a container recreated or renamed before the compare
+	// cannot be mapped to another service.
+	if rows, perr := parseComposeImages(raw); perr == nil && missingService(rows) {
+		ps, err := captured(ctx, composePSCommand)
+		if err != nil {
+			return captured, raw, fmt.Errorf("list source compose containers: %w", err)
+		}
+		replay := func(c context.Context, command string) ([]byte, error) {
+			if command == composePSCommand {
+				return ps, nil
+			}
+			return captured(c, command)
+		}
+		return replay, raw, nil
+	}
+	return captured, raw, nil
+}
+
+func missingService(images []composeImage) bool {
+	for _, image := range images {
+		if image.Service == "" {
+			return true
+		}
+	}
+	return false
 }
 
 // sourceManifest reads optional host manifests; every entry is validated before use.

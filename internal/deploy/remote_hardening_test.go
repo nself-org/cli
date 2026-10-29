@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -239,5 +240,59 @@ func TestEnvFilesAreSentWithChmod600(t *testing.T) {
 	}
 	if !gotEnv || !gotPlain {
 		t.Errorf("rsync flags %v for lists %q: env files need --chmod=F600, others must not carry it", p.flags, p.lists)
+	}
+}
+
+// D-0824: a failed rm for an earlier path is not hidden by a later path that
+// succeeds (the script's exit status was the last loop iteration's).
+func TestGuardedDeleteReportsEarlierFailure(t *testing.T) {
+	needTools(t)
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory modes")
+	}
+	f := newFakeRemote(t)
+	rp := t.TempDir()
+	writeFile(t, rp+"/nginx/sites/a.conf", markedConf, 0o644)
+	writeFile(t, rp+"/nginx/other/b.conf", markedConf, 0o644)
+	if err := os.Chmod(rp+"/nginx/sites", 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(rp+"/nginx/sites", 0o755) })
+	paths := []string{"nginx/sites/a.conf", "nginx/other/b.conf"}
+	if _, err := PruneMarked(context.Background(), f, rp, paths); err == nil {
+		t.Fatal("PruneMarked: a failed rm was reported as success")
+	}
+	if !exists(rp+"/nginx/sites/a.conf") || exists(rp+"/nginx/other/b.conf") {
+		t.Fatal("the failing path must stay and the other one must still be pruned")
+	}
+	writeFile(t, rp+"/nginx/other/b.conf", markedConf, 0o644)
+	if err := removeCreated(context.Background(), f, rp, paths); err == nil {
+		t.Fatal("removeCreated: a failed rm was reported as success")
+	}
+}
+
+// D-0824: the shipped list is written to a fresh .new file; a symlink planted at
+// that name is replaced, not followed.
+func TestWriteShippedDoesNotFollowPlantedLink(t *testing.T) {
+	needTools(t)
+	f := newFakeRemote(t)
+	rp := t.TempDir()
+	victim := filepath.Join(t.TempDir(), "victim")
+	writeFile(t, victim, "keep me\n", 0o644)
+	if err := os.MkdirAll(rp+"/.nself", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victim, rp+"/"+ShippedFile+".new"); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	set := ArtifactSet{RemotePath: rp, Files: []string{"nginx/sites/a.conf"}}
+	if err := writeShipped(context.Background(), f, set); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, victim); got != "keep me\n" {
+		t.Errorf("the planted link was followed: %q", got)
+	}
+	if got := readFile(t, rp+"/"+ShippedFile); got != "nginx/sites/a.conf\n" {
+		t.Errorf("shipped list = %q", got)
 	}
 }

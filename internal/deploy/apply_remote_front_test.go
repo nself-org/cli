@@ -246,6 +246,7 @@ func TestFrontNginxContainerByLabels(t *testing.T) {
 		{"two match", psRows(row("aaa1", "n1", front), row("ccc3", "n2", real)), mount(front + "/nginx"), "", "found 2"},
 		{"not a plain id", psRows(row("a;rm -rf x", "n1", front)), mount(front + "/nginx"), "", "not a plain container id"},
 		{"no mount of nginx", psRows(row("aaa1", "n1", front)), mount(front+"/ssl") + mount(front), "", "does not bind-mount"},
+		{"nginx mounted outside /etc/nginx", psRows(row("aaa1", "n1", front)), "bind|" + front + "/nginx|/srv/elsewhere\n", "", "does not bind-mount"},
 		{"a volume is not a bind mount", psRows(row("aaa1", "n1", front)), "volume|" + front + "/nginx|/etc/nginx\n", "", "does not bind-mount"},
 	}
 	for _, c := range cases {
@@ -497,9 +498,9 @@ func TestFrontContainerStopsBeforeReload(t *testing.T) {
 func TestFrontPruneOnlyOwnShipped(t *testing.T) {
 	x := frontFixture(t)
 	sites := filepath.Join(x.front, "nginx", "sites")
-	writeFile(t, filepath.Join(sites, "old.conf"), markedConf+"# shipped by the previous deploy\n", 0o644)
+	writeFile(t, filepath.Join(sites, "old.conf"), markedConf+"server { server_name old.example.org; }\n# shipped by the previous deploy\n", 0o644)
 	writeFile(t, filepath.Join(sites, "mine-but-edited.conf"), "# hand edited, marker removed\n", 0o644)
-	x.o.Set.Front.PreviousNames = map[string]map[string][]string{"fake-host": {"nginx/sites/old.conf": {}}} // old.conf shipped with no server_name
+	x.o.Set.Front.PreviousNames = map[string]map[string][]string{"fake-host": {"nginx/sites/old.conf": {"old.example.org"}}} // old.conf as recorded
 	x.o.Set.Front.Previous = map[string][]string{
 		"fake-host":  {"nginx/sites/old.conf", "nginx/sites/mine-but-edited.conf", "nginx/sites/api.conf", ".env", "nginx/sites/../../.env"},
 		"other-host": {"nginx/sites/sibling.conf"}, // another host's record never prunes here

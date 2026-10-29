@@ -54,7 +54,7 @@ func CheckBuildContexts(ctx context.Context, r Remote, set ArtifactSet) error {
 			}
 			dir = expandVars(dir, env)
 			if !path.IsAbs(dir) {
-				dir = path.Join(path.Dir(remote), dir)
+				dir = path.Join(path.Dir(set.Compose[0]), dir) // Compose resolves every fragment against the first file's directory
 			}
 			dir = path.Clean(dir)
 			file := ""

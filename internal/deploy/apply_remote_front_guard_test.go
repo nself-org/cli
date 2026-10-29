@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/frontcheck"
 )
 
 // shipSite adds hasura.conf with the given server_name to the staged front files.
@@ -241,7 +242,7 @@ func TestFrontMountCoversLinkedDirs(t *testing.T) {
 		{"sites link the mount does not cover", map[string]string{"nginx/sites": "/srv/web/sites-v2"}, "bind|/srv/web/nginx|/etc/nginx\n", false},
 		{"sites link covered by its own mount", map[string]string{"nginx/sites": "/srv/web/sites-v2"}, "bind|/srv/web/nginx|/etc/nginx\nbind|/srv/web/sites-v2|/etc/nginx/sites\n", true},
 		{"nginx link mounted as a path", map[string]string{"nginx": "/srv/web/nginx-real", "nginx/sites": "/srv/web/nginx-real/sites"}, "bind|/srv/web/nginx|/etc/nginx\n", true},
-		{"nginx link, mount of a parent real path", map[string]string{"nginx": "/srv/web/nginx-real"}, "bind|/srv/web/nginx-real|/etc/nginx\nbind|/srv/web/nginx|/etc/x\n", true},
+		{"nginx link, mount of a parent real path", map[string]string{"nginx": "/srv/web/nginx-real"}, "bind|/srv/web/nginx-real|/etc/nginx\nbind|/srv/web/nginx|/etc/nginx/x\n", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -366,5 +367,75 @@ func TestFrontSyncCreatesOnlyAMissingSitesLeaf(t *testing.T) {
 	resolve, mk := x.index("okdir()"), x.index("mkdir 'sites'")
 	if mk < 0 || resolve < 0 || resolve > mk {
 		t.Fatalf("no plain mkdir of the leaf (%d) or resolve (%d)", mk, resolve)
+	}
+}
+
+// D-0778: two empty server_name sets are no evidence that a marked file at a
+// recorded path is still this project's: it is refused (E485) when it would be
+// overwritten and kept when it would be pruned. A table case covers frontcheck.SameNames.
+func TestFrontEmptyNameSetsAreNotEqual(t *testing.T) {
+	for _, c := range []struct {
+		a, b []string
+		want bool
+	}{
+		{nil, nil, false},
+		{[]string{}, nil, false},
+		{[]string{"a.example.org"}, nil, false},
+		{nil, []string{"a.example.org"}, false},
+		{[]string{"a.example.org"}, []string{"a.example.org"}, true},
+		{[]string{"a.example.org", "b.example.org"}, []string{"a.example.org"}, false},
+	} {
+		if got := frontcheck.SameNames(c.a, c.b); got != c.want {
+			t.Errorf("SameNames(%v, %v) = %v, want %v", c.a, c.b, got, c.want)
+		}
+	}
+
+	const rel = "nginx/sites/snippet.conf"
+	const noNames = markedConf + "upstream u { server 127.0.0.1:1; }\n" // marker, no server_name
+	front, stage := t.TempDir(), t.TempDir()
+	writeFile(t, filepath.Join(front, rel), noNames, 0o644)
+	writeFile(t, filepath.Join(stage, rel), noNames, 0o644)
+	f := newFakeRemote(t)
+	ctx := context.Background()
+
+	v := frontView{Stage: stage, Files: []string{rel}, Prev: []string{rel}, Names: map[string][]string{rel: nil}}
+	if err := checkFrontForeign(ctx, f, front, v); !e485(err) {
+		t.Errorf("checkFrontForeign over an empty recorded set: err = %v, want E485", err)
+	}
+	v = frontView{Stage: stage, Prev: []string{rel}, Names: map[string][]string{rel: nil}}
+	prune, kept, err := frontPrunable(ctx, f, front, v)
+	if err != nil || len(prune) != 0 || len(kept) != 1 {
+		t.Errorf("frontPrunable over an empty recorded set: prune %v kept %v err %v, want kept only", prune, kept, err)
+	}
+}
+
+// D-0824: the prune script rechecks the server_name set at the moment of the
+// delete, so a file replaced after the check (marker kept, other names) stays.
+func TestFrontPruneRechecksServerNamesInScript(t *testing.T) {
+	needTools(t)
+	const ours = markedConf + "server {\n  server_name b.example.org  a.example.org; # c.example.org\n}\nserver { server_name a.example.org; }\n"
+	const theirs = markedConf + "server { server_name api.other.example.org; }\n"
+	const rel = "nginx/sites/x.conf"
+	front := t.TempDir()
+	f := newFakeRemote(t)
+	ctx := context.Background()
+	recorded := map[string][]string{rel: {"a.example.org", "b.example.org"}}
+
+	writeFile(t, filepath.Join(front, rel), theirs, 0o644)
+	removed, kept, err := pruneFrontMarked(ctx, f, front, []string{rel}, recorded)
+	if err != nil || len(removed) != 0 || len(kept) != 1 || !exists(filepath.Join(front, rel)) {
+		t.Fatalf("a replaced file: removed %v kept %v err %v", removed, kept, err)
+	}
+	writeFile(t, filepath.Join(front, rel), markedConf+"upstream u { server 127.0.0.1:1; }\n", 0o644)
+	if removed, _, _ = pruneFrontMarked(ctx, f, front, []string{rel}, recorded); len(removed) != 0 || !exists(filepath.Join(front, rel)) {
+		t.Fatalf("a file with no server_name was removed: %v", removed)
+	}
+	writeFile(t, filepath.Join(front, rel), ours, 0o644)
+	if removed, _, _ = pruneFrontMarked(ctx, f, front, []string{rel}, map[string][]string{}); len(removed) != 0 || !exists(filepath.Join(front, rel)) {
+		t.Fatalf("a path with no recorded set was removed: %v", removed)
+	}
+	removed, kept, err = pruneFrontMarked(ctx, f, front, []string{rel}, recorded)
+	if err != nil || len(removed) != 1 || removed[0] != rel || len(kept) != 0 || exists(filepath.Join(front, rel)) {
+		t.Fatalf("the file as recorded: removed %v kept %v err %v", removed, kept, err)
 	}
 }

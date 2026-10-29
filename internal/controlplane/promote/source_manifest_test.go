@@ -123,3 +123,50 @@ func TestResolvedComposeImagesLocalPaths(t *testing.T) {
 		}
 	}
 }
+
+// D-0701: the ps listing that maps containers to services is read at capture,
+// next to the images listing, and replayed at compare. A container that moves
+// to another service in between cannot change the mapping.
+func TestCaptureSourceManifestReplaysPS(t *testing.T) {
+	ctx := context.Background()
+	psReads := 0
+	ps := []string{`{"Name":"proj-api-1","Service":"api"}` + "\n" + `{"Name":"proj-db-1","Service":"db"}`, `{"Name":"proj-api-1","Service":"db"}` + "\n" + `{"Name":"proj-db-1","Service":"api"}`}
+	run := func(_ context.Context, command string) ([]byte, error) {
+		switch {
+		case strings.Contains(command, ".nself/compose"):
+			return []byte("__NSELF_ABSENT__"), nil
+		case strings.HasSuffix(command, " images --format json"):
+			return []byte(`[{"ID":"sha256:a","ContainerName":"proj-api-1","Repository":"example.invalid/api","Tag":"v1"},{"ID":"sha256:d","ContainerName":"proj-db-1","Repository":"example.invalid/db","Tag":"v1"}]`), nil
+		case strings.HasSuffix(command, " ps --all --format json"):
+			psReads++
+			return []byte(ps[min(psReads-1, len(ps)-1)]), nil // the second read is the swapped one
+		case strings.Contains(command, " config --format json"):
+			return []byte(`{"services":{"api":{"image":"example.invalid/api:v1"},"db":{"image":"example.invalid/db:v1"}}}`), nil
+		case strings.HasPrefix(command, "docker image inspect"):
+			repo := "example.invalid/api"
+			if strings.Contains(command, "sha256:d") {
+				repo = "example.invalid/db"
+			}
+			return []byte(`["` + repo + `@sha256:` + strings.Repeat("c", 64) + `"]|linux/amd64`), nil
+		}
+		return nil, fmt.Errorf("unexpected command %s", command)
+	}
+	lookup := func(_ context.Context, ref string) (map[string]string, error) {
+		return map[string]string{"linux/amd64": "sha256:" + strings.Repeat(map[bool]string{true: "a", false: "b"}[strings.Contains(ref, "/api")], 64)}, nil
+	}
+	captured, raw, err := CaptureSourceManifest(ctx, run, "/srv/fixture")
+	if err != nil || psReads != 1 {
+		t.Fatalf("capture: %v, ps reads %d", err, psReads)
+	}
+	images, err := CaptureManifestSource(ctx, captured, raw, lookup)
+	if err != nil || psReads != 1 {
+		t.Fatalf("compare: %v, ps reads %d (the compare must not list containers again)", err, psReads)
+	}
+	got := map[string]string{}
+	for _, image := range images {
+		got[image.Service] = image.Ref
+	}
+	if got["api"] != "example.invalid/api:v1" || got["db"] != "example.invalid/db:v1" {
+		t.Fatalf("mapping followed the later ps listing: %#v", got)
+	}
+}

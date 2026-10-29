@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -100,6 +101,27 @@ func TestRestoreRemovesWhatTheDeployCreated(t *testing.T) {
 	}
 	if exists(rp + "/.nself/deploy.lock") {
 		t.Error("the lock was left behind")
+	}
+}
+
+// D-0824: a relative build context of a later compose fragment resolves against
+// the first file's directory, as Compose does, not the fragment's own.
+func TestBuildContextRelativeToFirstComposeFile(t *testing.T) {
+	f, o, rp := applyFixture(t, "")
+	first := o.Set.Compose[0]
+	nested := path.Join(path.Dir(first), "plugins", "x", "compose.yml")
+	writeFile(t, filepath.Join(o.Set.StageDir, strings.TrimPrefix(nested, rp+"/")), "services:\n  x:\n    build: ./present\n", 0o644)
+	o.Set.Compose = append(o.Set.Compose, nested)
+	// present exists only under the first file's directory, not under plugins/x.
+	writeFile(t, filepath.Join(rp, "present", "Dockerfile"), "FROM scratch\n", 0o644)
+	if err := CheckBuildContexts(context.Background(), f, o.Set); err != nil {
+		t.Fatalf("a context relative to the first compose file was refused: %v", err)
+	}
+	// A directory that exists only next to the fragment is what Compose never reads.
+	writeFile(t, filepath.Join(rp, "plugins", "x", "only", "Dockerfile"), "FROM scratch\n", 0o644)
+	writeFile(t, filepath.Join(o.Set.StageDir, strings.TrimPrefix(nested, rp+"/")), "services:\n  x:\n    build: ./only\n", 0o644)
+	if err := CheckBuildContexts(context.Background(), f, o.Set); err == nil {
+		t.Fatal("a context that exists only next to the fragment passed")
 	}
 }
 

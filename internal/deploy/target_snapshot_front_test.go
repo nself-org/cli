@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -46,5 +47,24 @@ func TestTargetSnapshotFrontSSL(t *testing.T) {
 	writeFile(t, filepath.Join(certs, "bad name", "fullchain.pem"), "x", 0o644)
 	if _, err := TakeFrontSSL(context.Background(), f, front); !e485(err) {
 		t.Errorf("unsafe cert dir name: %v", err)
+	}
+}
+
+// D-0824: only a missing certificates dir is empty; a find that cannot read one
+// is an error, not "no certificates".
+func TestTargetSnapshotFrontSSLFindErrorIsNotEmpty(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads every directory")
+	}
+	f := newFakeRemote(t)
+	front := t.TempDir()
+	certs := filepath.Join(front, "ssl", "certificates")
+	writeFile(t, filepath.Join(certs, "api-example-com", "fullchain.pem"), "CERT", 0o644)
+	if err := os.Chmod(certs, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(certs, 0o755) })
+	if got, err := TakeFrontSSL(context.Background(), f, front); err == nil {
+		t.Errorf("an unreadable certificates dir listed as %+v with no error", got)
 	}
 }
