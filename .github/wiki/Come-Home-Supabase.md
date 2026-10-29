@@ -78,7 +78,7 @@ listed as exemptions (`compat:<name>`); define them in the target before relying
 - A bucket name that the object store rejects (uppercase or underscore, for example
   `user_uploads`) stops the import with a clear message in this version. Supabase cannot
   rename a bucket, so create a new bucket with a valid name, copy the objects, delete the old
-  bucket and repeat the import. `--skip-storage` does not bypass the check.
+  bucket and repeat the import. Use `--skip-storage` to bypass the check and import without storage objects.
 - Policies on Supabase-owned tables (for example `storage.objects` rules) and user triggers on
   `auth.users` or `storage.objects` (for example a profile trigger) are not moved. They are listed
   in the report (`untranslated_policies`, and exemptions `trigger:<table>#<name>`); recreate them.

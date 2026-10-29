@@ -74,10 +74,6 @@ func finishInstall(ctx context.Context, rn *appready.Runner, store *ledger.Store
 	if out == nil {
 		out = os.Stderr
 	}
-	prior, _, err := store.Load()
-	if err != nil {
-		return err
-	}
 	var names []string
 	var prior ledger.Ledger
 	_ = rn.Step(appready.StepLedger, func() (string, error) {
