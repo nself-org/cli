@@ -53,8 +53,13 @@ func TestSecretsRepoScope(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				// EvalSymlinks accounts for macOS temporary-directory aliases.
+				// EvalSymlinks on both sides accounts for macOS /var vs
+				// /private/var aliases and Windows 8.3 short temp paths.
 				want, err = filepath.EvalSymlinks(want)
+				if err != nil {
+					t.Fatal(err)
+				}
+				got, err = filepath.EvalSymlinks(got)
 				if err != nil {
 					t.Fatal(err)
 				}
