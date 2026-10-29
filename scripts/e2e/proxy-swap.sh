@@ -300,6 +300,11 @@ matrix() {
 import pathlib, sys
 # Accepted differences (P7-DEPL-03 lead ruling 2026-10-12): transport framing and Vary are proxy-owned, and Traefik
 # adds no response headers to a 101 upgrade, so a websocket row keeps only its handshake headers.
+# Browsers do not apply CSP or X-Frame-Options from a websocket handshake response (they govern the document). However,
+# Chromium learns HSTS from secure WebSocket handshakes and enforces it on subsequent requests
+# (https://github.com/chromium/chromium/blob/main/net/websockets/websocket_end_to_end_test.cc#L670); the missing HSTS
+# header on 101 responses is therefore an unresolved difference. Vary (D-0769) stays open until the traefik renderer decides
+# whether to add Accept-Encoding; the matrix is tightened in the same change as the renderer.
 skip={'date','server','connection','content-length','transfer-encoding','keep-alive','vary'}
 handshake={'upgrade','sec-websocket-accept'}
 headers=[]
