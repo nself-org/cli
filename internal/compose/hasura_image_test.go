@@ -168,15 +168,15 @@ func TestHasuraInitUpgradeKeepsNewerPin(t *testing.T) {
 	v14, _ := LockedRef("hasura-v14")
 	setMode(t, PinningLock)
 	defer SetProjectPins(nil)()
-compattest.Set(t, true)
-t.Setenv("HASURA_VERSION", v14.Version)
+	compattest.Set(t, true)
+	t.Setenv("HASURA_VERSION", v14.Version)
 	// Without a pin, v2.44.0 is explicit and resolves to hasura-v14.
 	if got := hasuraImageFor(t, v14.Version); got != v14.String() {
 		t.Errorf("v1.5 without pin, HASURA_VERSION=%s: hasura image = %q, want explicit v14 %q", v14.Version, got, v14.String())
-}
+	}
 	// v1.4 also treats v2.44.0 as explicit (it matches hasura-v14's default).
-compattest.Set(t, false)
-if got := hasuraImageFor(t, v14.Version); got != v14.String() {
+	compattest.Set(t, false)
+	if got := hasuraImageFor(t, v14.Version); got != v14.String() {
 		t.Errorf("v1.4 without pin, HASURA_VERSION=%s: hasura image = %q, want explicit v14 %q", v14.Version, got, v14.String())
-}
+	}
 }

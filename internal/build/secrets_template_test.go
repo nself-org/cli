@@ -591,3 +591,44 @@ func TestTemplateSecretsLiteralRefShapedSecret(t *testing.T) {
 		t.Errorf("cross-key reference not preserved:\n%s", out)
 	}
 }
+
+// Exercise generated YAML quoting as well as unknown and mapped variable names.
+func TestTemplateSecretsGeneratedSMTPReferenceLiterals(t *testing.T) {
+	for _, password := range []string{"${ABC}", "${MINIO_ROOT_USER}", "${MINIO_ROOT_USER:-fallback}", "prefix${ABC}"} {
+		t.Run(password, func(t *testing.T) {
+			cfg := secretTestConfig()
+			cfg.Auth.SMTPPass = password
+			raw, err := compose.NewGenerator(cfg).Generate()
+			if err != nil {
+				t.Fatal(err)
+			}
+			templated := TemplateSecrets(raw, SecretEnvMap(cfg))
+			var doc struct {
+				Services map[string]struct {
+					Environment map[string]string `yaml:"environment"`
+				} `yaml:"services"`
+			}
+			if err := yaml.Unmarshal(templated, &doc); err != nil {
+				t.Fatal(err)
+			}
+			if got := doc.Services["auth"].Environment["AUTH_SMTP_PASS"]; got != "${AUTH_SMTP_PASS}" {
+				t.Errorf("SMTP password reference = %q, want ${AUTH_SMTP_PASS}", got)
+			}
+		})
+	}
+}
+
+func TestTemplateSecretsLiteralMinioAlias(t *testing.T) {
+	for _, key := range []string{"S3_ACCESS_KEY", "S3_SECRET_KEY"} {
+		source := "MINIO_ROOT_USER"
+		if key == "S3_SECRET_KEY" {
+			source = "MINIO_ROOT_PASSWORD"
+		}
+		ref := "${" + source + "}"
+		raw := []byte("environment:\n  " + key + ": '" + ref + "'\n")
+		got := string(TemplateSecrets(raw, map[string]string{key: ref, source: "root-value"}))
+		if !strings.Contains(got, key+": ${"+key+"}") {
+			t.Errorf("literal alias was preserved: %s", got)
+		}
+	}
+}

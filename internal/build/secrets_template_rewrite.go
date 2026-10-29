@@ -146,26 +146,23 @@ func replaceOutsideRefs(s, old, repl string) string {
 	return sb.String()
 }
 
-// composeRefName captures the variable name of a whole-value ${NAME} or
-// ${NAME:-...} reference.
-var composeRefName = regexp.MustCompile(`^\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-.*)?\}$`)
-
-// isCrossKeyRef reports whether the "KEY: value" line holds a deliberate
-// reference to a different mapped secret (CS_N S3_ACCESS_KEY: ${MINIO_ROOT_USER}).
-// A value that merely looks like a reference, such as a literal SMTP password
-// "${ABC}", names no mapped secret, or is the configured secret itself, and
-// stays a literal so it is still rewritten to ${KEY}.
+// isCrossKeyRef recognises the credential sources selected by the generator.
+// Reference syntax alone cannot distinguish an intentional reference from a
+// literal password. Only the MinIO identity aliases are generated cross-key;
+// even these must be rewritten when the configured secret equals the value.
 func isCrossKeyRef(line, key string, secrets map[string]string) bool {
-	ref := composeRefPattern.FindString(line)
-	if ref == "" || !lineValueIs(line, ref) || secrets[key] == ref {
+	var source string
+	switch key {
+	case "S3_ACCESS_KEY":
+		source = "MINIO_ROOT_USER"
+	case "S3_SECRET_KEY":
+		source = "MINIO_ROOT_PASSWORD"
+	default:
 		return false
 	}
-	m := composeRefName.FindStringSubmatch(ref)
-	if m == nil || m[1] == key {
-		return false
-	}
-	_, mapped := secrets[m[1]]
-	return mapped
+	ref := "${" + source + "}"
+	_, mapped := secrets[source]
+	return mapped && secrets[key] != ref && lineValueIs(line, ref)
 }
 
 // lineValueIs reports whether the "KEY: value" YAML line decodes to val. A
