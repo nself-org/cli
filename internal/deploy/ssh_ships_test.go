@@ -86,7 +86,7 @@ func TestDeployViaSshEnvFileStrictV14(t *testing.T) {
 			if n := len(read()); n != 0 {
 				t.Fatalf("%d process(es) ran before the host-key refusal", n)
 			}
-			if err := (remote.PinnedHostKeys{Path: DeployKnownHostsPath()}).Add("nself-203.0.113.7-22", "ssh-ed25519 AQID"); err != nil {
+			if err := (remote.PinnedHostKeys{Path: DeployKnownHostsPath()}).Add("nself+203.0.113.7+22", "ssh-ed25519 AQID"); err != nil {
 				t.Fatal(err)
 			}
 			if err := DeployViaSsh(context.Background(), cfg, "/work/compose.yml"); err != nil {
@@ -143,7 +143,7 @@ func TestHostKeyPolicyShipsSecrets(t *testing.T) {
 					t.Fatalf("v1.4 without shipsSecrets: %q, %v", got, err)
 				}
 			}
-			if err := (remote.PinnedHostKeys{Path: DeployKnownHostsPath()}).Add("nself-203.0.113.7-22", "ssh-ed25519 AQID"); err != nil {
+			if err := (remote.PinnedHostKeys{Path: DeployKnownHostsPath()}).Add("nself+203.0.113.7+22", "ssh-ed25519 AQID"); err != nil {
 				t.Fatal(err)
 			}
 			got, err := HostKeyPolicy(ctx, "u@203.0.113.7", "live", "web", false, true)
@@ -334,7 +334,7 @@ func TestStrictPolicyNeverSharesConnections(t *testing.T) {
 			t.Setenv("NSELF_V15", v15)
 			t.Setenv("HOME", pinHome(t))
 			installFakeKeyscan(t)
-			if err := (remote.PinnedHostKeys{Path: DeployKnownHostsPath()}).Add("nself-203.0.113.7-22", "ssh-ed25519 AQID"); err != nil {
+			if err := (remote.PinnedHostKeys{Path: DeployKnownHostsPath()}).Add("nself+203.0.113.7+22", "ssh-ed25519 AQID"); err != nil {
 				t.Fatal(err)
 			}
 			opts, err := HostKeyPolicy(context.Background(), "u@203.0.113.7", "qa", "web", true, true)

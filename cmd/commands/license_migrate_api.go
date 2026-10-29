@@ -66,16 +66,17 @@ func sendMigrateRequest(ctx context.Context, licenseKey, accountID, pingURL stri
 	return &result, nil
 }
 
-// fetchMigrationStatus — GET /license/migration-status?key=<key>.
+// fetchMigrationStatus uses the server-supported X-License-Key header to keep keys out of URLs.
 func fetchMigrationStatus(ctx context.Context, key string, pingURL string) (*migrationStatusResponse, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
-	url := fmt.Sprintf("%s/license/migration-status?key=%s", pingURL, key)
+	url := pingURL + "/license/migration-status"
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("X-License-Key", key)
 
 	resp, err := httptimeout.License.Do(req)
 	if err != nil {

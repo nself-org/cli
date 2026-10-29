@@ -147,7 +147,7 @@ every 6 hours. --remove-timer removes that timer by hand (--all: every project o
 			masked := license.MaskKey(key)
 			if err != nil {
 				doc.Keys = append(doc.Keys, licenseRefreshKey{Key: masked, Error: "refresh failed: " + licenseScrub(err.Error())})
-				fmt.Fprintf(os.Stderr, "%s: refresh failed: %v\n", masked, err)
+				fmt.Fprintf(os.Stderr, "%s: refresh failed: %v\n", masked, licenseScrub(err.Error(), key))
 				continue
 			}
 			if !result.Valid {
@@ -155,7 +155,7 @@ every 6 hours. --remove-timer removes that timer by hand (--all: every project o
 					fmt.Fprintf(os.Stderr, "%s: warning: could not record the licence rejection: %v\n", masked, err)
 				}
 				doc.Keys = append(doc.Keys, licenseRefreshKey{Key: masked, Error: "invalid: " + licenseScrub(result.Message)})
-				fmt.Fprintf(os.Stderr, "%s: invalid — %s\n", masked, result.Message)
+				fmt.Fprintf(os.Stderr, "%s: invalid — %s\n", masked, licenseScrub(result.Message, key))
 				continue
 			}
 			if err := entitlement.RecordAccepted(key); err != nil { // a stale rejection only fails closed
@@ -167,7 +167,7 @@ every 6 hours. --remove-timer removes that timer by hand (--all: every project o
 			}
 			doc.Keys = append(doc.Keys, row)
 			fmt.Printf("%s: refreshed (tier: %s, expires: %s)\n",
-				masked, result.Tier, result.ExpiresAt.Format("2006-01-02"))
+				masked, row.Tier, result.ExpiresAt.Format("2006-01-02"))
 			refreshed = true
 		}
 		setData(cmd, doc)

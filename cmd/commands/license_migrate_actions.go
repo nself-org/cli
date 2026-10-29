@@ -71,13 +71,13 @@ func runMigrateCheck(ctx context.Context, pingURL string, doc *licenseMigrateDat
 		status, err := fetchMigrationStatus(ctx, key, pingURL)
 		if err != nil {
 			doc.Keys = append(doc.Keys, licenseMigrateKey{Key: masked, Product: pp.DisplayName, Remaining: "?", Status: licenseScrub(fmt.Sprintf("Error: %v", err), migrateKeyFlag)})
-			tbl.AddRow(masked, pp.DisplayName, "?", fmt.Sprintf("Error: %v", err))
+			tbl.AddRow(masked, pp.DisplayName, "?", licenseScrub(fmt.Sprintf("Error: %v", err), key))
 			continue
 		}
 
 		if status.Error != "" {
 			doc.Keys = append(doc.Keys, licenseMigrateKey{Key: masked, Product: pp.DisplayName, Remaining: "?", Status: licenseScrub(fmt.Sprintf("Error: %s", status.Error), migrateKeyFlag)})
-			tbl.AddRow(masked, pp.DisplayName, "?", fmt.Sprintf("Error: %s", status.Error))
+			tbl.AddRow(masked, pp.DisplayName, "?", licenseScrub(fmt.Sprintf("Error: %s", status.Error), key))
 			continue
 		}
 
@@ -92,7 +92,7 @@ func runMigrateCheck(ctx context.Context, pingURL string, doc *licenseMigrateDat
 		}
 
 		doc.Keys = append(doc.Keys, licenseMigrateKey{Key: masked, Product: pp.DisplayName, Remaining: daysStr, Status: licenseScrub(migStatus, migrateKeyFlag)})
-		tbl.AddRow(masked, pp.DisplayName, daysStr, migStatus)
+		tbl.AddRow(masked, pp.DisplayName, daysStr, licenseScrub(migStatus, key))
 	}
 
 	tbl.Render()
@@ -134,29 +134,29 @@ func runMigrateLink(ctx context.Context, pingURL string, doc *licenseMigrateData
 	}
 
 	masked := license.MaskKey(keyToMigrate)
-	fmt.Printf("Linking key %s to account %s ...\n", masked, migrateAccountID)
+	fmt.Printf("Linking key %s to account %s ...\n", masked, licenseScrub(migrateAccountID, keyToMigrate))
 
 	resp, err := sendMigrateRequest(ctx, keyToMigrate, migrateAccountID, pingURL)
 	if err != nil {
-		return fmt.Errorf("migration request failed: %w", err)
+		return scrubErr(fmt.Errorf("migration request failed: %w", err))
 	}
 
 	if resp.Error != "" {
-		return fmt.Errorf("server error: %s", resp.Error)
+		return fmt.Errorf("server error: %s", licenseScrub(resp.Error, keyToMigrate))
 	}
 
 	doc.Link = &licenseMigrateLink{Key: masked, AccountID: licenseScrub(resp.AccountID, keyToMigrate), Tier: licenseScrub(resp.Tier, keyToMigrate), AlreadyLinked: resp.AlreadyMigrated}
 	if resp.AlreadyMigrated {
 		fmt.Printf("Key %s is already linked to account %s (tier: %s).\n",
-			masked, resp.AccountID, resp.Tier)
+			masked, doc.Link.AccountID, doc.Link.Tier)
 		return nil
 	}
 
 	if resp.Migrated {
 		fmt.Printf("Migration complete.\n")
 		fmt.Printf("  Key:       %s\n", masked)
-		fmt.Printf("  Account:   %s\n", resp.AccountID)
-		fmt.Printf("  Tier:      %s\n", resp.Tier)
+		fmt.Printf("  Account:   %s\n", doc.Link.AccountID)
+		fmt.Printf("  Tier:      %s\n", doc.Link.Tier)
 		fmt.Println()
 		fmt.Println("Your key is now linked to your nSelf account.")
 		fmt.Println("Run 'nself license status' to verify.")
