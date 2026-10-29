@@ -191,6 +191,9 @@ func TestPluginSnippetSkip(t *testing.T) {
 		hasSSL     bool
 		want       string // substring of the reason; "" = injected
 	}{
+		{"comment placeholder", "# ${NSELF_DOMAIN}\nserver { listen 80; }\n", false, ""},
+		{"native uppercase variable", "map $host $UPSTREAM { default localhost; }\nserver { location / { proxy_pass http://${UPSTREAM}; } }\n", false, ""},
+		{"native route variable", "map $host $CUSTOM_ROUTE { default localhost; }\nserver { location / { proxy_pass http://${CUSTOM_ROUTE}; } }\n", false, ""},
 		{"valid server block", "server {\n    listen 80;\n    server_name a.example.com;\n    location / { return 204; }\n}\n", false, ""},
 		{"nginx variable in braces", "server {\n    listen 80;\n    location / { return 301 https://${host}$request_uri; }\n}\n", false, ""},
 		{"upstream and map at top level", "upstream u { server a:1; }\nmap $http_upgrade $c { default upgrade; }\nserver { listen 80; }\n", false, ""},

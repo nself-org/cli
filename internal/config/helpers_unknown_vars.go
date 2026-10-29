@@ -21,7 +21,8 @@ var userDefinedPrefixes = []string{
 	"CS_",
 	"FRONTEND_APP_",
 	"REMOTE_SCHEMA_",
-	"AUTH_PROVIDER_",
+	"AUTH_", // hasura-auth accepts its full namespace through compose passthrough
+	"HASURA_AUTH_",
 	"INTERNAL_ROUTE_",
 	"HASURA_EXTRA_",
 

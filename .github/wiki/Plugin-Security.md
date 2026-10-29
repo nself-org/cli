@@ -67,11 +67,10 @@ Two limits to know: the tier of an entry comes from the registry, so while a tie
 
 ### ci gate binary (v1.4)
 
-`nself ci` runs its gates through the `nself-ci` binary of the free `ci` plugin. The CLI finds it in this order and stops at the first hit:
+`nself ci` runs its gates through the `nself-ci` binary of the free `ci` plugin. The CLI finds it in this order and stops at the first hit. There is no unverified fast path: a binary already sitting in `~/.nself/plugins/bin/` is not trusted on its own, and the install seam re-checks the published binary under its operation lock.
 
-1. The published plugin binary, `~/.nself/plugins/bin/nself-ci` (a regular file).
-2. A dev build from an adjacent plugins checkout (`../plugins/free/ci`), as before.
-3. The verified install seam: the CLI installs the signed `ci` plugin from the configured registry (`NSELF_PLUGIN_REGISTRY` or the default). It needs a release signature and a checksum, and the platform package it downloads must carry a platform signature for the CLI's own platform, all checked against the keys compiled into the CLI. If the platform package cannot be downloaded, the installer falls back to the signed source package and publishes a binary only if that package contains one (tracked in `quality/debt.yaml`). A release that fails any of these is refused (E107, E121 to E124) and the error names `nself add ci`.
+1. A dev build from an adjacent plugins checkout (`../plugins/free/ci`), as before. A development checkout wins over the installed plugin.
+2. The verified install seam: the CLI installs the signed `ci` plugin from the configured registry (`NSELF_PLUGIN_REGISTRY` or the default). It needs a release signature and a checksum, and the platform package it downloads must carry a platform signature for the CLI's own platform, all checked against the keys compiled into the CLI. If the platform package cannot be downloaded, the installer falls back to the signed source package and publishes a binary only if that package contains one (tracked in `quality/debt.yaml`). A release that fails any of these is refused (E107, E121 to E124) and the error names `nself add ci`.
 
 `PATH` is never searched, and a Go toolchain is never used to fetch the gate: the old `go install ...@latest` fallback was unpinned and unverified. `nself ci serve` resolves the gate the same way.
 

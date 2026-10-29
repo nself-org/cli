@@ -24,11 +24,13 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/plugin"
 )
 
@@ -78,7 +80,7 @@ func mcpConfigSetHandler() server.ToolHandlerFunc {
 		value, _ := args["value"].(string)
 		envFlag, _ := args["env"].(string)
 
-		if err := validateConfigKey(key); err != nil {
+		if err := errors.Join(validateConfigKey(key), config.RefuseLegacyMCPSecretSet(key)); err != nil { // D-0737
 			return mcpErrorResult("Error: %v", err)
 		}
 		if err := validateConfigValue(value); err != nil {
@@ -97,9 +99,7 @@ func mcpConfigSetHandler() server.ToolHandlerFunc {
 		if err != nil {
 			return mcpErrorResult("Error: %v", err)
 		}
-		return mcp.NewToolResultStructuredOnly(ConfigSetResult{
-			Key: key, File: envFile, Created: !updated,
-		}), nil
+		return mcp.NewToolResultStructuredOnly(ConfigSetResult{Key: key, File: envFile, Created: !updated}), nil
 	}
 }
 

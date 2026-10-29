@@ -25,8 +25,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-
-	"github.com/nself-org/cli/internal/plugin"
 )
 
 var (
@@ -40,8 +38,8 @@ var (
 
 // ensureCIBinary returns the path to the nself-ci binary.
 //
-// Order: the published plugin binary (~/.nself/plugins/bin), then a dev build
-// from an adjacent plugins checkout, then the verified auto-install seam.
+// Order: an adjacent development checkout, then the verified auto-install
+// seam, which checks the current published binary under its operation lock.
 // PATH is never consulted: a stale or planted nself-ci there must not win.
 func ensureCIBinary(verbose bool) (string, error) {
 	retireLegacyCICache()
@@ -50,10 +48,6 @@ func ensureCIBinary(verbose bool) (string, error) {
 	// path that any local user can pre-create: never trust or install there.
 	if _, err := os.UserHomeDir(); err != nil {
 		return "", fmt.Errorf("cannot locate the home directory for the nself-ci gate: %w\n(install it by hand: nself add ci)", err)
-	}
-
-	if p := plugin.PublishedBinaryPath("nself-ci"); isRegularFile(p) {
-		return p, nil
 	}
 
 	// Locate the plugin source relative to this binary.
@@ -143,14 +137,6 @@ func retireLegacyCICache() {
 		}
 		_, _ = fmt.Fprintln(ciNoticeOut, "notice: ~/.nself/bin/nself-ci is no longer used (unverified); nself now installs the signed ci plugin")
 	})
-}
-
-// isRegularFile reports whether path is itself a regular file. A symlink does
-// not count: the installer publishes a copy, so a link there was not put by a
-// verified install and falls through to the seam, which replaces it.
-func isRegularFile(path string) bool {
-	info, err := os.Lstat(path)
-	return err == nil && info.Mode().IsRegular()
 }
 
 // needsBuild returns true if the binary is missing or any source file is newer.

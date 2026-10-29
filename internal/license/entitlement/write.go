@@ -120,7 +120,8 @@ func cachedToken() (string, error) {
 	return "", fmt.Errorf("cached token does not belong to a configured licence")
 }
 
-// writeAtomic creates new files atomically and refreshes existing mounted inodes.
+// writeAtomic serializes writers and atomically replaces files known to be
+// unmounted. Mounted files and uncertain host state retain the existing inode.
 // Purpose: keep single-file bind mounts current. Inputs: path/data. Outputs: error.
 // Constraints: 0600; SDK retries torn reads. SPORT: private state publication.
 func writeAtomic(path string, data []byte) error {
@@ -131,6 +132,14 @@ func writeAtomic(path string, data []byte) error {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
+	lock, err := os.OpenFile(filepath.Join(dir, ".entitlement-write.lock"), os.O_CREATE|os.O_RDWR|noFollowFlag, 0600)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lock.Close() }()
+	if err := lockRejected(lock); err != nil {
+		return err
+	}
 	info, err := os.Lstat(path)
 	if err == nil {
 		if info.IsDir() {
@@ -138,6 +147,12 @@ func writeAtomic(path string, data []byte) error {
 				return fmt.Errorf("entitlement target directory is not empty or cannot be removed: %w", err)
 			}
 		} else {
+			if !info.Mode().IsRegular() || !singleLink(info) {
+				return writeExisting(path, data, info)
+			}
+			if !entitlementMounted(path) {
+				return writeNew(path, data)
+			}
 			return writeExisting(path, data, info)
 		}
 	} else if !os.IsNotExist(err) {

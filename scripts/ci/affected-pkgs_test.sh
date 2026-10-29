@@ -38,19 +38,20 @@ printf 'module example.invalid/fx\n\ngo %s\n' "$GOV" > "$R/go.mod"
 cat > "$R/a/a.go" <<'EOF'
 package a
 
-import _ "embed"
+import "embed"
 
-//go:embed assets/conf.yaml
-var Conf string
+//go:embed assets/*.yaml
+var Conf embed.FS
 EOF
 printf 'key: one\n' > "$R/a/assets/conf.yaml"
+printf 'key: two\n' > "$R/a/assets/other.yaml"
 printf 'package assets\n' > "$R/a/assets/assets.go"
 cat > "$R/b/b.go" <<'EOF'
 package b
 
 import "example.invalid/fx/a"
 
-func Conf() string { return a.Conf }
+func Conf() ([]byte, error) { return a.Conf.ReadFile("assets/other.yaml") }
 EOF
 printf 'package c\n' > "$R/c/c.go"
 printf 'input\n' > "$R/c/testdata/in.txt"
@@ -64,6 +65,7 @@ import (
 )
 
 func TestGuide(t *testing.T) {
+	_, _ = os.ReadFile("../c/testdata/in.txt")
 	if _, err := os.ReadFile("../docs/guide.md"); err != nil {
 		t.Fatal(err)
 	}
@@ -77,6 +79,7 @@ import _ "example.invalid/fx/d"
 EOF
 printf '# guide\n' > "$R/docs/guide.md"
 printf 'todo\n' > "$R/notes/todo.txt"
+(cd "$R" && go test ./...)
 git -C "$R" init -q
 git -C "$R" add -A
 git -C "$R" commit -qm base
@@ -119,6 +122,7 @@ check() {
     case "$c" in
       edit:*) printf '// changed\n' >> "$R/${c#edit:}" ;;
       new:*) mkdir -p "$(dirname "$R/${c#new:}")"; printf 'new\n' > "$R/${c#new:}" ;;
+      delete:*) rm "$R/${c#delete:}" ;;
       stage) git -C "$R" add -A ;;
       commit) git -C "$R" add -A && git -C "$R" commit -qm change ;;
     esac
@@ -144,7 +148,9 @@ cases() { # cases <awk> <script>
   check "$w" "$s" go-file-uncommitted 0 "$P/a $P/b" edit:a/a.go
   check "$w" "$s" go-file-staged 0 "$P/a $P/b" edit:a/a.go stage
   check "$w" "$s" embedded-yaml 0 "$P/a $P/a/assets $P/b" edit:a/assets/conf.yaml commit
-  check "$w" "$s" testdata 0 "$P/c" new:c/testdata/more.txt
+  check "$w" "$s" testdata 0 "$P/c $P/d" new:c/testdata/more.txt
+  check "$w" "$s" owned-data-reader 0 "$P/c $P/d" edit:c/testdata/in.txt
+  check "$w" "$s" deleted-embedded-yaml 0 "$P/a $P/a/assets $P/b" delete:a/assets/conf.yaml
   check "$w" "$s" docs-read-by-test 0 "$P/d" edit:docs/guide.md commit
   check "$w" "$s" go-file-importer 0 "$P/d $P/f" edit:d/d.go
   check "$w" "$s" two-dirs 0 "$P/a $P/a/assets $P/b $P/c" edit:c/c.go edit:a/assets/conf.yaml commit

@@ -124,6 +124,8 @@ func TestSimPromote(t *testing.T) {
     else printf '[]'; fi ;;
   *" ps --all --format json"*)
     printf '{"Name":"proj-web-1","Service":"web","State":"running"}\n' ;;
+  "image inspect --format {{.Id}} "*)
+    printf 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n' ;;
   *"image inspect --format"*)
     for last; do :; done
     digest=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb

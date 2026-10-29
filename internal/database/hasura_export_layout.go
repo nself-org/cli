@@ -12,7 +12,8 @@ package database
 // style) instead. The same JSON form is used when the body contains the text
 // "!include", with each "!include" written as "\u0021include", so a string value
 // is never mistaken for an include directive; YAML decodes it back to "!".
-// Multi-line bodies without "!include" stay block YAML.
+// Keep-chomp scalars also use JSON because the resolver trims trailing newlines.
+// Other multi-line bodies without "!include" stay block YAML.
 // Pure and deterministic (sorted keys, no clock, no disk) except
 // writeMetadataTree, which only writes the files it is given. A key that is not
 // a safe file name is rejected. The layout is what applyViaIncludeResolver reads.
@@ -25,7 +26,7 @@ import (
 	"sort"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"github.com/nself-org/cli/internal/database/metadatavalue"
 )
 
 const metadataIndexFile = "config.yaml"
@@ -55,7 +56,7 @@ func metadataLayout(data []byte) ([]metadataFile, error) {
 	files := make([]metadataFile, 0, len(keys)+1)
 	var index strings.Builder
 	for _, k := range keys {
-		body, err := marshalMetadataValue(raw[k])
+		body, err := metadatavalue.Marshal(raw[k])
 		if err != nil {
 			return nil, fmt.Errorf("marshal %s to YAML: %w", k, err)
 		}
@@ -65,26 +66,6 @@ func metadataLayout(data []byte) ([]metadataFile, error) {
 	files = append(files, metadataFile{Name: metadataIndexFile, Data: []byte(index.String())})
 	sort.Slice(files, func(i, j int) bool { return files[i].Name < files[j].Name })
 	return files, nil
-}
-
-// marshalMetadataValue encodes one top-level value for its <key>.yaml file:
-// block YAML, except single-line bodies and bodies containing "!include", which
-// become one line of JSON with "!include" escaped (see the header for why).
-func marshalMetadataValue(v interface{}) ([]byte, error) {
-	body, err := yaml.Marshal(v)
-	if err != nil {
-		return nil, err
-	}
-	oneLine := strings.Count(strings.TrimRight(string(body), "\n"), "\n") == 0
-	if !oneLine && !strings.Contains(string(body), "!include") {
-		return body, nil
-	}
-	js, err := json.Marshal(v)
-	if err != nil {
-		return nil, err
-	}
-	esc := strings.ReplaceAll(string(js), "!include", `\u0021include`)
-	return []byte(esc + "\n"), nil
 }
 
 // checkMetadataKey rejects a top-level key that would escape the directory,

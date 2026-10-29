@@ -35,6 +35,18 @@ import (
 // placeholderPrefix starts every secret placeholder.
 const placeholderPrefix = "nself-invoke-secret:"
 
+// secretsRestored is true after RestoreSecretArgv has replaced at least one
+// placeholder with a real value in this process. Plugin execution reads it to
+// decide whether argv carries secrets that would leak through exec (D-0651).
+var secretsRestored bool
+
+// SecretsRestored reports whether RestoreSecretArgv restored any value.
+func SecretsRestored() bool { return secretsRestored }
+
+// TestingSetSecretsRestored is for tests only: it sets the package flag that
+// RestoreSecretArgv would set when a bundle was actually restored.
+func TestingSetSecretsRestored(v bool) { secretsRestored = v }
+
 // SecretBundle is the secret values of one child run: Values[n] is what the
 // placeholder with index n stands for.
 type SecretBundle struct {
@@ -149,5 +161,6 @@ func RestoreSecretArgv(argv []string) (out []string, values []string, err error)
 			return fail("a secret value was passed but no argument uses it")
 		}
 	}
+	secretsRestored = len(b.Values) > 0
 	return out, b.Values, nil
 }

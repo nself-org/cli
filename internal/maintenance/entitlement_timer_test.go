@@ -10,8 +10,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 	"unicode/utf8"
 )
 
@@ -368,7 +371,7 @@ func TestLaunchAgentGuard(t *testing.T) {
 			}
 			args := plistArgs(t, data)
 			cmd := exec.Command(args[0], args[1:]...)
-			cmd.Env = []string{"HOME=" + home, "PATH=" + stubs + ":/usr/bin:/bin"}
+			cmd.Env = []string{"HOME=" + home, "PATH=" + stubs + ":" + os.Getenv("PATH")}
 			if out, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("guard script failed: %v\n%s", err, out)
 			}
@@ -495,6 +498,53 @@ func FuzzRenderTimer(f *testing.F) {
 	})
 }
 
+// TestCronSelfDeleteCreatesLockDir runs the real cron line through sh with no
+// ~/.nself directory present, proving the self-removal creates it instead of
+// failing the redirect and leaving the crontab line in place forever.
+func TestCronSelfDeleteCreatesLockDir(t *testing.T) {
+	tmp, _ := filepath.EvalSymlinks(t.TempDir())
+	store, stubs := filepath.Join(tmp, "store"), filepath.Join(tmp, "stubs")
+	if err := os.MkdirAll(stubs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stub := "#!/bin/sh\nif [ \"$1\" = -l ]; then cat " + store + "; else cat > " + store + "; fi\n"
+	if err := os.WriteFile(filepath.Join(stubs, "crontab"), []byte(stub), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(tmp, "nself")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gone := filepath.Join(tmp, "gone-project")
+	line, err := renderCron(bin, gone, Hash(gone))
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := "MAILTO=ops\n0 3 * * * printf 'a\\n%s' b\n"
+	if err := os.WriteFile(store, []byte(before+line+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fields := strings.SplitN(strings.ReplaceAll(line, `\%`, "%"), " ", 6)
+	run := exec.Command("sh", "-c", fields[5])
+	// Do NOT create ~/.nself; the fix must mkdir -p it before the redirect.
+	if runtime.GOOS == "darwin" {
+		if err := os.WriteFile(filepath.Join(stubs, "flock"), []byte("#!/bin/sh\nshift 2; exec \"$@\"\n"), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run.Env = []string{"HOME=" + tmp, "PATH=" + stubs + ":" + os.Getenv("PATH")}
+	if out, err := run.CombinedOutput(); err != nil {
+		t.Fatalf("cron line failed without ~/.nself: %v\n%s", err, out)
+	}
+	got, _ := os.ReadFile(store)
+	if string(got) != before {
+		t.Fatalf("cron line not removed when ~/.nself was missing:\n got %q\nwant %q", got, before)
+	}
+	if _, err := os.Stat(filepath.Join(tmp, ".nself")); err != nil {
+		t.Fatalf("~/.nself was not created by the cron line: %v", err)
+	}
+}
+
 // TestCronSelfDeleteKeepsForeignLines runs the real cron line through sh (cron's \% unescape
 // applied) with the project gone, against a stub crontab, and checks foreign lines before and
 // after the timer line survive byte for byte while the timer line disappears.
@@ -524,7 +574,16 @@ func TestCronSelfDeleteKeepsForeignLines(t *testing.T) {
 	}
 	fields := strings.SplitN(strings.ReplaceAll(line, `\%`, "%"), " ", 6)
 	run := exec.Command("sh", "-c", fields[5])
-	run.Env = []string{"PATH=" + stubs + ":/usr/bin:/bin"}
+	if err := os.MkdirAll(filepath.Join(tmp, ".nself"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	// This shell shape is also tested on macOS, where flock is not shipped.
+	if runtime.GOOS == "darwin" {
+		if err := os.WriteFile(filepath.Join(stubs, "flock"), []byte("#!/bin/sh\nshift 2; exec \"$@\"\n"), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run.Env = []string{"HOME=" + tmp, "PATH=" + stubs + ":" + os.Getenv("PATH")}
 	if out, err := run.CombinedOutput(); err != nil {
 		t.Fatalf("cron line failed: %v\n%s", err, out)
 	}
@@ -581,5 +640,125 @@ func TestOverlongPathsAreRefused(t *testing.T) {
 	long := "/" + strings.Repeat("a", 301)
 	if _, err := renderCron("/usr/local/bin/nself", long, Hash(long)); err == nil {
 		t.Fatal("a cron line near cron's length limit was rendered")
+	}
+}
+
+func TestCronConcurrentProjectsKeepBothLines(t *testing.T) {
+	f, root := newFake(t, "linux", 1000)
+	var mu sync.Mutex
+	current := ""
+	h := f.host
+	h.run = func(stdin, name string, args ...string) (string, error) {
+		mu.Lock()
+		if args[0] == "-l" {
+			value := current
+			mu.Unlock()
+			time.Sleep(20 * time.Millisecond)
+			return value, nil
+		}
+		current = stdin
+		mu.Unlock()
+		return "", nil
+	}
+	var wg sync.WaitGroup
+	for _, name := range []string{"one", "two"} {
+		wg.Add(1)
+		go func(name string) {
+			defer wg.Done()
+			if _, err := h.installCron("/bin/nself", filepath.Join(root, name), Hash(name)); err != nil {
+				t.Error(err)
+			}
+		}(name)
+	}
+	wg.Wait()
+	if strings.Count(current, entCronTag) != 4 {
+		t.Fatalf("lost a project cron line: %s", current)
+	}
+}
+
+func TestRefreshGuardRetainsNonExecutableBinary(t *testing.T) {
+	root := t.TempDir()
+	bin := filepath.Join(root, "nself")
+	if err := os.WriteFile(bin, []byte("upgrading"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("sh", "-c", refreshScript(bin, root, "exit 78")).CombinedOutput(); err != nil {
+		t.Fatalf("existing binary treated as gone: %v %s", err, out)
+	}
+}
+
+// TestCronSelfDeleteHoldsLockAcrossReadModifyWrite runs the real cron line while an install
+// races it. The crontab stub keeps a slow `-l` (it returns the pre-sleep copy), so a
+// self-removal that reads before taking the lock writes that stale copy over the install.
+func TestCronSelfDeleteHoldsLockAcrossReadModifyWrite(t *testing.T) {
+	tmp, _ := filepath.EvalSymlinks(t.TempDir())
+	store, stubs := filepath.Join(tmp, "store"), filepath.Join(tmp, "stubs")
+	if err := os.MkdirAll(stubs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stub := "#!/bin/sh\nif [ \"$1\" = -l ]; then cat " + store + "; sleep 0.4; else cat > " + store + "; fi\n"
+	if err := os.WriteFile(filepath.Join(stubs, "crontab"), []byte(stub), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The shell takes flock on fd 9. Only util-linux flock(1) locks an inherited fd (macOS ports
+	// such as Homebrew's do not), so off Linux, or without it, a perl stub takes flock(2) on fd 9.
+	if _, err := exec.LookPath("flock"); err != nil || runtime.GOOS != "linux" {
+		if _, perr := exec.LookPath("perl"); perr != nil {
+			t.Skip("neither flock nor perl available")
+		}
+		perl := "#!/usr/bin/perl\nuse Fcntl qw(:flock);\nopen(my $f, '>&=', 9) or die;\nflock($f, LOCK_EX) or die;\n"
+		if err := os.WriteFile(filepath.Join(stubs, "flock"), []byte(perl), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	env := []string{"HOME=" + tmp, "PATH=" + stubs + ":" + os.Getenv("PATH")}
+	bin := filepath.Join(tmp, "nself")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gone := filepath.Join(tmp, "gone-project")
+	line, err := renderCron(bin, gone, Hash(gone))
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign := "MAILTO=ops\n0 3 * * * echo keep\n"
+	if err := os.WriteFile(store, []byte(foreign+line+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h := host{goos: "linux", crontab: true, home: tmp, run: func(stdin, name string, args ...string) (string, error) {
+		cmd := exec.Command(filepath.Join(stubs, "crontab"), args...)
+		cmd.Env = env
+		if stdin != "" {
+			cmd.Stdin = strings.NewReader(stdin)
+		}
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}}
+	other := filepath.Join(tmp, "other-project")
+	fields := strings.SplitN(strings.ReplaceAll(line, `\%`, "%"), " ", 6)
+	sh := exec.Command("sh", "-c", fields[5])
+	sh.Env = env
+	if err := os.MkdirAll(filepath.Join(tmp, ".nself"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		time.Sleep(150 * time.Millisecond) // after the shell started reading
+		if _, err := h.installCron(bin, other, Hash(other)); err != nil {
+			t.Error(err)
+		}
+	}()
+	if out, err := sh.CombinedOutput(); err != nil {
+		t.Fatalf("cron line failed: %v\n%s", err, out)
+	}
+	wg.Wait()
+	got, _ := os.ReadFile(store)
+	if !strings.Contains(string(got), entCronTag+Hash(other)) {
+		t.Fatalf("self-removal overwrote a concurrent install with a stale copy: %q", got)
+	}
+	if strings.Contains(string(got), entCronTag+Hash(gone)) || !strings.Contains(string(got), foreign) {
+		t.Fatalf("self-removal result wrong: %q", got)
 	}
 }
