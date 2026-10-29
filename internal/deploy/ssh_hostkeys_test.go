@@ -111,7 +111,7 @@ func TestSecretShippingPinsHostKeyV14(t *testing.T) {
 			if n := len(read()); n != 0 {
 				t.Fatalf("%d process(es) ran before the host-key refusal", n)
 			}
-			alias := deployKeyAlias(mustSpec(t, cfg.Host))
+			alias := remote.PinAlias(mustSpec(t, cfg.Host))
 			if err := (remote.PinnedHostKeys{Path: DeployKnownHostsPath()}).Add(alias, "ssh-ed25519 AQID"); err != nil {
 				t.Fatal(err)
 			}
@@ -140,7 +140,7 @@ func TestSecretShippingPinsHostKeyV14(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "E487") || len(read()) != 0 {
 			t.Fatalf("v1.4 unknown host: %v", err)
 		}
-		if err := (remote.PinnedHostKeys{Path: DeployKnownHostsPath()}).Add("nself-203.0.113.7-22", "ssh-ed25519 AQID"); err != nil {
+		if err := (remote.PinnedHostKeys{Path: DeployKnownHostsPath()}).Add("nself+203.0.113.7+22", "ssh-ed25519 AQID"); err != nil {
 			t.Fatal(err)
 		}
 		if err := DeployViaSsh(context.Background(), cfg, "/work/compose.yml"); err != nil {
@@ -164,7 +164,7 @@ func TestSecretShippingPinsHostKeyV14(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "E487") || len(read()) != 0 {
 			t.Fatalf("v1.5 unknown host: %v", err)
 		}
-		if err := (remote.PinnedHostKeys{Path: DeployKnownHostsPath()}).Add("nself-203.0.113.7-22", "ssh-ed25519 AQID"); err != nil {
+		if err := (remote.PinnedHostKeys{Path: DeployKnownHostsPath()}).Add("nself+203.0.113.7+22", "ssh-ed25519 AQID"); err != nil {
 			t.Fatal(err)
 		}
 		if err := DeployViaSsh(context.Background(), cfg, "/work/compose.yml"); err != nil {
@@ -223,10 +223,11 @@ func TestDeployKeyAliasIPHost(t *testing.T) {
 		"u@203.0.113.7":        "nself+203.0.113.7+22",
 		"u@[2001:db8::1]:2222": "nself+2001:db8::1+2222",
 		"u@host.example:2222":  "nself+host.example+2222",
+		"u@host.example:22":    "host.example",
 		"u@host.example":       "host.example",
 	} {
-		if got := deployKeyAlias(mustSpec(t, in)); got != want {
-			t.Errorf("deployKeyAlias(%q) = %q, want %q", in, got, want)
+		if got := remote.PinAlias(mustSpec(t, in)); got != want {
+			t.Errorf("PinAlias(%q) = %q, want %q", in, got, want)
 		}
 	}
 	t.Setenv("HOME", pinHome(t))

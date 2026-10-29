@@ -161,7 +161,7 @@ func TestGoldenArgv_PushSecrets(t *testing.T) {
 	t.Setenv("HOME", pinHome(t))
 	read := installFakeSSHTools(t)
 	installFakeKeyscan(t)
-	if err := (remote.PinnedHostKeys{Path: DeployKnownHostsPath()}).Add("nself-203.0.113.7-22", "ssh-ed25519 AQID"); err != nil {
+	if err := (remote.PinnedHostKeys{Path: DeployKnownHostsPath()}).Add("nself+203.0.113.7+22", "ssh-ed25519 AQID"); err != nil {
 		t.Fatalf("pin: %v", err)
 	}
 	dir := t.TempDir()
@@ -183,7 +183,7 @@ func TestGoldenArgv_PushSecrets(t *testing.T) {
 			"-o", "StrictHostKeyChecking=yes",
 			"-o", `GlobalKnownHostsFile="` + filepath.ToSlash(DeployKnownHostsPath()) + `"`,
 			"-o", "ControlMaster=no", "-o", "ControlPath=none",
-			"-o", "HostKeyAlias=nself-203.0.113.7-22",
+			"-o", "HostKeyAlias=nself+203.0.113.7+22",
 			"-o", "ForwardAgent=no",
 			"--", envFile, "deploy@203.0.113.7:/opt/app/.env",
 		},

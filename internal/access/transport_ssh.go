@@ -17,7 +17,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/nself-org/cli/internal/compat"
-	"github.com/nself-org/cli/internal/hostpin"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 	"os"
 	"os/exec"
@@ -91,8 +90,13 @@ func (t *SSHTransport) sshArgsContext(ctx context.Context) ([]string, error) {
 			return nil, err
 		}
 		args = append(args, "-o", "StrictHostKeyChecking=yes", "-o", option)
-		if spec.Port != 0 {
-			alias := hostpin.PinAlias(ctx, spec.Host, spec.Port, remote.Fingerprint)
+		// Read-only: a pin an older release made under its own alias still counts
+		// until deploy or admin connect moves it (remote.MigrateLegacyPin).
+		alias, err := remote.PinnedHostKeys{Path: filepath.Join(home, ".config", "nself", "deploy_known_hosts")}.EffectivePinAlias(spec)
+		if err != nil {
+			return nil, err
+		}
+		if alias != strings.ToLower(spec.Host) {
 			args = append(args, "-o", "HostKeyAlias="+alias)
 		}
 	} else {
