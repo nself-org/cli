@@ -88,13 +88,13 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Security gate: NSELF_LICENSE_SKIP_VERIFY=1 requires --force as explicit acknowledgment.
-	// Standalone skip (without --force) is rejected to prevent accidental bypass in scripts.
+	// Security gate: NSELF_LICENSE_SKIP_VERIFY=1 (shell only, config.IsProtectedEnvKey) requires --force;
+	// standalone skip is rejected. It never skips a registry signature check (P7-PLUG-87 review H1).
 	if os.Getenv("NSELF_LICENSE_SKIP_VERIFY") == "1" && !force {
 		return fmt.Errorf("NSELF_LICENSE_SKIP_VERIFY requires --force flag; standalone skip is not permitted")
 	}
 	if os.Getenv("NSELF_LICENSE_SKIP_VERIFY") == "1" && force {
-		fmt.Fprintf(os.Stderr, "warning: license verification bypassed via NSELF_LICENSE_SKIP_VERIFY (--force acknowledged)\n")
+		fmt.Fprintf(os.Stderr, "warning: license verification bypassed via NSELF_LICENSE_SKIP_VERIFY (--force acknowledged); plugin signatures are still verified\n")
 	}
 
 	// If a license key is provided via flag, set it in the environment

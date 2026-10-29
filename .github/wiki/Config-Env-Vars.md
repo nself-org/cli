@@ -461,10 +461,15 @@ above. If you set it today, delete it. It has never had any effect.
 | Variable | Effect |
 |---|---|
 | `NSELF_LICENSE_FAIL_OPEN=1` | On a network failure only, trust the cached entitlement with no age limit. Intended for CI and air-gapped builds. It never overrides a server that answers, and never overrides a revoked key. |
-| `NSELF_LICENSE_SKIP_VERIFY=1` | Let `nself license import` accept an unsigned cache file. Requires `NSELF_LICENSE_SKIP_VERIFY_FORCE=1` and `--force`. Affects `import` only, never `plugin install`. |
+| `NSELF_LICENSE_SKIP_VERIFY=1` | Let `nself license import` accept an unsigned cache file (v1.4 mode, with `--force`). On `plugin install` it needs `--force` and skips licence checks only; plugin signatures are always verified. |
 
 Both defeat protections that exist for a reason. Leave them unset on any
 installation that matters.
+
+These two, the registry and ping URLs and the other security settings listed in
+[Plugin-Security](Plugin-Security#settings-a-project-cannot-change) are read only
+from your shell environment. A project `.env` file that sets one is ignored with a
+warning.
 
 ## Observability / Profiling
 

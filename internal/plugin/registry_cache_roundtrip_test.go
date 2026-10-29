@@ -191,7 +191,7 @@ func TestCacheKeepsSignatureMaterial(t *testing.T) {
 	t.Setenv(pluginRequireChecksumEnv, "1")
 	stripped := *got
 	stripped.ReleaseSignature = nil
-	if err := verifyReleaseSignature(&stripped, false, false, ArtifactKindSource, "", false); err == nil {
+	if err := verifyReleaseSignature(&stripped, false, false, ArtifactKindSource, ""); err == nil {
 		t.Error("a stable plugin with no signature was accepted even in hard mode")
 	}
 }
@@ -228,7 +228,7 @@ func TestPlatformSignaturesCacheRoundTrip(t *testing.T) {
 	if got == nil || got.PlatformSignatures[plat] == nil || *got.PlatformSignatures[plat] != *signed {
 		t.Fatalf("platform_signatures lost or changed in the cache round trip: %+v", got)
 	}
-	if err := verifyReleaseSignature(got, false, false, plat, sha256Hex(body), false); err != nil {
+	if err := verifyReleaseSignature(got, false, false, plat, sha256Hex(body)); err != nil {
 		t.Fatalf("a warm-cache platform install must verify, not skip: %v", err)
 	}
 	bad, _ := findPlugin(reloaded, "invalid-plugin")

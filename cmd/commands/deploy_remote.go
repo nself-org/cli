@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/joho/godotenv"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/deploy"
@@ -23,7 +22,7 @@ import (
 func loadDeployEnvCascade(workdir, target string) {
 	for _, f := range deployEnvCascadeFiles(workdir, target) {
 		if _, err := os.Stat(f); err == nil {
-			_ = godotenv.Overload(f)
+			_ = config.OverloadEnvFile(f) // skips protected security keys, as config.Load does
 		}
 	}
 	_ = os.Setenv("NSELF_DEPLOY_ENV", target)

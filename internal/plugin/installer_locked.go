@@ -10,11 +10,9 @@ package plugin
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 
-	"github.com/nself-org/cli/internal/audit"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/plugin/requires"
 	"github.com/nself-org/cli/internal/plugin/verify"
@@ -208,29 +206,17 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 
 	// Step 5b: Verify the registry release_signature (P7-PLUG-23; D7). The key
 	// is compiled into the CLI, never read from the registry or manifest
-	// (installer_signature.go). A missing signature warns in v1.4 mode and
-	// refuses (E107) in v1.5 mode or under NSELF_PLUGIN_REQUIRE_CHECKSUM=1.
-	// The dev bypass below skips a missing signature, never a present one on a
-	// pinned tier; NSELF_LICENSE_SKIP_VERIFY=1 also requires an explicit force
-	// acknowledgement from the caller or the legacy FORCE env switch.
-	// In prod/staging the bypass is always fatal.
-	bypassed, bypassErr := checkSigBypassAllowedWithContext(ctx, cfg.Env, name)
-	if bypassErr != nil {
+	// (installer_signature.go). A missing signature is E107 unless the slug is
+	// below its tier's signed-since floor. There is no bypass for a registry
+	// install (P7-PLUG-87 review H1): NSELF_LICENSE_SKIP_VERIFY + --force skips
+	// licence checks only, and is still refused outright in prod/staging.
+	if skip, bypassErr := checkSigBypassAllowedWithContext(ctx, cfg.Env, name); bypassErr != nil {
 		_ = os.Remove(archivePath)
 		return bypassErr
+	} else if skip {
+		fmt.Fprintf(os.Stderr, "note: NSELF_LICENSE_SKIP_VERIFY does not skip plugin signature checks; verifying %q\n", name)
 	}
-	if bypassed {
-		fmt.Fprintf(os.Stderr, "WARNING: plugin signature verification skipped (NSELF_LICENSE_SKIP_VERIFY=1 + FORCE)\n")
-		if werr := audit.Write("plugin-install-bypass", map[string]string{
-			"plugin": name,
-			"reason": "NSELF_LICENSE_SKIP_VERIFY=1 + explicit force acknowledgement",
-			"uid":    os.Getenv("USER"),
-			"env":    cfg.Env,
-		}); werr != nil {
-			slog.Warn("audit log write failed — bypass event not recorded", "error", werr)
-		}
-	}
-	if err := verifyReleaseSignature(manifest, paid, false, artifactKind, archiveSum, bypassed); err != nil {
+	if err := verifyReleaseSignature(manifest, paid, false, artifactKind, archiveSum); err != nil {
 		_ = os.Remove(archivePath)
 		return fmt.Errorf("signature verification for plugin %q: %w", name, err)
 	}
