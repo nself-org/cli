@@ -7,7 +7,7 @@
 ## This command moved
 
 `model` was extracted from the core binary into the `model` plugin as part of
-[CLI-R11](https://github.com/nself-org/cli/blob/main/.claude) (the thin-core
+the thin-core extraction (CLI-R11); see the thin-core
 extraction). The command surface is unchanged — only where the code lives
 changed. This includes the `ollama` subcommand tree ([[cmd-ollama]]),
 which was already a child of `model`, not a separate top-level command.

@@ -192,6 +192,18 @@ func main() {
 	}
 
 	if *check {
+		badLinks, err := auditProseLinks(*dir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "audit prose links: %v\n", err)
+			os.Exit(1)
+		}
+		if len(badLinks) > 0 {
+			fmt.Fprintf(os.Stderr, "%d wiki page(s) contain broken or forbidden links:\n", len(badLinks))
+			for _, b := range badLinks {
+				fmt.Fprintf(os.Stderr, "  %s\n", b)
+			}
+			os.Exit(1)
+		}
 		if len(stale) > 0 {
 			fmt.Fprintf(os.Stderr, "%d wiki command page(s) are stale — run `make wiki-commands`:\n  %s\n",
 				len(stale), strings.Join(stale, "\n  "))

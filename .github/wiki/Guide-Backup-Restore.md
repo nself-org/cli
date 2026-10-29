@@ -72,6 +72,19 @@ The restore command:
 3. Restores from the dump file
 4. Restarts services
 
+## Retention and Prune Holds
+
+`nself backup prune` applies a tiered retention policy: it keeps the newest backup of each of the last N days, N weeks (Sundays) and N months (the 1st). The defaults are 7 daily, 4 weekly and 12 monthly. Set them with `BACKUP_RETENTION_DAILY`, `BACKUP_RETENTION_WEEKLY` and `BACKUP_RETENTION_MONTHLY`, or per run with `--keep-daily`, `--keep-weekly` and `--keep-monthly`. `BACKUP_RETENTION_DAYS` is a legacy setting that prune does not read. Preview a run with `nself backup prune --dry-run`.
+
+Prune never deletes a backup whose tag is `keep` or starts with `keep-`. The `update stack` command tags its pre-update backup `keep-stack-<run-id>-<nonce>` so an interrupted or failed update can always roll back; those backups survive prune until you release them.
+
+The tag is the part of the file name after the timestamp, for example `myproj_full_20261028_120000_keep-stack-<run-id>-<nonce>.dump`. There is no command to change a tag. To release a held backup, rename the file in your backup directory so the tag no longer starts with `keep` (keep the extension, including `.age` on encrypted backups), then prune:
+
+```bash
+mv myproj_full_20261028_120000_keep-stack-abc123.dump myproj_full_20261028_120000_released-stack-abc123.dump
+nself backup prune --dry-run   # the renamed backup is now subject to the policy
+```
+
 > **Important:** Test your restores regularly. Untested backups are not backups.
 
 ## Backup Verification Checklist

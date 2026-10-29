@@ -17,7 +17,7 @@
 
 ## Plugins Included
 
-The bundle's licensed plugins are all `tier: pro` (Basic tier or higher).
+The bundle's licensed plugins all carry a `tier: pro` manifest label. Buying the ɳChat bundle (or ɳSelf+) unlocks all of them; there is no separate Basic plan.
 
 | Plugin | Tier | Language | What It Does |
 |--------|------|----------|-------------|
@@ -61,7 +61,7 @@ Client (chat/) → realtime + chat → channels, DMs, threads
 ## Installation
 
 ```bash
-# Basic tier or higher (all nChat plugins are tier: pro)
+# ɳChat bundle or ɳSelf+ license key
 nself license set nself_pro_xxxxx...
 nself plugin install chat livekit recording moderation bots realtime auth
 
@@ -69,7 +69,7 @@ nself plugin install chat livekit recording moderation bots realtime auth
 nself build && nself start
 ```
 
-Basic tier is $0.99/mo or $9.99/yr. See [Plugin-Licensing](Plugin-Licensing) for the tier comparison.
+The ɳChat bundle is $0.99/mo or $9.99/yr; ɳSelf+ ($3.99/mo or $39.99/yr) includes it. See [Plugin-Licensing](Plugin-Licensing) for license keys.
 
 ## Getting Started
 
@@ -77,7 +77,7 @@ Basic tier is $0.99/mo or $9.99/yr. See [Plugin-Licensing](Plugin-Licensing) for
 
 - ɳSelf CLI installed and a project initialized (`nself init`)
 - Backend running (`nself start`)
-- Basic tier license key or higher
+- ɳChat bundle or ɳSelf+ license key
 - TURN/STUN credentials for `livekit` if running across NAT
 - Object storage configured for `recording` (MinIO comes free with the ɳSelf stack)
 

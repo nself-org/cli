@@ -7,7 +7,7 @@
 ## This command moved
 
 `alerts` was extracted from the core binary into the `alerts` plugin as
-part of [CLI-R11](https://github.com/nself-org/cli/blob/main/.claude) (the
+part of the thin-core extraction (CLI-R11); see the
 thin-core extraction). The command surface is unchanged — only where the
 code lives changed.
 

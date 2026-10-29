@@ -20,67 +20,34 @@ Licensed plugins are source-available Rust binaries distributed through the ɳSe
 
 ### Per-Bundle Pricing
 
-| Option | Monthly | Annual | What You Get |
-|--------|---------|--------|-------------|
-| **Free** | $0 | $0 | Core CLI + free plugins |
-| **Any single bundle** | $0.99/mo | $9.99/yr | All plugins in that bundle (ɳClaw, ɳChat, ɳFamily, or ClawDE) |
-| **ɳSelf+** | $3.99/mo | $39.99/yr | Every bundle + all apps + support |
+The authoritative bundle catalog, pricing, and plugin membership live at [nself.org/pricing](https://nself.org/pricing) and are fetched by the CLI from `https://plugins.nself.org/bundles.json`. The wiki pages below summarize each bundle; always treat the live catalog as the source of truth for what is sold.
 
-Annual gives roughly 16% savings versus monthly (about 2 months free).
+Current bundles (as of v1.4.13):
+
+| Bundle | Tier | Monthly | Annual | Notes |
+|--------|------|---------|--------|-------|
+| Task | free | $0 | $0 | Core productivity plugins; no license key required |
+| Chat | paid | $0.99 | $9.99 | Messaging and voice |
+| Claw | paid | $0.99 | $9.99 | AI personal assistant |
+| Family | paid | $0.99 | $9.99 | Private family social platform |
+| Sentry | paid | $0.99 | $9.99 | Observability and incident management |
+| ClawDE | paid | $0.99 | $9.99 | Dev environment cloud sync |
+| ɳSelf+ | paid | $3.99 | $39.99 | Every bundle + all apps + support |
+
+There is no "Basic" or "Pro" tier. Paid bundles are independent purchases; ɳSelf+ includes every paid bundle. Annual pricing saves roughly two months versus monthly.
 
 ---
 
 ## Per-Product Plugin Bundles
 
-Each ɳSelf product has a recommended plugin bundle. Bundles are not separate SKUs. They are a way to understand which plugins power each product. All plugins are available at the Basic tier and above.
+Each bundle page lists its plugin set and purpose. Plugin lists change with releases, and the ClawDE set is provisional; the live catalog at [nself.org/pricing](https://nself.org/pricing) is authoritative.
 
-### ɳClaw Bundle
-AI personal assistant. Requires Pro tier (includes AI suite).
-
-| Plugin | Purpose |
-|--------|---------|
-| ai | Multi-provider LLM routing |
-| claw | Core assistant, threads, memory, tools |
-| claw-web | Svelte web dashboard |
-| claw-budget | Token spend limits and tracking |
-| mux | Email pipeline (Gmail, rules, auto-reply) |
-| voice | TTS, STT, phone calls |
-| browser | Web scraping and automation |
-| google | Gmail, Calendar, Drive, Sheets |
-| notify | Telegram and webhook notifications |
-| cron | Scheduled tasks |
-| post | Social media publishing |
-
-### ɳChat Bundle
-Messaging. Available at Basic tier.
-
-| Plugin | Purpose |
-|--------|---------|
-| chat | Channels, DMs, threads, reactions |
-| livekit | Video and audio calls |
-| recording | Call recording |
-| moderation | Content filtering |
-| bots | Automated responses |
-| realtime | Enhanced WebSocket presence |
-| auth | SSO, SAML, LDAP |
-
-### ɳFamily Bundle (Planned)
-Private family social media. Will be available at Basic tier.
-
-| Plugin | Purpose |
-|--------|---------|
-| social | Activity feed, posts, reactions |
-| photos | Photo upload, organization |
-| activity-feed | Timeline aggregation |
-| moderation | Parental controls |
-| realtime | Live updates |
-| cms | Family pages |
-| chat | Family messaging |
-
-### ClawDE Bundle
-AI dev environment cloud sync. Available at $0.99/mo or $9.99/yr.
-
-Remote and mobile sync via API for the ClawDE Flutter desktop and mobile app.
+- [[bundle-nclaw]] — AI personal assistant
+- [[bundle-nchat]] — Messaging and voice
+- [[bundle-nfamily]] — Private family social platform
+- [[cmd-sentry]] — Observability and incident management
+- [[bundle-clawde]] — Dev environment cloud sync
+- [[Bundles]] — Free core productivity plugins (the Task Bundle)
 
 ---
 
@@ -118,14 +85,7 @@ nself license remove
 
 ### Key Format
 
-Keys use a prefix format:
-
-| Prefix | Tier |
-|--------|------|
-| `nself_pro_` | Pro tier and above |
-| `nself_max_` | Pro tier |
-| `nself_ent_` | Enterprise tier |
-| `nself_owner_` | Owner/internal tier |
+Keys use a `nself_<product>_` prefix, for example `nself_plus_` for ɳSelf+. The prefix only names the key's product; the signed license response decides which plugins it unlocks. [[Plugin-Licensing]] lists every accepted prefix.
 
 Keys must be at least 32 characters total.
 

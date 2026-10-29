@@ -13,15 +13,11 @@
 
 | Tier | Price | Includes |
 |------|-------|---------|
-| **Free** | $0 | Core CLI + free plugins (MIT licensed) |
-| **Basic** | $0.99/mo or $9.99/yr | The standard licensed plugins (excludes Pro-tier AI suite) |
-| **Pro** | $1.99/mo or $19.99/yr | Basic + AI suite (ai, browser, claw, claw-budget, claw-web, post, voice) |
-| **Elite** | $4.99/mo or $49.99/yr | Pro + email support |
-| **Business** | $9.99/mo or $99.99/yr | Elite + 24h email support + priority feature requests |
-| **Business+** | $49.99/mo or $499.99/yr | Business + dedicated support channel |
-| **Enterprise** | $99.99/mo or $999.99/yr | Business+ + managed DevOps |
+| **Free** | $0 | Core CLI + free plugins (MIT licensed), including the Task bundle |
+| **Bundle** | $0.99/mo or $9.99/yr each | One product's licensed plugins (Chat, Claw, Family, Sentry, ClawDE) |
+| **ɳSelf+** | $3.99/mo or $39.99/yr | Every bundle + all apps + support |
 
-Annual plans save ~17% compared to monthly. Existing $9.99/yr keys are grandfathered to the Basic tier.
+The CLI no longer uses Basic / Pro tiers. Bundles are independent purchases; see [[Licensing-Guide]] and [nself.org/pricing](https://nself.org/pricing) for the current catalog.
 
 ## Plugin Categories
 
@@ -76,7 +72,7 @@ Bundles group plugins that work together to deliver a complete feature set. Per 
 | Bundle | Price | Plugins | Use Case |
 |--------|-------|---------|----------|
 | [[bundle-nclaw]] | $0.99/mo | ai, claw, claw-web, mux, voice, browser, google, notify, cron, claw-budget, claw-news | AI personal assistant: email, calendar, news, budget, tools |
-| [[bundle-clawde]] | $1.99/mo / $19.99/yr | TBD (cloud sync, premium models, team features) | ClawDE+ remote/mobile sync via API |
+| [[bundle-clawde]] | $0.99/mo / $9.99/yr | TBD (cloud sync, premium models, team features) | ClawDE+ remote/mobile sync via API |
 | [[bundle-nfamily]] | $0.99/mo | social, photos, activity-feed, moderation, realtime, cms, chat | Private family social, photo sharing, activity feeds |
 | [[bundle-nchat]] | $0.99/mo | chat, livekit, recording, moderation, bots, realtime, auth | Messaging with video calls, bots, and moderation |
 
@@ -89,7 +85,7 @@ The free `monitoring` plugin bundles 10 services in one install: alertmanager, g
 ## Related Pages
 
 - [[Plugin-Install]], How to install, remove, and update plugins
-- [[Plugin-Licensing]], License keys, tiers, and validation
+- [[Plugin-Licensing]], License keys, bundles, and validation
 - [[Plugin-Dev-Guide]], Build your own plugin
 - [[Plugin-Architecture]], Technical internals
 

@@ -12,15 +12,7 @@ A plugin is a manifest + Docker Compose overlay + optional Nginx config. When yo
 
 ## Plugin Tiers
 
-| Tier | Price | Included |
-|------|-------|---------|
-| Free | $0 | All free plugins, no license key required |
-| Basic | $0.99/mo | Licensed plugins outside the Pro-tier AI suite |
-| Pro | $1.99/mo | Basic + AI suite |
-| Elite | $4.99/mo | Pro + email support |
-| Business | $9.99/mo | Elite + 24h support |
-
-See [[Plugin-Licensing]] for full tier details.
+The CLI no longer uses Basic / Pro / Elite / Business tiers. Bundles are independent purchases at $0.99/mo ($9.99/yr), with a free Task bundle and an all-access ɳSelf+ subscription at $3.99/mo ($39.99/yr). The authoritative catalog and pricing live at [nself.org/pricing](https://nself.org/pricing) and are fetched by the CLI from `https://plugins.nself.org/bundles.json`. See [[Licensing-Guide]] and [[Plugin-Licensing]] for details.
 
 ## Free Plugins
 
