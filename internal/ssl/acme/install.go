@@ -283,3 +283,11 @@ func undo(swaps []swap) error {
 	}
 	return nil
 }
+
+// GenerationDirMode permits traversal by the Traefik renderer; keys stay 0600.
+func GenerationDirMode(provider string) os.FileMode {
+	if provider == "traefik" {
+		return 0o711
+	}
+	return 0o700
+}

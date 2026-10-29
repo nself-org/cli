@@ -17,7 +17,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"strings"
 	"time"
 
@@ -201,13 +200,6 @@ func (r *acmeRun) probeHosts(l acme.Lineage) (out []string) {
 	return out
 }
 
-// Installation permissions are chosen by the serving proxy, before the switch.
-func (r *acmeRun) installDirMode() os.FileMode {
-	if r.provider == "traefik" {
-		return 0o711
-	}
-	return 0o700
-}
 func (r *acmeRun) installOwner() *acme.FileOwner {
 	if r.provider != "traefik" || traefikEuid() != 0 {
 		return nil

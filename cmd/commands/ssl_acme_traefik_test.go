@@ -370,11 +370,11 @@ func TestAcmeInstallProxyPermissions(t *testing.T) {
 	traefikEuid = func() int { return 0 }
 	r := &acmeRun{provider: "traefik", workdir: root}
 	owner := r.installOwner()
-	if r.installDirMode() != 0711 || owner == nil || owner.UID != 1001 || owner.GID != 1002 {
-		t.Fatalf("traefik install policy: %o %+v", r.installDirMode(), owner)
+	if acme.GenerationDirMode(r.provider) != 0711 || owner == nil || owner.UID != 1001 || owner.GID != 1002 {
+		t.Fatalf("traefik install policy: %o %+v", acme.GenerationDirMode(r.provider), owner)
 	}
 	r.provider = "nginx"
-	if r.installDirMode() != 0700 || r.installOwner() != nil {
+	if acme.GenerationDirMode(r.provider) != 0700 || r.installOwner() != nil {
 		t.Fatal("unexpected nginx install policy")
 	}
 }
