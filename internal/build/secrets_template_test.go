@@ -594,6 +594,7 @@ func TestTemplateSecretsLiteralRefShapedSecret(t *testing.T) {
 
 // Exercise generated YAML quoting as well as unknown and mapped variable names.
 func TestTemplateSecretsGeneratedSMTPReferenceLiterals(t *testing.T) {
+	compattest.Set(t, false) // core MinIO exists only in v1.4 (P7-PLUG-60)
 	for _, password := range []string{"${ABC}", "${MINIO_ROOT_USER}", "${MINIO_ROOT_USER:-fallback}", "prefix${ABC}"} {
 		t.Run(password, func(t *testing.T) {
 			cfg := secretTestConfig()
