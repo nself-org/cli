@@ -87,6 +87,9 @@ func OpenAPI(reg *cmdregistry.Registry, dataSchema func(string) ([]byte, bool)) 
 				"default": jsonResponse("Error envelope", schemaRef("error_envelope")),
 			},
 		}}
+		if cmd.Path == "nself config plugins info" {
+			paths[cmdregistry.RoutePath(cmd.Path)].(map[string]any)["post"].(map[string]any)["description"] = "An unresolved tier returns an error envelope with the cause. The legacy bare tier_reason and tier_error fields are not a successful HTTP response."
+		}
 	}
 	doc := map[string]any{
 		"openapi": "3.1.0", "info": map[string]any{"title": "nSelf CLI HTTP API", "version": "1"},

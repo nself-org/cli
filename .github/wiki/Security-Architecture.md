@@ -96,7 +96,7 @@ After the SHA-256 checksum passes (a mismatch is E124), the CLI verifies the reg
 
 Failures: E121 (invalid), E122 (unknown key or wrong tier), E123 (revoked key). An unsigned plugin installs with a warning in v1.4 mode and is refused with E107 in v1.5 mode. Details, the signed-since floor and key rotation: [Plugin-Security](Plugin-Security).
 
-The one skip is the offline/development bypass (`NSELF_LICENSE_SKIP_VERIFY=1` plus `NSELF_LICENSE_SKIP_VERIFY_FORCE=1`), refused in production and staging and written to the audit log. Per the Security-Always-Free Doctrine this verification is free, automatic, and applies to all plugin tiers.
+There is no skip for a registry install. `NSELF_LICENSE_SKIP_VERIFY=1` with `--force` skips licence checks only, and a project `.env` can set neither it nor the registry URL (the protected list is in [Plugin-Security](Plugin-Security)). The only unsigned opt-out is `--allow-unsigned` on a local path or link install. Per the Security-Always-Free Doctrine this verification is free, automatic, and applies to all plugin tiers.
 
 ## File Permissions
 

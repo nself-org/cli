@@ -68,7 +68,7 @@ nself license import license-cache.json
 
 The imported entry keeps its Ed25519 signature and is verified locally, so an air-gapped host gets the same guarantees as a connected one. The transferred cache ages on the same ladder above, so repeat the transfer before the 7-day ceiling to stay out of read-only mode.
 
-`NSELF_LICENSE_SKIP_VERIFY=1` exists for importing an unsigned entry and requires `--force` to be acknowledged explicitly. It bypasses signature verification — do not use it outside local testing.
+`NSELF_LICENSE_SKIP_VERIFY=1` exists for importing an unsigned entry and requires `--force` to be acknowledged explicitly. It bypasses signature verification — do not use it outside local testing. Set it in your shell: a project `.env` cannot set it.
 
 ## Verifying the ladder
 

@@ -54,6 +54,18 @@ func loadOverlaid(projectDir, name string, data []byte, loaded map[string]string
 	return exportEnvFile(f, data, loaded)
 }
 
+// OverloadEnvFile exports one env file at path into the process environment
+// the way Load exports a cascade file: a file value replaces an existing one,
+// and a protected security key is skipped. A missing file is an error, as
+// with godotenv.Overload, which callers outside Load used before.
+func OverloadEnvFile(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	return loadOverlaid(filepath.Dir(path), filepath.Base(path), data, map[string]string{})
+}
+
 // exportEnvFile parses one cascade file's bytes and exports every key into the
 // process environment (overload semantics: a file value replaces an existing
 // one), recording the keys in loaded for the unknown-variable warning.
@@ -64,13 +76,17 @@ func loadOverlaid(projectDir, name string, data []byte, loaded map[string]string
 // offending line, which can hold a secret. Constraints: the size and null-byte
 // checks are the caller's; nothing is exported when the parse fails; a key the
 // OS refuses (an empty name) is skipped and not recorded, as godotenv.Overload
-// ignores that error.
+// ignores that error. A protected security key (env_protected.go) is never
+// exported or recorded: only the process environment may set it.
 func exportEnvFile(f string, data []byte, loaded map[string]string) error {
 	m, err := godotenv.UnmarshalBytes(data)
 	if err != nil {
 		return fmt.Errorf("invalid dotenv syntax in %s", f)
 	}
 	for k, v := range m {
+		if skipProtectedKey(f, k, v) {
+			continue
+		}
 		if os.Setenv(k, v) != nil {
 			continue // a key the OS rejects (empty name): skipped, as godotenv.Overload does
 		}

@@ -108,9 +108,11 @@ Example: `claw` requires `ai`. Installing `claw` automatically installs `ai` if 
 directory. Set `NSELF_PLUGIN_DIR` there to use a project-specific directory; remove
 also checks that directory's bundle ledger when deciding whether to remove a bundle.
 
-For development installs with `NSELF_LICENSE_SKIP_VERIFY=1`, pass `--force` to
-acknowledge the signature verification bypass. The bypass is refused in production
-and staging even with `--force`.
+`NSELF_LICENSE_SKIP_VERIFY=1` must come from your shell (a project `.env` cannot
+set it) and needs `--force` on the command line. It skips licence checks only: a
+registry install always verifies the plugin's signature and checksum. It is refused
+in production and staging even with `--force`. The registry URL and the other
+security settings listed in [Plugin-Security](Plugin-Security) are also shell-only.
 
 Each plugin declares its required env vars in `plugin.json`. After install, add the required vars to your `.env` file:
 

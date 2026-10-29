@@ -29,6 +29,9 @@ var deprecationRegistry *deprecation.Registry
 // PreRunE → RunE → PostRunE cobra lifecycle so spans are not flushed early.
 var tracerShutdown func(context.Context) error
 
+// commandLogFinish is completed by Execute; Cobra skips post-run hooks on failure.
+var commandLogFinish func(int, error)
+
 // contextKey is an unexported type for context keys in this package.
 type contextKey int
 
@@ -128,18 +131,14 @@ func init() {
 			}
 		}
 		// ── Command execution log ─────────────────────────────────────────────
-		// Write to ~/.nself/logs/ — a fixed, user-scoped path independent of
-		// the working directory. Using cwd caused stray logs/ directories to
-		// appear in arbitrary project folders (cross-project pollution).
-		// Fallback to os.TempDir() if the home dir is unavailable.
+		// Execute records the outcome after Cobra returns.
 		var logDir string
 		if home, err := os.UserHomeDir(); err == nil {
 			logDir = filepath.Join(home, ".nself", "logs")
 		} else {
 			logDir = filepath.Join(os.TempDir(), "nself", "logs")
 		}
-		finishLog := cmdlog.New(logDir).Begin(os.Args, commandSecretValues(cmd, args)...)
-		defer func() { finishLog(0, nil) }()
+		commandLogFinish = cmdlog.New(logDir).Begin(os.Args, commandSecretValues(cmd, args)...)
 
 		// `nself --version` prints and stops. Returning a silent exit-0 error
 		// rather than calling os.Exit keeps the single-exit-point rule and lets

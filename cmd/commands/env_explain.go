@@ -146,7 +146,7 @@ func printVarExplain(exp config.Explanation, reveal bool) error {
 	fmt.Println()
 	winner, winnerValue, ok := exp.Winner()
 	if !ok {
-		fmt.Printf("%s is not set by any file in the cascade.\n", ui.C(ui.Bold, exp.Key))
+		fmt.Printf("%s %s.\n", ui.C(ui.Bold, exp.Key), exp.NoWinnerReason())
 		return nil
 	}
 

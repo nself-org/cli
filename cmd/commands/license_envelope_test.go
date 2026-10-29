@@ -370,3 +370,24 @@ func TestLicenseMaskedInGoldens(t *testing.T) {
 		}
 	}
 }
+
+func TestLicenseShowLegacyNoKey(t *testing.T) {
+	pkg, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	newLicenseFixture(t)
+	t.Setenv(output.LegacyEnvVar, "1")
+	out, err := runLicenseJSON(t, licenseShowCmd, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile(filepath.Join(pkg, "testdata/json/license-show-no-key-legacy.golden.json"))
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != string(want) {
+		t.Fatalf("got %q, want %q", out, want)
+	}
+}

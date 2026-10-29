@@ -11,6 +11,7 @@ follows Keep a Changelog, with Conventional Commit classification.
 - fix(ssl): `trust ssl setup --acme --adopt-certbot` follows a served conf that names a top-level ssl-dir symlink to `certificates/<name>` (one hop, refusing any link that leaves `certificates/`), so lineages such as api.task and auth.task can leave host certbot (D-1214)
 - fix(build): `POSTGRES_PASSWORD` and `HASURA_GRAPHQL_ADMIN_SECRET` are generated once and persisted to `.env.secrets` unless an env file or the process environment defines them; a project built before this adopts the running password from `.nself/compose.env` for its render and warns until the key is pinned in `.env.secrets` (D-0506). [[Config-Postgres]] describes the precedence and the upgrade step (D-0706)
 - fix(templates): retire the incomplete Flutter clone starters; clone templates retain their supported web and backend applications (D-0566).
+- fix(security): a project's env files can no longer switch plugin verification off. The config loader skips the security settings listed in [[Plugin-Security]] (skip-verify flags, registry, ping and bundles URLs, checksum, SBOM, downgrade and unsigned switches, `nself ci serve` sandbox keys) when a `.env` cascade file sets them, with a warning; `NSELF_V15` cannot be turned off from a project file. Registry installs have no signature bypass any more: `NSELF_LICENSE_SKIP_VERIFY` needs `--force` on the command line and skips licence checks only, and `NSELF_LICENSE_SKIP_VERIFY_FORCE` alone no longer counts (P7-PLUG-87 review H1)
 
 ### Moved
 

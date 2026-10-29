@@ -36,7 +36,7 @@ func TestRootLogsNoSecretPositional(t *testing.T) {
 	env = append(env, "HOME="+home, "USERPROFILE="+home, "NSELF_CMD_LOG_ENABLED=true")
 	cmd := exec.Command(bin, "secrets", "set", "FAKEKEY", fakeCallsite0473)
 	cmd.Dir, cmd.Env = proj, env
-	_ = cmd.Run() // the exit code is not the point: the log line is written before RunE
+	_ = cmd.Run() // the failure is also logged after RunE returns
 
 	data, err := os.ReadFile(filepath.Join(home, ".nself", "logs", "nself.log"))
 	if err != nil {

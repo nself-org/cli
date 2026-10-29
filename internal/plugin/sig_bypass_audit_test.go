@@ -5,7 +5,8 @@ package plugin
 // Inputs:  Environment variables NSELF_LICENSE_SKIP_VERIFY,
 //          NSELF_LICENSE_SKIP_VERIFY_FORCE; env string passed to helper.
 // Outputs: Confirms checkSigBypassAllowed returns SECURITY error in prod/staging
-//          and returns (true, nil) with both vars set in dev.
+//          and refuses both vars in dev without --force (env alone never
+//          acknowledges the skip; P7-PLUG-87 review H1).
 // SPORT: security-audit; ticket P2-E2-W2-S3-T10
 
 import (
@@ -55,18 +56,19 @@ func TestCheckSigBypassAllowed_StagingBlocked(t *testing.T) {
 	}
 }
 
-// TestCheckSigBypassAllowed_DevAllowed verifies that dev env with both bypass
-// vars set returns bypassed=true and no error.
-func TestCheckSigBypassAllowed_DevAllowed(t *testing.T) {
+// TestCheckSigBypassAllowed_ForceEnvAloneRefused verifies that dev env with
+// both vars set but no --force acknowledgement is refused: the legacy FORCE
+// env var no longer stands in for the command-line flag.
+func TestCheckSigBypassAllowed_ForceEnvAloneRefused(t *testing.T) {
 	t.Setenv("NSELF_LICENSE_SKIP_VERIFY", "1")
 	t.Setenv("NSELF_LICENSE_SKIP_VERIFY_FORCE", "1")
 
 	bypassed, err := checkSigBypassAllowed("dev", "test-plugin")
-	if err != nil {
-		t.Fatalf("expected nil error for dev bypass, got: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "--force") {
+		t.Fatalf("expected a --force refusal for env-only bypass, got: %v", err)
 	}
-	if !bypassed {
-		t.Fatal("expected bypassed=true when both vars set in dev")
+	if bypassed {
+		t.Fatal("expected bypassed=false without --force")
 	}
 }
 

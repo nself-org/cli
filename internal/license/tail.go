@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,6 +24,11 @@ type TailOptions struct {
 	// HTTPClient allows injection in tests.
 	HTTPClient *http.Client
 }
+
+// ErrEventsUnavailable means the ping_api answered, but does not serve the
+// license event stream (404, 410 or 501) or refuses this caller (401, 403).
+// Retrying cannot fix either, so TailStream stops and returns it.
+var ErrEventsUnavailable = errors.New("license event stream unavailable")
 
 // LicenseEvent is a single validation event from ping_api.
 type LicenseEvent struct {
@@ -47,7 +53,9 @@ type LicenseEvent struct {
 //
 // Ctrl-C (context cancel) exits cleanly with no goroutine leak.
 // OAuth tokens and full key values are never emitted — only KeyPrefix.
-// Connection loss reconnects with exponential backoff.
+// Connection loss and 5xx replies reconnect with exponential backoff. A reply
+// that no retry can fix (404, 410, 501, 401, 403) ends the command with
+// ErrEventsUnavailable instead of looping.
 func TailStream(ctx context.Context, opts TailOptions) error {
 	stdout := opts.Stdout
 	if stdout == nil {
@@ -77,6 +85,9 @@ func TailStream(ctx context.Context, opts TailOptions) error {
 
 		err := streamOnce(ctx, client, pingURL, opts.Filters, stdout)
 		if err != nil {
+			if errors.Is(err, ErrEventsUnavailable) {
+				return err
+			}
 			if ctx.Err() != nil {
 				return nil
 			}
@@ -122,7 +133,13 @@ func streamOnce(ctx context.Context, client *http.Client, pingURL string, filter
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode != http.StatusOK {
+	switch resp.StatusCode {
+	case http.StatusOK:
+	case http.StatusNotFound, http.StatusGone, http.StatusNotImplemented:
+		return fmt.Errorf("%w: %s answered HTTP %d, it does not serve /license/events", ErrEventsUnavailable, pingURL, resp.StatusCode)
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return fmt.Errorf("%w: %s refused the request (HTTP %d)", ErrEventsUnavailable, pingURL, resp.StatusCode)
+	default:
 		return fmt.Errorf("stream endpoint returned HTTP %d", resp.StatusCode)
 	}
 

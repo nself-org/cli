@@ -138,6 +138,8 @@ const (
 )
 
 // checkPinnedTiers reports why table is not a correct two-tier pin: exactly one key per tier, none serving both, none revoked, ids derived from the key.
+// Rotation conflict (P7-PLUG-87 review L2): the policy keeps the previous key valid for one minor, which needs two keys in a tier. Model
+// that as an explicit previous-key entry with an expiry (or a rotation table) checked here, and keep count == 1 for ACTIVE keys; never relax it to >= 1.
 func checkPinnedTiers(table []signature.Key, revoked []string) error {
 	count := map[string]int{}
 	seen := map[string]string{}

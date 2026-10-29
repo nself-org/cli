@@ -41,7 +41,15 @@ A binary package (a plugin that provides a command) is signed separately (contra
 
 Both tiers are enforced from P7-PLUG-87: `cron` and `notify` exist in both tiers, and a slug named in a tier's floor needs a signature that verifies under that tier's key, or a listed pre-signing release, else E107 (missing) or E121 (invalid). The licensed floor and refs come from the P7-PLUG-70 release data. The free pre-signing list is empty: an unsigned free release is refused whatever its version. The registry serves only signed releases of every free plugin.
 
-Two limits to know: the tier of an entry comes from the registry, so while a tier has no pinned key (the state until the production keys ship) an entry can be moved to it and its signature is then read as missing; once both tiers are pinned a moved entry fails with E122. And the long-standing developer bypass (`NSELF_LICENSE_SKIP_VERIFY=1` together with `NSELF_LICENSE_SKIP_VERIFY_FORCE=1`, refused in production and staging, written to the audit log) can turn a missing signature into a skip, but it never skips a signature that is present on a pinned tier (a platform signature included, even when the registry strips `release_signature`), and it does not skip the checksum.
+Two limits to know: the tier of an entry comes from the registry, so while a tier has no pinned key (the state until the production keys ship) an entry can be moved to it and its signature is then read as missing; once both tiers are pinned a moved entry fails with E122. And there is no developer bypass for a registry install. `NSELF_LICENSE_SKIP_VERIFY=1` with `--force` skips licence checks only; it never skips a release or platform signature, the signed-since floor or the checksum. The legacy `NSELF_LICENSE_SKIP_VERIFY_FORCE` variable no longer stands in for `--force`. The only unsigned opt-out is `--allow-unsigned` on a local path or link install.
+
+### Settings a project cannot change
+
+`nself` loads a project's `.env` cascade into its own environment. A cloned project is untrusted input, so the security settings below are read only from the shell environment `nself` started with (or from a flag that sets them). A project `.env`, `.env.<env>`, `.env.secrets` or `.env.local` that sets one is ignored, with a warning that names the file and the variable (never the value). `nself config env explain <VAR>` reports such a file as ignored.
+
+`NSELF_LICENSE_SKIP_VERIFY`, `NSELF_LICENSE_SKIP_VERIFY_FORCE`, `NSELF_LICENSE_FAIL_OPEN`, `NSELF_PLUGIN_ALLOW_UNSIGNED`, `NSELF_PLUGIN_REQUIRE_CHECKSUM`, `NSELF_PLUGIN_ALLOW_DOWNGRADE`, `NSELF_SKIP_SBOM_CHECK`, `NSELF_PLUGIN_INSTALL_TIER`, `NSELF_PLUGIN_REGISTRY`, `NSELF_PING_URL`, `NSELF_PING_API_URL`, `NSELF_BUNDLES_URL`, `NSELF_MARKETPLACE_URL`, `NSELF_TEMPLATE_REGISTRY_URL`, `NSELF_CI_ALLOW_UNSANDBOXED`, `NSELF_CI_ALLOWED_REPOS`.
+
+`NSELF_V15` is one-way: a project may turn v1.5 behaviour on, but it cannot turn off `NSELF_V15=1` from the shell. `ENV` stays a project setting; it chooses the cascade, and no signature check reads it.
 
 ### Unsigned plugins
 
@@ -74,6 +82,8 @@ An earlier CLI may have left `~/.nself/bin/nself-ci` behind. If that is a regula
 ### Rotation and revocation
 
 To rotate, add the new key (new id) to `keys.go`, ship a CLI release, then start signing with it. To revoke, add the id to the revoked list and ship a release: a revoked key fails with E123 whatever the table holds, and it still counts as pinned so its tier cannot fall back to "unsigned".
+
+The key table holds exactly one active key per tier, and a test enforces that. The rotation policy keeps the previous key valid for one minor, which the table cannot express yet. When rotation lands, the outgoing key gets its own entry with an expiry (or a rotation table), and the one-active-key rule stays. It is never relaxed to "at least one key".
 
 ### Error codes
 

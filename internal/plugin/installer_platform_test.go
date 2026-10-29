@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/plugin/verify/signature"
 	"github.com/nself-org/cli/internal/plugin/verify/signature/signaturetest"
@@ -229,7 +230,7 @@ func TestInstallBinaryPackageNoSourceFallback(t *testing.T) {
 // TestInstallSourceFallbackRefusedE121 (D-1415): when the platform package
 // 404s, the validly signed source package must not install a command plugin
 // whose entry advertises platform_signatures for this platform, whether or not
-// that source tarball holds a binary, and the dev bypass does not open it.
+// that source tarball holds a binary.
 func TestInstallSourceFallbackRefusedE121(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
 		for name, withBinary := range map[string]bool{"source without binary": false, "source with binary": true} {
@@ -274,62 +275,57 @@ func TestInstallSourceFallbackWithoutPlatformSignaturesInstalls(t *testing.T) {
 	})
 }
 
-// TestInstallBinaryPackageBypassNeverSkips: the dev bypass skips an ABSENT
-// platform signature, never a present one, and a registry that strips
-// release_signature does not change that.
-func TestInstallBinaryPackageBypassNeverSkips(t *testing.T) {
+// TestInstallBinaryPackageNoBypass: a registry binary package on a pinned
+// tier installs only with a good platform signature for this platform. There
+// is no dev bypass any more (P7-PLUG-87 review H1), so an absent entry is
+// E121 too, and a registry that strips release_signature changes nothing.
+func TestInstallBinaryPackageNoBypass(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
 		key, signer := signaturetest.NewKey(t, signature.TierFree)
 		signaturetest.UseKeys(t, []signature.Key{key}, nil)
 		signaturetest.UseFloor(t, map[string]map[string]string{})
 		body := binTarball(t, "")
-		archive := filepath.Join(t.TempDir(), "pkg.tar.gz")
-		if err := os.WriteFile(archive, body, 0o600); err != nil {
-			t.Fatal(err)
-		}
 		const plat = "linux-amd64"
 		m := &PluginManifest{Name: sigPlugin, Version: "1.0.0", Checksum: sha256Hex([]byte("source"))}
-		if err := verifyReleaseSignature(m, false, false, plat, sha256Hex(body), true); err != nil {
-			t.Fatalf("bypass with no platform signature must skip: %v", err)
+		if codeOf(verifyReleaseSignature(m, false, false, plat, sha256Hex(body))) != "E121" {
+			t.Fatal("an absent platform entry is E121")
 		}
 		_, stranger := signaturetest.NewKey(t, signature.TierFree)
 		m.PlatformSignatures = map[string]*signature.Release{plat: signaturetest.SignPlatform(t, stranger, sigPlugin, "1.0.0", plat, sha256Hex(body))}
-		if codeOf(verifyReleaseSignature(m, false, false, plat, sha256Hex(body), true)) != "E122" {
-			t.Fatal("bypass must not skip an unknown-key platform signature (release_signature stripped)")
+		if codeOf(verifyReleaseSignature(m, false, false, plat, sha256Hex(body))) != "E122" {
+			t.Fatal("an unknown-key platform signature must refuse (release_signature stripped)")
 		}
 		m.PlatformSignatures[plat] = signaturetest.SignPlatform(t, signer, sigPlugin, "1.0.0", plat, sha256Hex([]byte("other")))
-		if codeOf(verifyReleaseSignature(m, false, false, plat, sha256Hex(body), true)) != "E121" {
-			t.Fatal("bypass must not skip a bad platform signature")
+		if codeOf(verifyReleaseSignature(m, false, false, plat, sha256Hex(body))) != "E121" {
+			t.Fatal("a bad platform signature must refuse")
 		}
 		good := signaturetest.SignPlatform(t, signer, sigPlugin, "1.0.0", plat, sha256Hex(body))
 		m.PlatformSignatures[plat] = good
-		if err := verifyReleaseSignature(m, false, false, plat, sha256Hex(body), true); err != nil {
-			t.Fatalf("good platform signature under bypass: %v", err)
+		if err := verifyReleaseSignature(m, false, false, plat, sha256Hex(body)); err != nil {
+			t.Fatalf("good platform signature: %v", err)
 		}
 		// An entry for another platform is not "present" for this one.
 		m.PlatformSignatures = map[string]*signature.Release{"darwin-arm64": good}
-		if err := verifyReleaseSignature(m, false, false, plat, sha256Hex(body), true); err != nil {
-			t.Fatalf("an entry for another platform must not count under bypass: %v", err)
+		if codeOf(verifyReleaseSignature(m, false, false, plat, sha256Hex(body))) != "E121" {
+			t.Fatal("an entry for another platform must not count")
 		}
-		if codeOf(verifyReleaseSignature(m, false, false, plat, sha256Hex(body), false)) != "E121" {
-			t.Fatal("without the bypass an absent platform entry is E121")
-		}
-		// An unreadable archive is E121, never a skip, once an entry is present.
+		// An unreadable archive is E121 once an entry is present.
 		m.PlatformSignatures = map[string]*signature.Release{plat: good}
-		if codeOf(verifyReleaseSignature(m, false, false, plat, "", true)) != "E121" {
+		if codeOf(verifyReleaseSignature(m, false, false, plat, "")) != "E121" {
 			t.Fatal("an archive that cannot be read must refuse")
 		}
 		// The licensed tier has no platform producer: pinned means refused.
 		lkey, _ := signaturetest.NewKey(t, signature.TierLicensed)
 		signaturetest.UseKeys(t, []signature.Key{key, lkey}, nil)
 		m.PlatformSignatures = nil
-		if codeOf(verifyReleaseSignature(m, true, false, plat, sha256Hex(body), false)) != "E121" {
+		if codeOf(verifyReleaseSignature(m, true, false, plat, sha256Hex(body))) != "E121" {
 			t.Fatal("a pinned licensed tier must refuse an unsigned platform package")
 		}
-		// An unpinned tier is untouched by v1.1.
+		// An unpinned tier is untouched by v1.1 but no longer skipped: the
+		// missing source signature goes to Decide (E107 in v1.5 mode).
 		signaturetest.UseKeys(t, nil, nil)
-		if err := verifyReleaseSignature(m, false, false, plat, sha256Hex(body), true); err != nil {
-			t.Fatalf("unpinned tier under bypass: %v", err)
+		if err := verifyReleaseSignature(m, false, false, plat, sha256Hex(body)); compat.V15() && codeOf(err) != "E107" {
+			t.Fatalf("an unpinned tier with no signature must reach Decide: %v", err)
 		}
 	})
 }
@@ -362,10 +358,8 @@ func TestPlatformSignatureMalformedE121(t *testing.T) {
 			if _, present := m.PlatformSignatures[plat]; !present {
 				t.Fatalf("a malformed value must stay present for %s: %+v", plat, m.PlatformSignatures)
 			}
-			for _, bypass := range []bool{false, true} {
-				if codeOf(verifyReleaseSignature(m, false, false, plat, archiveSum, bypass)) != "E121" {
-					t.Fatalf("bypass=%v: want E121", bypass)
-				}
+			if codeOf(verifyReleaseSignature(m, false, false, plat, archiveSum)) != "E121" {
+				t.Fatal("want E121")
 			}
 		})
 	}

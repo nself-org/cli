@@ -77,8 +77,11 @@ func runAdminLogsJSON(cmd *cobra.Command, logsCmd *exec.Cmd, cid string, follow 
 		werr = rerr
 	}
 	if follow {
-		_ = output.StreamEnd(w.Out, commandKey(cmd), LogsEnd{Lines: count}, werr)
+		if endErr := output.StreamEnd(w.Out, commandKey(cmd), LogsEnd{Lines: count}, werr); endErr != nil {
+			return endErr
+		}
 		if werr != nil {
+			output.RenderError(w.Err, werr)
 			return silentReported{werr}
 		}
 		return nil

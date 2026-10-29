@@ -8,10 +8,13 @@ package signature_test
 // Constraints: no network, no clock. Both tiers are filled and pinned from P7-PLUG-87 on.
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"regexp"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/nself-org/cli/internal/plugin/verify/signature"
@@ -245,14 +248,18 @@ func realLicensed(t *testing.T) {
 }
 
 // TestLicensedTierEnforced: with the licensed key pinned, an unsigned licensed entry of a floor slug is refused (E107) and a bad signature fails (E121).
+// The digest is a well-formed sha256, so the E121 comes from ed25519.Verify and not from the malformed-identity branch (P7-PLUG-87 review L1).
 func TestLicensedTierEnforced(t *testing.T) {
+	digest := sha256.Sum256([]byte("plug87-l1 licensed tier fixture"))
+	sum := hex.EncodeToString(digest[:])
 	for _, slug := range []string{"cron", "notify", "claw"} {
-		if _, err := signature.Decide(signature.Input{Tier: signature.TierLicensed, Slug: slug, Version: "1.1.12", SHA256: "00"}); code(err) != "E107" {
+		if _, err := signature.Decide(signature.Input{Tier: signature.TierLicensed, Slug: slug, Version: "1.1.12", SHA256: sum}); code(err) != "E107" {
 			t.Errorf("licensed %s unsigned: code %q, want E107", slug, code(err))
 		}
 		junk := &signature.Release{Alg: "ed25519", KeyID: "plugins-e2ac3ee72a143603", Sig: signing.EncodeSig(make([]byte, 64))}
-		if _, err := signature.Decide(signature.Input{Tier: signature.TierLicensed, Slug: slug, Version: "1.1.12", SHA256: "00", Release: junk}); code(err) != "E121" {
-			t.Errorf("licensed %s with an invalid signature: code %q, want E121", slug, code(err))
+		_, err := signature.Decide(signature.Input{Tier: signature.TierLicensed, Slug: slug, Version: "1.1.12", SHA256: sum, Release: junk})
+		if code(err) != "E121" || err == nil || !strings.Contains(err.Error(), "does not verify") {
+			t.Errorf("licensed %s with an invalid signature: %v, want E121 from the signature check", slug, err)
 		}
 	}
 }

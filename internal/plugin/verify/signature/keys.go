@@ -29,6 +29,12 @@ type Key struct {
 }
 
 // Keys is the trust root. Free: pinned by P7-PLUG-71. Licensed: pinned by P7-PLUG-87.
+// It holds exactly one ACTIVE key per tier (keys_test.go checkPinnedTiers). The
+// rotation policy keeps the previous key valid for one minor, which this table
+// cannot express yet: when rotation lands, model the outgoing key explicitly (a
+// previous-key entry with a NotAfter, or a named rotation table) and keep the
+// one-active-key-per-tier assertion. Never loosen it to "at least one"
+// (P7-PLUG-87 review L2).
 var Keys = []Key{
 	{
 		ID:        "plugins-2ebca8dfad98e19e",

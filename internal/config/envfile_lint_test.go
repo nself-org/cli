@@ -37,7 +37,6 @@ var godotenvReaders = map[string]bool{
 var godotenvAllowed = map[string]string{
 	"internal/config/env_overlay.go":             "returns its own 'invalid dotenv syntax in <path>' text (D-0404)",
 	"internal/reconcile/overlay_envline.go":      "writer round-trip probes; the errors are replaced by fixed text",
-	"cmd/commands/deploy_remote.go":              "Overload with the error discarded",
 	"cmd/commands/db_export_env.go":              "parse errors lead to a skip, never printed",
 	"internal/doctor/report/inputs.go":           "uses the map only when err == nil",
 	"internal/backup/stream_schedule_project.go": "uses the map only when err == nil",

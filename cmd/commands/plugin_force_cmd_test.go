@@ -10,9 +10,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// TestPluginInstallForceAcknowledgesSignatureBypass reaches the installer
-// signature gate with the public flag alone, without the legacy FORCE env var.
-func TestPluginInstallForceAcknowledgesSignatureBypass(t *testing.T) {
+// TestPluginInstallForceNeverSkipsRegistrySignature: --force with
+// NSELF_LICENSE_SKIP_VERIFY reaches the installer gate, and the unsigned
+// registry entry is still refused (E107; P7-PLUG-87 review H1).
+func TestPluginInstallForceNeverSkipsRegistrySignature(t *testing.T) {
 	for _, env := range []string{"dev", "prod", "staging"} {
 		t.Run(env, func(t *testing.T) {
 			compattest.Set(t, false)
@@ -32,14 +33,11 @@ func TestPluginInstallForceAcknowledgesSignatureBypass(t *testing.T) {
 			var installErr error
 			stderr := captureStderr(t, func() { installErr = cmd.Execute() })
 			if env == "dev" {
-				if installErr != nil {
-					t.Fatalf("--force did not reach signature verification: %v\n%s", installErr, stderr)
+				if installErr == nil || !strings.Contains(stderr, "does not skip plugin signature checks") || !strings.Contains(stderr, "E107") {
+					t.Fatalf("--force must reach the gate and the unsigned entry must be E107: %v\n%s", installErr, stderr)
 				}
-				if !strings.Contains(stderr, "plugin signature verification skipped") {
-					t.Fatalf("installer bypass acknowledgement missing:\n%s", stderr)
-				}
-				if _, err := os.Stat(aiPublished()); err != nil {
-					t.Fatalf("plugin binary not installed: %v", err)
+				if _, err := os.Stat(aiPublished()); err == nil {
+					t.Fatal("an unsigned registry plugin was installed under --force")
 				}
 			} else if installErr == nil || !strings.Contains(stderr, "SECURITY:") {
 				t.Fatalf("%s bypass must remain denied: %v\n%s", env, installErr, stderr)

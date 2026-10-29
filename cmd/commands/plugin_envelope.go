@@ -21,7 +21,6 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/errs"
-	"github.com/nself-org/cli/internal/output"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/version"
 	"github.com/spf13/cobra"
@@ -279,13 +278,6 @@ func pluginHubBody(run func(*cobra.Command, []string) error) func(*cobra.Command
 		}
 		return hub(cmd, args)
 	}
-}
-
-// legacyBare reports whether NSELF_JSON_LEGACY asks for the pre-contract bare
-// form: an empty list that printed `null` then must still print `null`.
-func legacyBare() bool {
-	v := os.Getenv(output.LegacyEnvVar)
-	return v == "1" || strings.EqualFold(v, "true")
 }
 
 func init() {
