@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -12,6 +13,9 @@ import (
 )
 
 func TestUpdateImages_DigestIdentity(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("stubs docker with a /bin/sh script, which Windows cannot exec")
+	}
 	dir := t.TempDir()
 	t.Chdir(dir)
 	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("PROJECT_NAME=test\n"), 0o600); err != nil {
