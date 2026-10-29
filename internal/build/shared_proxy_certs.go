@@ -203,12 +203,9 @@ func (st *buildState) installCert(sp *sharedProxy, dir string, replace bool) err
 	}
 	modes := map[string]os.FileMode{"fullchain.pem": 0o644, "privkey.pem": 0o600}
 	marker := []byte(sp.project + "\n")
-	// Certificate bytes are a runtime effect (generated during the apply), so a
-	// plan-bound apply (expectSink) installs them on disk like a plain write when the
-	// plan does not list them; plan mode routes the pair through its recording sink.
+	// Cert bytes are a runtime effect: plan mode records the pair in its sink; a plan-bound
+	// apply (expectSink) stages a pair the plan lists and installs any other pair directly.
 	_, disk := st.sink.(*diskSink)
-	// A pair the plan already lists (it existed at plan time) goes through the sink, so
-	// the apply stages and verifies it; only a pair the plan could not list is installed directly.
 	held := false
 	if es, ok := st.sink.(*expectSink); ok {
 		_, planned := es.exp.Files[es.keyr.key(filepath.Join(target, sharedproxy.CertMarker))]
