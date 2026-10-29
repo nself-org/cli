@@ -4,6 +4,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"testing"
@@ -22,6 +24,10 @@ func TestArchiveSnapshotSurvivesPathReplacement(t *testing.T) {
 	_, _ = tw.Write([]byte("trusted"))
 	_ = tw.Close()
 	_ = gz.Close()
+	// The gzip stream differs between Go releases, so derive the expected hash
+	// from the bytes written to disk rather than from a literal.
+	original := sha256.Sum256(archive.Bytes())
+	want := hex.EncodeToString(original[:])
 	path := filepath.Join(t.TempDir(), "archive.tgz")
 	if err := os.WriteFile(path, archive.Bytes(), 0600); err != nil {
 		t.Fatal(err)
@@ -38,8 +44,9 @@ func TestArchiveSnapshotSurvivesPathReplacement(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Pin the expected hash of the original archive bytes; comparing sum to itself is vacuous.
-	if err := verifyChecksumSum(path, sum, "2862fa190cd9554fc07cdacaf4ff99cf25c5b72b9dbc5ed5f3d19ea797237c49", "stable"); err != nil {
+	// want is hashed from the original archive bytes, so this is not a
+	// comparison of sum with itself.
+	if err := verifyChecksumSum(path, sum, want, "stable"); err != nil {
 		t.Fatal(err)
 	}
 
