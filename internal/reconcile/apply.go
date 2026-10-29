@@ -114,8 +114,8 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (applied *Pl
 				WithWhy("what a plugin brings is only known after it runs, so the id cannot describe the render that is written").
 				WithFix("run nself build --yes without --plan-id (the render after the plugin changes is printed and held), or install or remove the plugins first")
 		}
-		if certificateEffects(p) {
-			return nil, nil, errs.New("E454", "this plan changes certificates or trust state, so --plan-id cannot bind it")
+		if !bindableTrust(p, req.ProjectDir) { // trust_binding.go: local dev steps only
+			return nil, nil, errs.New("E454", "this plan changes certificates or trust state outside local development, so --plan-id cannot bind it")
 		}
 		if opt.PlanID != p.PlanID {
 			return nil, nil, errs.New("E450", "the plan id does not match what this command would change now").

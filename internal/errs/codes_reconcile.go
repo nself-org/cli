@@ -45,7 +45,7 @@ func init() {
 			Code:       "E454",
 			Category:   "reconcile",
 			Summary:    "Plan id cannot bind certificate or trust effects",
-			DefaultWhy: "Certificate bytes are generated at runtime and host trust state can change independently; artifact byte confirmation excludes these effects.",
+			DefaultWhy: "The plan changes certificates or host trust outside local development (a prod-class env, a non-local domain or an unnamed trust change); a plan id binds only local development certificates and the mkcert CA named by its fingerprint.",
 			DefaultFix: "Run nself build and confirm at the prompt (or with --yes, without --plan-id), or provision certificates and host trust first.",
 			DocsPath:   "reference/error-codes#e454",
 			Exit:       1,

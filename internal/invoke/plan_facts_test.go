@@ -32,6 +32,8 @@ func TestParsePlanSecrets(t *testing.T) {
 		{`[]`, false},
 		{`[{"kind":"hosts"}]`, false},
 		{`[{"kind":"hosts"},{"kind":"secrets-persist"}]`, true},
+		{`[{"kind":"trust-store"}]`, true},
+		{`[{"kind":"certificates"}]`, true},
 	} {
 		doc := `{"data":{"plan_id":"` + id + `","requires_confirmation":false,"effects":` + tc.effects + `}}`
 		f, childErr, problem := parsePlan([]byte(doc))

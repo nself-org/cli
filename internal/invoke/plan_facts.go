@@ -6,24 +6,27 @@ package invoke
 // requires_confirmation, whether the plan generates secrets, the raw data), or
 // whether the child failed, or a short problem.
 // Constraints: the plan is data from the child; a missing or malformed member
-// is a problem, never a default. A plan that declares the secrets-persist
-// effect generates random values its plan id binds only by their inputs
-// (reconcile binding.go), so the gate always shows it to the caller (P7-SHIP-02).
+// is a problem, never a default. A plan that declares a secrets-persist,
+// certificates or trust-store step changes something its plan id binds only
+// by name (generated secrets, certificate bytes, the host trust store:
+// reconcile binding.go and trust_binding.go), so the gate always shows it to
+// the caller for consent (P7-SHIP-02).
 
 import (
 	"bytes"
 	"encoding/json"
 )
 
-// effectSecretsPersist is the change-plan effect kind of a render that
-// generates and persists secrets (reconcile.EffectSecretsPersist).
-const effectSecretsPersist = "secrets-persist"
+// consentEffects are the change-plan effect kinds that always need the
+// caller's confirmation (reconcile.EffectSecretsPersist, EffectCertificates,
+// EffectTrustStore).
+var consentEffects = map[string]bool{"secrets-persist": true, "certificates": true, "trust-store": true}
 
 // planFacts is what the gate reads from the child's plan document.
 type planFacts struct {
 	id       string
 	requires bool
-	secrets  bool // the plan declares the secrets-persist step
+	secrets  bool // the plan declares a consentEffects step
 	data     json.RawMessage
 }
 
@@ -64,7 +67,7 @@ func parsePlan(stdout []byte) (f planFacts, childErr bool, problem string) {
 	}
 	secrets := false
 	for _, e := range data.Effects {
-		secrets = secrets || e.Kind == effectSecretsPersist
+		secrets = secrets || consentEffects[e.Kind]
 	}
 	return planFacts{id: *data.PlanID, requires: *data.Requires, secrets: secrets, data: doc.Data}, false, ""
 }

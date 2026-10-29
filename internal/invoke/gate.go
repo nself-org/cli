@@ -12,7 +12,7 @@ package invoke
 // runs, with no consent flags. A plan form without confirm is executed once
 // (--<plan.flag>); the child's data.plan_id and data.requires_confirmation
 // decide between a kind plan confirmation (confirm = plan_id) and one run with
-// --<id_flag>=<plan_id>; a plan that declares generated secrets is always a
+// --<id_flag>=<plan_id>; a plan that declares secrets, certificates or trust is always a
 // confirmation (plan_facts.go). remote and destructive without a plan form get a
 // kind request confirmation backed by a Guard nonce. A nil Guard refuses
 // remote and destructive commands (E421, fail closed).
