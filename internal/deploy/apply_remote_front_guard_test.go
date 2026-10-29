@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/frontcheck"
 )
 
 // shipSite adds hasura.conf with the given server_name to the staged front files.
@@ -371,7 +372,7 @@ func TestFrontSyncCreatesOnlyAMissingSitesLeaf(t *testing.T) {
 
 // D-0778: two empty server_name sets are no evidence that a marked file at a
 // recorded path is still this project's: it is refused (E485) when it would be
-// overwritten and kept when it would be pruned. A table case covers sameNames.
+// overwritten and kept when it would be pruned. A table case covers frontcheck.SameNames.
 func TestFrontEmptyNameSetsAreNotEqual(t *testing.T) {
 	for _, c := range []struct {
 		a, b []string
@@ -384,8 +385,8 @@ func TestFrontEmptyNameSetsAreNotEqual(t *testing.T) {
 		{[]string{"a.example.org"}, []string{"a.example.org"}, true},
 		{[]string{"a.example.org", "b.example.org"}, []string{"a.example.org"}, false},
 	} {
-		if got := sameNames(c.a, c.b); got != c.want {
-			t.Errorf("sameNames(%v, %v) = %v, want %v", c.a, c.b, got, c.want)
+		if got := frontcheck.SameNames(c.a, c.b); got != c.want {
+			t.Errorf("SameNames(%v, %v) = %v, want %v", c.a, c.b, got, c.want)
 		}
 	}
 
