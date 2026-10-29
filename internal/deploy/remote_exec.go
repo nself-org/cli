@@ -16,15 +16,15 @@ package deploy
 // SPORT: cli/internal/deploy — see gap #9.
 
 import (
-	"bytes"
-	"context"
-	"fmt"
-	"os"
-	"os/exec"
-	"strconv"
-	"strings"
+"bytes"
+"context"
+"fmt"
+"os"
+"strconv"
+"strings"
 
-	"github.com/nself-org/cli/sdk/go/v2/remote"
+	"github.com/nself-org/cli/internal/hostpin"
+"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
 // deployKeyScanTypes is the keyscan order: ed25519 first, then ecdsa, then rsa.
@@ -88,17 +88,7 @@ func parseScannedKeys(out string) []remote.HostKey {
 }
 
 func deployTrustedFingerprints(ctx context.Context, alias, path string) map[string]bool {
-	seen := map[string]bool{}
-	out, err := exec.CommandContext(ctx, "ssh-keygen", "-F", alias, "-f", path).Output()
-	if err != nil {
-		return seen
-	}
-	for _, line := range strings.Split(string(out), "\n") {
-		if fp, err := remote.Fingerprint(line); err == nil {
-			seen[fp] = true
-		}
-	}
-	return seen
+	return hostpin.TrustedFingerprints(ctx, alias, path)
 }
 
 // RemoteTarget describes a resolved remote host for a non-deploy command.

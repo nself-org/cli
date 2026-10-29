@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/compat"
-	"github.com/nself-org/cli/internal/deploy"
+	"github.com/nself-org/cli/internal/hostpin"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
@@ -169,7 +169,7 @@ func adminHostKeyOptions(ctx context.Context, spec remote.HostSpec) ([]string, e
 	}
 	pinAlias := spec.Host
 	if (spec.Port != 0 && spec.Port != 22) || net.ParseIP(spec.Host) != nil {
-		pinAlias = deploy.PinAlias(ctx, spec)
+		pinAlias = hostpin.PinAlias(ctx, spec)
 	}
 	operator := adminTrustedFingerprints(ctx, operatorAlias, filepath.Join(home, ".ssh", "known_hosts"))
 	pinned := adminTrustedFingerprints(ctx, pinAlias, pinFile)

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/deploy/bluegreen"
+	"github.com/nself-org/cli/internal/deploystate"
 	"github.com/nself-org/cli/internal/ui"
 )
 
@@ -122,8 +123,8 @@ func RunCanary(ctx context.Context, cfg CanaryConfig) CanaryResult {
 
 // saveDeployState writes the outcome of a canary deploy to the unified state file.
 func (cfg CanaryConfig) saveDeployState(start time.Time, result bluegreen.DeployResult) error {
-	state := StrategyState{
-		Strategy:           StrategyCanary,
+	state := deploystate.StrategyState{
+		Strategy:           deploystate.StrategyCanary,
 		Target:             cfg.Target,
 		StartedAt:          start,
 		CompletedAt:        time.Now().UTC(),
@@ -135,5 +136,5 @@ func (cfg CanaryConfig) saveDeployState(start time.Time, result bluegreen.Deploy
 	if !result.Success {
 		state.Error = result.Error
 	}
-	return SaveDeployState(cfg.ProjectRoot, state)
+	return deploystate.Save(cfg.ProjectRoot, state)
 }

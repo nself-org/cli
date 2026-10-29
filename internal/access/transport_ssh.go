@@ -17,7 +17,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/nself-org/cli/internal/compat"
-	"github.com/nself-org/cli/internal/deploy"
+	"github.com/nself-org/cli/internal/hostpin"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 	"os"
 	"os/exec"
@@ -92,7 +92,7 @@ func (t *SSHTransport) sshArgsContext(ctx context.Context) ([]string, error) {
 		}
 		args = append(args, "-o", "StrictHostKeyChecking=yes", "-o", option)
 		if spec.Port != 0 {
-			alias := deploy.PinAlias(ctx, spec)
+			alias := hostpin.PinAlias(ctx, spec)
 			args = append(args, "-o", "HostKeyAlias="+alias)
 		}
 	} else {
