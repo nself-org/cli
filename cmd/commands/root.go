@@ -131,7 +131,6 @@ func init() {
 			}
 		}
 		// ── Command execution log ─────────────────────────────────────────────
-		// Begin in the user-scoped log directory, independent of cwd.
 		// Execute records the outcome after Cobra returns.
 		var logDir string
 		if home, err := os.UserHomeDir(); err == nil {
