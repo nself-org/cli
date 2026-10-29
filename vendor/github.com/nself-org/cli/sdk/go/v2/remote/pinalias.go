@@ -11,7 +11,10 @@
 //              the same endpoint (ssh's default), one rule. A name host on
 //              port 22 keeps its bare name (the operator's known_hosts form);
 //              an IP literal always gets the synthetic form because the pin
-//              file refuses an IP as an alias. Legacy aliases are only read:
+//              file refuses an IP as an alias. A name starting "nself-" also
+//              gets the synthetic form: that bare prefix is the legacy alias
+//              namespace, so a pin written by this scheme is never read as
+//              another endpoint's legacy pin. Legacy aliases are only read:
 //              nothing is deleted from the pin file.
 
 package remote
@@ -29,6 +32,10 @@ const defaultSSHPort = 22
 // can hold, so no host name collides with it.
 const pinAliasPrefix = "nself+"
 
+// legacyAliasPrefix starts every legacy alias. PinAlias never returns a bare
+// name with this prefix, so a current pin cannot be mistaken for a legacy one.
+const legacyAliasPrefix = "nself-"
+
 func effectivePort(spec HostSpec) int {
 	if spec.Port == 0 {
 		return defaultSSHPort
@@ -40,7 +47,7 @@ func effectivePort(spec HostSpec) int {
 func PinAlias(spec HostSpec) string {
 	host := strings.ToLower(spec.Host)
 	port := effectivePort(spec)
-	if port == defaultSSHPort && !isIPLiteral(spec.Host) {
+	if port == defaultSSHPort && !isIPLiteral(spec.Host) && !strings.HasPrefix(host, legacyAliasPrefix) {
 		return host
 	}
 	return pinAliasPrefix + host + "+" + strconv.Itoa(port)
@@ -55,7 +62,7 @@ func LegacyPinAliases(spec HostSpec) []string {
 	if spec.Port == 0 && !isIPLiteral(spec.Host) {
 		return nil // the bare name, which is also the current alias
 	}
-	return []string{"nself-" + strings.ReplaceAll(strings.ToLower(spec.Host), ":", "-") + "-" + strconv.Itoa(effectivePort(spec))}
+	return []string{legacyAliasPrefix + strings.ReplaceAll(strings.ToLower(spec.Host), ":", "-") + "-" + strconv.Itoa(effectivePort(spec))}
 }
 
 // keyBlob is the "<type> <base64>" form of a key line.

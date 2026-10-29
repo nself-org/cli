@@ -219,3 +219,41 @@ func TestEffectivePinAlias(t *testing.T) {
 		t.Fatal("a refused pin file did not fail closed")
 	}
 }
+
+// TestFreshPinIsNotAnotherEndpointsLegacyPin is the cross-endpoint collision:
+// a pin written now for the host named "nself-a.test-2222" must not
+// authenticate the separate endpoint a.test:2222 through the legacy lookup.
+func TestFreshPinIsNotAnotherEndpointsLegacyPin(t *testing.T) {
+	named := mustSpec(t, "nself-a.test-2222")
+	other := mustSpec(t, "a.test:2222")
+	p := newPins(t)
+	if err := p.Add(PinAlias(named), keyA); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.MigrateLegacyPin(other, []HostKey{liveKey(t, keyA)}); err != nil {
+		t.Fatal(err)
+	}
+	if got := lookup(t, p, PinAlias(other)); len(got) != 0 {
+		t.Fatalf("a.test:2222 inherited the pin of nself-a.test-2222: %v", got)
+	}
+	if got, err := p.EffectivePinAlias(other); err != nil || got != PinAlias(other) {
+		t.Fatalf("access fallback read the other endpoint's pin: %q, %v", got, err)
+	}
+}
+
+// TestPinAliasStaysOutOfTheLegacyNamespace: no current alias is a legacy one.
+func TestPinAliasStaysOutOfTheLegacyNamespace(t *testing.T) {
+	for _, in := range []string{"nself-a.test-2222", "NSELF-a.test-2222:22", "nself-x", "a.test", "a.test:2222", "203.0.113.9"} {
+		alias := PinAlias(mustSpec(t, in))
+		for _, other := range []string{"a.test:22", "a.test:2222", "203.0.113.9", "[2001:db8::1]:2222"} {
+			for _, legacy := range LegacyPinAliases(mustSpec(t, other)) {
+				if alias == legacy {
+					t.Errorf("PinAlias(%q) = %q is the legacy alias of %q", in, alias, other)
+				}
+			}
+		}
+	}
+	if got := PinAlias(mustSpec(t, "Nself-A.test-2222")); got != "nself+nself-a.test-2222+22" {
+		t.Errorf("PinAlias = %q, want the synthetic form", got)
+	}
+}
