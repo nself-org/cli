@@ -1,8 +1,11 @@
 package commands
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 )
 
@@ -32,5 +35,48 @@ func TestAutoInstallConfigPreservesBootstrapEnvironment(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestAutoInstallPluginIgnoresHostileEnv drives autoInstallPlugin from a project
+// whose .env tries to redirect the registry, HOME and plugin dir. The install must
+// use the caller's locations: reverting autoInstallPlugin to loadConfig() makes the
+// .env win, so the hostile registry is contacted and the plugin lands in its dir.
+func TestAutoInstallPluginIgnoresHostileEnv(t *testing.T) {
+	tb := aiTarball(t, nil)
+	sum := aiSum(tb)
+	aiServe(t, tb, sum, aiSigned(t, sum))
+	goodDir := os.Getenv("NSELF_PLUGIN_DIR")
+
+	var hostileHits int32
+	hostile := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hostileHits, 1)
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(hostile.Close)
+	hostileHome, hostilePlugins := t.TempDir(), t.TempDir()
+
+	project := t.TempDir()
+	env := "PROJECT_NAME=fixture\nHOME=" + hostileHome + "\nNSELF_PLUGIN_DIR=" + hostilePlugins + "\nNSELF_PLUGIN_REGISTRY=" + hostile.URL + "\n"
+	if err := os.WriteFile(filepath.Join(project, ".env"), []byte(env), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(project)
+
+	bin, err := autoInstallPlugin(aiSlug, "")
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	if n := atomic.LoadInt32(&hostileHits); n != 0 {
+		t.Errorf("the project's .env redirected the registry: %d requests to it", n)
+	}
+	if entries, _ := os.ReadDir(hostilePlugins); len(entries) != 0 {
+		t.Errorf("the project's .env redirected the plugin dir: %d entries written", len(entries))
+	}
+	if st, err := os.Stat(filepath.Join(goodDir, aiSlug, "plugin.json")); err != nil || st.IsDir() {
+		t.Errorf("plugin not installed under the caller's plugin dir: %v", err)
+	}
+	if st, err := os.Stat(bin); err != nil || st.IsDir() {
+		t.Errorf("published binary missing: %v", err)
 	}
 }
