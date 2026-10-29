@@ -1,6 +1,6 @@
 //go:build !windows
 
-package build
+package dirwritable
 
 // Purpose: tell, before anything is planned or deleted, whether this user can
 // unlink inside a directory (the traefik-config one-shot runs as root, so Docker
@@ -10,4 +10,4 @@ package build
 
 import "syscall"
 
-func dirWritable(dir string) bool { return syscall.Access(dir, 0x2|0x1) == nil } // W_OK|X_OK
+func writable(dir string) bool { return syscall.Access(dir, 0x2|0x1) == nil } // W_OK|X_OK

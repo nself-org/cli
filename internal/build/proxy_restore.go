@@ -13,6 +13,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/nself-org/cli/internal/dirwritable"
 )
 
 // The traefik renderer marks its output with this file and prefix.
@@ -61,7 +63,7 @@ func cleanupOutputDir(sink Sink, workdir, dir string) error {
 		return proxyKeep(dir, why)
 	}
 	// Plan and apply must agree on removals even for unwritable output.
-	if why := unwritableIn(filepath.Dir(dir), dir); why != "" {
+	if why := dirwritable.FirstUnwritable(filepath.Dir(dir), dir); why != "" {
 		return proxyKeep(dir, "it is owned by root (the traefik-config container wrote it): "+why+" is not writable; run `sudo rm -rf "+dir+"` or chown it to your user, then build again")
 	}
 	err = removeTree(sink, dir, info)
@@ -73,31 +75,6 @@ func cleanupOutputDir(sink Sink, workdir, dir string) error {
 		return fmt.Errorf("removing generated traefik output %s: %w", dir, err)
 	}
 	return nil
-}
-
-// unwritableIn finds the first directory that prevents unlinking, parent first.
-func unwritableIn(parent, dir string) string {
-	if !dirWritable(parent) {
-		return parent
-	}
-	var bad string
-	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-		if bad != "" {
-			return nil
-		}
-		if err != nil { // an unreadable directory cannot be emptied either
-			bad = p
-			return nil
-		}
-		if !d.IsDir() {
-			return nil
-		}
-		if !dirWritable(p) {
-			bad = p
-		}
-		return nil
-	})
-	return bad
 }
 
 // proxyKeep warns and continues without deleting unproven output.
@@ -141,17 +118,6 @@ func removeTree(sink Sink, dir string, before fs.FileInfo) error {
 	if !before.IsDir() {
 		return fmt.Errorf("cleanup directory %s was replaced", dir)
 	}
-	if err := emptyTree(sink, dir, before); err != nil {
-		return err
-	}
-	// The anchoring handle is closed by now: Windows refuses to remove a
-	// directory while any handle on it is open.
-	return sink.Remove(dir)
-}
-
-// emptyTree unlinks everything under dir through a handle anchored on it and
-// releases the handle before returning.
-func emptyTree(sink Sink, dir string, before fs.FileInfo) error {
 	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return err
@@ -164,7 +130,11 @@ func emptyTree(sink Sink, dir string, before fs.FileInfo) error {
 	if !os.SameFile(before, after) {
 		return fmt.Errorf("cleanup directory %s was replaced", dir)
 	}
-	return removeTreeIn(sink, root, dir, ".")
+	if err := removeTreeIn(sink, root, dir, "."); err != nil {
+		return err
+	}
+	_ = root.Close() // Windows cannot remove a directory while a handle on it is open
+	return sink.Remove(dir)
 }
 
 // removeTreeIn checks each listing against the anchored directory identity.
