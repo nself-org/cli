@@ -700,8 +700,9 @@ func TestCronSelfDeleteHoldsLockAcrossReadModifyWrite(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(stubs, "crontab"), []byte(stub), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// The shell takes flock on fd 9; a real lock is needed even where flock(1) is not shipped.
-	if _, err := exec.LookPath("flock"); err != nil {
+	// The shell takes flock on fd 9. Only util-linux flock(1) locks an inherited fd (macOS ports
+	// such as Homebrew's do not), so off Linux, or without it, a perl stub takes flock(2) on fd 9.
+	if _, err := exec.LookPath("flock"); err != nil || runtime.GOOS != "linux" {
 		if _, perr := exec.LookPath("perl"); perr != nil {
 			t.Skip("neither flock nor perl available")
 		}
