@@ -9,6 +9,7 @@ const defaultTemplateRegistryURL = "https://nself.org/api/templates"
 
 // templateEntry is a single template from the registry.
 type templateEntry struct {
+	NextSteps       []string `json:"next_steps,omitempty"`
 	Slug            string   `json:"slug"`
 	DisplayName     string   `json:"displayName"`
 	Description     string   `json:"description"`

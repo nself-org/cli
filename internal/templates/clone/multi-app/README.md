@@ -36,7 +36,7 @@ started it once before `nself db migrate up`.
 
 ## Claim setup
 
-Copy the `AUTH_JWT_CUSTOM_CLAIMS` and `ENV_ALLOWLIST` lines from `.env.example` into `.env.local`.
+Copy the `AUTH_JWT_CUSTOM_CLAIMS` line from `.env.example` into `.env.local`.
 hasura-auth then puts the user's `metadata.source_account_id` into the
 `x-hasura-source-account-id` claim. Sign users up with it:
 

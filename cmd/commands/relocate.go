@@ -37,6 +37,7 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/lock"
 	"github.com/nself-org/cli/internal/plugin"
+	"github.com/nself-org/cli/internal/plugin/autoinstall"
 	"github.com/nself-org/cli/internal/plugin/mount"
 )
 
@@ -107,7 +108,7 @@ func relocateBreakout(cmdName string, args []string) (handled bool, err error) {
 		return true, breakoutRefused(old, row.Plugin, err)
 	}
 	if !warningsSilenced(os.Args) {
-		installed := readInstalledVersion(resolvePluginDir(), row.Plugin)
+		installed := autoinstall.ReadInstalledVersion(resolvePluginDir(), row.Plugin)
 		_, _ = fmt.Fprintf(relocateWarnOut, "warning: 'nself %s' now comes from the %s plugin; installed %s@%s\n", old, row.Plugin, row.Plugin, installed)
 	}
 	if err := plugin.ProxyBinary(proxyBinaryName(bin), row.Plugin, pluginArgs); err != nil {

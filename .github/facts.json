@@ -9,7 +9,7 @@
   },
   "schema_version": "1",
   "sources": {
-    "openapi_sha256": "c78ebcd13343a9c05be443c7dbde6226cc8be9019a5384ad969b1522c62d945a",
+    "openapi_sha256": "1f47f7be7d98810ce4eca08fb61bd930cc662290040b162bfc96fe6e602a6059",
     "registry_sha256": "37fe98fe4dfa26f0c8af15f5cc50e9a5b81f499976850ae2b6066c536e8fe6c9"
   },
   "verbs": [

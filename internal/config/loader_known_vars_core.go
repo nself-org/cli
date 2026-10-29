@@ -117,6 +117,7 @@ var knownEnvVarsCore = []string{
 	"AUTH_EMAIL_TEMPLATE_FETCH_URL",
 	"AUTH_GRAVATAR_ENABLED",
 	"AUTH_LOCALE_DEFAULT",
+	"AUTH_JWT_CUSTOM_CLAIMS",
 	// hasura-auth internal URL (used by app functions to call the auth admin API).
 	"HASURA_AUTH_URL",
 	// hasura-auth SMTP vars (distinct prefix from AUTH_SMTP_* — hasura-auth

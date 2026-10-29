@@ -19,7 +19,7 @@ var ErrValidationUnavailable = errors.New("could not validate the new licence on
 
 // RefreshInstalled refreshes a project only when a licensed plugin is installed.
 // Purpose: keep free-only stacks independent of licences. Inputs: context/project.
-// Outputs: the refresh result. Constraints: native manifests, no runtime Docker calls.
+// Outputs: the refresh result. Constraints: native manifests; optional host probe preserves mounted inodes.
 // SPORT: start/license-set entitlement publication.
 func RefreshInstalled(ctx context.Context, projectDir string) error {
 	return RefreshInstalledForKey(ctx, projectDir, "")

@@ -5665,6 +5665,7 @@ export interface InitTemplateInfoData {
   description: string;
   displayName: string;
   installCount: number;
+  next_steps?: null | Array<string>;
   previewUrl: string;
   priceUsd: number;
   ratingAvg: number;
@@ -5699,6 +5700,7 @@ export interface InitTemplateListData {
     description: string;
     displayName: string;
     installCount: number;
+    next_steps?: null | Array<string>;
     previewUrl: string;
     priceUsd: number;
     ratingAvg: number;

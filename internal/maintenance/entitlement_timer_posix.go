@@ -186,6 +186,11 @@ func (h host) installSystemd(bin, dir, hash string, uid uint32) (bool, error) {
 }
 
 func (h host) installCron(bin, dir, hash string) (bool, error) {
+	unlock, err := h.lockCron()
+	if err != nil {
+		return false, err
+	}
+	defer unlock()
 	line, err := renderCron(bin, dir, hash)
 	if err != nil {
 		return false, err
@@ -278,18 +283,9 @@ func (h host) remove(hash string) (r RemoveResult, firstErr error) {
 			r.Removed = true
 		}
 	}
-	cur, cerr := h.cronList()
-	if cerr != nil && cerr != ErrNoBackend { // no crontab command or not Linux: nothing to read
-		fail(cerr) // an unreadable crontab may still hold our line
-	}
-	if rest, tagged := taggedLines(cur, entCronTag+hash); cerr == nil && len(tagged) > 0 {
-		out, err := h.run(strings.Join(rest, "\n")+"\n", "crontab", "-")
-		if err != nil {
-			fail(cmdErr(out, err, "crontab", "-"))
-		} else {
-			r.Removed = true
-		}
-	}
+	removed, err := h.removeCron(hash)
+	fail(err)
+	r.Removed = r.Removed || removed
 	return r, firstErr
 }
 

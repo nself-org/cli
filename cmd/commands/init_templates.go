@@ -23,7 +23,6 @@ import (
 	"github.com/nself-org/cli/internal/httptimeout"
 	clonetemplate "github.com/nself-org/cli/internal/templates/clone"
 	"github.com/nself-org/cli/internal/ui"
-	"github.com/spf13/cobra"
 )
 
 // runInitCloneTemplate scaffolds one of the six embedded app-clone templates
@@ -113,44 +112,6 @@ func printSteps(w io.Writer, dest string, m clonetemplate.Manifest, flutter bool
 	_, _ = fmt.Fprintf(w, "\n  Next steps:\n    cd %s\n    %s\n\n", dest, strings.Join(steps, "\n    "))
 	if flutter {
 		_, _ = fmt.Fprint(w, "  The flutter/ folder holds a legacy starter app; see README.md.\n\n")
-	}
-}
-
-func init() {
-	legacyInit := initCmd.RunE // multi-app's `init --json` reports its manifest next_steps, never the generic metadata apply
-	initCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		t, _ := cmd.Flags().GetString("template")
-		if t != "multi-app" {
-			return legacyInit(cmd, args)
-		}
-		m, err := clonetemplate.GetManifest(t)
-		if err != nil {
-			return err
-		}
-		res := InitResult{FilesWritten: []string{}, Next: []string{}}
-		res.ProjectDir, _ = os.Getwd()
-		if err := runInitFlow(cmd, args, &res); err != nil {
-			return err
-		}
-		res.Next = m.NextSteps
-		return emitLifecycle(cmd, "init", res)
-	}
-	registry := templateInfoCmd.RunE // `nself template info multi-app` answers offline; other names ask the registry
-	templateInfoCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		m, err := clonetemplate.GetManifest(args[0])
-		if args[0] != "multi-app" || err != nil {
-			return registry(cmd, args)
-		}
-		e := templateEntry{Slug: m.Name, DisplayName: m.Name, Description: m.Description, Category: "bundled", Author: "nSelf", RequiredPlugins: nonNilStrings(m.RequiredPlugins), TemplateVersion: m.Version}
-		if jsonEnvelopeOn(cmd) {
-			return emitEnv(cmd, e, true)
-		}
-		if asJSON, _ := cmd.Flags().GetBool("json"); asJSON {
-			return ui.PrintJSON(e)
-		}
-		fmt.Printf("\n  %s v%s (bundled, no network required)\n  %s\n", m.Name, m.Version, m.Description)
-		printTemplateNextSteps(os.Stdout, "<dest-dir>", m)
-		return nil
 	}
 }
 
