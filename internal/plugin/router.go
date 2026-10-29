@@ -9,7 +9,6 @@ import (
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
-	"github.com/nself-org/cli/internal/invoke"
 	"github.com/nself-org/cli/internal/plugin/catalog"
 	"github.com/nself-org/cli/internal/pluginname"
 	"github.com/nself-org/cli/internal/pluginperm"
@@ -152,13 +151,6 @@ func ProxyBinaryAt(candidate, rootDir, slug string, args []string) error {
 // project settings the plugin's manifest declares, and the plugin's exit
 // status surfaced as ExitCodeError (silent: the child already reported).
 func execPluginBinary(path, slug string, args []string) error {
-	// The CLI restores machine-invoked secrets into os.Args before Cobra runs.
-	// Until plugins support the secret-bundle protocol, forwarding a restored
-	// bundle would expose secrets through the plugin process's argv (D-0651).
-	// A machine-invoked call that carries no secrets is safe and must run.
-	if invoke.SecretsRestored() {
-		return errs.New("E421", "plugin execution is unavailable when a secret bundle was restored; plugins do not yet support secret handoff")
-	}
 	// Prepare the command.
 	//
 	// The plugin inherits this process's environment, plus whichever project
