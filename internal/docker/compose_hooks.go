@@ -76,3 +76,11 @@ func RunPreDownHooks(ctx context.Context, workdir string) (release func()) {
 		}
 	}
 }
+
+// VolumesRemovedHook, when set at init, runs after a successful
+// `docker compose down -v` in workdir and its error fails ComposeDown. The
+// postgres image switch sets it (internal/postgres/imageswitch cannot be
+// imported from here) to remove the old data volume a switch kept, which the
+// current compose file no longer names, so reset, stop --volumes and
+// uninstall --purge really wipe the project's data (D-0802).
+var VolumesRemovedHook func(ctx context.Context, workdir string) error

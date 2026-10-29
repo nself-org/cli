@@ -111,3 +111,30 @@ func VolumeLabels(ctx context.Context, name string) (labels map[string]string, e
 	}
 	return labels, true, nil
 }
+
+// VolumeListByLabels returns the names of the volumes that carry every given
+// label filter ("key" or "key=value"; docker ANDs repeated filters). An empty
+// result is not an error. Docker daemon unavailability is returned as an error
+// so callers can distinguish "no matches" from "cannot list". With no filters
+// it returns nothing, never every volume on the host.
+func VolumeListByLabels(ctx context.Context, labels ...string) ([]string, error) {
+	if len(labels) == 0 {
+		return nil, nil
+	}
+	args := []string{"volume", "ls"}
+	for _, l := range labels {
+		args = append(args, "--filter", "label="+l)
+	}
+	out, err := runCapture(ctx, append(args, "--format", "{{.Name}}")...)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			names = append(names, line)
+		}
+	}
+	return names, nil
+}

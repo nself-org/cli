@@ -93,7 +93,10 @@ func (c *Compose) ComposeDown(ctx context.Context, workdir string, opts DownOpti
 	if opts.Timeout > 0 {
 		args = append(args, "-t", fmt.Sprintf("%d", opts.Timeout))
 	}
-	return c.Run(ctx, workdir, args...)
+	if err := c.Run(ctx, workdir, args...); err != nil || !opts.RemoveVolumes || VolumesRemovedHook == nil {
+		return err
+	}
+	return VolumesRemovedHook(ctx, workdir)
 }
 
 // ComposeUpNoDeps runs `docker compose up -d --no-deps [services...]`.

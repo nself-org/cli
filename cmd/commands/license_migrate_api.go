@@ -80,7 +80,7 @@ func fetchMigrationStatus(ctx context.Context, key string, pingURL string) (*mig
 
 	resp, err := httptimeout.License.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, httptimeout.StripURL(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 

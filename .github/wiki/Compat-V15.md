@@ -73,6 +73,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | D-0676 | bare stream path streams as path:// with a notice | refused | `internal/backup/stream_dest_compat.go` |
 | D-0685 | credential guard before E138 for a missing minio plugin | guard only for plugin-backed MinIO | `internal/config/validator_ports_services.go` |
 | D-0686 | S3_SECRET_KEY accepted at any strength | must be at least 16 characters when object storage is enabled | `internal/config/validator.go` |
+| D-0737 | legacy MCP nself_config_set refuses secret keys | the generated gated v1.5 tool handles them | `internal/config/secretkeys.go` |
 | D-0752 | plugin disable never confirmed | prod-class and hand-edit confirmation before the marker is written. | `cmd/commands/plugin_disable_gate.go` |
 | D-0757 | nginx/sites may be a symlink out of the project and the build writes through it | v1.5 refuses a project's own nginx/sites that resolves outside the project | `internal/build/nginx_sites_dir.go` |
 | D-0843 | a downgrade only warns | refused unless --allow-downgrade is given | `internal/plugin/installer_downgrade.go` |

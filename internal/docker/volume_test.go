@@ -141,3 +141,33 @@ func TestVolumeLabels(t *testing.T) {
 		t.Errorf("a volume with no labels: %v %v %v", got, ok, err)
 	}
 }
+
+func TestVolumeListByLabelsAndsFilters(t *testing.T) {
+	log := fakeVolumeDocker(t, "a\n\n b \n", "")
+	got, err := VolumeListByLabels(context.Background(), "org.nself.image-switch", "com.docker.compose.project=demo")
+	if err != nil || !reflect.DeepEqual(got, []string{"a", "b"}) {
+		t.Fatalf("got %v, %v", got, err)
+	}
+	want := "volume ls --filter label=org.nself.image-switch --filter label=com.docker.compose.project=demo --format {{.Name}}"
+	if c := lastCall(t, log); c != want {
+		t.Errorf("call = %q, want %q", c, want)
+	}
+}
+
+func TestVolumeListByLabelsNoFiltersListsNothing(t *testing.T) {
+	log := fakeVolumeDocker(t, "every\nvolume\n", "")
+	got, err := VolumeListByLabels(context.Background())
+	if err != nil || got != nil {
+		t.Fatalf("got %v, %v", got, err)
+	}
+	if _, statErr := os.Stat(log); statErr == nil {
+		t.Error("docker was called with no filters")
+	}
+}
+
+func TestVolumeListByLabelsReturnsDaemonError(t *testing.T) {
+	fakeVolumeDocker(t, "", "Cannot connect to the Docker daemon")
+	if _, err := VolumeListByLabels(context.Background(), "x"); err == nil {
+		t.Fatal("a daemon failure must be an error, not an empty list")
+	}
+}
