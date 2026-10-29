@@ -571,3 +571,23 @@ func TestTemplateSecretsCustomServiceMinioIdentity(t *testing.T) {
 		}
 	}
 }
+
+// A literal secret shaped like a compose reference ("${ABC}") is still a
+// literal: it must become ${AUTH_SMTP_PASS}, not an unrelated substitution.
+// A real cross-key reference to another mapped secret is preserved.
+func TestTemplateSecretsLiteralRefShapedSecret(t *testing.T) {
+	cfg := secretTestConfig()
+	cfg.Auth.SMTPPass = "${ABC}"
+	secrets := SecretEnvMap(cfg)
+	raw := "services:\n  auth:\n    environment:\n      AUTH_SMTP_PASS: ${ABC}\n" +
+		"  worker:\n    environment:\n      S3_ACCESS_KEY: ${MINIO_ROOT_USER}\n"
+	secrets["MINIO_ROOT_USER"] = "minio-root"
+	secrets["S3_ACCESS_KEY"] = "application-access"
+	out := string(TemplateSecrets([]byte(raw), secrets))
+	if !strings.Contains(out, "AUTH_SMTP_PASS: ${AUTH_SMTP_PASS}") {
+		t.Errorf("literal ${ABC} SMTP password not templated:\n%s", out)
+	}
+	if !strings.Contains(out, "S3_ACCESS_KEY: ${MINIO_ROOT_USER}") {
+		t.Errorf("cross-key reference not preserved:\n%s", out)
+	}
+}
