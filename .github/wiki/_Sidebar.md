@@ -197,6 +197,9 @@
 - [[Guide-Backup-Restore]]
 - [[Guide-Custom-Services]]
 - [[Guide-Migration-from-v1]]
+- [[Guide-Agents-MCP]]
+- [[Guide-CI-CD]]
+- [[Guide-SDK]]
 
 ---
 

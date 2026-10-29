@@ -1,0 +1,10 @@
+{
+  "slug": "claw",
+  "version": "1.1.12",
+  "sha256": "10039b1c7407f9bce07447982a42f420ff75a87a1aa363b81969f2e8c460b21d",
+  "release_signature": {
+    "alg": "ed25519",
+    "key_id": "plugins-e2ac3ee72a143603",
+    "sig": "/OAm1TiRsc7bKQUSZ/LsngWAp0SeGU+/7KcSdj6Wj+r3JXGbBSX4KiGeqXAsdWNBPLedNlQsbLRf3jiQqKYmCg=="
+  }
+}

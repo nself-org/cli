@@ -1,11 +1,11 @@
 package signature_test
 
-// keys_test.go — the pinned production free-tier release key (P7-PLUG-71).
+// keys_test.go — the pinned production release keys: free (P7-PLUG-71) and licensed (P7-PLUG-87).
 //
 // Purpose: prove the compiled-in free key is exactly the public key file the first signed free release (P7-PLUG-69) committed, and that the table cannot silently lose it, double it or share it with the licensed tier.
 // Inputs: testdata/real/plugins-release-free-2ebca8dfad98e19e.pub, a byte copy of plugins:scripts/release/keys/ at the P7-PLUG-69 release.
 // Outputs: test results only.
-// Constraints: public keys only. The licensed tier is pinned by P7-PLUG-72, so nothing here asserts on the licensed table beyond "no key serves two tiers".
+// Constraints: public keys only. Both tiers are pinned; the licensed key file is a byte copy of plugins-pro:scripts/release/keys/ at the P7-PLUG-70 release.
 
 import (
 	"bytes"
@@ -128,5 +128,99 @@ func TestFreeTierPinned(t *testing.T) {
 	}
 	if checkFreePin([]signature.Key{pinned}, []string{pinned.ID}, want) == nil {
 		t.Error("a revoked free key was accepted")
+	}
+}
+
+const (
+	licensedKeyFile   = "testdata/real/plugins-release-licensed-plugins-e2ac3ee72a143603.pub"
+	licensedKeyID     = "plugins-e2ac3ee72a143603"                                         // PLUG-70 evidence key-id
+	licensedKeyFileSH = "6b532fac5c7b681d53071fc585fd9fa69cf6dbe271eae40fdde43bace598ab4d" // PLUG-70 evidence key-sha256 (of the file)
+)
+
+// checkPinnedTiers reports why table is not a correct two-tier pin: exactly one key per tier, none serving both, none revoked, ids derived from the key.
+func checkPinnedTiers(table []signature.Key, revoked []string) error {
+	count := map[string]int{}
+	seen := map[string]string{}
+	for _, k := range table {
+		count[k.Tier]++
+		if prev, dup := seen[string(k.PublicKey)]; dup && prev != k.Tier {
+			return errors.New("one public key serves both tiers")
+		}
+		seen[string(k.PublicKey)] = k.Tier
+		if slices.Contains(revoked, k.ID) {
+			return fmt.Errorf("key %s is revoked", k.ID)
+		}
+		if k.ID != signing.KeyID(signing.PurposePlugins, k.PublicKey) {
+			return fmt.Errorf("key id %q is not derived from its key", k.ID)
+		}
+	}
+	for _, tier := range []string{signature.TierFree, signature.TierLicensed} {
+		if count[tier] != 1 {
+			return fmt.Errorf("want exactly 1 %s key, have %d", tier, count[tier])
+		}
+	}
+	return nil
+}
+
+// TestPinnedTiers: both production keys are compiled in, the licensed one equals the PLUG-70 key file, and the table check fails on a missing tier,
+// a second key in a tier and a key serving both tiers.
+func TestPinnedTiers(t *testing.T) {
+	raw, err := os.ReadFile(licensedKeyFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(raw)
+	if got := hex.EncodeToString(sum[:]); got != licensedKeyFileSH {
+		t.Fatalf("licensed key file sha256 = %s, want %s (PLUG-70 evidence)", got, licensedKeyFileSH)
+	}
+	block, _ := pem.Decode(raw)
+	if block == nil {
+		t.Fatal("licensed key file is not PEM")
+	}
+	parsed, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, ok := parsed.(ed25519.PublicKey)
+	if !ok {
+		t.Fatalf("licensed key file holds a %T, want Ed25519", parsed)
+	}
+	if signing.KeyID(signing.PurposePlugins, want) != licensedKeyID {
+		t.Fatalf("key file does not derive id %s", licensedKeyID)
+	}
+	for _, tier := range []string{signature.TierFree, signature.TierLicensed} {
+		if !signature.Pinned(tier) {
+			t.Errorf("tier %s has no pinned key", tier)
+		}
+	}
+	if err := checkPinnedTiers(signature.Keys, signature.Revoked); err != nil {
+		t.Fatalf("committed table: %v", err)
+	}
+	var free, lic signature.Key
+	for _, k := range signature.Keys {
+		if k.Tier == signature.TierLicensed {
+			lic = k
+		} else {
+			free = k
+		}
+	}
+	if lic.ID != licensedKeyID || !bytes.Equal(lic.PublicKey, want) {
+		t.Errorf("licensed key %s differs from the committed key file", lic.ID)
+	}
+	other, _ := signaturetest.NewKey(t, signature.TierLicensed)
+	both := lic
+	both.PublicKey = free.PublicKey
+	for name, table := range map[string][]signature.Key{
+		"no licensed key":     {free},
+		"no free key":         {lic},
+		"second licensed key": {free, lic, other},
+		"key serving both":    {free, both},
+	} {
+		if checkPinnedTiers(table, nil) == nil {
+			t.Errorf("%s: checkPinnedTiers accepted it", name)
+		}
+	}
+	if checkPinnedTiers(signature.Keys, []string{lic.ID}) == nil {
+		t.Error("a revoked licensed key was accepted")
 	}
 }
