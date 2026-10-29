@@ -1,19 +1,8 @@
 package build
 
-// expect_sink.go — a write-mode Sink that holds a build to a confirmed render
-// (P7-LIVE-03, review M3 / EPIC ruling B).
-//
-// Purpose: `nself build` shows a plan, asks for confirmation, then writes. The
-// write must be that render and nothing else, even if an input changed after
-// the plan was made. expectSink stages the render: every write must carry
-// exactly the bytes the confirmed render planned for that path, every removal
-// and chmod must be one it planned, and anything else stops the build with an
-// error before publishing any artifact. After the build, verify checks the
-// complete staged render; commit publishes it with rollback on failure.
-// Inputs: the PlannedBuild of the confirmed render (BuildOptions.Expect).
-// Outputs: errors naming the path that deviated.
-// Constraints: write mode only; reads see staged writes before disk.
-// Effects are not asserted here (they run through writeEffects).
+// expectSink stages exactly the confirmed render (P7-LIVE-03): unplanned bytes,
+// removals or modes fail before publication. Reads overlay staged writes on disk.
+// Commit verifies completeness and publishes with rollback; host effects are separate.
 
 import (
 	"bytes"
@@ -28,13 +17,11 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 )
 
-// deviationError is a write, removal or chmod that is not part of the
-// confirmed render.
+// deviationError identifies an operation outside the confirmed render.
 type deviationError struct{ msg string }
 
 func (e *deviationError) Error() string { return e.msg }
 
-// errDeviated builds a deviationError.
 func errDeviated(path, why string) error {
 	return &deviationError{msg: fmt.Sprintf("the project changed after the plan was made: %s %s; nothing further was written (re-run nself build --plan)", path, why)}
 }

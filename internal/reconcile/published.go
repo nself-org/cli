@@ -5,7 +5,11 @@ package reconcile
 // Constraints: only a failure that leaves the published files on disk carries
 // the mark; a refusal or a rolled-back write never does.
 
-import "errors"
+import (
+	"errors"
+
+	nbuild "github.com/nself-org/cli/internal/build"
+)
 
 // ErrPublished marks an Apply failure that happened after the generated files
 // were written and left in place (the state record could not be written). A
@@ -26,4 +30,14 @@ func published(err error) error {
 		return nil
 	}
 	return &publishedError{err: err}
+}
+
+// buildFailure preserves publication status when entitlement refresh failed
+// after Build committed its artifacts. A caller rollback restores the files.
+func buildFailure(err error, res *nbuild.BuildResult, opt ApplyOptions) error {
+	var refresh *nbuild.EntitlementRefreshError
+	if res != nil && opt.Rollback == nil && errors.As(err, &refresh) {
+		return published(err)
+	}
+	return err
 }

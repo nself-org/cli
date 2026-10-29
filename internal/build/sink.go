@@ -1,14 +1,8 @@
 package build
 
-// sink.go — Sink serves write and plan modes (P7-LIVE-21).
-//
-// Purpose: diskSink writes; memSink records mutations and overlays disk reads.
-// Inputs: project-relative or absolute paths, canonicalised relative to the
-// project root or as "@fronting/<name>" for the fronting nginx/sites directory.
-// Outputs: PlannedBuild (files, modes, removals, effects) from memSink.
-// Constraints: memSink never writes or creates a directory; internal/build must
-// not import internal/reconcile (P7-GUARD), so the store is a plain PlannedFile
-// map that P7-LIVE-03 converts.
+// Sink serves write and plan modes (P7-LIVE-21). diskSink writes; memSink
+// overlays mutations without disk writes. Keys are project-relative, absolute,
+// or @fronting paths. Plain PlannedBuild data avoids importing reconcile.
 
 import (
 	"errors"
@@ -71,10 +65,7 @@ func (d *diskSink) WriteFile(p string, data []byte, perm fs.FileMode) error {
 func (d *diskSink) WriteAtomic(p string, data []byte, perm fs.FileMode) error {
 	return atomicWrite(d.abs(p), data, perm)
 }
-func (d *diskSink) Remove(p string) error { return os.Remove(d.abs(p)) }
-func (d *diskSink) RemoveWithin(root *os.Root, relative, _ string) error {
-	return root.Remove(relative)
-}
+func (d *diskSink) Remove(p string) error                     { return os.Remove(d.abs(p)) }
 func (d *diskSink) Chmod(p string, perm fs.FileMode) error    { return os.Chmod(d.abs(p), perm) }
 func (d *diskSink) MkdirAll(p string, perm fs.FileMode) error { return os.MkdirAll(d.abs(p), perm) }
 func (d *diskSink) ReadFile(p string) ([]byte, error)         { return os.ReadFile(d.abs(p)) }
@@ -176,10 +167,6 @@ func (m *memSink) Remove(p string) error {
 	}
 	m.removed[k] = true
 	return nil
-}
-
-func (m *memSink) RemoveWithin(_ *os.Root, _ string, p string) error {
-	return m.Remove(p)
 }
 
 func (m *memSink) Chmod(p string, perm fs.FileMode) error {
@@ -293,7 +280,6 @@ func (m *memSink) snapshot() *PlannedBuild {
 	return pb
 }
 
-// memInfo is the fs.FileInfo of a planned file or directory.
 type memInfo struct {
 	name string
 	size int64

@@ -17,7 +17,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 
@@ -194,13 +193,7 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (applied *Pl
 	wopts.Force = wopts.Force || !p.Empty
 	res, err := buildWithEnv(req.ProjectDir, wopts, req.resolvedEnv, buildBuild)
 	if err != nil {
-		// An entitlement refresh (E125) failure comes back after Build wrote and
-		// committed every generated file, so unless the caller's Rollback
-		// restores them the failure is post-publication.
-		var refresh *nbuild.EntitlementRefreshError
-		if res != nil && opt.Rollback == nil && errors.As(err, &refresh) {
-			err = published(err)
-		}
+		err = buildFailure(err, res, opt)
 		return nil, nil, err
 	}
 	// P7-LIVE-04 (EPIC D5): the record is written only now that the whole
@@ -278,16 +271,13 @@ func short(id string) string {
 	return id
 }
 
-// seededRand is a SHA-256 counter-mode byte stream: the same seed yields the
-// same bytes, and the stream is as strong as the seed (32 random bytes from
-// crypto/rand in Apply).
+// seededRand is a SHA-256 counter-mode byte stream seeded by crypto/rand.
 type seededRand struct {
 	seed []byte
 	ctr  uint64
 	buf  []byte
 }
 
-// newSeededRand returns a reader over the stream of seed.
 func newSeededRand(seed []byte) io.Reader {
 	return &seededRand{seed: append([]byte(nil), seed...)}
 }

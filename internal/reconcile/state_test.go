@@ -565,6 +565,13 @@ func TestApplyEntitlementRefreshFailureIsPublished(t *testing.T) {
 		t.Fatalf("err = %v, want the E125 cause kept on the chain", err)
 	}
 
+	if data, readErr := os.ReadFile(filepath.Join(f.project, "docker-compose.yml")); readErr != nil || string(data) != "published" {
+		t.Fatalf("published artifacts must remain after E125: %q, %v", data, readErr)
+	}
+	if detail := errs.Describe(err); detail == nil || detail.Code != "E125" || errs.ExitCodeFor(err) != 3 {
+		t.Fatalf("publication mark lost the entitlement error identity: %v", err)
+	}
+
 	// The caller's Rollback restores the files: nothing stays published.
 	rolled := false
 	opt := ApplyOptions{Yes: true, Rollback: func() error { rolled = true; return nil }}
