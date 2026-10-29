@@ -686,3 +686,78 @@ func TestRefreshGuardRetainsNonExecutableBinary(t *testing.T) {
 		t.Fatalf("existing binary treated as gone: %v %s", err, out)
 	}
 }
+
+// TestCronSelfDeleteHoldsLockAcrossReadModifyWrite runs the real cron line while an install
+// races it. The crontab stub keeps a slow `-l` (it returns the pre-sleep copy), so a
+// self-removal that reads before taking the lock writes that stale copy over the install.
+func TestCronSelfDeleteHoldsLockAcrossReadModifyWrite(t *testing.T) {
+	tmp, _ := filepath.EvalSymlinks(t.TempDir())
+	store, stubs := filepath.Join(tmp, "store"), filepath.Join(tmp, "stubs")
+	if err := os.MkdirAll(stubs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stub := "#!/bin/sh\nif [ \"$1\" = -l ]; then cat " + store + "; sleep 0.4; else cat > " + store + "; fi\n"
+	if err := os.WriteFile(filepath.Join(stubs, "crontab"), []byte(stub), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The shell takes flock on fd 9; a real lock is needed even where flock(1) is not shipped.
+	if _, err := exec.LookPath("flock"); err != nil {
+		if _, perr := exec.LookPath("perl"); perr != nil {
+			t.Skip("neither flock nor perl available")
+		}
+		perl := "#!/usr/bin/perl\nuse Fcntl qw(:flock);\nopen(my $f, '>&=', 9) or die;\nflock($f, LOCK_EX) or die;\n"
+		if err := os.WriteFile(filepath.Join(stubs, "flock"), []byte(perl), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	env := []string{"HOME=" + tmp, "PATH=" + stubs + ":" + os.Getenv("PATH")}
+	bin := filepath.Join(tmp, "nself")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gone := filepath.Join(tmp, "gone-project")
+	line, err := renderCron(bin, gone, Hash(gone))
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign := "MAILTO=ops\n0 3 * * * echo keep\n"
+	if err := os.WriteFile(store, []byte(foreign+line+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h := host{goos: "linux", crontab: true, home: tmp, run: func(stdin, name string, args ...string) (string, error) {
+		cmd := exec.Command(filepath.Join(stubs, "crontab"), args...)
+		cmd.Env = env
+		if stdin != "" {
+			cmd.Stdin = strings.NewReader(stdin)
+		}
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}}
+	other := filepath.Join(tmp, "other-project")
+	fields := strings.SplitN(strings.ReplaceAll(line, `\%`, "%"), " ", 6)
+	sh := exec.Command("sh", "-c", fields[5])
+	sh.Env = env
+	if err := os.MkdirAll(filepath.Join(tmp, ".nself"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		time.Sleep(150 * time.Millisecond) // after the shell started reading
+		if _, err := h.installCron(bin, other, Hash(other)); err != nil {
+			t.Error(err)
+		}
+	}()
+	if out, err := sh.CombinedOutput(); err != nil {
+		t.Fatalf("cron line failed: %v\n%s", err, out)
+	}
+	wg.Wait()
+	got, _ := os.ReadFile(store)
+	if !strings.Contains(string(got), entCronTag+Hash(other)) {
+		t.Fatalf("self-removal overwrote a concurrent install with a stale copy: %q", got)
+	}
+	if strings.Contains(string(got), entCronTag+Hash(gone)) || !strings.Contains(string(got), foreign) {
+		t.Fatalf("self-removal result wrong: %q", got)
+	}
+}
