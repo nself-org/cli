@@ -167,3 +167,49 @@ func TestStackUpdateBlockedRecoveryNamesSnapshotAndRestart(t *testing.T) {
 		})
 	}
 }
+
+// TestStackUpdateInvalidBackupEvidenceResetsCompletedPullBuild proves clearing
+// invalid evidence before start or migrate also reopens the completed pull and
+// build steps, so the journal stays valid and the retry reruns them.
+func TestStackUpdateInvalidBackupEvidenceResetsCompletedPullBuild(t *testing.T) {
+	b := newFixture()
+	b.fail = "start"
+	o := Options{ProjectDir: t.TempDir(), Yes: true}
+	if _, err := Execute(context.Background(), o, b); err == nil {
+		t.Fatal("expected start failure")
+	}
+	stored, err := loadJournal(o.ProjectDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range stored.Steps {
+		switch stored.Steps[i].Name {
+		case "backup", "pull", "build":
+			stored.Steps[i].Result = "ok"
+		case "start", "migrate":
+			stored.Steps[i].Result = "pending"
+		}
+	}
+	stored.Status = "failed"
+	if err := saveJournal(o.ProjectDir, stored); err != nil {
+		t.Fatal(err)
+	}
+	b.fail = "verify"
+	if _, err := Execute(context.Background(), o, b); err == nil {
+		t.Fatal("expected verify failure")
+	}
+	after, err := loadJournal(o.ProjectDir)
+	if err != nil || after == nil {
+		t.Fatalf("journal unreadable after evidence reset: %+v %v", after, err)
+	}
+	for _, s := range after.Steps {
+		if s.Name != "backup" && s.Result == "ok" {
+			t.Fatalf("step %s still ok after backup reset: %+v", s.Name, after.Steps)
+		}
+	}
+	b.fail, b.calls = "", nil
+	j, err := Execute(context.Background(), o, b)
+	if err != nil || j.Status != "complete" || b.calls[0] != "backup" {
+		t.Fatalf("retry after reset failed: %v %v %+v", b.calls, err, j)
+	}
+}

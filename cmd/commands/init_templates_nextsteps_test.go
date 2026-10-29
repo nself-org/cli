@@ -1,7 +1,7 @@
 package commands
 
 // Purpose: pins what `nself init --template` prints as next steps: the six app
-// clones print what they printed at the merge-base (golden), multi-app prints
+// clones print backend setup steps, multi-app prints
 // exactly its manifest's next_steps and never mentions the flutter starter.
 
 import (
@@ -21,7 +21,7 @@ import (
 )
 
 func TestInitTemplateNextSteps(t *testing.T) {
-	// Golden: byte-for-byte the output at the merge-base for the six clones.
+	// The six clones ship backend scaffolds without a bundled frontend.
 	for _, name := range clonetemplate.All() {
 		if name == "multi-app" {
 			continue
@@ -35,7 +35,7 @@ func TestInitTemplateNextSteps(t *testing.T) {
 			if len(m.RequiredPlugins) > 0 {
 				want += "    nself plugin install " + strings.Join(m.RequiredPlugins, " ") + "\n"
 			}
-			want += "\n  The flutter/ folder holds a legacy starter app; see README.md.\n\n"
+			want += "\n"
 			var buf bytes.Buffer
 			printTemplateNextSteps(&buf, "/tmp/app", m)
 			if buf.String() != want {

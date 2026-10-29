@@ -135,10 +135,10 @@ var (
 	traefikChown = os.Lchown
 )
 
-// prepareGenerations makes the ACME generation directories usable by the two
+// prepareGenerations migrates legacy ACME generation directories for the two
 // readers of the certificates. (1) The renderer runs as root with every
 // capability dropped, which can neither enter nor stat inside a directory owned
-// by another uid ("fullchain.pem missing"): core writes them 0700, so others get
+// by another uid ("fullchain.pem missing"): older CLIs wrote them 0700, so others get
 // the execute bit (files stay 0600). (2) traefik runs as NSELF_HOST_UID with no
 // capabilities and opens the 0600 key as its owner; when the renewal runs as
 // root (the systemd timer) the new generation is root's, so it is handed to the

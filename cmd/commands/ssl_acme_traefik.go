@@ -63,9 +63,6 @@ type traefikReloader struct {
 // previous dynamic.yml in place (the renderer writes atomically), so a failure
 // here means nothing was reloaded.
 func (t traefikReloader) Reload(ctx context.Context) error {
-	if err := prepareGenerations(t.workdir, t.sslDir); err != nil {
-		return err
-	}
 	raw, err := t.config(ctx, t.workdir)
 	if err != nil {
 		return fmt.Errorf("resolving %s: %w", traefikConfigService, err)

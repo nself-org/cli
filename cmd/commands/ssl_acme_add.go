@@ -104,7 +104,7 @@ func runSSLAddACME(cmd *cobra.Command, args []string) (retErr error) {
 	}
 	reload := acme.NginxReloader{Container: r.res.Container, Exec: acmeD.exec}
 	gens, err := acme.Install(ctx, acme.InstallReq{SSLDir: r.res.SSLDir, Targets: l.Targets, Cert: c, Key: k,
-		Reloader: reload, Fault: r.hooks.Fault, Exit: acmeD.exit})
+		DirMode: acme.GenerationDirMode(r.provider), Owner: acme.GenerationOwner(r.provider, traefikEuid(), r.workdir, hostOwner), Reloader: reload, Fault: r.hooks.Fault, Exit: acmeD.exit})
 	if err != nil {
 		return e151(err)
 	}

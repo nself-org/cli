@@ -6,7 +6,7 @@ Rental marketplace starter built with nSelf.
 
 - `np_listings`, `np_bookings`, `np_reviews` Postgres tables with RLS
 - Hasura permissions and relationships
-- Flutter starter with listing browse, detail, and host dashboard screens
+- Backend scaffold only; no frontend starter is bundled.
 - Required plugins: `auth`, `notify`, `photos`
 
 ## Getting started
@@ -14,8 +14,8 @@ Rental marketplace starter built with nSelf.
 ```bash
 nself start
 nself db migrate
-nself hasura metadata apply --file hasura/metadata.json
-cd flutter && flutter run
+nself db hasura metadata apply
+# Add a frontend service with nself add, or connect your existing React app.
 ```
 
 ## Required plugins

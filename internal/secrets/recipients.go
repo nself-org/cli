@@ -41,7 +41,7 @@ func checkStorePath(dir, path string, missing error) error {
 		}
 		return decryptError()
 	}
-	if !info.Mode().IsRegular() {
+	if !info.Mode().IsRegular() || multiplyLinked(info) {
 		return decryptError()
 	}
 	// Residual TOCTOU: age opens this name after the check. A racing writer
@@ -90,6 +90,19 @@ func Recipients(req RecipientsRequest, sink AuditFunc) ([]string, bool, error) {
 	missing := errs.Newf("E541", "Secret store %s not found", req.File)
 	if err := checkStorePath(filepath.Join(req.ProjectRoot, ".secrets"), path, missing); err != nil {
 		return nil, false, err
+	}
+	if req.Action != "list" {
+		if err := ensureGitignore(filepath.Join(req.ProjectRoot, ".secrets")); err != nil {
+			return nil, false, errs.New("E401", "Cannot update .secrets/.gitignore for recipient change")
+		}
+		unlock, err := lockRecipientStore(path + ".lock")
+		if err != nil {
+			return nil, false, errs.New("E401", "Cannot lock secret store for recipient change")
+		}
+		defer unlock()
+		if err := checkStorePath(filepath.Join(req.ProjectRoot, ".secrets"), path, missing); err != nil {
+			return nil, false, err
+		}
 	}
 	key, err := readableIdentity()
 	if err != nil {

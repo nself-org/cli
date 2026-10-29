@@ -68,7 +68,18 @@ func execute(ctx context.Context, o Options, b Backend) (*Journal, error) {
 				e := errs.Wrap("E403", "Stack update backup verification failed on resume", err)
 				return j, e.WithFix(fmt.Sprintf("The step-one backup can no longer be trusted. Check it with: %s. Restore only a backup that verifies. To leave this state, either verify and restore by hand, or archive the journal by moving %s to %s.", VerifyCommand(j.BackupID), ".nself/state/update-stack.json", ".nself/state/update-stack."+j.RunID+".json"))
 			}
-			return j, backupError(false, err)
+			if !updateMutationAttempted(j) {
+				err = resetBackupEvidence(j, err)
+				// Later steps ran against the dump that was just discarded.
+				for i := range j.Steps {
+					j.Steps[i].Result = "pending"
+				}
+				if saveErr := saveJournal(o.ProjectDir, j); saveErr != nil {
+					return j, errs.Wrap("E139", "Cannot clear invalid backup evidence", saveErr)
+				}
+				return j, backupError(false, err).WithFix("Invalid backup evidence was cleared before start or migrate ran. Retry nself update stack --yes to create and verify a fresh backup.")
+			}
+			return j, backupError(false, err).WithFix(fmt.Sprintf("The step-one backup can no longer be trusted. Check it with: %s. Restore only a backup that verifies. Verify and restore by hand, or archive the journal by moving %s to %s before starting a new update.", VerifyCommand(j.BackupID), ".nself/state/update-stack.json", ".nself/state/update-stack."+j.RunID+".json"))
 		}
 		if j.BeforeRows == nil || j.PreviousCompose == "" {
 			return j, errs.New("E139", "Stack update journal lacks pre-update recovery evidence")
@@ -144,6 +155,8 @@ func runStep(ctx context.Context, b Backend, j *Journal, name string) error {
 	if name != "backup" {
 		return b.Run(ctx, name, j)
 	}
+	ctx, cancel := context.WithTimeout(ctx, stepTimeout("migrate"))
+	defer cancel()
 	if j.BackupID == "" {
 		if err := b.Backup(ctx, j); err != nil {
 			return resetBackupEvidence(j, fmt.Errorf("create update backup: %w", err))
@@ -204,10 +217,21 @@ func verifyProof(ctx context.Context, b Backend, j *Journal) error {
 // backupError classifies a failed production safety prerequisite.
 // Inputs: production classification and underlying error. Outputs: coded error.
 // Constraints: a production run fails E403 before the pull step.
-func backupError(prod bool, err error) error {
+func backupError(prod bool, err error) *errs.CLIError {
 	code := "E139"
 	if prod {
 		code = "E403"
 	}
 	return errs.Wrap(code, "Stack update requires a backup created and verified in this run", err)
+}
+
+// Any attempted start or migration may have changed the stack, including a
+// process interrupted while its durable result still says running.
+func updateMutationAttempted(j *Journal) bool {
+	for _, step := range j.Steps {
+		if (step.Name == "start" || step.Name == "migrate") && step.Result != "pending" {
+			return true
+		}
+	}
+	return false
 }

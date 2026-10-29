@@ -109,12 +109,8 @@ func Init(projectRoot string) error {
 		return fmt.Errorf("creating secrets directory: %w", err)
 	}
 
-	// Write .gitignore.
-	gitignorePath := filepath.Join(sDir, ".gitignore")
-	if _, err := os.Stat(gitignorePath); os.IsNotExist(err) {
-		if err := os.WriteFile(gitignorePath, []byte("# Never commit decrypted secrets\n*.json\n*.tmp\n"), 0644); err != nil {
-			return fmt.Errorf("writing .gitignore: %w", err)
-		}
+	if err := ensureGitignore(sDir); err != nil {
+		return err
 	}
 
 	// Print the public key for sharing.
@@ -124,6 +120,47 @@ func Init(projectRoot string) error {
 	}
 	slog.Info("age public key", "public_key", pubKey)
 
+	return nil
+}
+
+// gitignoreHeader and gitignoreRules are the default .secrets/.gitignore. The
+// .age stores are committed; decrypted output, temp files and the sidecar
+// locks taken by recipient changes are not.
+const gitignoreHeader = "# Never commit decrypted secrets\n"
+
+var gitignoreRules = []string{"*.json", "*.tmp", "*.lock"}
+
+// ensureGitignore creates sDir/.gitignore, or appends any missing rule to an
+// existing one so projects initialised before *.lock was ignored are covered.
+func ensureGitignore(sDir string) error {
+	path := filepath.Join(sDir, ".gitignore")
+	data, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("reading .gitignore: %w", err)
+	}
+	have := map[string]bool{}
+	for _, line := range strings.Split(string(data), "\n") {
+		have[strings.TrimSpace(line)] = true
+	}
+	var add strings.Builder
+	if len(data) == 0 {
+		add.WriteString(gitignoreHeader)
+	} else if data[len(data)-1] != '\n' {
+		add.WriteString("\n")
+	}
+	missing := false
+	for _, rule := range gitignoreRules {
+		if !have[rule] {
+			add.WriteString(rule + "\n")
+			missing = true
+		}
+	}
+	if !missing {
+		return nil
+	}
+	if err := os.WriteFile(path, append(data, add.String()...), 0644); err != nil {
+		return fmt.Errorf("writing .gitignore: %w", err)
+	}
 	return nil
 }
 
