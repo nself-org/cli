@@ -1,4 +1,4 @@
-package cipolicy
+package repoqa
 
 import (
 	"os"
@@ -39,7 +39,7 @@ func overlappingRepos(doc []byte) ([]string, error) {
 }
 
 func TestBranchProtectionNoRepoInBothBlocks(t *testing.T) {
-	path := filepath.Join("..", "..", "scripts", ".policy", "branch-protection.yaml")
+	path := filepath.Join(repoRoot(t), "scripts", ".policy", "branch-protection.yaml")
 	doc, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read policy: %v", err)
