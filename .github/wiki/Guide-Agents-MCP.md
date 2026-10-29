@@ -52,3 +52,24 @@ nself ci
 ```
 
 `nself ci --check` runs the gates only. `nself ci` also posts the `nself-ci` commit status. See [[Guide-CI-CD]] and the plugins CI [Getting Started](https://github.com/nself-org/plugins/blob/main/.github/wiki/guides/ci/Getting-Started.md) page.
+
+## End-to-end proof
+
+The agent E2E harness proves an agent can run a whole project through MCP alone. It lives in `test/e2e/agent/` (build tag `e2eagent`) and `scripts/e2e/agent/`.
+
+What it covers:
+
+- A replay client speaks MCP to `nself mcp` and nothing else. It runs `init`, `build` (plan, then confirm), `start`, `db migrate up`, `add ci`, an async CI run (detach, wait, evidence), `deploy qa`, then `deploy promote qa prod` as a dry run and as a confirmed run.
+- Two legs: failure recovery (the harness stops one service, the agent reads `status` and recovers with `start`) and the destructive gate (`reset` without a confirmation returns the confirmation request and no volume changes).
+- `qa` and `prod` are two loopback sim hosts. The server runs in a sandbox: a temp `HOME` holding only the sim key and ssh config, no SSH agent, and an allowlist of `127.0.0.1` for every host it may name.
+- Every request, result and harness action goes to a JSONL transcript, and a verifier checks it.
+
+How to run it (shown as text; it needs Docker and a cli checkout):
+
+```text
+bash scripts/e2e/agent/run.sh --self-test
+bash scripts/e2e/agent/run.sh --replay --transcript /tmp/agent-e2e/replay.jsonl
+bash scripts/e2e/agent/run.sh --verify-transcript /tmp/agent-e2e/replay.jsonl
+```
+
+The `Agent E2E` workflow runs the replay on GitHub-hosted ubuntu and uploads the transcript as `agent-e2e-transcript`. Details and known gaps: `test/e2e/agent/README.md`.
