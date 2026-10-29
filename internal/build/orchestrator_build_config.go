@@ -86,6 +86,11 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
 
+	// compose reads COMPOSE_PROJECT_NAME from .env but compose.env overrides it with PROJECT_NAME (D-0448)
+	if warning := compose.ProjectNameWarning(st.workdir, st.cfg.ProjectName); warning != "" {
+		slog.Warn(warning)
+	}
+
 	// ── Step 2.5: Preflight — nginx domain conflict check ────────────
 	st.routes, err = st.modelRoutes(nginx.NewGenerator(st.cfg, st.workdir).HasSSL())
 	if err != nil {

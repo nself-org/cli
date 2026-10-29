@@ -161,7 +161,8 @@ When a custom service container starts, ɳSelf automatically injects the followi
 | `SERVICE_NAME`, `SERVICE_PORT`, `SERVICE_ROUTE` | parsed service configuration | This service's identity |
 | `TABLE_PREFIX` | `CS_N_TABLE_PREFIX` | Application table-prefix hint |
 | `REDIS_URL` | resolved Redis config | Included when Redis is enabled |
-| `S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET` | active object-store config | Included when storage is enabled; v1.5 ops profile omits these |
+| `S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET` | active object-store config | Included when storage is enabled; v1.5 ops profile omits these. v1.5 `S3_BUCKET` is one bucket (explicit `S3_BUCKET`, else the first listed); v1.4 passes the raw `MINIO_DEFAULT_BUCKETS` list |
+| `S3_BUCKETS` | active object-store config | v1.5 only: the full comma-separated bucket list |
 | `CS_N_ENV` values | parsed from `CS_N_ENV` | Any additional vars you define for this slot |
 
 The generated environment consists of that core set plus explicit overrides. Each service's surface

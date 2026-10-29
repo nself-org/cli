@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nself-org/cli/internal/compose"
+
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/maintenance"
@@ -162,9 +164,9 @@ func runDeployBody(cmd *cobra.Command, args []string) error {
 	}
 
 	// Dry-run only: name, per custom service, which env vars it will
-	// receive — see deploy_dry_run_env.go.
+	// receive — see compose.PrintCustomServiceEnvSummary.
 	if dryRun && !jsonOut {
-		printCustomServiceEnvSummary(workdir)
+		compose.PrintCustomServiceEnvSummary(os.Stdout, workdir)
 	}
 
 	// Target-specific action

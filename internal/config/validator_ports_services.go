@@ -9,10 +9,12 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
 )
 
@@ -85,9 +87,18 @@ func init() {
 //   - MINIO_ROOT_USER must not be empty or "minioadmin".
 //   - MINIO_ROOT_PASSWORD must not be "minioadmin" and must be >=16 chars.
 //
+// In v1.5 MinIO is a plugin, so the rules apply only while the minio plugin is
+// installed; without it the build refuses with E138, which names the real
+// remedy, and a credential error first would cost the operator a second round
+// (D-0685).
+//
 // Returns nil when MinIO is disabled or the environment is dev.
 func ValidateMinioCredentials(cfg *Config) error {
 	if !cfg.Minio.Enabled {
+		return nil
+	}
+	// compat.V15(D-0685): credential guard before E138 for a missing minio plugin -> guard only for plugin-backed MinIO
+	if compat.V15() && !minioPluginInstalled() {
 		return nil
 	}
 	if cfg.Env != "prod" && cfg.Env != "staging" {
@@ -169,4 +180,11 @@ func validatePort(name, value string) error {
 			name, n, errs.ErrInvalidPort)
 	}
 	return nil
+}
+
+// minioPluginInstalled reports whether the minio plugin manifest is installed
+// in the global plugin directory (the same rule as compose's E138 check).
+func minioPluginInstalled() bool {
+	info, err := os.Stat(filepath.Join(DefaultPluginDir(), "minio", "plugin.json"))
+	return err == nil && !info.IsDir()
 }

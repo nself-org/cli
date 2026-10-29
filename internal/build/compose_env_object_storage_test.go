@@ -121,7 +121,7 @@ func TestComposeEnvOpsProfileOmitsObjectStore(t *testing.T) {
 	cfg := &config.Config{ProjectName: "ops-test"}
 	cfg.Minio.Region = "us-east-1"
 
-	vars := computePluginEnvVarsForProfile(workdir, pluginDir, cfg, false)
+	vars := computePluginEnvVars(workdir, pluginDir, cfg, false)
 	if err := WriteComposeEnv(workdir, cfg, nil, vars); err != nil {
 		t.Fatal(err)
 	}

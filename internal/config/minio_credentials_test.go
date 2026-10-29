@@ -15,11 +15,16 @@ package config
 // SPORT: F09 — MINIO_ROOT_USER, MINIO_ROOT_PASSWORD annotated as blocked-in-prod.
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/nself-org/cli/internal/compat/compattest"
 )
 
 func TestValidateMinioCredentialsDisabled(t *testing.T) {
+	compattest.Set(t, false)
 	for _, env := range []string{"prod", "staging"} {
 		cfg := &Config{Env: env, Minio: MinioConfig{RootUser: "minioadmin", RootPassword: "minioadmin"}}
 		if err := ValidateMinioCredentials(cfg); err != nil {
@@ -32,6 +37,7 @@ func TestValidateMinioCredentialsDisabled(t *testing.T) {
 }
 
 func TestValidateMinioCredentials_ProdMinioadmin_ReturnsError(t *testing.T) {
+	compattest.Set(t, false)
 	cfg := &Config{
 		Env: "prod",
 		Minio: MinioConfig{
@@ -50,6 +56,7 @@ func TestValidateMinioCredentials_ProdMinioadmin_ReturnsError(t *testing.T) {
 }
 
 func TestValidateMinioCredentials_StagingMinioadmin_ReturnsError(t *testing.T) {
+	compattest.Set(t, false)
 	cfg := &Config{
 		Env: "staging",
 		Minio: MinioConfig{
@@ -65,6 +72,7 @@ func TestValidateMinioCredentials_StagingMinioadmin_ReturnsError(t *testing.T) {
 }
 
 func TestValidateMinioCredentials_DevMinioadmin_ReturnsNil(t *testing.T) {
+	compattest.Set(t, false)
 	cfg := &Config{
 		Env: "dev",
 		Minio: MinioConfig{
@@ -80,6 +88,7 @@ func TestValidateMinioCredentials_DevMinioadmin_ReturnsNil(t *testing.T) {
 }
 
 func TestValidateMinioCredentials_ProdStrongCredentials_ReturnsNil(t *testing.T) {
+	compattest.Set(t, false)
 	cfg := &Config{
 		Env: "prod",
 		Minio: MinioConfig{
@@ -95,6 +104,7 @@ func TestValidateMinioCredentials_ProdStrongCredentials_ReturnsNil(t *testing.T)
 }
 
 func TestValidateMinioCredentials_ProdShortPassword_ReturnsError(t *testing.T) {
+	compattest.Set(t, false)
 	cfg := &Config{
 		Env: "prod",
 		Minio: MinioConfig{
@@ -113,6 +123,7 @@ func TestValidateMinioCredentials_ProdShortPassword_ReturnsError(t *testing.T) {
 }
 
 func TestValidateMinioCredentials_ProdEmptyUser_ReturnsError(t *testing.T) {
+	compattest.Set(t, false)
 	cfg := &Config{
 		Env: "prod",
 		Minio: MinioConfig{
@@ -128,6 +139,7 @@ func TestValidateMinioCredentials_ProdEmptyUser_ReturnsError(t *testing.T) {
 }
 
 func TestValidateMinioCredentials_ProdMinioadminPassword_StrongUser_ReturnsError(t *testing.T) {
+	compattest.Set(t, false)
 	cfg := &Config{
 		Env: "prod",
 		Minio: MinioConfig{
@@ -142,5 +154,44 @@ func TestValidateMinioCredentials_ProdMinioadminPassword_StrongUser_ReturnsError
 	}
 	if !strings.Contains(err.Error(), "MINIO_ROOT_PASSWORD") {
 		t.Errorf("expected MINIO_ROOT_PASSWORD in error, got: %s", err.Error())
+	}
+}
+
+// D-0685: v1.5 skips the credential guard while the minio plugin is missing (E138 refuses
+// the build with the real remedy); plugin-backed MinIO and v1.4 keep the guard.
+func TestValidateMinioCredentials_PluginGate(t *testing.T) {
+	weak := func(env string) *Config {
+		return &Config{Env: env, Minio: MinioConfig{Enabled: true, RootUser: "minioadmin", RootPassword: "minioadmin"}}
+	}
+	for _, tc := range []struct {
+		name      string
+		v15       bool
+		installed bool
+		wantErr   bool
+	}{
+		{"v14-no-plugin", false, false, true},
+		{"v14-plugin", false, true, true},
+		{"v15-no-plugin", true, false, false},
+		{"v15-plugin", true, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			compattest.Set(t, tc.v15)
+			dir := t.TempDir()
+			t.Setenv("NSELF_PLUGIN_DIR", dir)
+			if tc.installed {
+				if err := os.MkdirAll(filepath.Join(dir, "minio"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "minio", "plugin.json"), []byte("{}"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, env := range []string{"prod", "staging"} {
+				err := ValidateMinioCredentials(weak(env))
+				if (err != nil) != tc.wantErr {
+					t.Errorf("%s: err=%v, wantErr=%v", env, err, tc.wantErr)
+				}
+			}
+		})
 	}
 }

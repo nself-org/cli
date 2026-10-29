@@ -10,6 +10,8 @@ package config
 import (
 	"strings"
 	"testing"
+
+	"github.com/nself-org/cli/internal/compat/compattest"
 )
 
 // TestApplyDefaultsMinioDisabledProdLoads: a prod project with MinIO off and
@@ -27,6 +29,8 @@ func TestApplyDefaultsMinioDisabledProdLoads(t *testing.T) {
 // TestApplyDefaultsMinioEnabledProdRejectsDefaults: with MinIO on, prod still
 // refuses the built-in minioadmin credentials.
 func TestApplyDefaultsMinioEnabledProdRejectsDefaults(t *testing.T) {
+	// The legacy built-in service enforces credentials without an installed plugin.
+	compattest.Set(t, false)
 	cfg := &Config{Env: "prod", Minio: MinioConfig{Enabled: true}}
 	err := applyDefaultsMinio(cfg)
 	if err == nil || !strings.Contains(err.Error(), "MINIO_ROOT_USER") {

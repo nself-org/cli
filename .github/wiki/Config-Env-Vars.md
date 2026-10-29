@@ -349,7 +349,7 @@ These variables configure core SeaweedFS in v1.5 mode (`NSELF_V15=1`). Core obje
 | Variable | Type | Default | Required | Description |
 |---|---|---|---|---|
 | `OBJECT_STORAGE_ENABLED` | bool | `false` | No | Generate core `seaweedfs` and `seaweedfs-init` services in v1.5 mode. Ignored in v1.4 mode. |
-| `OBJECT_STORAGE_BUCKETS` | string | *(empty)* | No | Comma-separated S3 bucket names to create idempotently after SeaweedFS is healthy. Empty creates none. Names must be 3–63 characters using lowercase letters, digits, hyphens or dots, following S3 naming rules. |
+| `OBJECT_STORAGE_BUCKETS` | string | *(empty)* | No | Comma-separated S3 bucket names to create idempotently after SeaweedFS is healthy. Empty creates none. Names must be 3–63 characters using lowercase letters, digits, hyphens or dots, following S3 naming rules. Custom services get the full list as `S3_BUCKETS` and one name (an explicit `S3_BUCKET`, else the first) as `S3_BUCKET`. |
 | `SEAWEEDFS_PORT` | int | `8333` | No | Host S3 port, from 1 through 65535. Published only as `127.0.0.1:<port>:8333`; internal custom-service endpoint remains `http://seaweedfs:8333`. |
 | `SEAWEEDFS_VERSION` | string | *(image lock default)* | No | Override the SeaweedFS image version for both the server and bucket bootstrap services. Empty uses the image lock. |
 | `S3_ACCESS_KEY` | string | *(unset)* | Yes, with core object storage | S3 identity access key. Keep in `.env.secrets`; must be nonempty and contain neither double quotes nor backslashes. |
