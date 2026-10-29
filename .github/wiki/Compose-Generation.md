@@ -70,7 +70,7 @@ The compose file is assembled in this order. Services later in the list can depe
 4. **Custom**, `CS_1` through `CS_10`
 5. **Plugins**, loaded from `~/.nself/plugins/`, in install order
 
-Object storage selection depends on the project version. A v1.5 project (`NSELF_V15=1`) generates `seaweedfs` and its `seaweedfs-init` sidecar when `OBJECT_STORAGE_ENABLED=true`; MinIO is no longer emitted by default and must be added explicitly with `nself add minio` (which fails with [[error-codes#e138]] when seaweedfs is already present). A v1.4 project keeps the original `minio` + `minio-init` pair. See [[Object-Storage]] for migration and configuration details.
+Object storage selection depends on the project version. A v1.5 project (`NSELF_V15=1`) generates `seaweedfs` and its `seaweedfs-init` sidecar when `OBJECT_STORAGE_ENABLED=true`; MinIO is no longer emitted by default and must be added explicitly with `nself add minio`. A build that wants MinIO (`MINIO_ENABLED=true`) without the minio plugin installed fails with [[error-codes#e138]] before any file is written. A v1.4 project keeps the original `minio` + `minio-init` pair. See [[Object-Storage]] for migration and configuration details.
 
 ---
 
