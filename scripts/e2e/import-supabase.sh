@@ -27,7 +27,8 @@ FIXTURE_PASSWORD=$(rand 24)
 FIXTURE_JWT_SECRET=$(rand 32)
 FIXTURE_ANON_KEY=$(jwt anon)
 FIXTURE_SERVICE_KEY=$(jwt service_role)
-export FIXTURE_PORT=${FIXTURE_PORT:-$((22000 + RANDOM % 20000))}
+# Fixture ports stay below 32768, the bottom of the Linux ephemeral range: a higher port can be taken by an outbound connection (image pulls) between pick and bind.
+export FIXTURE_PORT=${FIXTURE_PORT:-$((20000 + RANDOM % 10000))}
 export FIXTURE_AUTH_PORT=$((FIXTURE_PORT + 1))
 export TARGET_PG_PORT=$((FIXTURE_PORT + 2)) TARGET_HASURA_PORT=$((FIXTURE_PORT + 3)) TARGET_AUTH_PORT=$((FIXTURE_PORT + 4)) TARGET_HTTP_PORT=$((FIXTURE_PORT + 5)) TARGET_HTTPS_PORT=$((FIXTURE_PORT + 6)) TARGET_S3_PORT=$((FIXTURE_PORT + 7))
 export FIXTURE_STORAGE_PORT=$((FIXTURE_PORT + 8))

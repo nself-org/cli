@@ -13,7 +13,8 @@ export TMPDIR="$W"
 # nself build generates the local TLS certificate with openssl when mkcert is absent.
 command -v openssl >/dev/null 2>&1 || apk add -q openssl >/dev/null 2>&1 || true
 rand() { od -An -N"$1" -tx1 /dev/urandom | tr -d ' \n'; }
-BASE=${FB_BASE_PORT:-$((22000 + RANDOM % 20000))}
+# Fixture ports stay below 32768, the bottom of the Linux ephemeral range: a higher port can be taken by an outbound connection (image pulls) between pick and bind.
+BASE=${FB_BASE_PORT:-$((20000 + RANDOM % 10000))}
 export FB_FIRESTORE_PORT=$BASE FB_AUTH_PORT=$((BASE + 1)) FB_STORAGE_PORT=$((BASE + 2))
 export SEAWEEDFS_PORT=$((BASE + 8))
 export TARGET_PG_PORT=$((BASE + 3)) TARGET_HASURA_PORT=$((BASE + 4)) TARGET_AUTH_PORT=$((BASE + 5)) TARGET_HTTP_PORT=$((BASE + 6)) TARGET_HTTPS_PORT=$((BASE + 7))
