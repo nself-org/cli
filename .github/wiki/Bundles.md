@@ -20,6 +20,8 @@ How `nself bundle install` reaches an app-ready stack, and how nself records whi
 
 The first failing step stops the run; later steps show `skipped`. Outside an nSelf project the plugins are installed and recorded, the later steps are skipped, and the output says `NOT VERIFIED`; the exit code stays 0.
 
+If reconcile fails or is refused (including E403, E480 and E481), the install removes the members it newly added and their ledger records, and restores prior bundle ownership. Existing members and their schemas stay intact, including schemas kept by an earlier removal. Cleanup errors are returned alongside the reconcile error; a member that could not be removed keeps its ledger record. A failure in a later app-ready step keeps the installed members for a retry.
+
 `nself bundle install <bundle> --dry-run` prints the nine steps as `planned` and changes nothing: no files, no ledger, no hooks.
 
 A bundle that is not app-ready fails with **E135** (exit 2) naming the bundle, the step and the plugin. Starting the stack and the readiness, tracking and health steps are `NSELF_V15=1` behaviour. With `NSELF_V15` off the command installs, records the ledger and reconciles (a failed reconcile is an error in both modes), prints those four steps as `skipped` / `not verified (v1.5 behaviour, NSELF_V15=1)`, ends with `NOT VERIFIED` instead of `APP-READY`, and exits 0. A free bundle skips the ping_api bundle entitlement call; each plugin's licence is still checked. Rerun the command after fixing the cause; members that are already installed are not reinstalled.

@@ -13,6 +13,7 @@ import (
 	"os"
 
 	"github.com/nself-org/cli/internal/build"
+	"github.com/nself-org/cli/internal/bundle/appready"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/errs"
@@ -66,15 +67,22 @@ func reconcileAfterExtension(cmd *cobra.Command, trigger reconcile.Trigger) erro
 			return errs.New("E403", "extension files changed but regeneration needs confirmation").
 				WithWhy(err.Error()).WithFix("review the pending change with 'nself build --plan', then rerun with --yes (and --force for hand-edited files)")
 		}
-		return fmt.Errorf("regenerating %s:%s: %w", trigger.Kind, trigger.Subject, err)
+		wrapped := fmt.Errorf("regenerating %s:%s: %w", trigger.Kind, trigger.Subject, err)
+		if errors.Is(err, reconcile.ErrPublished) {
+			// The files were written and kept: a bundle install keeps its plugins.
+			return appready.Committed(wrapped)
+		}
+		return wrapped
 	}
+	// Apply wrote the generated files: from here a failure is post-commit, and
+	// a bundle install must keep its plugins (the files reference them).
 	if err := swapContainers(context.Background(), cmd, projectDir, plan); err != nil {
-		return err
+		return appready.Committed(err)
 	}
 	if plan.RequiresConfirmation || len(reconcile.HandEditedPaths(*plan)) > 0 {
 		return nil // Apply already printed the plan before its confirmation gate.
 	}
-	return reconcile.RenderHuman(cmd.ErrOrStderr(), *plan)
+	return appready.Committed(reconcile.RenderHuman(cmd.ErrOrStderr(), *plan))
 }
 
 // Seams for the container half of an extension reconcile; tests replace them.

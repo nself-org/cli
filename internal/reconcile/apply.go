@@ -193,6 +193,7 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (applied *Pl
 	wopts.Force = wopts.Force || !p.Empty
 	res, err := buildWithEnv(req.ProjectDir, wopts, req.resolvedEnv, buildBuild)
 	if err != nil {
+		err = buildFailure(err, res, opt)
 		return nil, nil, err
 	}
 	// P7-LIVE-04 (EPIC D5): the record is written only now that the whole
@@ -203,6 +204,11 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (applied *Pl
 	// the record artifact, so plan == apply holds for the record too.
 	firstRecorded := state == nil
 	if err := writeRecord(req.ProjectDir, c.record); err != nil {
+		// The files stay unless the caller's Rollback (run by the deferred
+		// rollbackOnFailure) restores them; only then is the failure not post-publication.
+		if opt.Rollback == nil {
+			err = published(err)
+		}
 		return nil, nil, err
 	}
 	if firstRecorded && req.Stderr != nil {
@@ -265,16 +271,13 @@ func short(id string) string {
 	return id
 }
 
-// seededRand is a SHA-256 counter-mode byte stream: the same seed yields the
-// same bytes, and the stream is as strong as the seed (32 random bytes from
-// crypto/rand in Apply).
+// seededRand is a SHA-256 counter-mode byte stream seeded by crypto/rand.
 type seededRand struct {
 	seed []byte
 	ctr  uint64
 	buf  []byte
 }
 
-// newSeededRand returns a reader over the stream of seed.
 func newSeededRand(seed []byte) io.Reader {
 	return &seededRand{seed: append([]byte(nil), seed...)}
 }

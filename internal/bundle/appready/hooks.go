@@ -26,6 +26,27 @@ import (
 // plugins are installed, but there is no stack to reconcile, start or check.
 var ErrNoProject = errors.New("not in an nSelf project")
 
+// ErrCommitted marks a Reconcile failure that happened after the generated
+// files were written (a container swap that did not finish). The installed
+// plugins are then referenced by committed configuration, so the install must
+// not be undone. Wrap with Committed; test with errors.Is.
+var ErrCommitted = errors.New("generated files were already written")
+
+type committedError struct{ err error }
+
+func (c *committedError) Error() string        { return c.err.Error() }
+func (c *committedError) Unwrap() error        { return c.err }
+func (c *committedError) Is(target error) bool { return target == ErrCommitted }
+
+// Committed marks err as a failure after the generated files were committed;
+// the message and the wrapped chain are unchanged. A nil err stays nil.
+func Committed(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &committedError{err: err}
+}
+
 // Hooks are the project-level operations the post-install steps call.
 // A nil function skips its step and marks the report unverified.
 type Hooks struct {

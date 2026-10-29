@@ -1,14 +1,8 @@
 package build
 
-// sink.go — Sink serves write and plan modes (P7-LIVE-21).
-//
-// Purpose: diskSink writes; memSink records mutations and overlays disk reads.
-// Inputs: project-relative or absolute paths, canonicalised relative to the
-// project root or as "@fronting/<name>" for the fronting nginx/sites directory.
-// Outputs: PlannedBuild (files, modes, removals, effects) from memSink.
-// Constraints: memSink never writes or creates a directory; internal/build must
-// not import internal/reconcile (P7-GUARD), so the store is a plain PlannedFile
-// map that P7-LIVE-03 converts.
+// Sink serves write and plan modes (P7-LIVE-21). diskSink writes; memSink
+// overlays mutations without disk writes. Keys are project-relative, absolute,
+// or @fronting paths. Plain PlannedBuild data avoids importing reconcile.
 
 import (
 	"errors"
@@ -48,6 +42,8 @@ type Sink interface {
 	// WriteAtomic writes via temp file + rename; the final mode is exactly perm.
 	WriteAtomic(path string, data []byte, perm fs.FileMode) error
 	Remove(path string) error
+	// RemoveWithin confines an unlink to an already opened cleanup directory.
+	RemoveWithin(root *os.Root, relative, path string) error
 	Chmod(path string, perm fs.FileMode) error
 	MkdirAll(path string, perm fs.FileMode) error
 	ReadFile(path string) ([]byte, error)
@@ -158,7 +154,7 @@ func (m *memSink) Remove(p string) error {
 	if _, planned := m.files[k]; planned {
 		delete(m.files, k)
 		// Removing a planned file also hides an older on-disk copy, if any.
-		if _, err := os.Stat(m.abs(p)); err == nil {
+		if _, err := os.Lstat(m.abs(p)); err == nil {
 			m.removed[k] = true
 		}
 		return nil
@@ -166,7 +162,7 @@ func (m *memSink) Remove(p string) error {
 	if m.removed[k] {
 		return &fs.PathError{Op: "remove", Path: p, Err: fs.ErrNotExist}
 	}
-	if _, err := os.Stat(m.abs(p)); err != nil {
+	if _, err := os.Lstat(m.abs(p)); err != nil {
 		return err
 	}
 	m.removed[k] = true
@@ -284,7 +280,6 @@ func (m *memSink) snapshot() *PlannedBuild {
 	return pb
 }
 
-// memInfo is the fs.FileInfo of a planned file or directory.
 type memInfo struct {
 	name string
 	size int64

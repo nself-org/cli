@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	nbuild "github.com/nself-org/cli/internal/build"
+	"github.com/nself-org/cli/internal/errs"
 )
 
 func TestStateFaultInjection(t *testing.T) {
@@ -501,5 +502,86 @@ func TestStateApplyRecordWriteFails(t *testing.T) {
 	rec1, err := os.ReadFile(GeneratedStatePath(f.project))
 	if err != nil || string(rec1) != string(rec0) {
 		t.Fatalf("the old record must stay in place (%v)", err)
+	}
+}
+
+// A record that cannot be written fails the apply after the generated files are
+// published and kept: the error must match ErrPublished so a caller that
+// installed plugins for this apply keeps them. A failure before the write must not.
+func TestApplyRecordWriteFailureIsPublished(t *testing.T) {
+	f := loadFixture(t, "dev-minimal")
+	_ = os.RemoveAll(filepath.Join(f.project, ".nself", "state"))
+	oldBuild := buildBuild
+	t.Cleanup(func() { buildBuild = oldBuild })
+	buildBuild = func(projectDir string, opts nbuild.BuildOptions) (*nbuild.BuildResult, error) {
+		if err := os.WriteFile(filepath.Join(projectDir, "docker-compose.yml"), []byte("published"), 0o644); err != nil {
+			return nil, err
+		}
+		// The record path now holds a non-empty directory: the rename fails.
+		if err := os.MkdirAll(filepath.Join(GeneratedStatePath(projectDir), "occupied"), 0o755); err != nil {
+			return nil, err
+		}
+		return &nbuild.BuildResult{}, nil
+	}
+	req := Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, Seed: []byte("seed")}
+	_, err := Apply(context.Background(), req, ApplyOptions{Yes: true})
+	if err == nil || !errors.Is(err, ErrPublished) {
+		t.Fatalf("err = %v, want an error matching ErrPublished", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(f.project, "docker-compose.yml")); statErr != nil {
+		t.Fatalf("the published file is gone: %v", statErr)
+	}
+
+	// A write build that fails publishes nothing the caller must keep.
+	buildBuild = func(string, nbuild.BuildOptions) (*nbuild.BuildResult, error) { return nil, errors.New("write failed") }
+	_ = os.RemoveAll(filepath.Join(f.project, ".nself", "state"))
+	if _, err := Apply(context.Background(), req, ApplyOptions{Yes: true}); err == nil || errors.Is(err, ErrPublished) {
+		t.Fatalf("err = %v, want a failure without ErrPublished", err)
+	}
+}
+
+// An E125 entitlement refresh failure comes back from Build after every
+// generated file was written, with a completed result. The apply fails but the
+// files stay, so the error must match ErrPublished; a failure with no result
+// (nothing committed) or with a caller Rollback that restores the files must not.
+func TestApplyEntitlementRefreshFailureIsPublished(t *testing.T) {
+	f := loadFixture(t, "dev-minimal")
+	_ = os.RemoveAll(filepath.Join(f.project, ".nself", "state"))
+	oldBuild := buildBuild
+	t.Cleanup(func() { buildBuild = oldBuild })
+	refresh := &nbuild.EntitlementRefreshError{Err: errs.New("E125", "plugin entitlement unavailable")}
+	buildBuild = func(projectDir string, opts nbuild.BuildOptions) (*nbuild.BuildResult, error) {
+		if err := os.WriteFile(filepath.Join(projectDir, "docker-compose.yml"), []byte("published"), 0o644); err != nil {
+			return nil, err
+		}
+		return &nbuild.BuildResult{}, refresh
+	}
+	req := Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, Seed: []byte("seed")}
+	_, err := Apply(context.Background(), req, ApplyOptions{Yes: true})
+	if err == nil || !errors.Is(err, ErrPublished) {
+		t.Fatalf("err = %v, want an error matching ErrPublished", err)
+	}
+	if !errors.Is(err, refresh) {
+		t.Fatalf("err = %v, want the E125 cause kept on the chain", err)
+	}
+
+	if data, readErr := os.ReadFile(filepath.Join(f.project, "docker-compose.yml")); readErr != nil || string(data) != "published" {
+		t.Fatalf("published artifacts must remain after E125: %q, %v", data, readErr)
+	}
+	if detail := errs.Describe(err); detail == nil || detail.Code != "E125" || errs.ExitCodeFor(err) != 3 {
+		t.Fatalf("publication mark lost the entitlement error identity: %v", err)
+	}
+
+	// The caller's Rollback restores the files: nothing stays published.
+	rolled := false
+	opt := ApplyOptions{Yes: true, Rollback: func() error { rolled = true; return nil }}
+	if _, err := Apply(context.Background(), req, opt); err == nil || errors.Is(err, ErrPublished) || !rolled {
+		t.Fatalf("err = %v, rolled = %v, want a rolled-back failure without ErrPublished", err, rolled)
+	}
+
+	// No completed result: Build stopped before it committed.
+	buildBuild = func(string, nbuild.BuildOptions) (*nbuild.BuildResult, error) { return nil, refresh }
+	if _, err := Apply(context.Background(), req, ApplyOptions{Yes: true}); err == nil || errors.Is(err, ErrPublished) {
+		t.Fatalf("err = %v, want a failure without ErrPublished", err)
 	}
 }

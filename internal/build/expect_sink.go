@@ -1,19 +1,8 @@
 package build
 
-// expect_sink.go — a write-mode Sink that holds a build to a confirmed render
-// (P7-LIVE-03, review M3 / EPIC ruling B).
-//
-// Purpose: `nself build` shows a plan, asks for confirmation, then writes. The
-// write must be that render and nothing else, even if an input changed after
-// the plan was made. expectSink stages the render: every write must carry
-// exactly the bytes the confirmed render planned for that path, every removal
-// and chmod must be one it planned, and anything else stops the build with an
-// error before publishing any artifact. After the build, verify checks the
-// complete staged render; commit publishes it with rollback on failure.
-// Inputs: the PlannedBuild of the confirmed render (BuildOptions.Expect).
-// Outputs: errors naming the path that deviated.
-// Constraints: write mode only; reads see staged writes before disk.
-// Effects are not asserted here (they run through writeEffects).
+// expectSink stages exactly the confirmed render (P7-LIVE-03): unplanned bytes,
+// removals or modes fail before publication. Reads overlay staged writes on disk.
+// Commit verifies completeness and publishes with rollback; host effects are separate.
 
 import (
 	"bytes"
@@ -28,13 +17,11 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 )
 
-// deviationError is a write, removal or chmod that is not part of the
-// confirmed render.
+// deviationError identifies an operation outside the confirmed render.
 type deviationError struct{ msg string }
 
 func (e *deviationError) Error() string { return e.msg }
 
-// errDeviated builds a deviationError.
 func errDeviated(path, why string) error {
 	return &deviationError{msg: fmt.Sprintf("the project changed after the plan was made: %s %s; nothing further was written (re-run nself build --plan)", path, why)}
 }
@@ -42,12 +29,13 @@ func errDeviated(path, why string) error {
 // expectSink is the checking disk sink.
 type expectSink struct {
 	*diskSink
-	exp        *PlannedBuild
-	keyr       *memSink // canonicalises paths exactly as plan mode did
-	dirs       map[string]fs.FileMode
-	atomic     map[string]bool
-	chmods     map[string]fs.FileMode
-	writeModes map[string]fs.FileMode
+	exp          *PlannedBuild
+	keyr         *memSink // canonicalises paths exactly as plan mode did
+	dirs         map[string]fs.FileMode
+	atomic       map[string]bool
+	chmods       map[string]fs.FileMode
+	writeModes   map[string]fs.FileMode
+	cleanupRoots map[string]fs.FileInfo
 }
 
 func newExpectSink(root string, exp *PlannedBuild) *expectSink {
@@ -102,6 +90,20 @@ func (e *expectSink) Remove(p string) error {
 		return errDeviated(k, "would be removed but the plan does not remove it")
 	}
 	return e.keyr.Remove(p)
+}
+
+// RemoveWithin stages an unlink and remembers the cleanup directory identity
+// so deferred publication cannot be redirected to a different directory.
+func (e *expectSink) RemoveWithin(root *os.Root, _ string, p string) error {
+	info, err := root.Stat(".")
+	if err != nil {
+		return err
+	}
+	if e.cleanupRoots == nil {
+		e.cleanupRoots = map[string]fs.FileInfo{}
+	}
+	e.cleanupRoots[root.Name()] = info
+	return e.Remove(p)
 }
 
 func (e *expectSink) Chmod(p string, perm fs.FileMode) error {
