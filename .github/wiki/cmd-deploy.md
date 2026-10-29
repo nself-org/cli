@@ -507,13 +507,14 @@ Compare the fingerprint with the one your provider shows (console or `ssh-keygen
 `--trust-host-key`, or ssh to the host once and accept the key. Before P7-DEPL-28 and P7-DEPL-29 the v1.4
 secrets push and env-shipping deploys accepted any key on first contact (`accept-new`).
 
-IP-address hosts are pinned under the alias `nself+<ip>+<port>` (for example
-`nself+203.0.113.10+22`) and ssh gets a matching `HostKeyAlias`; hosts with an explicit port use
-`nself+<host>+<port>`, preserving IPv6 colons. These aliases cannot equal a real hostname.
-Existing `nself-<host>-<port>` pins remain readable when no new alias pin exists;
-lookup never rewrites them. Re-enroll verified keys with `--trust-host-key` to use
-the new namespace. Ordinary `nself-*` hostnames remain valid.
-A pin file holding a line the CLI did not write (a wildcard,
+Deploy, `nself admin` and `nself access` share one pin alias. A host name on port 22 (or no port) is pinned
+under the bare name. An IP address, or any host on another port, is pinned under `nself+<host>+<port>`
+(for example `nself+203.0.113.10+22` or `nself+host.example+2222`) and ssh gets a matching `HostKeyAlias`.
+`+` cannot appear in a host name, so two endpoints never share a pin, and `host:22` is the same pin as
+`host`. Ordinary `nself-*` hostnames remain valid; they are pinned under `nself+<host>+<port>` so a new pin
+never lands in the old alias namespace, and a bare `nself-*` pin from an older release needs one re-enrolment
+with `--trust-host-key`. Pins an older release wrote as `nself-<host>-<port>` are copied to the new alias the
+first time the presented key matches; the old line is never rewritten and can be deleted by hand. A pin file holding a line the CLI did not write (a wildcard,
 `@cert-authority` or hashed entry) or with group- or world-writable permissions is refused with
 `E487`; fix or remove that line and pin again.
 

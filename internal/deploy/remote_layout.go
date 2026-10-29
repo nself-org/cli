@@ -189,8 +189,6 @@ type KeptConfD struct {
 // deploy must not ship (D-0424): the path exists as a regular file with no line
 // in its first 5 starting with BuildNginxMarker, or is a symlink or anything that
 // is not a regular file. Also, when nginx/conf.d/default.conf is absent on the
-// host and any other regular *.conf file (the only names nginx.conf.tmpl includes,
-// so default.conf.bak does not count) under nginx/conf.d*/ or nginx/sites/ has a
 // listen line with default_server, our default.conf is kept out (reason
 // DefaultServerIn), since two default servers fail nginx -t. The previous
 // deploy's record and the host's shipped list are ignored for conf.d: the host

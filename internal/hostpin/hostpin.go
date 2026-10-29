@@ -1,16 +1,14 @@
-// Package hostpin provides SSH host-key pin alias resolution for callers that
-// do their own pin lookup (admin connect, access). It lives at L0 (stdlib
-// only, the sdk fingerprint parser is injected) so L1 packages can resolve a pin
-// alias without importing internal/deploy (L2).
+// Package hostpin holds the deploy pin file location and the ssh-keygen pin
+// lookup shared by deploy callers. It lives at L0 (stdlib only, the sdk
+// fingerprint parser is injected). The pin alias itself is remote.PinAlias, the
+// one scheme deploy, admin connect and access share (D-0463).
 package hostpin
 
 import (
 	"context"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
@@ -29,24 +27,6 @@ func HostPort(port int) int {
 	return port
 }
 
-// KeyAlias is the pin alias for host and port. A port or an IP literal needs a
-// synthetic alias: the sdk refuses an IP literal as a pin alias. '+' is
-// allowed in pin aliases but forbidden in host names, keeping the namespaces
-// disjoint.
-func KeyAlias(host string, port int) string {
-	if port != 0 || net.ParseIP(host) != nil {
-		return "nself+" + host + "+" + strconv.Itoa(HostPort(port))
-	}
-	return host
-}
-
-// LegacyKeyAlias is the v1.4.13 spelling of the IP/port pin alias. It can
-// equal a real host name, so it is only ever read, and only when no pin exists
-// under the new alias (D-0696).
-func LegacyKeyAlias(host string, port int) string {
-	return "nself-" + strings.ReplaceAll(host, ":", "-") + "-" + strconv.Itoa(HostPort(port))
-}
-
 // TrustedFingerprints returns the fingerprints ssh-keygen reports for alias in
 // path, each line parsed by fp (the sdk remote.Fingerprint; injected so this
 // package stays at L0). Errors are swallowed: the caller treats an empty set as
@@ -63,17 +43,4 @@ func TrustedFingerprints(ctx context.Context, alias, path string, fp func(string
 		}
 	}
 	return seen
-}
-
-// PinAlias returns the HostKeyAlias to give ssh for a host with an explicit
-// port or an IP literal. It is the new alias unless only a v1.4.13 pin exists.
-func PinAlias(ctx context.Context, host string, port int, fp func(string) (string, error)) string {
-	alias := KeyAlias(host, port)
-	if alias == host || len(TrustedFingerprints(ctx, alias, KnownHostsPath(), fp)) != 0 {
-		return alias
-	}
-	if legacy := LegacyKeyAlias(host, port); len(TrustedFingerprints(ctx, legacy, KnownHostsPath(), fp)) != 0 {
-		return legacy
-	}
-	return alias
 }

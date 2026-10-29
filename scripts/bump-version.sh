@@ -24,8 +24,8 @@
 #   1.  cli/.github/VERSION
 #   2.  cli/internal/version/version.go       Version string = "x.y.z" (type-annotated)
 #   3.  cli/sdk/go/doc.go                     const Version = "x.y.z"
-#   4.  cli/sdk/ts/package.json               "version": "x.y.z"   (via jq)
-#   5.  cli/sdk/ts-sdk/package.json           "version": "x.y.z"   (via jq)
+#   4.  cli/sdk/*/package.json                "version": "x.y.z"   (via jq; every TS package
+#                                             found under sdk/: ts, ts-sdk, ts-cli-api, ...)
 #   6.  cli/sdk/py/pyproject.toml             version = "x.y.z" under [project]
 #   7.  admin/package.json                    "version": "x.y.z"   (via jq)
 #   8.  admin/src/lib/cli-version.ts          CLI_VERSION = 'x.y.z'
@@ -102,7 +102,7 @@ fi
 # ── Tool availability checks ──────────────────────────────────────────────────
 
 if ! command -v jq >/dev/null 2>&1; then
-  printf 'ERROR: jq is required for JSON file bumps (sdk/ts/package.json, sdk/ts-sdk/package.json, admin/package.json)\n' >&2
+  printf 'ERROR: jq is required for JSON file bumps (sdk/*/package.json, admin/package.json)\n' >&2
   printf '  Install: brew install jq  (macOS)  |  apt-get install jq  (Linux)\n' >&2
   exit 1
 fi
@@ -114,9 +114,7 @@ VERSION_FILE="${REPO_ROOT}/.github/VERSION"
 OLD_VERSION="$(tr -d '[:space:]' < "${VERSION_FILE}" 2>/dev/null || true)"
 VERSION_GO="${REPO_ROOT}/internal/version/version.go"
 SDK_GO="${REPO_ROOT}/sdk/go/doc.go"
-SDK_TS="${REPO_ROOT}/sdk/ts/package.json"
 SDK_PY="${REPO_ROOT}/sdk/py/pyproject.toml"
-SDK_TS_SDK="${REPO_ROOT}/sdk/ts-sdk/package.json"
 # SDK_FLUTTER removed 2026-06-30 (#159, ASI Policy 2)
 ADMIN_PKG="${NSELF_ROOT}/admin/package.json"
 ADMIN_CLIVER="${NSELF_ROOT}/admin/src/lib/cli-version.ts"
@@ -248,17 +246,24 @@ update_sdk_go_doc() {
   report "${f}" "${old}" "${NEW_VERSION}"
 }
 
-update_sdk_ts_pkg() {
-  update_json_version "${SDK_TS}"
-}
-
-# sdk/ts-sdk/package.json — the @nself/sdk consumer client (NselfClient),
-# distinct from sdk/ts (@nself/plugin-sdk). Publishes in lockstep with the
-# CLI per sdk-ts-sdk-publish.yml ("Triggers on: cli release tag (v*)").
-# Added 2026-07-06 after #179 (missing from this bumper caused @nself/sdk
-# to lag at 1.1.9 while VERSION moved to 1.2.4 — SDK Version Coherence fail).
-update_sdk_ts_sdk_pkg() {
-  update_json_version "${SDK_TS_SDK}"
+# Every sdk/*/package.json is one npm package that ships in lockstep with the CLI
+# (sdk/ts = @nself/plugin-sdk, sdk/ts-sdk = @nself/sdk, sdk/ts-cli-api = @nself/cli-api).
+# The packages are discovered, never listed by hand: a hand-kept list lost sdk/ts-sdk
+# once (#179, @nself/sdk lagged at 1.1.9) and sdk/ts-cli-api again at v1.4.15, where
+# SDK Version Sync went red on main. A new sdk/<name>/package.json is bumped from the
+# moment it exists. The same glob drives the lockstep checks in version-lockstep.yml
+# and check-version-lockstep.sh.
+update_sdk_ts_pkgs() {
+  local f n=0
+  for f in "${REPO_ROOT}"/sdk/*/package.json; do
+    [ -f "${f}" ] || continue
+    update_json_version "${f}"
+    n=$((n + 1))
+  done
+  if [ "${n}" -eq 0 ]; then
+    printf 'ERROR: no sdk/*/package.json found under %s\n' "${REPO_ROOT}" >&2
+    exit 1
+  fi
 }
 
 # pyproject.toml shape: `version = "2.0.0"` under [project]
@@ -558,13 +563,12 @@ if [ "${HOMEBREW}" = "true" ]; then
   exit 0
 fi
 
-printf 'Phase 1 — updating 11 lockstep files + 4 version-hash goldens (Homebrew deferred to phase 2)\n\n'
+printf 'Phase 1 — updating the lockstep files (every sdk/*/package.json included) + 4 version-hash goldens (Homebrew deferred to phase 2)\n\n'
 
 update_version_file
 update_version_go
 update_sdk_go_doc
-update_sdk_ts_pkg
-update_sdk_ts_sdk_pkg
+update_sdk_ts_pkgs
 update_sdk_py_pyproject
 update_admin_pkg
 update_admin_cliver

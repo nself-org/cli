@@ -11,6 +11,10 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `remote.PinAlias(HostSpec)`, `remote.LegacyPinAliases`, `PinnedHostKeys.MigrateLegacyPin` and
+  `PinnedHostKeys.EffectivePinAlias` (D-0463): one pin-file alias per endpoint, `nself+<host>+<port>`
+  (a host name cannot hold `+`), with port 22 and no port the same endpoint, and a one-time copy of a
+  pin held under the old `nself-<host>-<port>` alias.
 - Runtime entitlement APIs in `licensing` (P7-PLUG-24):
   `Guard(ctx, slug, next, ...GuardOption) *Middleware`,
   `VerifyEntitlement(slug, now) error`, `ErrEntitlementUnconfigured`,

@@ -4,5 +4,10 @@
   "tokens": {"version": "1.2.9", "release_signature": {"key_id": "plugins-0123456789abcdef", "alg": "ed25519", "sig": "AAAA"}},
   "rcnum": {"version": "1.3.0-rc.2", "release_signature": {"key_id": "plugins-0123456789abcdef", "alg": "ed25519", "sig": "AAAA"}},
   "rcmix": {"version": "1.4.0-1", "release_signature": {"key_id": "plugins-0123456789abcdef", "alg": "ed25519", "sig": "AAAA"}},
-  "unsigned-only": {"version": "1.2.9", "release_signature": null}
-}}
+  "unsigned-only": {"version": "1.2.9", "release_signature": null},
+  "numeric-prerelease": {"version": "1.2.3-rc.2", "release_signature": {"key_id": "test-key", "alg": "ed25519", "sig": "AAAA"}},
+  "numeric-before-text": {"version": "1.2.3-2a", "release_signature": {"key_id": "test-key", "alg": "ed25519", "sig": "AAAA"}},
+  "shorter-prerelease": {"version": "1.2.3-alpha", "release_signature": {"key_id": "test-key", "alg": "ed25519", "sig": "AAAA"}},
+  "hyphen-prerelease": {"version": "1.2.3-alpha-beta.2", "release_signature": {"key_id": "test-key", "alg": "ed25519", "sig": "AAAA"}},
+  "release-after-prerelease": {"version": "1.2.3-rc.2+build10", "release_signature": {"key_id": "test-key", "alg": "ed25519", "sig": "AAAA"}}
+ }}

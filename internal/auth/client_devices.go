@@ -5,7 +5,7 @@ package auth
 // Purpose: list and revoke authorized devices, transfer a license between devices, and parse auth server error responses, used by device-related commands, split out of client.go for file size.
 // Inputs: an account/session token and, for transfer/revoke, the target device id.
 // Outputs: DeviceEntry values, or an error from the auth server.
-// Constraints: pure move from client.go (CLI-R12 Batch E); no behaviour change.
+// Constraints: GetDevices maps a 404 to E225 (auth_server serves no /account/devices route); the rest is a pure move from client.go.
 
 import (
 	"bytes"
@@ -40,6 +40,9 @@ func GetDevices(ctx context.Context, accessToken string) ([]DeviceEntry, error) 
 		return nil, fmt.Errorf("getting devices: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, errServerLacksPath("/account/devices")
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, parseSessionError(resp)
 	}
@@ -110,6 +113,21 @@ func parseSessionError(resp *http.Response) error {
 		return ErrNotLoggedIn
 	}
 	return parseAPIError(resp)
+}
+
+// ServerLacksPathError means the auth server answered 404 for a path the CLI
+// calls but the server does not provide (never a raw 404, never an empty
+// list). Path is the route only, never a token or query. The command layer maps
+// it to E225 (internal/auth stays free of internal/errs, which keeps the
+// package fan-in of errs flat).
+type ServerLacksPathError struct{ Path string }
+
+func (e *ServerLacksPathError) Error() string {
+	return "this server does not provide " + e.Path
+}
+
+func errServerLacksPath(path string) error {
+	return &ServerLacksPathError{Path: path}
 }
 
 func parseAPIError(resp *http.Response) error {

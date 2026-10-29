@@ -40,7 +40,9 @@ Secret keys are any key whose name contains: SECRET, PASSWORD, KEY, TOKEN.`,
 var configGetCmd = &cobra.Command{
 	Use:   "get <key>",
 	Short: "Get a single configuration value",
-	Long: `Return the raw value of KEY from .env (or .env.{env} with --env).
+	Long: `Return the value of KEY from the same .env cascade used by build.
+Use --env to select the cascade environment; otherwise ENV selects it.
+Later layers override earlier ones, with .env.local winning by default.
 Output is the plain value only, making it safe for scripting.
 
 Exits non-zero if the key is not found.`,
