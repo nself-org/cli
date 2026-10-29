@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -27,7 +28,8 @@ func TestVerifyPinsOriginOnFirstUse(t *testing.T) {
 	if err != nil || !strings.Contains(string(raw), "\ngit@github.com:o/r.git\n") {
 		t.Fatalf("pin file = %q, %v", raw, err)
 	}
-	if info, _ := os.Stat(pinFile(r.home)); info.Mode().Perm() != 0o600 {
+	// Windows has no owner-only permission bits (it reports 0666).
+	if info, _ := os.Stat(pinFile(r.home)); runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Errorf("pin file mode %v, want 0600", info.Mode().Perm())
 	}
 	if len(notes) != 1 || !strings.Contains(notes[0], "git@github.com:o/r.git") || len(warns) != 0 {
