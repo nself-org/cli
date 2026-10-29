@@ -89,6 +89,23 @@ plugin missing, it fails with E404 and tells you to run
 `nself doctor --deep` no longer runs `CI-VAULT-SYNC-01` in v1.5. That check read
 the operator's private secret store, so product code must not
 depend on it. `CI-TOKEN-01` still runs. v1.4 is unchanged.
+
+#### `ci serve` listeners in v1.5
+
+`nself ci serve` binds the webhook listener to `127.0.0.1:3845` unless you
+pass `--addr`. To receive webhooks from outside the host, put a reverse proxy
+in front of it or set `--addr` yourself. The v1.4 default is unchanged.
+
+The coordinator opens two more listeners:
+
+| Listener | Default address | Flag |
+|---|---|---|
+| Agent API | `:3864` | `--agent-addr` |
+| User API | `127.0.0.1:3865` | `--api-addr` |
+
+Node setup, enrollment and the runner migration (`nself runner` is now
+`nself ci nodes`) are covered in the
+[Nodes and Runners guide](https://github.com/nself-org/plugins/wiki/Nodes-and-Runners).
 <!-- END PROSE:description -->
 
 ## Flags
