@@ -1,8 +1,8 @@
 //go:build windows
 
-package commands
+package envrestore
 
-// config_set_restore_windows.go — keepOwner for the config set restore
+// owner_windows.go — keepOwner for the config set restore
 // (P7-LIVE-05): Windows has no unix owner to keep.
 
 import "os"

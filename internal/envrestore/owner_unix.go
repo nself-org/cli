@@ -1,8 +1,8 @@
 //go:build !windows
 
-package commands
+package envrestore
 
-// config_set_restore_unix.go — keepOwner for the config set restore
+// owner_unix.go — keepOwner for the config set restore
 // (P7-LIVE-05): the restored env file keeps the owner it had, so a failed
 // `sudo nself config set` does not leave a root-owned .env behind.
 

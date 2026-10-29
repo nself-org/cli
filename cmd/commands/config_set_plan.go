@@ -150,7 +150,7 @@ func (r configSetRun) apply() error {
 	opt := reconcile.ApplyOptions{Yes: yes, Force: force,
 		BeforeWrite: func() error { return w.write(r.key, r.value) },
 		Rollback: func() error {
-			if !w.written { // failed before the file was touched: nothing to restore
+			if !w.written() { // failed before the file was touched: nothing to restore
 				return nil
 			}
 			if err := w.restore(); err != nil {
