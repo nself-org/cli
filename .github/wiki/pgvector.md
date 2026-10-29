@@ -76,7 +76,7 @@ nself db image switch --rollback         # undo; from any phase
 nself db image switch --rollback --yes   # undo after a finished switch
 ```
 
-`--rollback` writes the previous env values back (the two keys are left set to an empty value), regenerates compose and the lock, starts postgres on the old volume, resets the read-only setting and starts the stack. After a finished switch it needs `--yes`, because rows written since the switch exist only in the new volume. That volume is kept and named; it is never removed for you.
+`--rollback` restores the previous env values, regenerates compose and the lock, starts postgres on the old volume, resets the read-only setting and starts the stack. Previously absent keys are removed; explicitly empty values are preserved. States recorded by older versions retain their recorded empty assignments. After a finished switch it needs `--yes`, because rows written since the switch exist only in the new volume. That volume is kept and named; it is never removed for you.
 
 A second `nself db image switch --to pgvector` on a project that already runs a pgvector image prints that and changes nothing.
 

@@ -59,6 +59,8 @@ type Request struct {
 	// pendingEnv); nothing is written by Plan or Compute. Apply's write build
 	// reads the disk, so the caller writes the lines in BeforeWrite.
 	EnvOverlay map[string]map[string]string
+	// EnvRemove names keys to remove from pending env files, before EnvOverlay is set.
+	EnvRemove map[string][]string
 	// EnvBefore is the project's ENV before the pending lines (empty: resolved
 	// from the disk as config.Load would, when EnvOverlay is set). A prod-class EnvBefore makes a
 	// non-empty plan need confirmation even when the lines change ENV to a

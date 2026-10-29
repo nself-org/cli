@@ -103,7 +103,7 @@ func (s *Switch) newState(r *preflightResult) (*State, error) {
 	if project == "" {
 		project = s.cfg.ProjectName
 	}
-	prev := map[string]string{EnvImage: "", EnvDataVolume: ""}
+	prev := make(map[string]string)
 	for k, v := range s.cfg.PrevEnv {
 		prev[k] = v
 	}

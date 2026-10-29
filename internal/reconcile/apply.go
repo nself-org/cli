@@ -65,11 +65,11 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (applied *Pl
 	defer rollbackOnFailure(&opt, &err)()
 	// The env a pending line changes is resolved once, before anything is
 	// written: every render of this apply judges confirmation against it.
-	if len(req.EnvOverlay) > 0 {
+	if len(req.EnvOverlay) > 0 || len(req.EnvRemove) > 0 {
 		if req.EnvBefore == "" {
 			req.EnvBefore = diskEnv(req.ProjectDir)
 		}
-		if _, req.envChanged, err = pendingEnv(req.ProjectDir, req.EnvOverlay); err != nil {
+		if _, req.envChanged, err = pendingEnv(req.ProjectDir, req.EnvOverlay, req.EnvRemove); err != nil {
 			return nil, nil, err
 		}
 		req.envChangedSet = true
@@ -87,7 +87,7 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (applied *Pl
 	if req.HandEdited == nil {
 		req.HandEdited = state.HandEditedFn(req.ProjectDir)
 	}
-	env, _, err := pendingEnv(req.ProjectDir, req.EnvOverlay)
+	env, _, err := pendingEnv(req.ProjectDir, req.EnvOverlay, req.EnvRemove)
 	if err != nil {
 		return nil, nil, err
 	}

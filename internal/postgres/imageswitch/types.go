@@ -76,8 +76,8 @@ type Config struct {
 	// TargetFor returns the pgvector image of the given Postgres major, or an
 	// error when there is none.
 	TargetFor func(major int) (string, error)
-	// PrevEnv holds the current raw values of EnvImage and EnvDataVolume in the
-	// project (empty when unset); rollback writes them back.
+	// PrevEnv holds the current values in the project's .env. Missing keys
+	// were absent; rollback removes them. Present empty values stay explicit.
 	PrevEnv map[string]string
 }
 
@@ -133,7 +133,7 @@ type Stack interface {
 }
 
 // Applier writes env lines and regenerates compose and lock through the build
-// plan path (reconcile). A value of "" means the key is set empty (unset).
+// plan path (reconcile). Missing switch keys are removed; "" sets an explicit empty value.
 type Applier interface {
 	// Plan returns what Apply would change, as JSON-ready data; nothing is written.
 	Plan(ctx context.Context, env map[string]string) (any, error)

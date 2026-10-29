@@ -41,7 +41,9 @@ const (
 	SelfExecOverrideEnv = "NSELF_MCP_EXEC_OVERRIDE"
 	TokenEnv            = "NSELF_MCP_TOKEN"
 	InvokedByEnv        = "NSELF_INVOKED_BY"
-	DeadlineEnv         = "NSELF_INVOKE_DEADLINE_MS"
+	// TransportEnv preserves HTTP document versus NDJSON for child exposure.
+	TransportEnv = "NSELF_INVOKE_TRANSPORT"
+	DeadlineEnv  = "NSELF_INVOKE_DEADLINE_MS"
 	// PathEnv pins the command path the invoker classified; the child refuses
 	// to run when its own command lookup resolves a different command (E421).
 	PathEnv = "NSELF_INVOKE_PATH"
