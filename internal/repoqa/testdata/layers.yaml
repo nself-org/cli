@@ -58,6 +58,7 @@ rules:
   - {match: "internal/output/**", layer: L0}
   - {match: "internal/canon/**", layer: L0}
   - {match: "internal/cmdregistry/**", layer: L0}
+  - {match: "internal/hostpin/**", layer: L0}              # SSH pin alias resolution: stdlib only; sdk fingerprint parser injected
   - {match: "internal/sysexec/**", layer: L0}              # command runner + headless check for system-changing setup (trust, ssl, dns)
   # L2: domain orchestrators plus the planned ones
   - {match: "internal/upgrade/stack/**", layer: L2}
@@ -83,8 +84,6 @@ rules:
   - {match: "internal/exporter/**", layer: L2}
   - {match: "internal/cmd/ci/**", layer: L2}
 edges:
-  - {from: internal/access, to: internal/hostpin}   # pin alias resolution without L2 deploy
-  - {from: internal/admin, to: internal/hostpin}    # pin alias resolution without L2 deploy
   - {from: internal/exporter, to: internal/database} # P7-ADOPT-17
   - {from: internal/upgrade, to: internal/build}
   - {from: internal/upgrade, to: internal/backup}

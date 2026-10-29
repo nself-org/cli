@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"github.com/nself-org/cli/internal/deploy/pathmap"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -155,7 +156,7 @@ func TestDeployScratchUntouched(t *testing.T) {
 		t.Fatal(err)
 	}
 	set, err := deploy.Stage(deploy.StageInput{
-		Map:      deploy.PathMap{ScratchRoot: scratch, OperatorRoot: proj, PluginDir: filepath.Join(t.TempDir(), "plugins"), Home: filepath.Join(t.TempDir(), "home"), RemotePath: "/opt/nself"},
+		Map:      pathmap.PathMap{ScratchRoot: scratch, OperatorRoot: proj, PluginDir: filepath.Join(t.TempDir(), "plugins"), Home: filepath.Join(t.TempDir(), "home"), RemotePath: "/opt/nself"},
 		StageDir: stage, Compose: []string{filepath.Join(scratch, "docker-compose.yml")}, EnvFiles: []string{filepath.Join(scratch, ".env")}, EnvName: "prod", Nginx: policy,
 	})
 	if err != nil {

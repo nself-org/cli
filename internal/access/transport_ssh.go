@@ -92,7 +92,7 @@ func (t *SSHTransport) sshArgsContext(ctx context.Context) ([]string, error) {
 		}
 		args = append(args, "-o", "StrictHostKeyChecking=yes", "-o", option)
 		if spec.Port != 0 {
-			alias := hostpin.PinAlias(ctx, spec)
+			alias := hostpin.PinAlias(ctx, spec.Host, spec.Port, remote.Fingerprint)
 			args = append(args, "-o", "HostKeyAlias="+alias)
 		}
 	} else {

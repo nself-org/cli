@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/deploy/bluegreen"
-	"github.com/nself-org/cli/internal/deploystate"
 	"github.com/nself-org/cli/internal/ui"
 )
 
@@ -104,8 +103,8 @@ func RunBlueGreen(ctx context.Context, cfg BlueGreenConfig) BlueGreenResult {
 
 // saveDeployState writes the outcome of a blue-green deploy to the unified state file.
 func (cfg BlueGreenConfig) saveDeployState(start time.Time, result bluegreen.DeployResult) error {
-	state := deploystate.StrategyState{
-		Strategy:           deploystate.StrategyBlueGreen,
+	state := StrategyState{
+		Strategy:           StrategyBlueGreen,
 		Target:             cfg.Target,
 		StartedAt:          start,
 		CompletedAt:        time.Now().UTC(),
@@ -117,5 +116,5 @@ func (cfg BlueGreenConfig) saveDeployState(start time.Time, result bluegreen.Dep
 	if !result.Success {
 		state.Error = result.Error
 	}
-	return deploystate.Save(cfg.ProjectRoot, state)
+	return SaveDeployState(cfg.ProjectRoot, state)
 }

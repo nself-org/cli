@@ -6,8 +6,6 @@ import "fmt"
 // addition, replacement, duplicate, or pending tag cannot widen the guard.
 // Changes require an explicit test-code review against overview section 4.2.
 var acceptedBasis = acceptedEntries([]edgeEntry{
-	{From: "internal/access", To: "internal/hostpin"},
-	{From: "internal/admin", To: "internal/hostpin"},
 	{From: "internal/exporter", To: "internal/database"},
 	{From: "internal/upgrade", To: "internal/build"},
 	{From: "internal/upgrade", To: "internal/backup"},
