@@ -120,8 +120,11 @@ nself license revalidate
 For air-gapped environments:
 
 ```bash
-NSELF_LICENSE_SKIP_VERIFY=1 nself plugin install {name}
+NSELF_LICENSE_SKIP_VERIFY=1 nself plugin install {name} --force
 ```
+
+This skips the licence check only. The plugin's signature and checksum are still
+verified. Set the variable in your shell: a project `.env` cannot set it.
 
 ---
 

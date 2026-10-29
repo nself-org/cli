@@ -109,27 +109,9 @@ The plugin installer (`internal/plugin/installer.go`) enforces a layered securit
 
 **Signature verification.** Every stable plugin tarball is verified against an Ed25519 signature embedded in the plugin registry. The public key is pinned at install time; it is never fetched at verify time to prevent TOCTOU attacks.
 
-**Bypass controls.** Two environment variables can bypass signature verification in development only:
+**No bypass for registry installs.** A registry install always verifies the release (or platform) signature, the signed-since floor and the checksum. `NSELF_LICENSE_SKIP_VERIFY=1` needs `--force` on the command line (the legacy `NSELF_LICENSE_SKIP_VERIFY_FORCE` env var no longer counts) and skips licence checks only. It is refused with a `SECURITY:` error in `prod` and `staging`.
 
-- `NSELF_LICENSE_SKIP_VERIFY=1` — requests a skip.
-- `NSELF_LICENSE_SKIP_VERIFY_FORCE=1` — must accompany the first var; standalone skip is rejected.
-
-Both vars must be set together. Either var alone is a hard error.
-
-**Production and staging block.** When `NSELF_ENV` is `prod` or `staging`, the installer rejects any bypass attempt with a `SECURITY:` prefixed error and exits non-zero. The install is aborted before any file is written.
-
-**Dev bypass audit log.** When bypass is used in a `dev` environment, the installer writes a structured JSON entry to `~/.nself/audit.log` via `internal/audit.Write`. Each entry contains:
-
-| Field | Description |
-|---|---|
-| `event` | Always `plugin-install-bypass` |
-| `plugin` | Plugin name being installed |
-| `reason` | Both env var names that triggered the skip |
-| `uid` | `$USER` at install time |
-| `env` | Current `NSELF_ENV` value |
-| `timestamp` | RFC3339 UTC timestamp |
-
-The audit log is created with `0600` permissions and is append-only.
+**Project env files cannot change security settings.** The config loader exports a project's `.env` cascade into the process environment, so a cloned project could otherwise switch checks off. `internal/config/env_protected.go` lists the keys only the shell environment may set (skip-verify flags, the registry, ping and bundles URLs, checksum and SBOM switches, and others); a cascade file that sets one is ignored with a warning. See [Plugin-Security](Plugin-Security).
 
 ---
 ← [[Home]] | [[_Sidebar]]

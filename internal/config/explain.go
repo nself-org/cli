@@ -24,6 +24,7 @@ package config
 // SPORT:   cli/internal/config — CLI-R18 env cascade canon.
 
 import (
+	"fmt"
 	"os"
 )
 
@@ -57,17 +58,29 @@ type Explanation struct {
 	// ProcessSet and ProcessValue describe the process environment.
 	ProcessSet   bool
 	ProcessValue string
+	// Protected reports a security key the loader never takes from a file
+	// (IsProtectedEnvKey): its Setters are listed but none of them wins.
+	Protected bool
 }
 
 // Winner returns the winning cascade file and its value; ok is false when no
-// file sets the key. The cascade is lowest precedence first, so the last
-// setter wins.
+// file sets the key, or the key is protected. The cascade is lowest
+// precedence first, so the last setter wins.
 func (e Explanation) Winner() (file, value string, ok bool) {
-	if len(e.Setters) == 0 {
+	if len(e.Setters) == 0 || e.Protected {
 		return "", "", false
 	}
 	w := e.Setters[len(e.Setters)-1]
 	return w.File, w.Value, true
+}
+
+// NoWinnerReason says why no cascade file wins the key, for display after
+// the key name: no file sets it, or it is a protected security key.
+func (e Explanation) NoWinnerReason() string {
+	if e.Protected && len(e.Setters) > 0 {
+		return fmt.Sprintf("is set in %d cascade file(s) but ignored: it is a security setting only the shell environment can set", len(e.Setters))
+	}
+	return "is not set by any file in the cascade"
 }
 
 // Effective names the source the loader ends up using and its value:
@@ -116,6 +129,8 @@ func ExplainKey(projectDir, env, key string) (Explanation, error) {
 		Env:     env,
 		Legacy:  legacy,
 		Cascade: EnvCascade(projectDir, env, legacy),
+
+		Protected: IsProtectedEnvKey(key),
 	}
 	for _, k := range KnownEnvVars() {
 		if k == key {

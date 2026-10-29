@@ -167,9 +167,6 @@ else
 fi
 export HOME=$W/home
 export NSELF_V15=1
-export NSELF_LICENSE_SKIP_VERIFY=1
-# The install command acknowledges --force but does not propagate it to this gate.
-export NSELF_LICENSE_SKIP_VERIFY_FORCE=1
 # security.go documents this development opt-out; archive checksums still verify.
 export NSELF_PLUGIN_REQUIRE_CHECKSUM=0
 CGO_ENABLED=0 go build -mod=vendor -o "$W/nself" "$ROOT/cmd/nself"
@@ -209,6 +206,14 @@ NSELF_PLUGIN_REGISTRY=http://127.0.0.1:$(cat "$W/registry.port")
 export NSELF_PLUGIN_REGISTRY
 # remove resolves its plugin dir before loading .env, so provide the same path up front.
 nself() { local dir=$1; shift; (cd "$dir" && NSELF_PLUGIN_DIR="$dir/.nself/plugins" "$W/nself" "$@"); }
+# A registry install always verifies the release signature (no dev bypass since the
+# P7-PLUG-87 review, H1), and these fixture packages are unsigned, so they install as
+# third-party URL plugins pinned by an out-of-band checksum.
+fixture_add() {
+  local dir=$1 name=$2 sum; shift 2
+  sum=$(sha256sum "$W/registry/plugins/$name/tarball" | cut -d' ' -f1)
+  nself "$dir" add "$NSELF_PLUGIN_REGISTRY/plugins/$name/tarball" --checksum "$sum" "$@"
+}
 pin_fixture_credentials() {
   # Reuse generated database/admin credentials, which build does not persist.
   python3 - "$1" <<'PY'
@@ -251,7 +256,7 @@ wait_healthy() {
   esac
   echo "FAIL: $service did not become healthy" >&2; return 1
 }
-nself "$W/a" add echo --force --yes
+fixture_add "$W/a" echo --force --yes
 nself "$W/a" build --yes
 pin_fixture_credentials "$W/a"
 # traefik-acme mounts ssl/.acme-webroot; Docker would create it root-owned and lego (running as this uid) could not
@@ -347,7 +352,7 @@ if [[ $MODE != add && $MODE != renew ]]; then
     matrix nginx-restored
     same nginx.matrix nginx-restored.matrix
   }
-  NSELF_V15=1 nself "$W/a" add traefik --force --yes
+  NSELF_V15=1 fixture_add "$W/a" traefik --force --yes
   nself "$W/a" build --remove-orphans --yes
   nself "$W/a" start --timeout 180
   wait_healthy traefik
@@ -412,7 +417,7 @@ if [[ $MODE == renew ]]; then
   CHALL_IMG=ghcr.io/letsencrypt/pebble-challtestsrv@sha256:26789c714fc40ab2de771fb34c06d13232b8ca4f96f77995483d5dfe8744f276
   ACME_HOST=acme.proxy.test
   swap_started=1
-  NSELF_V15=1 nself "$W/a" add traefik --force --yes
+  NSELF_V15=1 fixture_add "$W/a" traefik --force --yes
   nself "$W/a" build --remove-orphans --yes
   nself "$W/a" start --timeout 180
   wait_healthy traefik
@@ -490,7 +495,7 @@ rc=0
 # fixture archive as an installed plugin and drive the same v1.5 reconcile gate through build, which installs nothing.
 mkdir -p "$W/a/.nself/plugins/traefik"
 tar -xzf "$W/registry/plugins/traefik/tarball" -C "$W/a/.nself/plugins/traefik"
-NSELF_V15=1 NSELF_LICENSE_SKIP_VERIFY=0 NSELF_LICENSE_SKIP_VERIFY_FORCE=0 nself "$W/a" build --remove-orphans </dev/null >"$W/evidence/prod-plan.stdout" 2>"$W/evidence/prod-plan.stderr" || rc=$?
+NSELF_V15=1 nself "$W/a" build --remove-orphans </dev/null >"$W/evidence/prod-plan.stdout" 2>"$W/evidence/prod-plan.stderr" || rc=$?
 if [[ $rc != 4 ]] || ! grep -q E403 "$W/evidence/prod-plan.stderr"; then
   echo "FAIL: prod build expected exit 4 E403, got exit $rc" >&2
   cat "$W/evidence/prod-plan.stderr" >&2
@@ -523,7 +528,7 @@ PY
 cp "$FIXTURE/confd-variant/nginx/conf.d/shadow.conf" "$W/a/nginx/conf.d/shadow.conf"
 manifest "$W/a" confd-before.manifest
 rc=0
-NSELF_V15=1 nself "$W/a" add traefik --force --yes >"$W/evidence/confd.stdout" 2>"$W/evidence/confd.stderr" || rc=$?
+NSELF_V15=1 fixture_add "$W/a" traefik --force --yes >"$W/evidence/confd.stdout" 2>"$W/evidence/confd.stderr" || rc=$?
 if [[ $rc != 1 ]] || ! grep -q E481 "$W/evidence/confd.stderr"; then
   echo "FAIL: conf.d add expected exit 1 E481, got exit $rc" >&2
   cat "$W/evidence/confd.stderr" >&2
@@ -545,7 +550,7 @@ swap_started=1
   done
 ) > "$W/evidence/downtime.log" &
 probe_pid=$!
-NSELF_V15=1 nself "$W/a" add traefik --force --yes
+NSELF_V15=1 fixture_add "$W/a" traefik --force --yes
 nself "$W/a" build --remove-orphans --yes
 if ! nself "$W/a" start --timeout 180; then
   compose "$W/a" logs --no-color --tail 60 traefik traefik-config traefik-acme nginx 2>&1 | redact_logs > "$W/evidence/swap-start-failed.log"

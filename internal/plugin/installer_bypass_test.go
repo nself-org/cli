@@ -13,7 +13,9 @@ func TestSignatureBypassCallerAcknowledgement(t *testing.T) {
 	}{
 		{"dev_acknowledged", "dev", "1", "", true, true, false},
 		{"dev_unacknowledged", "dev", "1", "", false, false, true},
-		{"dev_legacy", "dev", "1", "1", false, true, false},
+		{"dev_legacy_env_force_refused", "dev", "1", "1", false, false, true},
+		{"dev_legacy_env_force_with_flag", "dev", "1", "1", true, true, false},
+		{"force_env_alone_dev", "dev", "", "1", false, false, false},
 		{"prod_denied", "prod", "1", "", true, false, true},
 		{"staging_denied", "staging", "1", "", true, false, true},
 		{"force_alone_dev", "dev", "", "", true, false, false},
