@@ -78,9 +78,9 @@ func TestProjectLockPinsSurviveInitDefaults(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			edited := strings.Replace(string(raw), "HASURA_VERSION=v2.44.0", "HASURA_VERSION=v2.51.0", 1)
+			edited := strings.Replace(string(raw), "HASURA_VERSION=\n", "HASURA_VERSION=v2.51.0\n", 1)
 			if edited == string(raw) {
-				t.Fatal("init no longer writes HASURA_VERSION=v2.44.0: update this test with the new default")
+				t.Fatal("init must leave HASURA_VERSION blank")
 			}
 			if err := os.WriteFile(envPath, []byte(edited), 0o600); err != nil {
 				t.Fatal(err)

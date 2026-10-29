@@ -146,6 +146,25 @@ func replaceOutsideRefs(s, old, repl string) string {
 	return sb.String()
 }
 
+// isCrossKeyRef recognises the credential sources selected by the generator.
+// Reference syntax alone cannot distinguish an intentional reference from a
+// literal password. Only the MinIO identity aliases are generated cross-key;
+// even these must be rewritten when the configured secret equals the value.
+func isCrossKeyRef(line, key string, secrets map[string]string) bool {
+	var source string
+	switch key {
+	case "S3_ACCESS_KEY":
+		source = "MINIO_ROOT_USER"
+	case "S3_SECRET_KEY":
+		source = "MINIO_ROOT_PASSWORD"
+	default:
+		return false
+	}
+	ref := "${" + source + "}"
+	_, mapped := secrets[source]
+	return mapped && secrets[key] != ref && lineValueIs(line, ref)
+}
+
 // lineValueIs reports whether the "KEY: value" YAML line decodes to val. A
 // value holding a quote or a backslash is escaped in the line, so a substring
 // check misses it and the literal stayed in the file (D-0635).

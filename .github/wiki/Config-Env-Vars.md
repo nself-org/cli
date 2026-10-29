@@ -187,7 +187,7 @@ See also `BACKUP_CRITICAL_TABLES` under [PostgreSQL](#postgresql), and
 
 | Variable | Type | Default | Required | Description |
 |---|---|---|---|---|
-| `HASURA_VERSION` | string | `v2.44.0` | No | Docker image tag for Hasura. |
+| `HASURA_VERSION` | string | blank | No | Blank keeps the project lock pin or mode default; any nonblank tag explicitly selects that release. |
 | `HASURA_GRAPHQL_ADMIN_SECRET` | string | *(none)* | **Yes** | Admin API secret used to authenticate privileged requests. Minimum 32 characters. |
 | `HASURA_JWT_KEY` | string | *(none)* | **Yes** | Secret key used to sign and verify JWTs. Minimum 32 characters. |
 | `HASURA_JWT_TYPE` | string | `HS256` | No | JWT signing algorithm. Common values: `HS256`, `RS256`. |

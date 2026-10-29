@@ -1,6 +1,6 @@
-package build
+package postgres
 
-// postgres_image_warning.go — warns when a build-time postgres image would
+// image_warning.go — warns when a build-time postgres image would
 // change what a currently running postgres container is using.
 //
 // Purpose: cli#384 — `nself build` must never silently regenerate a compose
@@ -44,18 +44,18 @@ func runningContainerImage(containerName string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// PostgresImageChangeWarning returns a WARNING message when the postgres
+// ImageChangeWarning returns a WARNING message when the postgres
 // image `nself build` is about to generate differs from the image the
 // currently running postgres container was started from. Returns "" when
 // there is nothing to warn about (no running container, or the images match).
-func PostgresImageChangeWarning(containerName, generatedImage string) string {
-	return postgresImageChangeWarning(containerName, generatedImage, runningContainerImage)
+func ImageChangeWarning(containerName, generatedImage string) string {
+	return imageChangeWarning(containerName, generatedImage, runningContainerImage)
 }
 
-// postgresImageChangeWarning is the testable core of
-// PostgresImageChangeWarning, parameterized by an image-lookup function so
+// imageChangeWarning is the testable core of
+// ImageChangeWarning, parameterized by an image-lookup function so
 // tests can inject a fake baseline without a reachable Docker daemon.
-func postgresImageChangeWarning(containerName, generatedImage string, lookup func(string) string) string {
+func imageChangeWarning(containerName, generatedImage string, lookup func(string) string) string {
 	running := lookup(containerName)
 	if running == "" || running == generatedImage {
 		return ""

@@ -333,6 +333,11 @@ func TestS3EndpointCustomServices(t *testing.T) {
 			if env["S3_ENDPOINT"] != tc.endpoint {
 				t.Fatalf("S3_ENDPOINT=%q want %q", env["S3_ENDPOINT"], tc.endpoint)
 			}
+			if tc.endpoint == "http://minio:9000" {
+				if env["S3_ACCESS_KEY"] != "${MINIO_ROOT_USER}" || env["S3_SECRET_KEY"] != "${MINIO_ROOT_PASSWORD}" {
+					t.Fatalf("MinIO identity lost: %v", env)
+				}
+			}
 			if tc.endpoint == "" {
 				for _, key := range []string{"S3_ACCESS_KEY", "S3_SECRET_KEY", "S3_BUCKET"} {
 					if _, ok := env[key]; ok {

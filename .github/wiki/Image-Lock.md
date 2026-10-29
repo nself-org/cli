@@ -25,7 +25,7 @@ Set `IMAGE_PINNING=lock` in `.env` to opt a project in early. Moving to `lock` c
 
 ## Overrides
 
-A `*_VERSION` key in the env cascade is an explicit override and is used as given, unpinned, unless it equals the lock version or the `legacy_ref` tag. The `legacy_ref` tag is what the config defaults and the `.env` files written by `nself setup` carry (`HASURA_VERSION=v2.44.0`), so it counts as "the default" and stays pinned after a bump. To run the pre-lock version itself, use `IMAGE_PINNING=legacy`.
+A `*_VERSION` key in the env cascade is an explicit override and is used as given, unpinned, unless it equals the lock version or the `legacy_ref` tag. The `legacy_ref` tag is what most config defaults and init env files carry, so it counts as the default and stays pinned after a bump. Hasura leaves its version blank instead: every nonblank `HASURA_VERSION` is explicit. Known Hasura releases use their own lock entry; other tags render unpinned. To use tag references without digests, use `IMAGE_PINNING=legacy`.
 
 | Setting | `IMAGE_PINNING=lock` | `IMAGE_PINNING=legacy` |
 |---|---|---|
@@ -101,9 +101,12 @@ The lock carries two Hasura entries on `docker.io/hasura/graphql-engine`: `hasur
 | v1.4 | `hasura-v14`: `docker.io/hasura/graphql-engine:v2.44.0@sha256:...` in lock mode, `hasura/graphql-engine:v2.44.0` in legacy mode |
 | v1.5, no lock pin yet (a new project) | `hasura` (v2.51.0) |
 | the project lock pins v2.44.0 | the pin, in both modes, until `nself update` moves it |
-| `HASURA_VERSION=v2.44.0` (what `nself init` writes into `.env`) or blank | the mode default, or the pin if there is one: a default, not an override |
+| `HASURA_VERSION=` (what `nself init` writes into `.env`) or unset | the mode default, or the pin if there is one |
+| `HASURA_VERSION=v2.44.0` | `hasura-v14`; explicit override that drops a v2.51.0 project pin with one notice |
 | `HASURA_VERSION=v2.51.0` | `hasura` in any mode; it is an override, so it drops a lock pin of v2.44.0 with one notice |
 | any other `HASURA_VERSION` (`v2.45.0`) | `hasura/graphql-engine:<tag>`, unpinned, in any mode |
+
+Every nonblank `HASURA_VERSION` is explicit and overrides a project pin, including `v2.44.0`. Projects without a v2.51.0 pin resolve `v2.44.0` to `hasura-v14`. To move a v2.51.0-pinned project to v2.44.0, use `nself service upgrade hasura v2.44.0` or set `HASURA_VERSION=v2.44.0` in `.env`.
 
 Hasura v2.51.0 does not change the metadata format or the migration contract. `scripts/ci/hasura-upgrade-smoke.sh` starts a project on v2.44.0 with a migrated fixture (tables and rows) and metadata (tracked tables, a relationship, a select permission, an event trigger to a webhook, a remote schema), takes a verified backup, switches the pin to v2.51.0 and checks that the rows are readable, that the metadata export is identical before and after (the `nself db hasura metadata export` tree and the normalised API JSON), that apply then export round-trips, and that a mutation, a subscription event, a remote schema call and an event trigger delivery work. The metadata catalog version is 48 on both releases.
 

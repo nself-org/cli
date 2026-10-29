@@ -92,7 +92,7 @@ func addOptionalStoreEnvVars(env map[string]string, cfg *config.Config) {
 	}
 	if cfg.Minio.Enabled {
 		env["S3_ENDPOINT"] = fmt.Sprintf("http://minio:%d", cfg.Minio.Port)
-		env["S3_ACCESS_KEY"] = cfg.Minio.RootUser
+		env["S3_ACCESS_KEY"] = secretRef("MINIO_ROOT_USER", cfg.Minio.RootUser)
 		env["S3_SECRET_KEY"] = secretRef("MINIO_ROOT_PASSWORD", cfg.Minio.RootPassword)
 		env["S3_BUCKET"] = cfg.Minio.DefaultBuckets
 	}

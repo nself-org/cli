@@ -5376,8 +5376,6 @@ export interface DoctorData {
 }
 
 export type DoctorFlags = {
-  /** Run the AI first-run wizard (install Ollama, setup Gemini pool, verify) */
-  ai?: boolean;
   /** Check monitoring alert rules are loaded */
   alerts?: boolean;
   /** Scan host for v0.9 stale paths (global scan, not per-project) */
@@ -5394,8 +5392,6 @@ export type DoctorFlags = {
   full?: boolean;
   /** Print OAuth URL instead of opening browser (for SSH/headless servers) */
   headless?: boolean;
-  /** Run 6-stage onboarding funnel check (used by Homebrew post-install hook) */
-  "install-check"?: boolean;
   /** Run only a specific subsystem check (host, docker, postgres, hasura, nginx, ssl, ping, plugins, license, monitoring, backups, security) */
   only?: string;
   /** With --fix, show generated-file repair plan without writing */
@@ -6282,14 +6278,8 @@ export type LogsFlags = {
   service?: Array<string>;
   /** Show logs since (e.g. 1h, 30m, or RFC3339) */
   since?: string;
-  /** Show service status overview */
-  status?: boolean;
-  /** Show recent errors by service */
-  summary?: boolean;
   /** Number of lines to show */
   tail?: number;
-  /** Show most active services */
-  top?: boolean;
   /** Show logs until (e.g. 1h or RFC3339) */
   until?: string;
 };

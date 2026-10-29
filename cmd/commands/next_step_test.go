@@ -79,6 +79,7 @@ func init() {
 
 func nextStepFixture(t *testing.T, stage string) {
 	t.Helper()
+	isolateConfigFixture(t)
 	dir := t.TempDir()
 	t.Setenv("HOME", filepath.Join(dir, "home"))
 	if err := os.MkdirAll(filepath.Join(dir, "home"), 0o755); err != nil {

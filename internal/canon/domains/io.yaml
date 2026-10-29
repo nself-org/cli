@@ -4,5 +4,5 @@ schema_version: 1
 commands:
   # cmd/commands/exec.go:40 runs an arbitrary user command in a service container (worst case)
   exec: {canon: core, side_effect: destructive, output: interactive} # runs a TTY command in a container: no envelope, not exposed on machine surfaces
-  # cmd/commands/logs.go: reads docker compose logs; --follow never ends by itself, so it is framed as NDJSON (contract:cli.json-stream v1, P7-SURF-27); --status/--summary/--top print human reports only; no json: legacy because v1.4 --json is a local flag the registry does not advertise (the per-line JSON is pinned by the legacy-json argv row), v1.5 prints the envelope
-  logs: {canon: core, side_effect: read, flags: {follow: {output: stream}, status: {json: none}, summary: {json: none}, top: {json: none}}}
+  # cmd/commands/logs.go: reads docker compose logs; --follow never ends by itself, so it is framed as NDJSON (contract:cli.json-stream v1, P7-SURF-27); --status/--summary/--top print human reports only; v1.4 advertises legacy per-line JSON, v1.5 registers an envelope
+  logs: {canon: core, side_effect: read, json: legacy, flags: {follow: {output: stream}, status: {json: none}, summary: {json: none}, top: {json: none}}}

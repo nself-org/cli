@@ -118,7 +118,12 @@ func TemplateSecrets(composeYAML []byte, secrets map[string]string) []byte {
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		out = rewriteKeyLines(out, key, func(string) (string, bool) {
+		out = rewriteKeyLines(out, key, func(line string) (string, bool) {
+			// The generator may deliberately select a different credential source
+			// (CS_N S3 keys use MinIO root credentials). Preserve such refs.
+			if isCrossKeyRef(line, key, secrets) {
+				return "", false
+			}
 			return "${" + key + "}", true
 		})
 	}

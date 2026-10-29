@@ -138,6 +138,15 @@ func PinNoticeSink(w io.Writer) (restore func()) {
 // comparison is on the rendered reference, never on the raw env text. Dropping
 // a pin prints a one-line notice on stderr.
 func projectPin(service, image string) (string, bool) {
+	return projectPinWithVersion(service, image, "")
+}
+
+// projectPinWithVersion is like projectPin but treats a nonblank version as an
+// explicit override of the env variable for this service, without mutating the
+// process environment. Hasura uses this so an explicit HASURA_VERSION (including
+// v2.44.0 written by `nself service upgrade`) overrides a project pin; other
+// services keep reading the env directly.
+func projectPinWithVersion(service, image, version string) (string, bool) {
 	pinsMu.RLock()
 	pin, ok := projectPins[service]
 	pinsMu.RUnlock()
@@ -148,7 +157,20 @@ func projectPin(service, image string) (string, bool) {
 		image = DefaultImage(service)
 	}
 	in := inputFor(service, image)
-	name := in.Set(os.Getenv)
+	var name string
+	if version != "" {
+		// Treat the caller-supplied version as if the env var were set to it.
+		// A non-default value is explicit and drops the pin with a notice; a
+		// default value keeps the pin silently.
+		if !in.isDefault(version) {
+			for _, v := range in.Vars {
+				name = v
+				break
+			}
+		}
+	} else {
+		name = in.Set(os.Getenv)
+	}
 	switch {
 	case repoOf(image) != repoOf(pin):
 		if name == "" {
@@ -181,57 +203,6 @@ func envDigestDiffers(in ImageInput, pin string) string {
 		}
 	}
 	return ""
-}
-
-// repoOf is CanonicalRef without the tag.
-func repoOf(ref string) string {
-	ref = CanonicalRef(ref)
-	if i := strings.LastIndex(ref, ":"); i > strings.LastIndex(ref, "/") {
-		ref = ref[:i]
-	}
-	return ref
-}
-
-// noticePinDropped prints the drop notice once per service, variable and pin.
-func noticePinDropped(service, envName, pin string) {
-	key := service + "/" + envName + "/" + pin
-	pinNoticedMu.Lock()
-	seen := pinNoticed[key]
-	pinNoticed[key] = true
-	w := pinNoticeW
-	pinNoticedMu.Unlock()
-	if seen || w == nil {
-		return
-	}
-	if envName == "the rendered image" {
-		_, _ = fmt.Fprintf(w, "notice: the %s image is now a different repository than its pin, so the pin in %s is not used\n", service, ProjectLockFile)
-		return
-	}
-	_, _ = fmt.Fprintf(w, "notice: %s is set, so the %s pin in %s is not used\n", envName, service, ProjectLockFile)
-}
-
-func imageBase(ref string) string {
-	base, _, _ := strings.Cut(ref, "@")
-	return base
-}
-
-// CanonicalRef reduces an image reference to one spelling for comparison: no
-// digest, no docker.io/, index.docker.io/ or library/ prefix, host and path in
-// lower case, the tag as written (tags are case-sensitive). The bootstrap pins
-// a reference as docker.io/<repo>:<tag>@sha256 while the legacy image strings
-// omit the host, so every comparison of two spellings goes through here
-// (internal/docker cannot be imported: its tests import this package).
-func CanonicalRef(ref string) string {
-	ref = strings.TrimSpace(imageBase(ref))
-	tag := ""
-	if i := strings.LastIndex(ref, ":"); i > strings.LastIndex(ref, "/") {
-		ref, tag = ref[:i], ref[i:]
-	}
-	ref = strings.ToLower(ref)
-	for _, host := range []string{"registry-1.docker.io/", "index.docker.io/", "docker.io/"} {
-		ref = strings.TrimPrefix(ref, host)
-	}
-	return strings.TrimPrefix(ref, "library/") + tag
 }
 
 // CLILockedRef finds the CLI image lock entry whose version a tag reference

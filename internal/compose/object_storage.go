@@ -254,7 +254,7 @@ func addActiveStoreEnvVars(env map[string]string, cfg *config.Config) {
 		setBucketEnv(env, os.Getenv("OBJECT_STORAGE_BUCKETS"))
 	case "minio-plugin":
 		env["S3_ENDPOINT"] = "http://minio:9000"
-		env["S3_ACCESS_KEY"] = cfg.Minio.RootUser
+		env["S3_ACCESS_KEY"] = secretRef("MINIO_ROOT_USER", cfg.Minio.RootUser)
 		env["S3_SECRET_KEY"] = secretRef("MINIO_ROOT_PASSWORD", cfg.Minio.RootPassword)
 		setBucketEnv(env, cfg.Minio.DefaultBuckets)
 	}

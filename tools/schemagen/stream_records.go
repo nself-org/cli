@@ -1,11 +1,8 @@
 package main
 
 // Purpose: one record schema per streaming command (contract:cli.json-stream
-// v1, P7-SURF-27): schemas/commands/<path>-record.v1.schema.json describes the
-// data object of one record line (data.type names the kind). The contract text
-// names <path>.record.v1.schema.json, but spec.go outPattern (outside this
-// Ticket's scope) rejects a dot in the name; recordOut is the one place to
-// switch once the pattern allows it.
+// v1, P7-SURF-27): schemas/commands/<path>.record.v1.schema.json describes
+// the data object of one record line (data.type names the kind).
 // Inputs: cmd/commands.JSONRecordTypes (path -> record zero value). A record
 // type with RecordType() string gets that value as the const of its type member.
 // Outputs: one Spec per path.
@@ -23,7 +20,7 @@ type recordTyper interface{ RecordType() string }
 
 // recordOut is the schema path of a command's stream record type.
 func recordOut(path string) string {
-	return "commands/" + strings.ReplaceAll(path, " ", "-") + "-record.v1.schema.json"
+	return "commands/" + strings.ReplaceAll(path, " ", "-") + ".record.v1.schema.json"
 }
 
 func init() {

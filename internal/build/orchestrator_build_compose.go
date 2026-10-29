@@ -24,6 +24,7 @@ import (
 	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/compose/monitoring"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/postgres"
 )
 
 // generateCompose runs Steps 8-9.8 of Build().
@@ -53,12 +54,12 @@ func (st *buildState) generateCompose() error {
 
 	// ── Step 8.1: Warn if this regen would swap a running postgres image ──
 	// (cli#384 — advisory only, never blocks the build; see
-	// PostgresImageChangeWarning for the data-loss scenario this guards.)
+	// postgres.ImageChangeWarning for the data-loss scenario this guards.)
 	postgresContainer := st.cfg.ServiceContainerName("postgres")
 	generatedPostgresImage := compose.ResolveImage("postgres", compose.ResolvePostgresImage(st.cfg.Postgres))
 	// Plan mode skips it: the check runs `docker inspect`, a host effect.
 	if !st.planning() {
-		if warning := PostgresImageChangeWarning(postgresContainer, generatedPostgresImage); warning != "" {
+		if warning := postgres.ImageChangeWarning(postgresContainer, generatedPostgresImage); warning != "" {
 			slog.Warn(warning)
 		}
 	}

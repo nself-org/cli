@@ -21,6 +21,8 @@ nself logs [SERVICE] [flags]
 
 Output is colorized by level: errors in red, warnings in yellow, info in green. Use `--follow` for live streaming; press Ctrl+C to exit cleanly. Use `--quiet` to suppress healthcheck noise and focus on application-level events. Use `--plain` or redirect stdout to a file when piping output to other tools.
 
+In v1.5 JSON output, log records preserve message indentation and trailing spaces. Search, regex, and level filters examine the message without the Compose service prefix. With `--follow`, each record is emitted as an NDJSON envelope. In v1.4, `--json` retains legacy per-line JSON.
+
 The `--status`, `--summary`, and `--top` flags provide aggregate views without raw log output, useful for quick operational checks.
 
 ## Exit Codes

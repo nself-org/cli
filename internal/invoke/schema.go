@@ -82,6 +82,7 @@ func ExposedFlags(cmd *cmdregistry.Command, transport string) []cmdregistry.Flag
 		stream := f.Output != nil && *f.Output == canon.OutputStream
 		switch {
 		case invokerFlags[f.Name], owned[f.Name], f.Hidden, f.Deprecated != nil, f.CLIOnly:
+		case f.JSON != nil && *f.JSON != canon.JSONEnvelope:
 		case stream && transport != TransportHTTPStream:
 		case flagKind(f.Type) == "":
 		default:
