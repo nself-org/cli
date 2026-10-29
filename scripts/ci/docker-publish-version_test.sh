@@ -103,6 +103,12 @@ run_case "dispatch: v1.4.13 (leading v) is latest" 0 "version=1.4.13 latest=true
   EVENT_NAME=workflow_dispatch HAVE_SECRETS=1 INPUT_VERSION=v1.4.13
 run_case "dispatch: blank input uses GitHub's latest" 0 "version=1.4.13 latest=true proceed=true" \
   EVENT_NAME=workflow_dispatch HAVE_SECRETS=1 INPUT_VERSION=
+# D-0204 mutant kills: bare version and v-prefixed version must produce the
+# same normalised tag so the concurrency group key matches workflow_run.
+run_case "dispatch: bare 1.4.12 produces tag=v1.4.12" 0 "version=1.4.12 tag=v1.4.12 latest=false proceed=true" \
+  EVENT_NAME=workflow_dispatch HAVE_SECRETS=1 INPUT_VERSION=1.4.12
+run_case "dispatch: v1.4.12 produces tag=v1.4.12" 0 "version=1.4.12 tag=v1.4.12 latest=false proceed=true" \
+  EVENT_NAME=workflow_dispatch HAVE_SECRETS=1 INPUT_VERSION=v1.4.12
 run_case "dispatch: no such release -> exit 1" 1 - \
   EVENT_NAME=workflow_dispatch HAVE_SECRETS=1 INPUT_VERSION=9.9.9
 run_case "dispatch: garbage input -> exit 1" 1 - \

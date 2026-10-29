@@ -21,8 +21,9 @@ name: Docker Multi-Arch Publish
 #
 # Tags published:
 #   nself/nself:<version>   (e.g. nself/nself:1.4.13)
-#   nself/nself:latest      (non-prerelease, GitHub's latest only; points at the
-#                            versioned tag's index via `imagetools create`, no rebuild)
+#   nself/nself:latest      (non-prerelease, GitHub's latest only; promoted by the
+#                            serialised promote-latest job via `imagetools create`,
+#                            no rebuild, after re-checking the latest release)
 
 on:
   workflow_run:
@@ -41,8 +42,12 @@ permissions:
 # cancel-in-progress: false — this workflow deploys/publishes/releases; a superseding
 # run must queue behind an in-flight one, never cancel it mid-flight.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # D-0204: key on the normalised release tag (always v<ver>) so a dispatch with
+  # or without the leading v serialises with the matching workflow_run. Blank
+  # dispatch input falls through to github.ref (the default branch), never "".
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || (github.event_name == 'workflow_dispatch' && inputs.version != '' && (startsWith(inputs.version, 'v') && inputs.version || format('v{0}', inputs.version))) || github.ref }}
   cancel-in-progress: false
+  queue: max
 
 jobs:
   docker:
@@ -53,7 +58,10 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     permissions:
       contents: read
-      id-token: write
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+      latest: ${{ steps.version.outputs.latest }}
 
     steps:
       - uses: actions/checkout@v7.0.1
@@ -114,21 +122,49 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # :latest is a second name for the versioned index, not a second build: the
-      # same platform manifests and the same provenance attestations, so both tags
-      # report one index digest (D-0351). Runs after the versioned push; a failure
-      # here fails the job.
-      - name: Tag as latest (same index as the versioned tag)
-        if: steps.version.outputs.latest == 'true'
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: docker buildx imagetools create -t nself/nself:latest "nself/nself:${VERSION}"
-
       - name: Summary
         run: |
           echo "### Docker publish complete" >> "$GITHUB_STEP_SUMMARY"
           echo "- Image: \`nself/nself:${{ steps.version.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
           if [ "${{ steps.version.outputs.latest }}" = "true" ]; then
-            echo "- Also tagged: \`nself/nself:latest\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "- \`nself/nself:latest\`: promoted by the promote-latest job if this is still the latest release" >> "$GITHUB_STEP_SUMMARY"
           fi
           echo "- Platforms: linux/amd64, linux/arm64" >> "$GITHUB_STEP_SUMMARY"
+
+  # :latest is a second name for the versioned index, not a second build: the
+  # same platform manifests and the same provenance attestations, so both tags
+  # report one index digest (D-0351). It is a separate job because the per-tag
+  # group above lets two releases publish at once, and `latest` was resolved
+  # before the build: an older run finishing last would move :latest backwards.
+  # Every promotion shares ONE group, so they run one at a time, and the script
+  # re-reads GitHub's latest release inside the lock before it writes. Retain
+  # pending promotions: an older build finishing later must not replace the
+  # newest release's pending promotion. GitHub queues up to 100 with queue: max.
+  promote-latest:
+    name: Promote nself/nself:latest
+    needs: docker
+    if: needs.docker.outputs.latest == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: docker-publish-latest
+      cancel-in-progress: false
+      queue: max
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Tag as latest if still the latest release
+        env:
+          TAG: ${{ needs.docker.outputs.tag }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/docker-publish-promote.sh

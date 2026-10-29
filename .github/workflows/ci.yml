@@ -223,6 +223,23 @@ jobs:
 
       # D-0140: `make contract-check` (P7-REG-10) runs in the required `nself-ci`
       # job (.nself/ci.yaml `contract-check`); only the smoke below stays here.
+
+      # D-0204: docker-publish-version.sh stub-gh test (P7-HYG-06 follow-up).
+      - name: Docker publish version script test
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/ci/docker-publish-version_test.sh
+
+      # D-0204: concurrency group expression must normalise dispatch input to
+      # v<ver> and handle blank input; kills two surviving mutants.
+      - name: Docker publish concurrency expression test
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/ci/docker-publish-concurrency_test.sh
+
+      # D-0204: :latest only moves while the promoted tag is still GitHub's latest.
+      - name: Docker publish promote script test
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/ci/docker-publish-promote_test.sh
+
       - name: Contract smoke (Linux, both compat modes)
         if: runner.os == 'Linux'
         run: bash scripts/ci/contract-smoke.sh
