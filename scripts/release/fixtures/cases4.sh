@@ -15,13 +15,17 @@ mk_bump_env() {
   B=$(mktemp -d "$BASE/bump.XXXXXX"); C=$B/nself/cli; A=$B/nself/admin
   # mk_env's TMPDIR was deleted with its env; bump-version.sh's `mktemp -d` needs a live one (GNU mktemp fails without).
   mkdir -p "$BASE/tmp"; export TMPDIR=$BASE/tmp
-  mkdir -p "$C/scripts" "$C/internal/version" "$C/sdk/go" "$C/sdk/ts" "$C/sdk/ts-sdk" "$C/sdk/py" "$C/.github" \
+  mkdir -p "$C/scripts" "$C/internal/version" "$C/sdk/go" "$C/sdk/py" "$C/.github" \
     "$C/internal/build" "$C/cmd/commands" "$A/src/lib" "$B/bin"
   cp "$ROOT/scripts/bump-version.sh" "$C/scripts/"
   echo 1.4.13 > "$C/.github/VERSION"
   printf 'package version\n\nvar (\n\tVersion string = "1.4.13"\n)\n' > "$C/internal/version/version.go"
   printf 'package sdk\n\nconst Version = "1.4.13"\n' > "$C/sdk/go/doc.go"
-  for f in sdk/ts sdk/ts-sdk; do echo '{"version":"1.4.13"}' > "$C/$f/package.json"; done
+  # One fixture package per sdk/*/package.json in the real tree, so a package added there
+  # is part of every bump test without touching this file.
+  for f in "$ROOT"/sdk/*/package.json; do
+    d=$(basename "$(dirname "$f")"); mkdir -p "$C/sdk/$d"; echo '{"version":"1.4.13"}' > "$C/sdk/$d/package.json"
+  done
   printf '[project]\nversion = "1.4.13"\n' > "$C/sdk/py/pyproject.toml"
   echo '{"version":"1.4.13"}' > "$A/package.json"
   echo "export const CLI_VERSION = '1.4.13'" > "$A/src/lib/cli-version.ts"
@@ -65,6 +69,17 @@ check "bump kept the other golden lines" gold_all 'other keep'
 check "bump ran the build golden with UPDATE_GOLDEN=1" grep -q '^UPDATE_GOLDEN=1 test .*./internal/build ' "$GO_LOG"
 check "bump ran the cmd golden with UPDATE_GOLDEN=1" grep -q '^UPDATE_GOLDEN=1 test .*./cmd/commands ' "$GO_LOG"
 check "bump re-ran both tests plain" test "$(grep -c '^UPDATE_GOLDEN= test' "$GO_LOG")" -eq 2
+sdk_pkgs_at() { local f; for f in "$C"/sdk/*/package.json; do grep -q "\"$1\"" "$f" || return 1; done; }
+check "bump found the real sdk npm packages (ts-sdk, ts-cli-api among them)" \
+  test -f "$C/sdk/ts-sdk/package.json" -a -f "$C/sdk/ts-cli-api/package.json"
+check "bump moved every sdk/*/package.json, none skipped" sdk_pkgs_at 9.9.9
+rm -rf "$B"
+
+# 13b. a package the bumper skips is caught: sdk_pkgs_at fails when one stays behind -------
+mk_bump_env
+run_bump 9.9.9
+echo '{"version":"1.4.14"}' > "$C/sdk/ts-cli-api/package.json"
+check "a lagging sdk package fails the lockstep assertion" test "$(sdk_pkgs_at 9.9.9 && echo ok || echo lag)" = lag
 rm -rf "$B"
 
 # 14. other drift is refused and the goldens come back -------------------------------------
