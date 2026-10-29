@@ -1,7 +1,9 @@
 package commands
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/nself-org/cli/internal/auth"
+	"github.com/nself-org/cli/internal/errs"
 )
 
 // writeTestAuthFile writes a minimal auth.json to the isolated home temp dir.
@@ -474,5 +477,35 @@ func TestRequireLogin_NotLoggedIn(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "nself account login") {
 		t.Errorf("error should mention 'nself account login', got: %v", err)
+	}
+}
+
+// TestHandleAuthError_UnservedAccountPathIsE225 verifies that a 404 from the
+// account paths auth_server does not serve reaches the user as E225 with exit
+// class 2, never a raw 404, and that the token never appears in the message.
+func TestHandleAuthError_UnservedAccountPathIsE225(t *testing.T) {
+	setAuthServer(t, func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+	calls := map[string]func() error{
+		"/account/devices": func() error { _, err := auth.GetDevices(context.Background(), "tok-secret"); return err },
+		"/account/team":    func() error { _, err := auth.GetTeamMembers(context.Background(), "tok-secret"); return err },
+	}
+	for path, call := range calls {
+		err := handleAuthError(call())
+		var ce *errs.CLIError
+		if !errors.As(err, &ce) || ce.Code != "E225" {
+			t.Fatalf("%s: want an E225 CLIError, got %v", path, err)
+		}
+		msg := err.Error()
+		if !strings.Contains(msg, "[E225]") || !strings.Contains(msg, "this server does not provide "+path) {
+			t.Errorf("%s: message %q", path, msg)
+		}
+		if strings.Contains(msg, "tok-secret") {
+			t.Errorf("%s: message leaks the token: %q", path, msg)
+		}
+		if got := errs.ExitCodeFor(err); got != 2 {
+			t.Errorf("%s: exit class = %d, want 2", path, got)
+		}
 	}
 }

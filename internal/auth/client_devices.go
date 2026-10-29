@@ -15,8 +15,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-
-	"github.com/nself-org/cli/internal/errs"
 )
 
 // DeviceEntry represents one registered device for an account.
@@ -117,11 +115,19 @@ func parseSessionError(resp *http.Response) error {
 	return parseAPIError(resp)
 }
 
-// errServerLacksPath is the E225 error: the auth server answered 404 for a path
-// the CLI calls but the server does not provide (never a raw 404, never an
-// empty list). The path is the route only, never a token or query.
+// ServerLacksPathError means the auth server answered 404 for a path the CLI
+// calls but the server does not provide (never a raw 404, never an empty
+// list). Path is the route only, never a token or query. The command layer maps
+// it to E225 (internal/auth stays free of internal/errs, which keeps the
+// package fan-in of errs flat).
+type ServerLacksPathError struct{ Path string }
+
+func (e *ServerLacksPathError) Error() string {
+	return "this server does not provide " + e.Path
+}
+
 func errServerLacksPath(path string) error {
-	return errs.Newf("E225", "this server does not provide %s", path)
+	return &ServerLacksPathError{Path: path}
 }
 
 func parseAPIError(resp *http.Response) error {

@@ -19,8 +19,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/nself-org/cli/internal/errs"
 )
 
 // fixture returns the recorded auth_server body with the given file name.
@@ -336,7 +334,7 @@ func TestPollToken_ApprovedWithoutAccessTokenIsError(t *testing.T) {
 
 // /account/devices and /account/team are served by no host today. A 404 (the
 // Express default HTML page or a JSON body) is E225 with exit class 2, never a
-// raw 404 and never an empty list.
+// raw 404 and never an empty list. The command layer turns it into E225 (exit 2).
 func TestUnservedAccountPaths_E225(t *testing.T) {
 	calls := map[string]func(context.Context, string) error{
 		"/account/devices": func(ctx context.Context, tok string) error { _, err := GetDevices(ctx, tok); return err },
@@ -359,22 +357,19 @@ func TestUnservedAccountPaths_E225(t *testing.T) {
 				t.Setenv("NSELF_AUTH_SERVER_URL", srv.URL)
 
 				err := call(context.Background(), "tok-secret")
-				var ce *errs.CLIError
-				if !errors.As(err, &ce) || ce.Code != "E225" {
-					t.Fatalf("want an E225 CLIError, got %v", err)
+				var lacks *ServerLacksPathError
+				if !errors.As(err, &lacks) || lacks.Path != path {
+					t.Fatalf("want a ServerLacksPathError for %s, got %v", path, err)
 				}
 				if gotPath != path {
 					t.Errorf("requested %q, want %q", gotPath, path)
 				}
 				msg := err.Error()
-				if !strings.Contains(msg, "[E225]") || !strings.Contains(msg, "this server does not provide "+path) {
+				if !strings.Contains(msg, "this server does not provide "+path) {
 					t.Errorf("message: %q", msg)
 				}
 				if strings.Contains(msg, "tok-secret") || strings.Contains(msg, "Cannot GET") {
 					t.Errorf("message leaks the token or the raw 404 body: %q", msg)
-				}
-				if got := errs.ExitCodeFor(err); got != 2 {
-					t.Errorf("exit class = %d, want 2", got)
 				}
 			})
 		}
@@ -402,7 +397,7 @@ func TestUnservedAccountPaths_OtherStatusesUnchanged(t *testing.T) {
 	}))
 	defer srv500.Close()
 	t.Setenv("NSELF_AUTH_SERVER_URL", srv500.URL)
-	if _, err := GetDevices(context.Background(), "tok"); errors.As(err, new(*errs.CLIError)) {
+	if _, err := GetDevices(context.Background(), "tok"); errors.As(err, new(*ServerLacksPathError)) {
 		t.Errorf("a 500 must not become E225: %v", err)
 	}
 }
