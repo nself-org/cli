@@ -12,10 +12,9 @@ package commands
 // SPORT: cli/cmd/commands — see D-0232, db_remote.go, internal/plugin/name_validate.go.
 
 import (
-	"strings"
-
 	"github.com/spf13/cobra"
 
+	"github.com/nself-org/cli/internal/cmdregistry"
 	"github.com/nself-org/cli/internal/plugin"
 )
 
@@ -36,27 +35,9 @@ func withRemotePluginFlag(cmd *cobra.Command, remoteArgs []string) ([]string, er
 	if err := plugin.ValidateName(name); err != nil {
 		return nil, err
 	}
-	insertAt := len(remoteArgs)
-	for i := 0; i < len(remoteArgs); i++ {
-		a := remoteArgs[i]
-		if a == "--" {
-			insertAt = i
-			break
-		}
-		if !strings.HasPrefix(a, "--") {
-			continue
-		}
-		flagName, _, inlineValue := strings.Cut(strings.TrimPrefix(a, "--"), "=")
-		if flagName == "plugin" {
-			return remoteArgs, nil
-		}
-		flag := cmd.Flags().Lookup(flagName)
-		if flag == nil {
-			flag = cmd.InheritedFlags().Lookup(flagName)
-		}
-		if flag != nil && flag.NoOptDefVal == "" && !inlineValue {
-			i++ // A required value may itself look like --plugin.
-		}
+	insertAt, forwarded := cmdregistry.FlagInsertionIndex(remoteArgs, "plugin", cmd.Flags(), cmd.InheritedFlags())
+	if forwarded {
+		return remoteArgs, nil
 	}
 	out := make([]string, 0, len(remoteArgs)+2)
 	out = append(out, remoteArgs[:insertAt]...)
