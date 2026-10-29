@@ -9,12 +9,12 @@ package commands
 // may carry the --json envelope.
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -30,16 +30,16 @@ func readSecretValue(cmd *cobra.Command, key string) (string, error) {
 		raw, err := term.ReadPassword(int(f.Fd()))
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr())
 		if err != nil {
-			return "", fmt.Errorf("reading value: %w", err)
+			return "", errs.Wrap("E401", "reading value", err)
 		}
 		return nonEmptySecret(string(raw))
 	}
 	raw, err := io.ReadAll(io.LimitReader(in, maxSecretStdinBytes+1))
 	if err != nil {
-		return "", fmt.Errorf("reading value from stdin: %w", err)
+		return "", errs.Wrap("E401", "reading value from stdin", err)
 	}
 	if len(raw) > maxSecretStdinBytes {
-		return "", fmt.Errorf("the value on stdin is larger than %d bytes", maxSecretStdinBytes)
+		return "", errs.New("E401", fmt.Sprintf("the value on stdin is larger than %d bytes", maxSecretStdinBytes))
 	}
 	text := strings.TrimSuffix(string(raw), "\n")
 	if len(text) < len(raw) {
@@ -50,7 +50,7 @@ func readSecretValue(cmd *cobra.Command, key string) (string, error) {
 
 func nonEmptySecret(v string) (string, error) {
 	if v == "" {
-		return "", errors.New("the secret value is empty: pass it on stdin or at the prompt")
+		return "", errs.New("E401", "the secret value is empty: pass it on stdin or at the prompt")
 	}
 	return v, nil
 }

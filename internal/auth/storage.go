@@ -139,3 +139,20 @@ func GetAuthFilePath() string {
 	}
 	return path
 }
+
+// CachedAccountJSON returns the legacy bare-JSON map for a cached auth file.
+// It lives here (not in cmd/commands) so the commands package stays under its
+// size ceiling; callers encode it themselves.
+func CachedAccountJSON(af *AuthFile) map[string]interface{} {
+	tier := af.Tier
+	if tier == "" {
+		tier = "free"
+	}
+	return map[string]interface{}{
+		"email":        af.Email,
+		"display_name": af.DisplayName,
+		"tier":         tier,
+		"bundles":      af.Bundles,
+		"cached":       true,
+	}
+}

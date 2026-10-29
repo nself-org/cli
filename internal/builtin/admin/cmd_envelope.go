@@ -13,7 +13,6 @@ package admin
 // SPORT: P7-SURF-13, contract:cli.json-envelope
 
 import (
-	"os"
 	"strings"
 
 	"github.com/nself-org/cli/internal/compat"
@@ -132,13 +131,6 @@ func emit(cmd *cobra.Command, data any, legacy bool) error {
 		return output.EmitLegacyCompatible(output.Default(), commandKey(cmd), data)
 	}
 	return output.EmitData(output.Default(), commandKey(cmd), data)
-}
-
-// legacyBare reports whether NSELF_JSON_LEGACY asks for the pre-contract bare
-// form, where an empty list printed `null`.
-func legacyBare() bool {
-	v := os.Getenv(output.LegacyEnvVar)
-	return v == "1" || strings.EqualFold(v, "true")
 }
 
 // hubOf lists the visible subcommands of a group.

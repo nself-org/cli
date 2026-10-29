@@ -16,6 +16,7 @@ package commands
 
 import (
 	"errors"
+	"github.com/nself-org/cli/internal/output"
 
 	"github.com/nself-org/cli/internal/license"
 	"github.com/spf13/cobra"
@@ -57,6 +58,9 @@ func newLicenseStatusData() licenseStatusData {
 // emitLicenseShow writes the `license show` document in its legacy-compatible
 // form; out is nil when no key is configured.
 func emitLicenseShow(cmd *cobra.Command, out *licenseShowJSON) error {
+	if out == nil && output.LegacyRequested() {
+		return emitDoc(cmd, map[string]string{"error": "no license key configured"}, true)
+	}
 	doc := licenseShowData{Bundles: []string{}}
 	if out != nil {
 		doc = licenseShowData{Configured: true, KeyPrefix: out.KeyPrefix, Tier: out.Tier, Bundles: nonNilStrings(out.Bundles),
