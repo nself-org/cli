@@ -81,6 +81,7 @@ Colors are only shown when output is a terminal. Piped output is plain text.
 - Reconnects automatically on connection loss (exponential backoff, max 30s)
 - Ctrl-C exits cleanly with no goroutine leak
 - License key values are never shown in full, only the first 12 characters (key prefix) are displayed
+- Reads `GET /license/events` on the ping_api. If the server answers 404, 410 or 501 (it does not serve the stream), or 401 or 403 (it refuses the caller), the command stops with `license event stream unavailable` and the URL instead of reconnecting. Network loss and 5xx replies still reconnect
 
 ### Examples
 
