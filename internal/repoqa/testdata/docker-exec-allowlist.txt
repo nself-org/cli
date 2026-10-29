@@ -19,7 +19,6 @@ internal/backup/create_targets.go 3
 internal/backup/pitr/restore.go 2
 internal/backup/restore_container.go 1
 internal/backup/stream_restore_remote.go 1
-internal/build/postgres_image_warning.go 1
 internal/builtin/admin/cmd_logs.go 1
 internal/builtin/admin/cmd_start.go 1
 internal/builtin/admin/cmd_stop.go 1
@@ -52,6 +51,7 @@ internal/model/detector.go 1
 internal/plugin/audit.go 1
 internal/plugin/image_invalidate.go 1
 internal/plugin/schema.go 2
+internal/postgres/image_warning.go 1
 internal/security/waf.go 1
 internal/tenant/create.go 2
 internal/tenant/destroy.go 3
