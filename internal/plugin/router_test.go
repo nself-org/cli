@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -80,5 +81,49 @@ func TestRouterKeepsExistingHint(t *testing.T) {
 	catalogCacheFixture(t, "")
 	if err := ProxyCommand("traefik", nil); err == nil || strings.Contains(err.Error(), "E117") || !strings.Contains(err.Error(), "nself install traefik") {
 		t.Fatalf("no cache should keep the generic hint: %v", err)
+	}
+}
+
+// TestPluginBinDirRefusesWithoutHOME proves D-1396: when HOME is unset the
+// router must not fall back to a shared directory like /tmp/.nself/plugins/bin,
+// because any local user could plant a binary there that cron or systemd would
+// execute with the caller's secrets.
+func TestPluginBinDirRefusesWithoutHOME(t *testing.T) {
+	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", "")
+	_, err := pluginBinDir()
+	if err == nil {
+		t.Fatal("pluginBinDir succeeded without HOME; expected refusal")
+	}
+	if !strings.Contains(err.Error(), "HOME is not set") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// TestProxyBinaryAtRefusesUnsafePath wires the ownership check through
+// ProxyBinaryAt so that a binary in an unsafe directory is rejected even
+// when the binary itself is well-formed. Removing the call to
+// pluginperm.Verify in ProxyBinaryAt would make this test pass.
+func TestProxyBinaryAtRefusesUnsafePath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("ownership check is a no-op on Windows")
+	}
+	root := t.TempDir()
+	binDir := filepath.Join(root, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(binDir, "nself-testplug")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make the bin directory world-writable -> ProxyBinaryAt must refuse.
+	if err := os.Chmod(binDir, 0o757); err != nil {
+		t.Fatal(err)
+	}
+	err := ProxyBinaryAt(bin, root, "testplug", nil)
+	if err == nil || !strings.Contains(err.Error(), "world-writable") {
+		t.Fatalf("ProxyBinaryAt did not refuse world-writable dir: %v", err)
 	}
 }

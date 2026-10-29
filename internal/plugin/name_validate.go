@@ -78,7 +78,11 @@ func safePublishedBinaryPath(bin string) (string, error) {
 		return "", err
 	}
 	dst := PublishedBinaryPath(bin)
-	rel, err := filepath.Rel(pluginBinDir(), dst)
+	binDir, err := pluginBinDir()
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(binDir, dst)
 	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
 		return "", errs.Newf("E401", "plugin binary %q resolves outside the plugin bin directory", bin)
 	}
