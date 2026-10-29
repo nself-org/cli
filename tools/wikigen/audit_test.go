@@ -93,3 +93,26 @@ func TestAuditProseLinksScope(t *testing.T) {
 		t.Errorf("unexpected findings:\n%s", got)
 	}
 }
+
+// Retired tier rows and the Basic-grandfathering line fail on the pricing
+// pages only; the bundle model passes (D-1289).
+func TestAuditProseLinksStaleTiers(t *testing.T) {
+	stale := "| **Elite** | $4.99/mo | Pro |\n| Business+ | $49.99 | x |\n| Enterprise | $99.99 | x |\nExisting $9.99/yr keys are grandfathered to the Basic tier.\n"
+	got := audit(t, map[string]string{
+		"Plugin-Overview.md":  stale,
+		"Plugin-Licensing.md": stale,
+		"Support.md":          stale,
+	})
+	for _, page := range []string{"Plugin-Overview.md", "Plugin-Licensing.md"} {
+		if n := strings.Count(got, page+": stale tier pricing line"); n != 4 {
+			t.Errorf("%s: want 4 findings, got %d in:\n%s", page, n, got)
+		}
+	}
+	if strings.Contains(got, "Support.md") {
+		t.Errorf("non-pricing page flagged:\n%s", got)
+	}
+	ok := "| **Bundle** | $0.99/mo | One product |\n| ɳSelf+ | $3.99 | All |\nThere is no Basic tier.\n"
+	if got := audit(t, map[string]string{"Plugin-Overview.md": ok}); got != "" {
+		t.Errorf("bundle model flagged:\n%s", got)
+	}
+}

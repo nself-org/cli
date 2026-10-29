@@ -11,10 +11,20 @@ import (
 )
 
 var (
-	claudeLinkRe  = regexp.MustCompile(`github\.com/nself-org/cli/blob/main/\.claude`)
-	docsLinkRe    = regexp.MustCompile(`https://nself\.org/docs/[^\s\)]+`)
-	wikiLinkRe    = regexp.MustCompile(`\[\[([^\]|#]+)`)
-	inlineCodeRe  = regexp.MustCompile("`[^`]*`")
+	claudeLinkRe = regexp.MustCompile(`github\.com/nself-org/cli/blob/main/\.claude`)
+	docsLinkRe   = regexp.MustCompile(`https://nself\.org/docs/[^\s\)]+`)
+	wikiLinkRe   = regexp.MustCompile(`\[\[([^\]|#]+)`)
+	inlineCodeRe = regexp.MustCompile("`[^`]*`")
+	// staleTierRe matches a pricing-table row for a retired tier, or the retired
+	// Basic-grandfathering line (D-1289).
+	staleTierRe = regexp.MustCompile(`(?i)^\|\s*\**(Elite|Business\+?|Enterprise)\**\s*\|.*\$|grandfathered to the Basic tier`)
+	// pricingPages are the pages whose tier tables must follow the bundle model.
+	pricingPages = map[string]bool{
+		"Plugin-Overview.md":  true,
+		"Plugin-Licensing.md": true,
+		"Licensing-Guide.md":  true,
+		"Feature-Plugins.md":  true,
+	}
 	publishedDocs = map[string]bool{
 		"https://nself.org/docs/commands":  true,
 		"https://nself.org/docs/plugins":   true,
@@ -43,7 +53,9 @@ func wikiPageSet(dir string) (map[string]bool, error) {
 // auditProseLinks fails when a cmd-*.md page links into the private .claude
 // workspace or to an nself.org/docs URL that is not in the published docs nav,
 // or when any wiki page has a [[wikilink]] whose target page does not exist.
-// Each class of link 404s in public renders (D-0717).
+// Each class of link 404s in public renders (D-0717). It also fails when a
+// pricing page still carries a retired Elite/Business/Business+/Enterprise row
+// or the Basic-grandfathering line (D-1289).
 //
 // Inputs: the wiki directory (searched recursively). Outputs: one message per
 // problem, sorted by page. Constraints: fenced code blocks hold verbatim CLI
@@ -86,6 +98,9 @@ func auditProseLinks(dir string) ([]string, error) {
 			}
 			if inFence {
 				continue
+			}
+			if pricingPages[name] && staleTierRe.MatchString(trimmed) {
+				bad = append(bad, fmt.Sprintf("%s: stale tier pricing line %q", name, trimmed))
 			}
 			for _, m := range docsLinkRe.FindAllString(line, -1) {
 				if proseOnly && !publishedDocs[strings.TrimRight(m, ").,;:")] {

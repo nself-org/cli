@@ -89,21 +89,17 @@ The same requirement applies to `nself license import` when importing unsigned c
 NSELF_LICENSE_SKIP_VERIFY=1 nself license import cache.json --force
 ```
 
-## Tier Entitlements
+## Bundle Entitlements
 
-| Tier | Monthly | Annual | Plugin Access |
+| Plan | Monthly | Annual | Plugin Access |
 |------|---------|--------|--------------|
-| Free | $0 | $0 | Free plugins only |
-| Basic | $0.99 | $9.99 | Licensed plugins outside the Pro-tier AI suite |
-| Pro | $1.99 | $19.99 | Basic + full AI suite |
-| Elite | $4.99 | $49.99 | Pro + email support |
-| Business | $9.99 | $99.99 | Elite + 24h support |
-| Business+ | $49.99 | $499.99 | Business + dedicated channel |
-| Enterprise | $99.99 | $999.99 | Business+ + managed DevOps |
+| Free (incl. Task bundle) | $0 | $0 | Free plugins only |
+| Single bundle (Chat, Claw, Family, Sentry, ClawDE) | $0.99 | $9.99 | That bundle's licensed plugins |
+| ɳSelf+ | $3.99 | $39.99 | Every bundle + all apps + support |
 
-Existing $9.99/yr keys are grandfathered to the Basic tier.
+There is no Basic, Pro, Elite or Business tier. The authoritative catalog is [nself.org/pricing](https://nself.org/pricing), fetched by the CLI from `https://plugins.nself.org/bundles.json`. See [[Licensing-Guide]].
 
 ## Related Pages
 
-- [[Plugin-Overview]], Tier comparison and plugin categories
+- [[Plugin-Overview]], Bundle comparison and plugin categories
 - [[Plugin-Install]], How to install plugins
