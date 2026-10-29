@@ -29,10 +29,9 @@ import (
 	"github.com/nself-org/cli/schemas"
 )
 
-// newMCPServer builds the MCP server for the compat mode: v1.4 registers the
-// 26 hand tools and the four hand resources first and the generated ones on
-// top; v1.5 the generated surface only (mcpgen.Surface keeps the list live).
-// timeout bounds each call; 0 is invoke.DefaultTimeout.
+// newMCPServer builds the MCP server: v1.4 lists the 26 hand tools and four hand
+// resources, then the generated ones; v1.5 only the generated surface
+// (mcpgen.Surface keeps the list live). timeout 0 is invoke.DefaultTimeout.
 func newMCPServer(transport string, v15 bool, timeout time.Duration) (*server.MCPServer, error) {
 	s := server.NewMCPServer(mcpgen.ServerName, mcpgen.ServerVersion, mcpgen.ServerOptions()...)
 	o := mcpgen.SurfaceOptions{Server: s, V15: v15, Schema: schemas.Lookup, PluginDir: resolvePluginDir,

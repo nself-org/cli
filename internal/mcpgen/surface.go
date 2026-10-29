@@ -101,6 +101,9 @@ func (m *Surface) Start() (*cmdregistry.Registry, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.dir = m.o.Project()
+	if m.dir == "" { // an MCP-only agent must still reach init
+		m.warn("no nself project here; serving init and the read-only tools until one exists")
+	}
 	m.seen = m.inputs(m.dir)
 	m.o.Server.SetTools(visible(m.hand, m.dir)...)
 	reg, err := m.o.Registry(false)

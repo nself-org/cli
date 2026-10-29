@@ -23,7 +23,6 @@ package commands
 // SPORT: CLI-CMD-MCP-001
 
 import (
-	"fmt"
 	"os"
 	"time"
 
@@ -90,9 +89,6 @@ func runMCPServe(cmd *cobra.Command, args []string) error {
 	timeout, _ := cmd.Flags().GetDuration("timeout")
 	if timeout < time.Second {
 		return errs.Newf("E401", "--timeout %s is too short", timeout).WithFix("Pass a duration of at least 1s, such as 15m.")
-	}
-	if _, err := resolveProjectDir(); err != nil { // an MCP-only agent must reach init (mcpgen/surface.go)
-		fmt.Fprintln(os.Stderr, "nself mcp: no nself project here; serving init and the read-only tools until one exists")
 	}
 
 	// Bind and token policy first: a refused start must not build anything or
