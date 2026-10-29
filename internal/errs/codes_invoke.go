@@ -19,7 +19,7 @@ func init() {
 			Code:       "E421",
 			Category:   "cli",
 			Summary:    "Command not exposed on machine surfaces",
-			DefaultWhy: "This command is not served over MCP or HTTP, or the secret values passed to a machine-invoked child are unusable (bad bundle, an unused or reused value); the reason is in the cause.",
+			DefaultWhy: "This command is not served over MCP or HTTP, the secret values passed to a machine-invoked child are unusable (bad bundle, an unused or reused value), or a plugin was invoked while a secret bundle was restored; the reason is in the cause.",
 			DefaultFix: "Run the command from a terminal, or call a command that is exposed.",
 			DocsPath:   "reference/error-codes#e421",
 			Exit:       1,

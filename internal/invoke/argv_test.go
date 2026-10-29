@@ -246,6 +246,14 @@ func TestExposure(t *testing.T) {
 		{"fx echo", TransportHTTP, []string{"follow"}, false, "NDJSON"},
 		{"fx echo", TransportHTTPStream, []string{"follow"}, true, ""},
 	}
+	// Plugin commands are advertised on machine surfaces; the secret-bundle
+	// guard is enforced at exec time, not at exposure time (D-0651 review).
+	cases = append(cases, struct {
+		path, transport string
+		set             []string
+		ok              bool
+		reason          string
+	}{"demo", TransportMCP, nil, true, "plugin leaf advertised"})
 	for _, c := range cases {
 		set := map[string]bool{}
 		for _, n := range c.set {

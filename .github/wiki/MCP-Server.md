@@ -24,6 +24,7 @@ After the path matches, the child rebuilds the registry from its mounted command
 Running as a child keeps global state, `os.Exit` and the project operation lock identical to a typed command. There is no shell anywhere: every request value is exactly one argv element.
 
 The **machine registry** is the v1.5 registry of the running binary with installed plugin commands mounted. It is the same in both compat modes ([[Compat-V15]]), so tool names and routes are the v1.5 shape in 1.4.x too. The plugin set is read when the server starts; install a plugin, then restart the server.
+Plugin commands are listed as tools like any other command, but a call that arrives while a secret bundle was restored is refused with `E421` because plugins do not yet support the secret-handoff protocol (D-0651). A machine-invoked plugin call that carries no secrets runs normally.
 
 ## Exposure rules
 
@@ -50,6 +51,7 @@ A request is a JSON object. Every member is optional. Member names are matched e
 | `args` | array of strings | positional values, in declaration order |
 | `flags` | object | flag name to boolean, integer, number, string or array of strings |
 | `argv` | array of strings | arguments for a plugin command that declares no args and no flags and has no subcommands (a leaf); items naming a root flag such as `--no-monorepo` are `E420` because the plugin proxy would drop them |
+| `argv` | array of strings | arguments for a plugin command that declares no args and no flags and has no subcommands (a leaf); items naming a root flag such as `--no-monorepo` are `E420` because the plugin proxy would drop them. A plugin call that arrives while a secret bundle was restored is `E421`. |
 | `confirm` | string, 64 hex characters | a plan id or a server-issued nonce (commands with a `confirm` block only) |
 
 The params schema of each command (JSON Schema 2020-12, `additionalProperties: false`) is derived from the registry: `prefixItems` per declared argument, one typed property per exposed flag, defaults from the registry.
@@ -71,12 +73,14 @@ Example, flags and a value that looks like a flag:
 becomes `<path> --json --quiet=true --tags=a --tags=b -- -x`. Flags are sorted by name, a boolean is always `--name=true` or `--name=false` (never a bare `--name`: a mounted plugin node parses no flags, and cobra's command lookup would read a bare unknown flag as taking the next word, swallow the `--` and run the first positional as a subcommand), and a list is one `--name=value` per item. Positional values always come after `--`, so none of them can be read as a flag. A `stringSlice` flag is split on commas by the child, so an item that holds a comma, a quote or a newline is refused instead of being silently changed.
 
 `argv` on a plugin command that has subcommands is `E421`: a mounted plugin node parses no flags, so the child would read the first word as a subcommand and run a node the exposure rules never checked. Its params schema does not offer `argv`. For a leaf, `argv` is the plugin's own input: the exposure decision covers the command at the requested path, not what the plugin binary does with its words. Accepted risk: free-form `argv` can carry the plugin's own undeclared flags (for example `--force`), which the side-effect classification cannot see, so a plugin leaf declared `read` that takes undeclared mutating flags can write. Plugin authors declare every flag with its side effect in the manifest to get the gate.
+`argv` on a plugin command that has subcommands is `E421`: a mounted plugin node parses no flags, so the child would read the first word as a subcommand and run a node the exposure rules never checked. Its params schema does not offer `argv`. For a leaf, `argv` is the plugin's own input: the exposure decision covers the command at the requested path, not what the plugin binary does with its words. Accepted risk: free-form `argv` can carry the plugin's own undeclared flags (for example `--force`), which the side-effect classification cannot see, so a plugin leaf declared `read` that takes undeclared mutating flags can write. Plugin authors declare every flag with its side effect in the manifest to get the gate. A plugin leaf invoked while a secret bundle was restored is also `E421`, even when `argv` itself carries no secret placeholder, because the process argv may still hold values the invoker restored for this request.
 
 Refused with `E420`, naming the flag but never echoing its value: an unknown or unexposed flag, a value of the wrong type (`1.5` for an integer), too few or too many args, a NUL byte anywhere, an element over 32 KiB or an argv over 128 KiB.
 
 ## Request id
 
 The request id names a request in logs. It is the lowercase hex SHA-256 of the canonical JSON `{"args":[...],"argv":[...],"command":"<path>","flags":{...}}`: keys sorted, no whitespace, `confirm` left out, missing members empty, and every secret argument and flag value replaced by `"[REDACTED]"` first. Redaction fails closed: a positional past the declared args and a flag the command does not declare are replaced too. Free-form plugin `argv` items cannot be marked secret, so every one is replaced by `"[REDACTED]"` before hashing (the id keeps their count) and scrubbed from `E422` stderr tails. Two requests that differ only in a secret value share an id, and no id is derived from a secret. The id is not a confirmation: anyone can compute it.
+A plugin call refused under the secret-bundle guard shares the id it would have had if it ran; the refusal reason is in the envelope error, not in the id.
 
 ## Child environment
 
@@ -221,6 +225,7 @@ The adversarial suite runs with `go test`: `TestMCPGenAdversarial` (`internal/mc
 |---|---|
 | Name | `nself_` + the path words joined by `_`, `-` becoming `_` (`config secrets rotate` is `nself_config_secrets_rotate`). A name over 64 characters or a collision fails the start. |
 | Which commands | every command the [exposure rules](#exposure-rules) serve over MCP, installed plugin commands included. A plugin subcommand that declares no side effect counts as destructive and has no confirm block, so it is not listed. |
+| Which commands | every command the [exposure rules](#exposure-rules) serve over MCP, installed plugin commands included. A plugin subcommand that declares no side effect counts as destructive and has no confirm block, so it is not listed. Plugin commands are listed even though a call that arrives while a secret bundle was restored is refused with `E421`; the tool is advertised, the gate is enforced at exec time. |
 | Input | the machine request schema (`args`, `flags`, `argv`, `confirm`), `additionalProperties: false`. Flags with the `output: stream` override are not offered; a call that sets one is `E421`. |
 | Output | the command's committed data schema (`schemas/commands/`) as `outputSchema`; a command with none gets `{"type":"object"}`. A command that can ask for confirmation allows the confirmation shape too. Data that is not an object is wrapped as `{"value": ...}` in the schema and in the result. |
 | Annotations | `readOnlyHint` for read, `destructiveHint` for destructive, `openWorldHint` for remote, taken at the worst class a flag can reach. |
