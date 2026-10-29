@@ -47,6 +47,7 @@ concurrency:
   # dispatch input falls through to github.ref (the default branch), never "".
   group: ${{ github.workflow }}-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || (github.event_name == 'workflow_dispatch' && inputs.version != '' && (startsWith(inputs.version, 'v') && inputs.version || format('v{0}', inputs.version))) || github.ref }}
   cancel-in-progress: false
+  queue: max
 
 jobs:
   docker:
@@ -136,9 +137,9 @@ jobs:
   # group above lets two releases publish at once, and `latest` was resolved
   # before the build: an older run finishing last would move :latest backwards.
   # Every promotion shares ONE group, so they run one at a time, and the script
-  # re-reads GitHub's latest release inside the lock before it writes. A pending
-  # promotion can be replaced by a newer pending one (GitHub keeps one); that
-  # run is cancelled, not green, and a re-dispatch of the release repairs it.
+  # re-reads GitHub's latest release inside the lock before it writes. Retain
+  # pending promotions: an older build finishing later must not replace the
+  # newest release's pending promotion. GitHub queues up to 100 with queue: max.
   promote-latest:
     name: Promote nself/nself:latest
     needs: docker
@@ -148,6 +149,7 @@ jobs:
     concurrency:
       group: docker-publish-latest
       cancel-in-progress: false
+      queue: max
     permissions:
       contents: read
 

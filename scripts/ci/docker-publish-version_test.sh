@@ -9,7 +9,8 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="${HERE}/docker-publish-version.sh"
-WORK="$(mktemp -d)"
+mkdir -p "${HOME}/nself-worker/tmp"
+WORK="$(mktemp -d "${HOME}/nself-worker/tmp/docker-publish.XXXXXX")"
 trap 'rm -rf "${WORK}"' EXIT
 
 mkdir -p "${WORK}/bin"
