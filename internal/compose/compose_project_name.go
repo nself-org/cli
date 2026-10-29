@@ -1,4 +1,4 @@
-package build
+package compose
 
 // Purpose: warn when the project .env names a compose project other than PROJECT_NAME (D-0448).
 // Inputs: the project workdir and the loaded PROJECT_NAME.
@@ -12,15 +12,14 @@ package build
 
 import (
 	"fmt"
+	"github.com/nself-org/cli/internal/config"
 	"path/filepath"
 	"strings"
-
-	"github.com/nself-org/cli/internal/config"
 )
 
-// composeProjectNameWarning reads COMPOSE_PROJECT_NAME from workdir/.env, the only project
+// ProjectNameWarning reads COMPOSE_PROJECT_NAME from workdir/.env, the only project
 // env file compose reads (ComposeEnvFiles), and compares it with projectName.
-func composeProjectNameWarning(workdir, projectName string) string {
+func ProjectNameWarning(workdir, projectName string) string {
 	env, err := config.ReadEnvFile(filepath.Join(workdir, ".env"))
 	if err != nil {
 		return ""

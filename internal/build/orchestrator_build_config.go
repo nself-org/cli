@@ -87,7 +87,7 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 	}
 
 	// compose reads COMPOSE_PROJECT_NAME from .env but compose.env overrides it with PROJECT_NAME (D-0448)
-	if warning := composeProjectNameWarning(st.workdir, st.cfg.ProjectName); warning != "" {
+	if warning := compose.ProjectNameWarning(st.workdir, st.cfg.ProjectName); warning != "" {
 		slog.Warn(warning)
 	}
 

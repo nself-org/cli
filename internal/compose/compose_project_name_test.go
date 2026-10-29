@@ -1,9 +1,10 @@
-package build
+package compose
 
 // Purpose: D-0448 — the compose project name is PROJECT_NAME, so a differing
 // COMPOSE_PROJECT_NAME in .env gets a warning that names the volumes.
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -24,9 +25,11 @@ func TestComposeProjectNameWarning(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			if tc.env != "" {
-				testWriteFile(t, filepath.Join(dir, ".env"), tc.env, 0600)
+				if err := os.WriteFile(filepath.Join(dir, ".env"), []byte(tc.env), 0600); err != nil {
+					t.Fatal(err)
+				}
 			}
-			got := composeProjectNameWarning(dir, "bar")
+			got := ProjectNameWarning(dir, "bar")
 			if (got != "") != tc.want {
 				t.Fatalf("warning = %q, want warning: %v", got, tc.want)
 			}
