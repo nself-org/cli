@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -28,6 +29,9 @@ func RemapsUIDs() bool {
 	}
 	return remappedOptions(opts)
 }
+
+// RemapsUIDsOnce asks the daemon once per process. Tests replace it.
+var RemapsUIDsOnce = sync.OnceValue(RemapsUIDs)
 
 func remappedOptions(opts []string) bool {
 	for _, opt := range opts {

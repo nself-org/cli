@@ -7,14 +7,16 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/nself-org/cli/internal/docker"
 )
 
 // stubDaemonRemapsUIDs makes the daemon report remapped (or not) for one test.
 func stubDaemonRemapsUIDs(t *testing.T, remapped bool) {
 	t.Helper()
-	prev := daemonRemapsUIDs
-	daemonRemapsUIDs = func() bool { return remapped }
-	t.Cleanup(func() { daemonRemapsUIDs = prev })
+	prev := docker.RemapsUIDsOnce
+	docker.RemapsUIDsOnce = func() bool { return remapped }
+	t.Cleanup(func() { docker.RemapsUIDsOnce = prev })
 }
 
 // TestProxyHostOwnerRemappedDaemon runs the whole build against a stubbed
