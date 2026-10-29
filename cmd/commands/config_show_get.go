@@ -8,7 +8,6 @@ package commands
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -93,16 +92,14 @@ func runConfigGet(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	envFile := envFileName(projectDir, envFlag)
-	pairs, err := config.ReadEnvFile(envFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("env file not found: %s", envFile)
-		}
-		return config.EnvReadError(envFile, err)
+	if envFlag == "" {
+		envFlag, _ = config.ResolveEnv(projectDir)
 	}
-
-	val, ok := pairs[key]
+	explanation, err := config.ExplainKey(projectDir, envFlag, key)
+	if err != nil {
+		return err
+	}
+	envFile, val, ok := explanation.Winner()
 	if !ok {
 		return fmt.Errorf("key not found: %s", key)
 	}
@@ -111,7 +108,7 @@ func runConfigGet(cmd *cobra.Command, args []string) error {
 	// compat.V15(P7-REG-09): --json ignored -> envelope
 	if jsonOut, _ := cmd.Flags().GetBool("json"); jsonOut && compat.V15() {
 		return output.EmitData(pilotWriter(), "config get", configGetData{
-			Key: key, Value: shown, Masked: shown != val, File: filepath.Base(envFile),
+			Key: key, Value: shown, Masked: shown != val, File: envFile,
 		})
 	}
 
