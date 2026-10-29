@@ -10,11 +10,19 @@ License keys use the prefix format:
 nself_pro_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-Accepted prefixes:
-- `nself_pro_`, paid bundles and ɳSelf+
-- `nself_max_`, ɳSelf+ and enterprise
-- `nself_ent_`, Enterprise tier
-- `nself_owner_`, Owner/self-hosted tier
+Accepted prefixes (`nself license set` rejects any other):
+- `nself_owner_`, ɳSelf Owner
+- `nself_plus_`, ɳSelf+
+- `nself_claw_`, ɳClaw
+- `nself_clawde_`, ClawDE
+- `nself_chat_`, ɳChat
+- `nself_media_`, nTV
+- `nself_family_`, nFamily
+- `nself_pro_`, ɳSelf Pro
+- `nself_ent_`, ɳSelf Enterprise
+- `nself_max_`, ɳSelf Business+
+
+The prefix only names the key's product for display. Which plugins a key unlocks comes from the signed license response, not the prefix.
 
 Keys must be at least 32 characters total.
 
