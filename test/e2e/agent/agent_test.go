@@ -28,6 +28,10 @@ import (
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
+// replayTimeout bounds one tool call in the replay and live runs: a cold
+// `start` pulls every image, which outlasts the server's 5m default.
+const replayTimeout = "30m"
+
 func TestVerifyFixtures(t *testing.T) {
 	good, err := ReadTranscript(filepath.Join("testdata", "good.jsonl"))
 	if err != nil {
@@ -115,7 +119,8 @@ func TestToolsList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// `nself mcp` needs a project marker to start (see README, gap 1).
+	// Outside a project the server lists only init and the read-only tools;
+	// a project marker makes it list the whole surface (the parity input).
 	if err := os.WriteFile(filepath.Join(box.Project, ".env"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -168,6 +173,7 @@ func TestAgentReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	box.Timeout = replayTimeout
 	for _, step := range []func() error{
 		func() error { return box.InstallKey(fleet.KeyPath()) },
 		box.WriteSSHConfig,
@@ -191,9 +197,6 @@ func TestAgentReplay(t *testing.T) {
 	h := &SimHarness{T: t, Fleet: fleet, Box: box, Hosts: hosts}
 	ctx := context.Background()
 	if _, err := run(ctx, box.Project, "git", "init", "-q"); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.Do(ctx, Step{ID: "fixture", Action: "fixture-marker", Note: "project marker so nself mcp can start (README gap 1)"}, w); err != nil {
 		t.Fatal(err)
 	}
 	steps, err := LoadReplay(filepath.Join("testdata", "replay.jsonl"))

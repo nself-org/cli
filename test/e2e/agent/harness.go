@@ -3,8 +3,7 @@
 package agent
 
 // Purpose: the harness side of the replay: the two loopback sim hosts (qa tier
-// local-servers, prod tier prod) and every harness action (fixture, git
-// commit, service stop, docker volume and image-digest probes). Each action is
+// local-servers, prod tier prod) and every harness action (git commit, service stop, docker volume and image-digest probes). Each action is
 // a `role: harness` transcript record; none of them is an agent step.
 // Inputs: a *testing.T, the Sandbox, the replay's harness Steps.
 // Outputs: transcript records; an error when an action or a probe fails.
@@ -16,7 +15,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -68,12 +66,6 @@ func (h *SimHarness) Do(ctx context.Context, s Step, w *Writer) error {
 		note += ": " + s.Note
 	}
 	switch s.Action {
-	case "fixture-marker":
-		// Gap: `nself mcp` (v1.5) will not start outside a project, so an
-		// MCP-only agent cannot reach `init` without a project marker.
-		if err := os.WriteFile(filepath.Join(h.Box.Project, ".env"), nil, 0o600); err != nil {
-			return err
-		}
 	case "git-commit":
 		if _, err := run(ctx, h.Box.Project, "git", "add", "-A"); err != nil {
 			return err

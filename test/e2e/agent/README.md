@@ -42,14 +42,9 @@ One JSON object per line: `{seq, time, role, kind, tool, arguments, envelope, is
 
 The verifier fails a transcript that has a non-MCP agent step, a missing D7 step, steps out of order, a promote apply before its dry run, CI evidence before the run wait, a `tools/call` result that is not a v1 envelope, or a failed recovery or gate leg.
 
-## Known gaps (found while building P7-SHIP-02)
+## Notes
 
-The replay drives the real product and stops at the first failing step. These gaps stop it today:
-
-1. `nself mcp` in v1.5 will not start outside a project (`resolveProjectDir`), so an MCP-only agent cannot reach `init`. The harness writes an empty `.env` marker and the agent calls `nself_init` with `force`. Owner: P7-SURF.
-2. `nself_build` on a fresh project fails with E451: the gate runs `--plan`, the plan needs no confirmation, the gate then runs `--plan-id`, and a build that generates secrets cannot bind a plan id. The agent never sees a plan to confirm. Owner: P7-SURF-25 / P7-LIVE-03.
-3. MCP tools are built once at server start, so `nself_ci` and its sub-tools do not appear in `tools/list` after `nself_add ci` in the same session. The ci plugin's machine surface (P7-CI-62) is also not merged yet. Owner: P7-SURF-03, P7-CI-62.
-4. `nself_deploy_promote` accepts at most one argument (the registry names one arg `source target`), so `["qa", "prod"]` is rejected. Owner: P7-SURF-15 / P7-DEPL-15.
-5. Document invocations stop at 300 s (`invoke.DefaultTimeout`) and `nself mcp` has no `--timeout` flag, so a cold `start` that pulls every image may time out.
-
-The sim hosts get recording `docker` and `nself` stubs, as the deploy-sim tests do; whether `deploy qa` and `deploy promote` run end to end against them is not proven until the gaps above are closed.
+- The server starts in the empty fixture project and lists `nself_init` plus the read-only tools; after `init` it lists every tool, and after `add ci` it sends `notifications/tools/list_changed` and the ci tools appear.
+- The replay and live runs start `nself mcp --timeout 30m`: a cold `start` pulls every image and outlasts the 5m default.
+- The ci leg needs the served ci plugin to declare its machine surface (P7-CI-62); without it `tools/list` after `add ci` lacks `nself_ci`, and the replay stops there with that message.
+- The sim hosts get recording `docker` and `nself` stubs, as the deploy-sim tests do. The image-digest compare after the promote reads the stubs' record of `compose up`.

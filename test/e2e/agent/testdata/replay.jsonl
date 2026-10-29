@@ -3,7 +3,7 @@
 // with v1.5 tool names. Harness steps are `role: harness` records, never agent
 // actions. A step with "confirm": true expects a confirmation request first and
 // repeats the identical call with the server's token (plan id or nonce).
-{"id":"init","role":"agent","tool":"nself_init","arguments":{"flags":{"non-interactive":true,"force":true}}}
+{"id":"init","role":"agent","tool":"nself_init","arguments":{"flags":{"non-interactive":true}}}
 {"id":"commit-after-init","role":"harness","action":"git-commit"}
 {"id":"build","role":"agent","tool":"nself_build","confirm":true}
 {"id":"start","role":"agent","tool":"nself_start"}

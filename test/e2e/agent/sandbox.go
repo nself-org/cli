@@ -46,6 +46,9 @@ type Sandbox struct {
 	Root, Home, Project string
 	// KeyPath is the copy of the fleet key inside Home (empty until InstallKey).
 	KeyPath string
+	// Timeout, when set, is passed as `nself mcp --timeout` (a cold start
+	// that pulls every image outlasts the 5m default).
+	Timeout string
 }
 
 // NewSandbox makes root/home (with an empty .ssh) and root/project.
@@ -131,5 +134,8 @@ func (s *Sandbox) ServerCommand(bin, operatorHome string, extraEnv ...string) (s
 		args = append(args, "--env", e)
 	}
 	args = append(args, "--", bin, "mcp")
+	if s.Timeout != "" {
+		args = append(args, "--timeout", s.Timeout)
+	}
 	return "bash", args
 }

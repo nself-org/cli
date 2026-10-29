@@ -38,6 +38,7 @@ func TestAgentLive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	box.Timeout = replayTimeout
 	if err := box.InstallKey(fleet.KeyPath()); err != nil {
 		t.Fatal(err)
 	}
@@ -56,12 +57,8 @@ func TestAgentLive(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer w.Close()
-	h := &SimHarness{T: t, Fleet: fleet, Box: box, Hosts: hosts}
 	ctx := context.Background()
 	if _, err := run(ctx, box.Project, "git", "init", "-q"); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.Do(ctx, Step{ID: "fixture", Action: "fixture-marker"}, w); err != nil {
 		t.Fatal(err)
 	}
 	// The trust step needs the sandbox HOME; claude keeps the operator's.
