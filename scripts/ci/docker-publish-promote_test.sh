@@ -9,8 +9,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="${HERE}/docker-publish-promote.sh"
-mkdir -p "${HOME}/nself-worker/tmp"
-WORK="$(mktemp -d "${HOME}/nself-worker/tmp/docker-publish.XXXXXX")"
+WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
 mkdir -p "${WORK}/bin"
 
@@ -55,33 +54,5 @@ run_case "unreadable latest release -> exit 1, no promotion" 1 - \
 run_case "imagetools failure -> exit 1" 1 - \
   TAG=v1.4.13 STUB_LATEST_TAG=v1.4.13 STUB_DOCKER_FAIL=1
 run_case "TAG unset -> exit 1" 1 - STUB_LATEST_TAG=v1.4.13
-
-# Ordering regression: while .10 holds the lock, .13 queues, then the slower
-# .12 build finishes. Model GitHub's pending replacement using the actual YAML.
-# Exercise each surviving job through the real promotion script and stubs.
-pending=$(ruby -ryaml -e '
-  wf = YAML.load_file(ARGV[0])
-  group = wf.fetch("jobs").fetch("promote-latest").fetch("concurrency")
-  abort "promotion must remain serial" unless group["group"] == "docker-publish-latest" && group["cancel-in-progress"] == false
-  pending = []
-  %w[v1.4.13 v1.4.12].each do |tag|
-    pending.clear unless group["queue"] == "max"
-    pending << tag
-  end
-  puts pending
-' "${HERE}/../../.github/workflows/docker-publish.yml")
-promoted=false
-for tag in ${pending}; do
-  if [ "${tag}" = v1.4.13 ]; then
-    run_case "newest pending promotion survives slower older build" 0 \
-      "buildx imagetools create -t nself/nself:latest nself/nself:1.4.13" \
-      TAG="${tag}" STUB_LATEST_TAG=v1.4.13
-    promoted=true
-  else
-    run_case "older queued promotion leaves newest latest intact" 0 - \
-      TAG="${tag}" STUB_LATEST_TAG=v1.4.13
-  fi
-done
-[ "${promoted}" = true ] || { echo "FAIL: newest pending promotion was lost" >&2; exit 1; }
 
 echo "docker-publish-promote_test: all cases passed"

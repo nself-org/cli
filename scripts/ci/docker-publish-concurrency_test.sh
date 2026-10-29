@@ -74,6 +74,10 @@ printf '%s\n' "${JOB}" | grep -qE '^      group: docker-publish-latest$' \
   || { echo "FAIL: promote-latest lacks the shared literal group 'docker-publish-latest'" >&2; exit 1; }
 printf '%s\n' "${JOB}" | grep -q 'cancel-in-progress: false' \
   || { echo "FAIL: promote-latest must not cancel an in-flight promotion" >&2; exit 1; }
+# queue: max keeps the newest pending promotion when an older build finishes
+# later; without it GitHub keeps one pending run and drops the rest.
+printf '%s\n' "${JOB}" | grep -qE '^      queue: max$' \
+  || { echo "FAIL: promote-latest lacks 'queue: max' (newest pending promotion could be dropped)" >&2; exit 1; }
 printf '%s\n' "${JOB}" | grep -q 'docker-publish-promote.sh' \
   || { echo "FAIL: promote-latest does not run the revalidating script" >&2; exit 1; }
 if sed '/^  promote-latest:/,$d' "${WORKFLOW}" | grep -v '^ *#' | grep -q 'imagetools create'; then
