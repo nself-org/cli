@@ -83,7 +83,7 @@ The plan is the `contract:cli.change-plan` v1 document (schema `schemas/commands
 
 The plan and the id cover rendered artifacts: project files, plugin compose fragments rewritten in place (shown as `@plugins/<name>/docker-compose.plugin.yml`), `.env.secrets` with the planned bytes, and permission-only changes (a `0644` `.env` is listed as a change with `diff_lines` 0). Certificate bytes and host trust state are runtime effects outside artifact byte confirmation. A plan with `certificates` or `trust-store` effects refuses `--plan-id` with E454 before any effects or artifact writes. Human plan and apply output disclose this exclusion, including on dev. Confirm at the prompt or use `--yes` without `--plan-id`, or provision certificates and host trust first.
 
-A build that generates secrets (a first build, or a missing `*_INTERNAL_SECRET`) renders random values, which no earlier `--plan` run can reproduce. `--plan-id` is refused for it with E451 (exit 1, nothing written). Confirm at the prompt, or run `--yes` without `--plan-id`: the apply renders once and writes exactly that render.
+A build that generates secrets (a first build, or a missing `*_INTERNAL_SECRET`) renders random values, which no earlier `--plan` run can reproduce. Its `plan_id` therefore binds the inputs, not the random bytes: it is the id of a second, read-only render of the same inputs with a fixed public seed, and the plan lists the `secrets-persist` effect. `--plan-id` binds such a build (E450 when an input changed); the apply draws fresh secrets and writes exactly its own render. The machine gate always asks for a confirmation of such a plan. Only when the random values would change the plan itself (not just the secret bytes) is `--plan-id` refused with E451 (exit 1, nothing written); then confirm at the prompt, or run `--yes` without `--plan-id`.
 
 ### One render, held to the end
 
@@ -115,7 +115,7 @@ A prod-class env is `ENV` `prod` or `staging` (a running stack does not make an 
 | Code | Exit | Meaning |
 |---|---|---|
 | E450 | 1 | `--plan-id` does not match the plan this project produces now, or the project changed while the confirmation was pending. Re-run `nself build --plan` and pass the new id. |
-| E451 | 1 | The build generates secrets, so `--plan-id` cannot bind it. |
+| E451 | 1 | The build generates secrets whose random values change the plan itself, so `--plan-id` cannot bind it. |
 | E403 | 4 | A prod-class or hand-edited change was not confirmed (v1.5). |
 
 ## Hand-edit policy

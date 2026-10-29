@@ -12,14 +12,14 @@ package invoke
 // runs, with no consent flags. A plan form without confirm is executed once
 // (--<plan.flag>); the child's data.plan_id and data.requires_confirmation
 // decide between a kind plan confirmation (confirm = plan_id) and one run with
-// --<id_flag>=<plan_id>. remote and destructive without a plan form get a
+// --<id_flag>=<plan_id>; a plan that declares generated secrets is always a
+// confirmation (plan_facts.go). remote and destructive without a plan form get a
 // kind request confirmation backed by a Guard nonce. A nil Guard refuses
 // remote and destructive commands (E421, fail closed).
 
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"io"
 	"sort"
 
@@ -232,7 +232,7 @@ func planGate(ctx context.Context, cmd *cmdregistry.Command, req Request, o Opti
 		d.Kind, d.Result = DecisionRefuse, &Result{Stdout: ran.Stdout, ExitCode: ran.ExitCode}
 	case problem != "":
 		d = refused(d, errs.Newf("E422", "%s produced no usable plan", quoteName(barePath(cmd.Path))).WithWhy(problem))
-	case facts.requires || gated:
+	case facts.requires || gated || facts.secrets: // secrets: plan_facts.go
 		d.Kind, d.ConfirmKind = DecisionConfirm, ConfirmKindPlan
 		d.Confirmation = &Confirmation{ConfirmationRequired: true, Kind: ConfirmKindPlan, Confirm: facts.id,
 			SideEffect: d.SideEffect, Reason: reasonFor(d.SideEffect, ConfirmKindPlan), Plan: facts.data}
@@ -240,48 +240,6 @@ func planGate(ctx context.Context, cmd *cmdregistry.Command, req Request, o Opti
 		d.Flags = []string{"--" + plan.IDFlag + "=" + facts.id}
 	}
 	return d, nil
-}
-
-// planFacts is what the gate reads from the child's plan document.
-type planFacts struct {
-	id       string
-	requires bool
-	data     json.RawMessage
-}
-
-// parsePlan reads the plan exec's envelope. childErr is true when it is the
-// child's own error envelope; problem is a short cause when plan_id or
-// requires_confirmation is missing or invalid.
-func parsePlan(stdout []byte) (f planFacts, childErr bool, problem string) {
-	var doc struct {
-		Data  json.RawMessage `json:"data"`
-		Error json.RawMessage `json:"error"`
-	}
-	if err := json.Unmarshal(bytes.TrimSpace(stdout), &doc); err != nil {
-		return f, false, "the plan output is not a JSON envelope"
-	}
-	if len(doc.Error) > 0 && string(doc.Error) != "null" {
-		return f, true, ""
-	}
-	if d := bytes.TrimSpace(doc.Data); len(d) == 0 || d[0] != '{' {
-		return f, false, "the plan output has no data object"
-	}
-	var data struct {
-		PlanID   *string `json:"plan_id"`
-		Requires *bool   `json:"requires_confirmation"`
-	}
-	if err := json.Unmarshal(doc.Data, &data); err != nil {
-		return f, false, "the plan output has no data object"
-	}
-	switch {
-	case data.PlanID == nil:
-		return f, false, "the plan output has no data.plan_id"
-	case !confirmPattern.MatchString(*data.PlanID):
-		return f, false, "data.plan_id is not 64 lowercase hex characters"
-	case data.Requires == nil:
-		return f, false, "the plan output has no data.requires_confirmation boolean"
-	}
-	return planFacts{id: *data.PlanID, requires: *data.Requires, data: doc.Data}, false, ""
 }
 
 // confirmationResult writes c as a success envelope for command into res.

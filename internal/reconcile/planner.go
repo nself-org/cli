@@ -46,6 +46,7 @@ type computed struct {
 	planned       *nbuild.PlannedBuild
 	before, after ArtifactSet
 	generates     bool   // the render generates secrets (random values)
+	bindable      bool   // plan.PlanID is reproducible from the inputs (binding.go)
 	record        []byte // the exact record bytes this plan's apply writes (P7-LIVE-04)
 }
 
@@ -156,7 +157,13 @@ func compute(ctx context.Context, req Request) (*computed, error) {
 	for _, e := range p.Effects {
 		gen = gen || e.Kind == EffectSecretsPersist
 	}
-	return &computed{plan: p, planned: res.Planned, before: before, after: after, generates: gen, record: recBody}, nil
+	c := &computed{plan: p, planned: res.Planned, before: before, after: after, generates: gen, bindable: !gen, record: recBody}
+	if gen && !req.binding {
+		if err := bindGenerated(ctx, req, c); err != nil {
+			return nil, err
+		}
+	}
+	return c, nil
 }
 
 // modeArtifacts lists files whose bytes do not change but whose permission bits
@@ -264,8 +271,8 @@ func effectsOf(in []nbuild.PlannedEffect, sitesChanged bool) []Effect {
 // permission bits. The id so binds the content of the change, not only its
 // shape; the bytes themselves never reach the plan JSON. A render that
 // generates secrets hashes those random values too, so its id is only
-// reproducible with the same seed: Apply refuses --plan-id for such a render
-// (E451) and binds it through its own single render instead.
+// reproducible with the same seed: compute replaces it with the binding id of
+// binding.go, and Apply refuses --plan-id (E451) only when that is impossible.
 func contentPlanID(p Plan, after ArtifactSet) (string, error) {
 	canon, err := CanonicalJSON(p)
 	if err != nil {

@@ -8,17 +8,20 @@ package commands
 // registered in v1.4 mode only (P7-SHIP-09 deletes them at the flip).
 // Inputs:  the transport name (stdio|sse|http), the compat mode.
 // Outputs: tools, resources and resource templates on the MCP server.
-// Constraints: machineRegistry is built once, at server start, before the
-// transport serves; the invoker runs every call as a child of this binary
-// through the confirmation gate, with one Guard per server process.
+// Constraints: machineRegistry is built at server start, before the transport
+// serves, and again when mcpgen.Surface sees the project or the plugin set
+// change; the invoker runs every call as a child of this binary through the
+// confirmation gate, with one Guard per server process.
 
 import (
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/nself-org/cli/internal/cmdregistry"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/invoke"
 	"github.com/nself-org/cli/internal/mcpgen"
@@ -28,14 +31,18 @@ import (
 
 // newMCPServer builds the MCP server for the compat mode: v1.4 registers the
 // 26 hand tools and the four hand resources first and the generated ones on
-// top; v1.5 registers the generated surface only. Prompts are authored.
-func newMCPServer(transport string, v15 bool) (*server.MCPServer, error) {
+// top; v1.5 the generated surface only (mcpgen.Surface keeps the list live).
+// timeout bounds each call; 0 is invoke.DefaultTimeout.
+func newMCPServer(transport string, v15 bool, timeout time.Duration) (*server.MCPServer, error) {
 	s := server.NewMCPServer(mcpgen.ServerName, mcpgen.ServerVersion, mcpgen.ServerOptions()...)
+	o := mcpgen.SurfaceOptions{Server: s, V15: v15, Schema: schemas.Lookup, PluginDir: resolvePluginDir,
+		Project: func() string { d, _ := resolveProjectDir(); return d },
+		Warn:    func(msg string) { fmt.Fprintln(os.Stderr, "nself mcp: "+msg) }}
 	if !v15 {
-		registerMCPTools(s)
+		o.Hand = registerMCPTools
 		registerMCPResources(s)
 	}
-	if err := registerGeneratedMCP(s, transport, v15); err != nil {
+	if err := registerGeneratedMCP(o, transport, timeout); err != nil {
 		if v15 {
 			return nil, err
 		}
@@ -51,42 +58,37 @@ func newMCPServer(transport string, v15 bool) (*server.MCPServer, error) {
 // mcpAuditSurface is the audit label of an MCP transport.
 func mcpAuditSurface(transport string) string { return "mcp-" + transport }
 
-// registerGeneratedMCP attaches the generated tools and resources to s.
-func registerGeneratedMCP(s *server.MCPServer, transport string, v15 bool) error {
-	reg, err := machineRegistry()
-	if err != nil {
-		return err
-	}
-	dir, err := resolveProjectDir()
-	if err != nil {
-		return err
-	}
-	auditPath, err := invoke.DefaultAuditPath()
-	if err != nil {
-		return fmt.Errorf("machine audit log path: %w", err)
-	}
+// registerGeneratedMCP lists the tools (the hand tools stay listed on an
+// error) and attaches the generated resources.
+func registerGeneratedMCP(o mcpgen.SurfaceOptions, transport string, timeout time.Duration) error {
+	auditPath, auditErr := invoke.DefaultAuditPath()
 	guard := invoke.NewGuard(auditPath)
-	inv := func(ctx context.Context, path string, req invoke.Request) (invoke.Result, error) {
-		return invoke.Invoke(ctx, reg, path, req, invoke.Options{
-			Transport: invoke.TransportMCP, Surface: mcpAuditSurface(transport), Dir: dir, Guard: guard,
-		})
+	o.Registry = func(rebuild bool) (*cmdregistry.Registry, error) {
+		if auditErr != nil {
+			return nil, fmt.Errorf("machine audit log path: %w", auditErr)
+		} else if rebuild {
+			resetMachineRegistry()
+		}
+		return machineRegistry()
 	}
-	warn := func(msg string) { fmt.Fprintln(os.Stderr, "nself mcp: "+msg) }
-	tools, err := mcpgen.Tools(mcpgen.Options{Registry: reg, Invoke: inv, Schema: schemas.Lookup, V15: v15, Warn: warn})
+	o.Run = func(ctx context.Context, reg *cmdregistry.Registry, path string, req invoke.Request, dir string) (invoke.Result, error) {
+		return invoke.Invoke(ctx, reg, path, req, invoke.Options{Transport: invoke.TransportMCP, Surface: mcpAuditSurface(transport), Dir: dir, Guard: guard, Timeout: timeout})
+	}
+	surf := mcpgen.NewSurface(o)
+	reg, err := surf.Start()
 	if err != nil {
 		return err
 	}
-	s.AddTools(tools...)
 	resources, templates := mcpgen.Resources(mcpgen.ResourceOptions{
-		Registry: reg, Invoke: inv, Schema: schemas.Lookup, Catalog: cachedCatalogJSON, V15: v15,
+		Registry: reg, Invoke: surf.Invoker(reg), Schema: schemas.Lookup, Catalog: cachedCatalogJSON, V15: o.V15,
 		// A legacy URI whose command has no envelope yet keeps its hand handler.
 		Fallback: map[string]server.ResourceHandlerFunc{
 			"nself://config": mcpConfigResourceHandler(), "nself://services": mcpServicesResourceHandler(),
 			"nself://env": mcpEnvResourceHandler(), "nself://urls": mcpURLsResourceHandler(),
 		},
 	})
-	s.AddResources(resources...)
-	s.AddResourceTemplates(templates...)
+	o.Server.AddResources(resources...)
+	o.Server.AddResourceTemplates(templates...)
 	return nil
 }
 

@@ -104,9 +104,9 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (applied *Pl
 		return nil, nil, err
 	}
 	if opt.PlanID != "" {
-		if c.generates {
+		if c.generates && !c.bindable { // binding.go: the generated values changed the plan's shape
 			return nil, nil, errs.New("E451", "this build generates secrets, so --plan-id cannot bind it").
-				WithWhy("random values cannot be reproduced from a plan id, so a plan id would not describe what is written").
+				WithWhy("the generated random values change the plan itself, not only the secret bytes, so a plan id would not describe what is written").
 				WithFix("set the secrets in .env.secrets first, or run nself build and confirm at the prompt (or with --yes, without --plan-id)")
 		}
 		if hasEffect(p, EffectPluginInstall) || hasEffect(p, EffectPluginRemove) {

@@ -582,7 +582,7 @@ func TestSurfaceIdentity(t *testing.T) {
 	e := &surfaceEnv{bin: bin, proj: proj, token: "surface-identity-token", stubs: stubs}
 	e.resetProject(t) // the MCP server refuses to start outside a project
 	e.base = startSurfaceHTTP(t, proj, e.token)
-	s, err := newMCPServer("stdio", true)
+	s, err := newMCPServer("stdio", true, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -614,7 +614,7 @@ var (
 // handToolAllowed are the only files that may register an MCP tool: the
 // generator, its wiring, and the legacy hand registrations P7-SHIP-09 deletes.
 var handToolAllowed = map[string]bool{
-	"internal/mcpgen/tools.go": true, "cmd/commands/mcp_generated.go": true,
+	"internal/mcpgen/tools.go": true, "internal/mcpgen/surface.go": true, "cmd/commands/mcp_generated.go": true,
 	"cmd/commands/mcp.go": true, "cmd/commands/mcp_sentry.go": true,
 }
 

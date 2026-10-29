@@ -8,7 +8,7 @@ package commands
 //   plugin list/install) plus the pre-existing Hasura data tools, as MCP
 //   tools with output schemas and annotations, so an agent can plan around
 //   them instead of guessing from prose.
-// Inputs:  --transport (stdio|sse|http), --port, --host, --allowed-host,
+// Inputs:  --transport (stdio|sse|http), --port, --host, --allowed-host, --timeout,
 //   NSELF_MCP_TOKEN or ~/.nself/mcp-token (bearer auth on sse/http — see
 //   mcp_auth.go for the bind and token policy).
 // Outputs: an MCP server over the chosen transport.
@@ -25,12 +25,14 @@ package commands
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/nself-org/cli/internal/compat"
-	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/health"
+	"github.com/nself-org/cli/internal/invoke"
 	"github.com/spf13/cobra"
 )
 
@@ -54,9 +56,10 @@ when no token is set.)
 --allowed-host <name> (repeatable) plus a configured token on every start, and
 prints a warning that the token crosses the network over cleartext HTTP.
 
-Run 'nself mcp' from inside an nSelf project directory. See the generated
-tool list at .github/wiki/MCP-Tools.md and the resources and prompts at
-.github/wiki/cmd-mcp.md.
+Run 'nself mcp' from inside an nSelf project directory (elsewhere it serves
+init and the read-only tools until one exists). --timeout bounds each call.
+See the generated tool list at .github/wiki/MCP-Tools.md and the resources and
+prompts at .github/wiki/cmd-mcp.md.
 
 Claude Code config (.claude/settings.json):
   "mcpServers": {
@@ -65,6 +68,7 @@ Claude Code config (.claude/settings.json):
       "args": ["mcp"]
     }
   }`,
+	Args: cobra.NoArgs,
 	RunE: runMCPServe,
 }
 
@@ -73,6 +77,7 @@ func init() {
 	mcpCmd.Flags().IntP("port", "p", mcpServerPort, "Port for the sse/http transports")
 	mcpCmd.Flags().String("host", "127.0.0.1", "Bind address for the sse/http transports")
 	mcpCmd.Flags().StringSlice("allowed-host", nil, "Host name this server is reachable under; required (repeatable) for a non-loopback --host")
+	mcpCmd.Flags().Duration("timeout", invoke.DefaultTimeout, "Longest one tool call may run before its command is stopped, such as 15m")
 	RootCmd.AddCommand(mcpCmd)
 }
 
@@ -82,15 +87,12 @@ func runMCPServe(cmd *cobra.Command, args []string) error {
 	host, _ := cmd.Flags().GetString("host")
 	allowed, _ := cmd.Flags().GetStringSlice("allowed-host")
 
-	// Require an nSelf project directory so tool handlers that assume one
-	// (nearly all of them) fail fast with a clear message instead of an
-	// obscure error three calls deep.
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("getting working directory: %w", err)
+	timeout, _ := cmd.Flags().GetDuration("timeout")
+	if timeout < time.Second {
+		return errs.Newf("E401", "--timeout %s is too short", timeout).WithFix("Pass a duration of at least 1s, such as 15m.")
 	}
-	if _, findErr := config.FindNSelfRoot(cwd); findErr != nil {
-		return fmt.Errorf("no nself project found in %s — run 'nself init' first", cwd)
+	if _, err := resolveProjectDir(); err != nil { // an MCP-only agent must reach init (mcpgen/surface.go)
+		fmt.Fprintln(os.Stderr, "nself mcp: no nself project here; serving init and the read-only tools until one exists")
 	}
 
 	// Bind and token policy first: a refused start must not build anything or
@@ -101,7 +103,7 @@ func runMCPServe(cmd *cobra.Command, args []string) error {
 	}
 
 	// compat.V15(P7-SURF-03): 26 hand tools primary -> generated tools, merged same-name tools, deprecated aliases
-	s, err := newMCPServer(transport, compat.V15())
+	s, err := newMCPServer(transport, compat.V15(), timeout)
 	if err != nil {
 		return err
 	}

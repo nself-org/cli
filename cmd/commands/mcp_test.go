@@ -35,7 +35,7 @@ func TestMCPCmdRegistered(t *testing.T) {
 // TestMCPCmdFlags verifies the expected flags are declared (no --no-mdns:
 // the mDNS feature was removed, see mcp.go's header comment).
 func TestMCPCmdFlags(t *testing.T) {
-	flags := []string{"transport", "port"}
+	flags := []string{"transport", "port", "timeout"}
 	for _, name := range flags {
 		if mcpCmd.Flags().Lookup(name) == nil {
 			t.Errorf("flag --%s not declared on mcp command", name)

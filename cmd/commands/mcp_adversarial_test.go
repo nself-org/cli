@@ -98,7 +98,7 @@ func TestMCPAdversarial(t *testing.T) {
 // advSession is a stdio session of a fresh v1.5 server in the fixture project.
 func advSession(t *testing.T) *stdioSession {
 	t.Helper()
-	s, err := newMCPServer("stdio", true)
+	s, err := newMCPServer("stdio", true, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

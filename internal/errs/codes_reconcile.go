@@ -18,7 +18,7 @@ func init() {
 			Code:       "E451",
 			Category:   "reconcile",
 			Summary:    "Plan id cannot bind generated secrets",
-			DefaultWhy: "This build generates secrets, and random values cannot be reproduced from a plan id.",
+			DefaultWhy: "This build generates secrets, and the random values change the plan itself, so they cannot be reproduced from a plan id.",
 			DefaultFix: "Set the secrets in .env.secrets first, or run nself build and confirm at the prompt (or with --yes, without --plan-id).",
 			DocsPath:   "reference/error-codes#e451",
 			Exit:       1,

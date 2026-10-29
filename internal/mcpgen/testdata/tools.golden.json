@@ -20302,11 +20302,15 @@
         "properties": {
           "args": {
             "items": false,
-            "maxItems": 1,
+            "maxItems": 2,
             "minItems": 0,
             "prefixItems": [
               {
-                "description": "source target",
+                "description": "source",
+                "type": "string"
+              },
+              {
+                "description": "target",
                 "type": "string"
               }
             ],
