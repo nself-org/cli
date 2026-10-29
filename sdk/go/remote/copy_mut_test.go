@@ -17,6 +17,10 @@ func TestScpOptions_ExactMapping(t *testing.T) {
 	}{
 		{"drop SessionType pair", []string{"-o", "SessionType=default"}, []string{}},
 		{"drop SessionType attached", []string{"-oSessionType=default"}, []string{}},
+		{"drop StdinNull pair", []string{"-o", "StdinNull=no"}, []string{}},
+		{"drop StdinNull attached", []string{"-oStdinNull=no"}, []string{}},
+		{"drop ForkAfterAuthentication pair", []string{"-o", "ForkAfterAuthentication=no"}, []string{}},
+		{"drop ForkAfterAuthentication attached", []string{"-oForkAfterAuthentication=no"}, []string{}},
 		{"keep identity named SessionType", []string{"-i", "SessionType=default"}, []string{"-i", "SessionType=default"}},
 		{"drop -T", []string{"-T"}, []string{}},
 		{"drop -a", []string{"-a"}, []string{}},
