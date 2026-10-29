@@ -35,6 +35,25 @@ Subcommands:
               parity matrix — the important half: this is how "same
               labels, different tools" gets caught before it causes a
               mystery failure.
+
+### Migration to `nself ci nodes`
+
+In v1.5 (`NSELF_V15=1`) runner hosts are managed as nodes of the CI fabric.
+`nself runner provision` and `nself runner verify` are an alias of
+`nself ci nodes provision` and `nself ci nodes verify`. The alias keeps
+working through v1.5 and is removed at v1.6.
+
+- In v1.4 mode the flags, output and exit codes are unchanged.
+- In v1.5 mode `--json` prints the v1 envelope.
+
+Switch scripts to the new spelling now:
+
+```bash
+nself ci nodes verify --host ci@runner-a.example.com
+```
+
+The concepts (nodes, runners, reservations) and the full flag set are in the
+[Nodes and Runners guide](https://github.com/nself-org/plugins/wiki/Nodes-and-Runners).
 <!-- END PROSE:description -->
 
 ## Flags
