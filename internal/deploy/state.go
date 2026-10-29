@@ -115,6 +115,11 @@ func LoadDeployState(projectRoot string) (StrategyState, error) {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return StrategyState{}, fmt.Errorf("parsing deploy state: %w", err)
 	}
+	// Existing legacy records have a strategy, while v1.5 records carry a
+	// schema version. A structurally empty record must not select legacy rollback.
+	if s.SchemaVersion == 0 && s.Strategy == "" {
+		return StrategyState{}, fmt.Errorf("parsing deploy state: record has no schema version or strategy")
+	}
 	return s, nil
 }
 

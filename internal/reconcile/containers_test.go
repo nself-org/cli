@@ -135,6 +135,14 @@ func TestInitContainerServices(t *testing.T) {
 	if want := map[string]bool{"meilisearch-init": true, "plugin-init": true}; !reflect.DeepEqual(got, want) {
 		t.Errorf("initContainerServices = %v, want %v", got, want)
 	}
+	override := write("override.yml", "services:\n  meilisearch-init:\n    labels: [\"nself.type=service\"]\n  plugin-init:\n    labels:\n      extra: value\n")
+	got, err = initContainerServices([]string{base, frag, override})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := map[string]bool{"plugin-init": true}; !reflect.DeepEqual(got, want) {
+		t.Errorf("merged init services = %v, want %v", got, want)
+	}
 	if _, err := initContainerServices([]string{write("bad.yml", "services: [")}); err == nil {
 		t.Error("a broken compose file must be an error (container impact unknown), not an empty set")
 	}

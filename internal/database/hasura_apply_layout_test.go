@@ -128,7 +128,7 @@ func TestIsHasuraCLIProject(t *testing.T) {
 		{"cli project", map[string]string{"hasura/config.yaml": "metadata_directory: metadata\n"}, true},
 		{"cli project ./metadata", map[string]string{"hasura/config.yaml": "metadata_directory: ./metadata\n"}, true},
 		{"no project config", map[string]string{"hasura/metadata/tables.yaml": "[]\n"}, false},
-		{"no metadata_directory", map[string]string{"hasura/config.yaml": "version: 3\n"}, false},
+		{"default metadata_directory", map[string]string{"hasura/config.yaml": "version: 3\n"}, true},
 		{"other metadata_directory", map[string]string{"hasura/config.yaml": "metadata_directory: md\n"}, false},
 		{"unparsable config", map[string]string{"hasura/config.yaml": "metadata_directory: [\n"}, false},
 		{"nself index wins", map[string]string{
@@ -148,5 +148,21 @@ func TestIsHasuraCLIProject(t *testing.T) {
 		if got := isHasuraCLIProject(hasuraDir, filepath.Join(hasuraDir, "metadata")); got != c.expect {
 			t.Errorf("%s: isHasuraCLIProject = %v, want %v", c.name, got, c.expect)
 		}
+	}
+}
+
+func TestIsHasuraCLIProjectSymlinkDirectory(t *testing.T) {
+	project := t.TempDir()
+	metadata := filepath.Join(project, "metadata")
+	if err := os.Mkdir(metadata, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(project, "linked-metadata")
+	if err := os.Symlink(metadata, alias); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	writeFixtureFile(t, project, "config.yaml", "metadata_directory: linked-metadata\n")
+	if !isHasuraCLIProject(project, metadata) {
+		t.Fatal("metadata directory aliases must identify the same CLI project")
 	}
 }

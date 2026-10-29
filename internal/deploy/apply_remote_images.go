@@ -15,18 +15,17 @@ package deploy
 
 import (
 	"context"
-	"fmt"
-	"regexp"
 	"sort"
 	"strings"
-	"time"
+
+	"github.com/nself-org/cli/internal/deploy/imagetags"
 )
 
 // imageTag is one image ref and the image id it pointed at before the pull.
-type imageTag struct{ ID, Ref string }
+type imageTag = imagetags.Tag
 
 // imageIDRe is the only id shape a saved pair may carry.
-var imageIDRe = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+var imageIDRe = imagetags.IDRe
 
 // imageRefs are the model's distinct image refs, sorted, without digest pins.
 func imageRefs(model ComposeModel) []string {
@@ -43,46 +42,9 @@ func imageRefs(model ComposeModel) []string {
 	return refs
 }
 
-// saveImageTags records the image id each ref points at on the host now. A ref
-// the host does not have is absent from the result.
 func saveImageTags(ctx context.Context, r Remote, refs []string) ([]imageTag, error) {
-	if len(refs) == 0 {
-		return nil, nil
-	}
-	script := fmt.Sprintf(`for img in %s; do id=$(docker image inspect --format '{{.Id}}' "$img" 2>/dev/null) && printf '%%s %%s\n' "$id" "$img"; done; exit 0`, strings.Join(quoteAll(refs), " "))
-	out, err := r.Run(ctx, shScript(script))
-	if err != nil {
-		return nil, fmt.Errorf("reading the image ids on %s before the pull: %w", r.Label(), err)
-	}
-	want := map[string]bool{}
-	for _, ref := range refs {
-		want[ref] = true
-	}
-	var saved []imageTag
-	for _, line := range strings.Split(string(out), "\n") {
-		f := strings.Fields(line)
-		if len(f) != 2 || !imageIDRe.MatchString(f[0]) || !want[f[1]] {
-			continue
-		}
-		saved = append(saved, imageTag{ID: f[0], Ref: f[1]})
-	}
-	return saved, nil
+	return imagetags.Save(ctx, r, refs)
 }
-
-// restoreImageTags points every saved ref back at its old image id. It runs on
-// a context that survives the caller's cancellation, bounded by a minute.
 func restoreImageTags(ctx context.Context, r Remote, saved []imageTag) error {
-	if len(saved) == 0 {
-		return nil
-	}
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
-	defer cancel()
-	parts := []string{"rc=0"}
-	for _, t := range saved {
-		parts = append(parts, fmt.Sprintf("docker tag %s %s || rc=1", q(t.ID), q(t.Ref)))
-	}
-	if _, err := r.Run(ctx, shScript(strings.Join(append(parts, "exit $rc"), "; "))); err != nil {
-		return fmt.Errorf("putting the image tags back on %s: %w", r.Label(), err)
-	}
-	return nil
+	return imagetags.Restore(ctx, r, saved)
 }

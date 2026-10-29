@@ -146,6 +146,13 @@ func (l *Lock) Release() {
 		return
 	}
 	l.once.Do(func() {
+		h := l.holder
+		h.Token = ""
+		if err := writeHolder(l.f, h); err != nil {
+			// An unreadable record also refuses re-entry; never leave a usable
+			// previous token behind while releasing the kernel lock.
+			_ = l.f.Truncate(0)
+		}
 		unlock(l.f)
 		_ = l.f.Close()
 	})
@@ -185,7 +192,8 @@ func Acquire(ctx context.Context, projectDir string, opts Opts) (*Lock, error) {
 		}
 		_ = f.Close()
 		h, known := readHolderSettled(ctx, projectDir, o)
-		if known && token != "" && h.Token == token {
+		host, hostErr := os.Hostname()
+		if known && token != "" && h.Token == token && hostErr == nil && host != "" && h.Host == host {
 			return &Lock{holder: h, reentrant: true}, nil
 		}
 		waited := o.Clock.Now().Sub(start)
