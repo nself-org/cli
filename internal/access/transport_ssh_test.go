@@ -43,7 +43,7 @@ func TestSSHTransportHostSpecPolicy(t *testing.T) {
 		name, v15, host, want, reject string
 	}{
 		{"legacy", "0", "u@example.test:2222", "StrictHostKeyChecking=accept-new", "HostKeyAlias="},
-		{"strict-port", "1", "u@example.test:2222", "HostKeyAlias=nself-example.test-2222", "StrictHostKeyChecking=accept-new"},
+		{"strict-port", "1", "u@example.test:2222", "HostKeyAlias=nself+example.test+2222", "StrictHostKeyChecking=accept-new"},
 		{"strict-default", "1", "u@example.test", "StrictHostKeyChecking=yes", "HostKeyAlias="},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

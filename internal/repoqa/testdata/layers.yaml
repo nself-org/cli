@@ -58,6 +58,7 @@ rules:
   - {match: "internal/output/**", layer: L0}
   - {match: "internal/canon/**", layer: L0}
   - {match: "internal/cmdregistry/**", layer: L0}
+  - {match: "internal/hostpin/**", layer: L0}              # deploy pin file path and ssh-keygen lookup: stdlib only; sdk fingerprint parser injected
   - {match: "internal/sysexec/**", layer: L0}              # command runner + headless check for system-changing setup (trust, ssl, dns)
   # L2: domain orchestrators plus the planned ones
   - {match: "internal/upgrade/stack/**", layer: L2}

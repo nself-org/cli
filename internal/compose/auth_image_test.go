@@ -23,9 +23,10 @@ import (
 // fakeAuthKey is an obviously synthetic 64-hex AUTH_ENCRYPTION_KEY.
 var fakeAuthKey = strings.Repeat("0f", 32)
 
-// hasuraAuthDigest is the index digest of nhost/hasura-auth:0.36.0 the lock
-// carried before the rename (images.lock.json at cli 828748ba).
-const hasuraAuthDigest = "sha256:2e0713ef06e9c3c0af086c81289e9efbd87e4fa5dcda26891e5977b1e096caaf"
+// hasuraAuthDigest is the index digest of auth-v14 in the current image lock.
+// The weekly pin bump moved auth-v14 from 0.36.0 to 0.36.1; the test must
+// track the lock, not a frozen historical value.
+const hasuraAuthDigest = "sha256:9322ccbd562fbd105ead4c8d5044b4ad9969617849fc4f07dff01f38b7f870d3"
 
 func authImageFor(t *testing.T, version, key string) string {
 	t.Helper()
@@ -48,8 +49,8 @@ func TestAuthImageByMode(t *testing.T) {
 	if !ok1 || !ok2 {
 		t.Fatal("the image lock lacks auth or auth-v14")
 	}
-	if v14.IndexDigest != hasuraAuthDigest || v14.Repository != "docker.io/nhost/auth" || v14.Version != "0.36.0" {
-		t.Fatalf("auth-v14 = %s, want docker.io/nhost/auth:0.36.0@%s (the rename keeps the digest)", v14.String(), hasuraAuthDigest)
+	if v14.IndexDigest != hasuraAuthDigest || v14.Repository != "docker.io/nhost/auth" || v14.Version != "0.36.1" {
+		t.Fatalf("auth-v14 = %s, want docker.io/nhost/auth:0.36.1@%s", v14.String(), hasuraAuthDigest)
 	}
 	if cur.Repository != "docker.io/nhost/auth" || cur.Version == v14.Version {
 		t.Fatalf("auth = %s, want a newer docker.io/nhost/auth release", cur.String())

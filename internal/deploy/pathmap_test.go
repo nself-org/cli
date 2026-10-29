@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"github.com/nself-org/cli/internal/deploy/pathmap"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -10,19 +11,19 @@ import (
 
 // buildScratch lays out a scratch project the way a v1.5 build leaves it, with
 // local paths everywhere a build writes them.
-func buildScratch(t *testing.T) (m PathMap, compose, envs []string, snapshot string) {
+func buildScratch(t *testing.T) (m pathmap.PathMap, compose, envs []string, snapshot string) {
 	t.Helper()
 	return buildScratchFor(t, "/opt/nself")
 }
 
-func buildScratchFor(t *testing.T, remotePath string) (m PathMap, compose, envs []string, snapshot string) {
+func buildScratchFor(t *testing.T, remotePath string) (m pathmap.PathMap, compose, envs []string, snapshot string) {
 	t.Helper()
 	base := t.TempDir()
 	operator := filepath.Join(base, "operator", "proj")
 	scratch := filepath.Join(operator, ".nself", "deploy-build", "prod")
 	plugins := filepath.Join(base, "home", ".nself", "plugins")
 	home := filepath.Join(base, "home")
-	m = PathMap{ScratchRoot: scratch, OperatorRoot: operator, PluginDir: plugins, Home: home, RemotePath: remotePath}
+	m = pathmap.PathMap{ScratchRoot: scratch, OperatorRoot: operator, PluginDir: plugins, Home: home, RemotePath: remotePath}
 	writeFile(t, filepath.Join(scratch, "docker-compose.yml"), "services:\n  nginx:\n    volumes:\n      - "+scratch+"/nginx:/etc/nginx:ro\n      - "+scratch+"/ssl:/etc/nginx/ssl:ro\n  web:\n    env_file: "+operator+"/.env\n", 0o644)
 	writeFile(t, filepath.Join(plugins, "ai", "docker-compose.plugin.yml"), "services:\n  ai:\n    build:\n      context: "+plugins+"/ai\n", 0o644)
 	writeFile(t, filepath.Join(scratch, ".env"), "PROJECT=x\nNSELF_PLUGIN_DIR="+plugins+"\n", 0o600)
@@ -38,7 +39,7 @@ func buildScratchFor(t *testing.T, remotePath string) (m PathMap, compose, envs 
 		[]string{filepath.Join(scratch, ".env"), filepath.Join(scratch, ".nself", "compose.env")}, snapshot
 }
 
-func stageIn(m PathMap, compose, envs []string, snapshot string, stage string) StageInput {
+func stageIn(m pathmap.PathMap, compose, envs []string, snapshot string, stage string) StageInput {
 	return StageInput{Map: m, StageDir: stage, Compose: compose, EnvFiles: envs, EnvSnapshot: snapshot, EnvName: "prod"}
 }
 
@@ -113,7 +114,7 @@ func TestPathMapRefusesLeftoverHome(t *testing.T) {
 }
 
 func TestPathMapBoundaries(t *testing.T) {
-	m := PathMap{ScratchRoot: "/s/p", OperatorRoot: "/o/proj", PluginDir: "/h/.nself/plugins", Home: "/h", RemotePath: "/opt/nself"}
+	m := pathmap.PathMap{ScratchRoot: "/s/p", OperatorRoot: "/o/proj", PluginDir: "/h/.nself/plugins", Home: "/h", RemotePath: "/opt/nself"}
 	got := m.Rewrite("a=/o/proj/x b=/o/proj2/x c=/opt/o/proj/x d=/o/proj e=\"/h/.nself/plugins/ai\"")
 	want := "a=/opt/nself/x b=/o/proj2/x c=/opt/o/proj/x d=/opt/nself e=\"/opt/nself/.nself/plugins/ai\""
 	if got != want {
@@ -123,7 +124,7 @@ func TestPathMapBoundaries(t *testing.T) {
 		t.Fatalf("leftovers %v", l)
 	}
 	// A remote path that starts with the local home is not a leftover.
-	m2 := PathMap{ScratchRoot: "/s/p", OperatorRoot: "/o/proj", PluginDir: "/h/.nself/plugins", Home: "/home/u", RemotePath: "/home/u/nself"}
+	m2 := pathmap.PathMap{ScratchRoot: "/s/p", OperatorRoot: "/o/proj", PluginDir: "/h/.nself/plugins", Home: "/home/u", RemotePath: "/home/u/nself"}
 	if l := m2.Leftovers("/home/u/nself/docker-compose.yml"); len(l) != 0 {
 		t.Fatalf("remote path under the home dir flagged: %v", l)
 	}
@@ -142,7 +143,7 @@ func contains(ss []string, s string) bool {
 // any drive-letter case) into compose files; they must map to the remote layout and
 // any survivor must be reported. Pure string work: it runs the same on every OS.
 func TestPathMapWindowsStylePaths(t *testing.T) {
-	m := PathMap{
+	m := pathmap.PathMap{
 		ScratchRoot:  `C:/Users/Ann/proj/.nself/deploy-build/prod`,
 		OperatorRoot: `C:/Users/Ann/proj`,
 		PluginDir:    `C:/Users/Ann/.nself/plugins`,

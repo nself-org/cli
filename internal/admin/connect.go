@@ -165,9 +165,11 @@ func adminHostKeyOptions(ctx context.Context, spec remote.HostSpec) ([]string, e
 	if resolved.HostKeyAlias != "" && resolved.HostKeyAlias != "none" {
 		operatorAlias = resolved.HostKeyAlias
 	}
-	pinAlias := spec.Host
-	if spec.Port != 0 && spec.Port != 22 {
-		pinAlias = "nself-" + strings.ReplaceAll(spec.Host, ":", "-") + "-" + strconv.Itoa(spec.Port)
+	// The port stays as given: remote.PinAlias applies the one port-22 rule.
+	pinAlias := remote.PinAlias(spec)
+	// A pin an older release made under its own alias moves to the shared one, once.
+	if err := (remote.PinnedHostKeys{Path: pinFile}).MigrateLegacyPin(spec, keys); err != nil {
+		return nil, errs.New("E487", fmt.Sprintf("deploy pin file %s refused: %v", pinFile, err))
 	}
 	operator := adminTrustedFingerprints(ctx, operatorAlias, filepath.Join(home, ".ssh", "known_hosts"))
 	pinned := adminTrustedFingerprints(ctx, pinAlias, pinFile)
@@ -179,7 +181,7 @@ func adminHostKeyOptions(ctx context.Context, spec remote.HostSpec) ([]string, e
 				"-o", "ControlMaster=no", "-o", "ControlPath=none",
 				"-o", pinOption,
 			}
-			if spec.Port != 0 && spec.Port != 22 && !operator[key.Fingerprint] {
+			if pinAlias != strings.ToLower(spec.Host) && !operator[key.Fingerprint] {
 				opts = append(opts, "-o", "HostKeyAlias="+pinAlias)
 			}
 			return opts, nil

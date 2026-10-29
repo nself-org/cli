@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/auth"
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -87,6 +88,10 @@ func handleAuthError(err error) error {
 	}
 	if errors.Is(err, auth.ErrNotLoggedIn) {
 		return errAccountRelogin()
+	}
+	var lacks *auth.ServerLacksPathError
+	if errors.As(err, &lacks) {
+		return errs.Newf("E225", "this server does not provide %s", lacks.Path)
 	}
 	if apiErr, ok := err.(*auth.AuthAPIError); ok {
 		switch apiErr.Status {

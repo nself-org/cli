@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -26,13 +27,13 @@ func v15Verify(pin, alias string) []string {
 }
 
 // TestAdminSSHV15PinOnlyExact pins the pin-file-only path: known_hosts is
-// absent, the key lives in the nSelf pin file under the nself-<host>-<port>
-// alias, and the argv adds HostKeyAlias with the quoted pin file. Covers a DNS
-// name and a bracketed IPv6 literal (colons become dashes in the alias).
+// absent, the key lives in the nSelf pin file under the nself+<host>+<port>
+// alias (PinAlias), and the argv adds HostKeyAlias with the quoted pin file. Covers a DNS
+// name and a bracketed IPv6 literal (its colons stay in the alias).
 func TestAdminSSHV15PinOnlyExact(t *testing.T) {
 	cases := []struct{ host, alias, dest string }{
-		{"host.test", "nself-host.test-2222", "u@host.test"},
-		{"[2001:db8::1]", "nself-2001-db8--1-2222", "u@2001:db8::1"},
+		{"host.test", "nself+host.test+2222", "u@host.test"},
+		{"[2001:db8::1]", "nself+2001:db8::1+2222", "u@2001:db8::1"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.host, func(t *testing.T) {
@@ -144,6 +145,92 @@ func TestAdminPinFileOption(t *testing.T) {
 			}
 			if got != tc.want {
 				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestAdminSSHV15IPPort22PinOnly verifies that an IP literal on port 22 emits
+// HostKeyAlias=nself+<ip>+22 so ssh checks the pin alias rather than the bare IP
+// (the pin file refuses an IP as an alias). A pin under the shared alias and an
+// older release's nself-<ip>-22 pin (migrated once) both reach that alias.
+func TestAdminSSHV15IPPort22PinOnly(t *testing.T) {
+	for _, alias := range []string{"nself+203.0.113.7+22", "nself-203.0.113.7-22"} {
+		t.Run(alias, func(t *testing.T) {
+			compattest.Set(t, true)
+			e := newArgvEnv(t, "", &hostKey{alias: alias, pin: true})
+			if err := callEntry("verify", "u", "203.0.113.7", 22); err != nil {
+				t.Fatal(err)
+			}
+			got := e.argv(t)
+			found := false
+			for i, w := range got {
+				if w == "HostKeyAlias=nself+203.0.113.7+22" {
+					found = true
+					if i == 0 || got[i-1] != "-o" {
+						t.Fatalf("HostKeyAlias not preceded by -o: %q", got)
+					}
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("missing HostKeyAlias for IP port 22 pin-only: %q", got)
+			}
+		})
+	}
+}
+
+// TestAdminSSHV15Non22PinAliasFallback verifies that for a non-22 port, the
+// admin connect path finds a pin under either the shared alias or the legacy
+// v1.4.13 alias.
+func TestAdminSSHV15Non22PinAliasFallback(t *testing.T) {
+	cases := []struct{ name, alias string }{
+		{"new-alias", "nself+host.test+2222"},
+		{"legacy-alias", "nself-host.test-2222"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			compattest.Set(t, true)
+			e := newArgvEnv(t, "", &hostKey{alias: tc.alias, pin: true})
+			if err := callEntry("verify", "u", "host.test", 2222); err != nil {
+				t.Fatal(err)
+			}
+			if joined := strings.Join(e.argv(t), " "); !strings.Contains(joined, "HostKeyAlias=nself+host.test+2222") {
+				t.Fatalf("missing HostKeyAlias for %s: %s", tc.name, joined)
+			}
+		})
+	}
+}
+
+// TestAdminSSHV15LegacyPinMigrates is D-0463: a key pinned by an older release
+// under its own alias (deploy's explicit host:22 form, the host:port form) is
+// found, moved to the shared remote.PinAlias once, and the legacy line stays.
+func TestAdminSSHV15LegacyPinMigrates(t *testing.T) {
+	cases := []struct {
+		name, legacy, want string
+		port               int
+		wantAlias          bool
+	}{
+		{"explicit 22 from deploy", "nself-host.test-22", "host.test", 22, false},
+		{"custom port", "nself-host.test-2222", "nself+host.test+2222", 2222, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			compattest.Set(t, true)
+			e := newArgvEnv(t, "", &hostKey{alias: tc.legacy, pin: true})
+			if err := callEntry("verify", "u", "host.test", tc.port); err != nil {
+				t.Fatalf("legacy pin was refused: %v", err)
+			}
+			joined := strings.Join(e.argv(t), " ")
+			if got := strings.Contains(joined, "HostKeyAlias="+tc.want); got != tc.wantAlias {
+				t.Errorf("HostKeyAlias=%s present = %v, want %v: %s", tc.want, got, tc.wantAlias, joined)
+			}
+			pins, err := os.ReadFile(e.pinFile())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(pins), tc.want+" ") || !strings.Contains(string(pins), tc.legacy+" ") {
+				t.Errorf("pin file lacks the new alias %q or lost the legacy one:\n%s", tc.want, pins)
 			}
 		})
 	}

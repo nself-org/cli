@@ -103,7 +103,7 @@ tier_from_gh() {
   rm -rf "$tmp"
 }
 
-# build: prints the whole document. Tiers not selected keep the committed value.
+# build: prints the whole document. Tiers not selected keep their committed value.
 build() {
   local free_floor licensed_floor free_refs='[]' licensed_refs='[]' free_pre licensed_pre both
   free_floor="$(jq -c '.tiers.free // {}' "$OUT" 2>/dev/null || echo '{}')"

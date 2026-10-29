@@ -22,7 +22,6 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -91,8 +90,13 @@ func (t *SSHTransport) sshArgsContext(ctx context.Context) ([]string, error) {
 			return nil, err
 		}
 		args = append(args, "-o", "StrictHostKeyChecking=yes", "-o", option)
-		if spec.Port != 0 {
-			alias := "nself-" + strings.ReplaceAll(spec.Host, ":", "-") + "-" + strconv.Itoa(spec.Port)
+		// Read-only: a pin an older release made under its own alias still counts
+		// until deploy or admin connect moves it (remote.MigrateLegacyPin).
+		alias, err := remote.PinnedHostKeys{Path: filepath.Join(home, ".config", "nself", "deploy_known_hosts")}.EffectivePinAlias(spec)
+		if err != nil {
+			return nil, err
+		}
+		if alias != strings.ToLower(spec.Host) {
 			args = append(args, "-o", "HostKeyAlias="+alias)
 		}
 	} else {

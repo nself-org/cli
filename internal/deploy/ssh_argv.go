@@ -13,17 +13,19 @@ package deploy
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
 // SSHKeyRe is the safe alphabet for an SSH key path. The one definition: the
 // legacy push in cmd/commands aliases it.
-var SSHKeyRe = regexp.MustCompile(`^[a-zA-Z0-9/_.~-]+$`)
+var SSHKeyRe = regexp.MustCompile(`^([a-zA-Z]:[/\\][a-zA-Z0-9/\\_.~-]*|[a-zA-Z0-9/_.~-]+)$`)
 
 // sshTransport is the ssh option set for one host. opts holds [-i key], the
 // host-key policy and ForwardAgent=no; the port is NOT in opts (it is added
@@ -33,19 +35,44 @@ type sshTransport struct {
 	opts []string
 }
 
+// CheckKeyPath is checkDeployKeyPath for callers outside the package, so every
+// deploy entry point reports a bad key path the same way.
+func CheckKeyPath(p string) error { return checkDeployKeyPath(p) }
+
 // checkDeployKeyPath accepts "" (no -i) or a path in the SSHKeyRe alphabet
-// that does not start with '-'.
+// that does not start with '-'. A path with whitespace is E484: rsync re-splits
+// its -e string on blanks, so the key cannot be passed through it. When the
+// blank comes from the home directory (a Windows profile such as
+// C:\Users\Jane Doe), the error names that home path.
 func checkDeployKeyPath(p string) error {
 	if p == "" {
 		return nil
 	}
+	if strings.ContainsAny(p, " \t") {
+		return errs.New("E484", fmt.Sprintf("ssh key path %s contains whitespace%s", p, homeWhitespaceHint(p))).
+			WithWhy("rsync re-splits its ssh command on blanks, so a key path with whitespace cannot be passed safely.").
+			WithFix("Set NSELF_DEPLOY_SSH_KEY to a key path without spaces, for example a copy of the key in a directory such as C:/keys or ~/.ssh on a home without spaces.")
+	}
 	if !SSHKeyRe.MatchString(p) {
-		return fmt.Errorf("ssh key path contains unsafe characters (got %q): only [a-zA-Z0-9/_.~-] allowed", p)
+		return fmt.Errorf("ssh key path contains unsafe characters (got %q): use [a-zA-Z0-9/_.~-], optionally with an absolute Windows drive prefix and separators", p)
 	}
 	if p[0] == '-' {
 		return fmt.Errorf("ssh key path must not start with '-' (got %q)", p)
 	}
 	return nil
+}
+
+// homeWhitespaceHint names the operator home directory when it holds
+// whitespace and the key path sits under it.
+func homeWhitespaceHint(p string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" || !strings.ContainsAny(home, " \t") {
+		return ""
+	}
+	if strings.HasPrefix(sshKeyPath(p), sshKeyPath(home)) {
+		return fmt.Sprintf(" because the home directory %s does", home)
+	}
+	return ""
 }
 
 // checkTransportToken permits canonical SDK pin-file options. All other tokens
@@ -80,7 +107,7 @@ func newSSHTransport(spec remote.HostSpec, keyPath string, policy []string) (ssh
 	}
 	var opts []string
 	if keyPath != "" {
-		opts = append(opts, "-i", keyPath)
+		opts = append(opts, "-i", sshKeyPath(keyPath))
 	}
 	opts = append(opts, policy...)
 	opts = append(opts, "-o", "ForwardAgent=no")
@@ -134,7 +161,7 @@ func (t sshTransport) rsyncMultiArgv(flags []string, dest string, srcs ...string
 	}
 	args = append(args, "-e", sshCommand, "--")
 	for _, src := range srcs {
-		local, err := localOperand(src)
+		local, err := rsyncLocalOperand(src)
 		if err != nil {
 			return nil, err
 		}
@@ -190,14 +217,14 @@ func hostOperand(spec remote.HostSpec, path string) string {
 }
 
 // localOperand makes a relative p absolute, so scp and rsync never read it as
-// a "host:path" operand or an option. A path that is already absolute (or
-// starts with '/') is returned unchanged, so argv stays as it was on every OS.
+// a "host:path" operand or an option. Absolute paths retain their native
+// form for scp; rsyncLocalOperand also maps Windows paths for POSIX rsync.
 // Empty paths, newlines and NUL are refused.
 func localOperand(p string) (string, error) {
 	if p == "" || strings.ContainsAny(p, "\n\x00") {
 		return "", fmt.Errorf("local path %q is empty or contains a newline or NUL", p)
 	}
-	if strings.HasPrefix(p, "/") || filepath.IsAbs(p) {
+	if strings.HasPrefix(p, "/") || filepath.IsAbs(p) || windowsDrivePath(p) {
 		return p, nil
 	}
 	return filepath.Abs(p)

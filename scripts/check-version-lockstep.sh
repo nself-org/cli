@@ -10,7 +10,7 @@
 #   1.  cli/internal/version/version.go    (Go constant)
 #   2.  cli/.github/VERSION                (plain text)
 #   3.  cli/sdk/go/doc.go                  (Go const)
-#   4.  cli/sdk/ts/package.json            (JSON version field)
+#   4.  cli/sdk/*/package.json             (JSON version field; every sdk npm package)
 #   5.  cli/sdk/py/pyproject.toml          (TOML version field)
 #   6.  admin/package.json                 (JSON version field)
 #   7.  admin/src/lib/cli-version.ts       (TS constant)
@@ -170,18 +170,22 @@ else
   log_warn "cli/sdk/go/doc.go" "(missing)"
 fi
 
-# 4. cli/sdk/ts/package.json (warn-only)
-FILE4="${CLI_ROOT}/sdk/ts/package.json"
-if [ -f "${FILE4}" ]; then
+# 4. cli/sdk/*/package.json (warn-only): every npm package under sdk/ (ts, ts-sdk,
+#    ts-cli-api, ...) is discovered by glob, the same way bump-version.sh bumps them.
+SDK_PKG_N=0
+for FILE4 in "${CLI_ROOT}"/sdk/*/package.json; do
+  [ -f "${FILE4}" ] || continue
+  SDK_PKG_N=$((SDK_PKG_N + 1))
   if command -v python3 >/dev/null 2>&1; then
-    V4=$(python3 -c "import json,sys; d=json.load(open('${FILE4}')); print(d['version'])" 2>/dev/null || true)
+    V4=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['version'])" "${FILE4}" 2>/dev/null || true)
   else
     V4=$(grep -E '"version"\s*:' "${FILE4}" \
           | grep -oE '"[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' | head -1)
   fi
-  check_version "cli/sdk/ts/package.json" "${V4}" 0
-else
-  log_warn "cli/sdk/ts/package.json" "(missing)"
+  check_version "cli/${FILE4#"${CLI_ROOT}/"}" "${V4}" 0
+done
+if [ "${SDK_PKG_N}" -eq 0 ]; then
+  log_warn "cli/sdk/*/package.json" "(none found)"
 fi
 
 # 5. cli/sdk/py/pyproject.toml (warn-only)

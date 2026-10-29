@@ -22,6 +22,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"github.com/nself-org/cli/internal/deploy/pathmap"
 	"io"
 	"os"
 	"path/filepath"
@@ -166,7 +167,7 @@ func stageScratch(p v15Params, scratch string) (deploy.ArtifactSet, error) {
 		return deploy.ArtifactSet{}, err
 	}
 	in := deploy.StageInput{
-		Map:      deploy.PathMap{ScratchRoot: scratch, OperatorRoot: p.workdir, PluginDir: build.DefaultPluginDir(), Home: deploy.DefaultHome(), RemotePath: p.srv.RemotePath},
+		Map:      pathmap.PathMap{ScratchRoot: scratch, OperatorRoot: p.workdir, PluginDir: build.DefaultPluginDir(), Home: pathmap.DefaultHome(), RemotePath: p.srv.RemotePath},
 		StageDir: stage, Compose: files, EnvFiles: envs, EnvSnapshot: envSnap, EnvName: cascade, Nginx: policy,
 	}
 	if frontedBy != "" {

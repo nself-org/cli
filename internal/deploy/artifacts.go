@@ -19,6 +19,7 @@ package deploy
 
 import (
 	"fmt"
+	"github.com/nself-org/cli/internal/deploy/pathmap"
 	"io/fs"
 	"os"
 	"path"
@@ -54,7 +55,7 @@ type ArtifactSet struct {
 
 // StageInput is what Stage reads.
 type StageInput struct {
-	Map         PathMap
+	Map         pathmap.PathMap
 	StageDir    string   // a fresh empty dir
 	Compose     []string // local compose files in order
 	EnvFiles    []string // local env files in order (the compose env manifest)
@@ -164,7 +165,7 @@ func Stage(in StageInput) (ArtifactSet, error) {
 // copyTree copies srcDir (a missing dir is fine) to <stage>/<rel> and returns
 // the relative file paths. Directories named conf.d* are skipped whole. rewrite
 // maps local roots in the file text (nginx confs); otherwise bytes are kept.
-func copyTree(srcDir, stage, rel string, m PathMap, rewrite bool) ([]string, error) {
+func copyTree(srcDir, stage, rel string, m pathmap.PathMap, rewrite bool) ([]string, error) {
 	var out []string
 	err := filepath.WalkDir(srcDir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -206,7 +207,7 @@ func copyTree(srcDir, stage, rel string, m PathMap, rewrite bool) ([]string, err
 }
 
 // checkNoLocalPaths fails when any staged file still names a local root.
-func checkNoLocalPaths(m PathMap, stage string, rels []string) error {
+func checkNoLocalPaths(m pathmap.PathMap, stage string, rels []string) error {
 	for _, rel := range rels {
 		data, err := os.ReadFile(filepath.Join(stage, filepath.FromSlash(rel)))
 		if err != nil {

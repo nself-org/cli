@@ -214,9 +214,13 @@ the working-tree inventory and the inventory committed on the default branch of
 committed copy cannot be read and the ci plugin is installed, the promotion
 refuses with `E499`. Git runs without `GIT_DIR`/`GIT_CONFIG_*` and replacement
 objects; anyone who can edit the project's `.git/config` can already run code as
-the operator, so by default the project's own `origin` is trusted. To pin it,
-put the expected URL in `~/.nself/ci/trust/origin.url` (first non-comment line):
-a different effective origin (local config or `insteadOf`) then refuses with
+the operator, so until the origin is pinned the project's own `origin` is trusted.
+The first release that verifies pins it (trust on first use): `promote` writes the
+effective origin URL to `~/.nself/ci/trust/origin.url` (mode 600, never replacing an
+existing file) and prints the pinned URL. A URL that carries a token or password is
+not written; a warning says so. To pin another URL, or before the first release, put
+it in that file yourself (first non-comment line); delete the file to unpin. Once
+pinned, a different effective origin (local config or `insteadOf`) then refuses with
 `E493` before any trust file is read, and so does a project whose `origin` was
 removed. A project with no `origin`, or with no committed
 `.nself/control-plane.yaml`, has no committed policy to consult and promotes
@@ -443,9 +447,15 @@ SSH key defaults to `~/.ssh/id_ed25519`. Override with `NSELF_DEPLOY_SSH_KEY`.
 
 Agent forwarding is always disabled (`-o ForwardAgent=no`). ssh, scp and rsync get their options as
 separate arguments from one builder; no option, key path or remote path is ever parsed by a shell.
-Before any process starts, the CLI refuses a key path outside `[a-zA-Z0-9/_.~-]` or starting with
-`-`, a remote path with shell metacharacters, a leading `-` or a `..` segment, and any ssh option
-holding whitespace or a quote (rsync re-splits its `-e` string on spaces).
+Before a connection starts, the CLI refuses a key path outside `[a-zA-Z0-9/_.~-]` or starting with
+`-`; absolute Windows drive paths such as `C:/Users/Jane/.ssh/id_ed25519` and backslash separators
+are also accepted. Key paths must have no spaces. Remote paths cannot contain shell metacharacters,
+a leading `-` or a `..` segment. SSH option tokens refuse whitespace and quotes except for the
+canonical quoted pin-file option, which supports home directories containing spaces.
+
+On Windows, rsync requires the matching MSYS/Cygwin `cygpath` on `PATH`. The CLI uses `cygpath -u`
+to map local sources and file lists to that runtime's mount paths, preserving directory trailing
+slashes. A missing or failing converter stops the copy with an error. Native scp retains Windows paths.
 
 **Host keys.** Which policy a deploy uses depends on what it sends:
 
@@ -453,7 +463,8 @@ holding whitespace or a quote (rsync re-splits its `-e` string on spaces).
 |---|---|---|
 | Secrets push (`.env.<target>` copied with scp) | strict | strict |
 | Deploy that ships an env file (inventory deploy, `nself deploy <target>` push) | strict, every connection of the run | strict |
-| Compose file only | `StrictHostKeyChecking=accept-new` | strict |
+| Compose file only, non-production | `StrictHostKeyChecking=accept-new` | `accept-new` (P7-DEPL-29) |
+| Compose file only, production through control-plane | `StrictHostKeyChecking=accept-new` | strict |
 | Read-only commands (probes outside a shipping run, `logs`, `health`) | `StrictHostKeyChecking=accept-new` | `accept-new` with nself's own key file (below) |
 
 Strict means the CLI scans the host's live key and continues only when that key is already trusted,
@@ -496,9 +507,14 @@ Compare the fingerprint with the one your provider shows (console or `ssh-keygen
 `--trust-host-key`, or ssh to the host once and accept the key. Before P7-DEPL-28 and P7-DEPL-29 the v1.4
 secrets push and env-shipping deploys accepted any key on first contact (`accept-new`).
 
-IP-address hosts are pinned under the alias `nself-<ip>-<port>` (for example
-`nself-203.0.113.10-22`) and ssh gets a matching `HostKeyAlias`; hosts on a non-default port use
-`nself-<host>-<port>`. A pin file holding a line the CLI did not write (a wildcard,
+Deploy, `nself admin` and `nself access` share one pin alias. A host name on port 22 (or no port) is pinned
+under the bare name. An IP address, or any host on another port, is pinned under `nself+<host>+<port>`
+(for example `nself+203.0.113.10+22` or `nself+host.example+2222`) and ssh gets a matching `HostKeyAlias`.
+`+` cannot appear in a host name, so two endpoints never share a pin, and `host:22` is the same pin as
+`host`. Ordinary `nself-*` hostnames remain valid; they are pinned under `nself+<host>+<port>` so a new pin
+never lands in the old alias namespace, and a bare `nself-*` pin from an older release needs one re-enrolment
+with `--trust-host-key`. Pins an older release wrote as `nself-<host>-<port>` are copied to the new alias the
+first time the presented key matches; the old line is never rewritten and can be deleted by hand. A pin file holding a line the CLI did not write (a wildcard,
 `@cert-authority` or hashed entry) or with group- or world-writable permissions is refused with
 `E487`; fix or remove that line and pin again.
 
@@ -674,8 +690,12 @@ file. v1.4 mode keeps the push described above, byte for byte. One flow runs per
    `--env-file` list, and the sync only creates it (empty, mode 600) when the host has none. The
    host keeps `.nself/deploy-shipped.txt`, the list of what nSelf shipped. Before the sync the host
    removes only files that list names, the new set drops, and that carry the `generated by nself`
-   marker. A marker-carrying conf nSelf never shipped here (another project's), an unmarked file or
-   anything under `conf.d*/` stays. The generated `nginx/conf.d/<name>.conf` files (today
+   marker. A plugin fragment under `.nself/plugins/<slug>/` is a copy of your own file and has no
+   marker: one that the previous deploy shipped (your local record and the host list both name it)
+   and the new set drops is removed without the marker, behind the same symlink and realpath guard.
+   A marker-carrying conf nSelf never shipped here (another project's), an unmarked file outside
+   `.nself/plugins/<slug>/` or anything under `conf.d*/` stays. The first v1.5 deploy to a v1.4 host
+   has no shipped list and no record yet, so it prunes nothing. The generated `nginx/conf.d/<name>.conf` files (today
    `default.conf`) ship, and only that one directory: never `conf.d-<env>/`, never a nested path, and
    a conf.d file is never pruned. The host decides, from the file alone: a file at that path whose
    first 5 lines have none starting exactly with `# Generated by nself build` (case-sensitive; a

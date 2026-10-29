@@ -35,8 +35,8 @@ func TestHasuraImageByMode(t *testing.T) {
 	if !ok1 || !ok2 {
 		t.Fatal("the image lock lacks hasura or hasura-v14")
 	}
-	if v14.Version != "v2.44.0" || cur.Version != "v2.51.0" || v14.Repository != cur.Repository || v14.IndexDigest == cur.IndexDigest {
-		t.Fatalf("lock entries hasura-v14 = %s, hasura = %s: want v2.44.0 and v2.51.0 of one repository with distinct digests", v14.String(), cur.String())
+	if v14.Version != "v2.44.1" || cur.Version != "v2.51.2" || v14.Repository != cur.Repository || v14.IndexDigest == cur.IndexDigest {
+		t.Fatalf("lock entries hasura-v14 = %s, hasura = %s: want v2.44.1 and v2.51.2 of one repository with distinct digests", v14.String(), cur.String())
 	}
 	restore := SetProjectPins(nil)
 	defer restore()
@@ -46,13 +46,13 @@ func TestHasuraImageByMode(t *testing.T) {
 		mode          string // pinning mode
 		want          string
 	}{
-		{"v1.4 lock default", "v2.44.0", false, PinningLock, v14.String()},
+		{"v1.4 lock default", "v2.44.1", false, PinningLock, v14.String()},
 		{"v1.4 lock blank version", "", false, PinningLock, v14.String()},
 		{"v1.4 legacy default", "v2.44.0", false, PinningLegacy, "hasura/graphql-engine:v2.44.0"},
-		{"v1.5 explicit v1.4 release", "v2.44.0", true, PinningLock, v14.String()},
+		{"v1.5 explicit v1.4 release", "v2.44.1", true, PinningLock, v14.String()},
 		{"v1.5 lock blank version", "", true, PinningLock, cur.String()},
 		{"v1.5 explicit v1.4 legacy release", "v2.44.0", true, PinningLegacy, "hasura/graphql-engine:v2.44.0"},
-		{"explicit current release in v1.4", "v2.51.0", false, PinningLock, cur.String()},
+		{"explicit current release in v1.4", "v2.51.2", false, PinningLock, cur.String()},
 		{"explicit current release in v1.4 legacy", "v2.51.0", false, PinningLegacy, "hasura/graphql-engine:v2.51.0"},
 		{"explicit older release in v1.4", "v2.43.0", false, PinningLock, "hasura/graphql-engine:v2.43.0"},
 		{"explicit older release in v1.5", "v2.43.0", true, PinningLock, "hasura/graphql-engine:v2.43.0"},

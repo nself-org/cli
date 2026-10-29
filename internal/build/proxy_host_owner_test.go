@@ -7,7 +7,47 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/nself-org/cli/internal/docker"
 )
+
+// stubDaemonRemapsUIDs makes the daemon report remapped (or not) for one test.
+func stubDaemonRemapsUIDs(t *testing.T, remapped bool) {
+	t.Helper()
+	prev := docker.RemapsUIDsOnce
+	docker.RemapsUIDsOnce = func() bool { return remapped }
+	t.Cleanup(func() { docker.RemapsUIDsOnce = prev })
+}
+
+// TestProxyHostOwnerRemappedDaemon runs the whole build against a stubbed
+// rootless daemon: no owner ids reach compose.env and no directory is pre-created.
+func TestProxyHostOwnerRemappedDaemon(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("the export is Linux only; internal/docker tests the daemon rule")
+	}
+	for _, name := range []string{"rootless", "userns"} {
+		t.Run(name, func(t *testing.T) {
+			stubDaemonRemapsUIDs(t, true)
+			f := freshProxyFixture(t)
+			installProxy(t, f.plugins)
+			if _, err := Build(f.workdir, BuildOptions{Force: true}); err != nil {
+				t.Fatal(err)
+			}
+			data, err := os.ReadFile(filepath.Join(f.workdir, ".nself", "compose.env"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(data), "NSELF_HOST_") {
+				t.Fatalf("%s daemon still got a host owner:\n%s", name, data)
+			}
+			for _, name := range proxyOutputNames {
+				if exists(proxyOutputPath(f.workdir, name)) {
+					t.Fatalf("%s pre-created for a daemon that remaps uids", name)
+				}
+			}
+		})
+	}
+}
 
 // TestProxyHostOwner covers the NSELF_HOST_UID/GID export the Traefik fragment reads.
 func TestProxyHostOwner(t *testing.T) {
@@ -20,6 +60,7 @@ func TestProxyHostOwner(t *testing.T) {
 		return string(data)
 	}
 	t.Run("traefik exports the build user on linux only", func(t *testing.T) {
+		stubDaemonRemapsUIDs(t, false)
 		f := freshProxyFixture(t)
 		installProxy(t, f.plugins)
 		if _, err := Build(f.workdir, BuildOptions{Force: true}); err != nil {
