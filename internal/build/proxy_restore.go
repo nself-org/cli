@@ -141,6 +141,17 @@ func removeTree(sink Sink, dir string, before fs.FileInfo) error {
 	if !before.IsDir() {
 		return fmt.Errorf("cleanup directory %s was replaced", dir)
 	}
+	if err := emptyTree(sink, dir, before); err != nil {
+		return err
+	}
+	// The anchoring handle is closed by now: Windows refuses to remove a
+	// directory while any handle on it is open.
+	return sink.Remove(dir)
+}
+
+// emptyTree unlinks everything under dir through a handle anchored on it and
+// releases the handle before returning.
+func emptyTree(sink Sink, dir string, before fs.FileInfo) error {
 	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return err
@@ -153,10 +164,7 @@ func removeTree(sink Sink, dir string, before fs.FileInfo) error {
 	if !os.SameFile(before, after) {
 		return fmt.Errorf("cleanup directory %s was replaced", dir)
 	}
-	if err := removeTreeIn(sink, root, dir, "."); err != nil {
-		return err
-	}
-	return sink.Remove(dir)
+	return removeTreeIn(sink, root, dir, ".")
 }
 
 // removeTreeIn checks each listing against the anchored directory identity.

@@ -71,8 +71,14 @@ func TestConfigExplainMonorepoExecution(t *testing.T) {
 			if tc.redirect {
 				wantDir = backend
 			}
-			if cwd, err := os.Getwd(); err != nil || cwd != wantDir {
-				t.Errorf("cwd = %q (%v), want %q", cwd, err, wantDir)
+			// os.Getwd reports the resolved path (macOS temp dirs live behind a
+			// /var -> /private/var symlink), so compare resolved paths.
+			wantResolved, err := filepath.EvalSymlinks(wantDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cwd, err := os.Getwd(); err != nil || cwd != wantResolved {
+				t.Errorf("cwd = %q (%v), want %q", cwd, err, wantResolved)
 			}
 		})
 	}

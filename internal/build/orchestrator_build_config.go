@@ -17,6 +17,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -156,7 +157,13 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 // ensureEnvFilePermissions fixes an existing env file to 0600 when it is more
 // permissive, through the sink (setup.EnsureEnvFilePermissions semantics: a
 // missing file is a no-op). Plan mode records the mode change, not applies it.
+// Windows has no owner-only permission bits (os.Stat always reports 0666 or
+// 0444 and chmod only toggles the read-only flag), so there is nothing to fix
+// and the plan never records a mode the apply could then have to match.
 func ensureEnvFilePermissions(sink Sink, path string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
 	info, err := sink.Stat(path)
 	if os.IsNotExist(err) {
 		return nil

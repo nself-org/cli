@@ -32,6 +32,6 @@ func PrintCustomServiceEnvSummary(w io.Writer, workdir string) {
 	}
 	for _, cs := range cfg.CustomServices {
 		names := CustomServiceEnvVarNames(cs)
-		fmt.Fprintf(w, "  [dry-run] Custom service %s will receive: %s\n", cs.Name, strings.Join(names, ", "))
+		_, _ = fmt.Fprintf(w, "  [dry-run] Custom service %s will receive: %s\n", cs.Name, strings.Join(names, ", "))
 	}
 }
