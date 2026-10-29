@@ -54,8 +54,9 @@ func CopyTo(ctx context.Context, t Target, local, remote string) error {
 // option parsing. -4, -6, -q, -v, -i X, -o V and -oV mean the same in scp. Any
 // other element is refused, so scp only ever sees an option scp defines, with
 // its value attached or directly after it. SessionType=default is dropped:
-// scp selects its own session type (SFTP uses ssh -s), and an explicit
-// SessionType conflicts with that selection before ssh reads its config.
+// scp selects its own session type (SFTP uses ssh -s), and StdinNull,
+// SessionType and ForkAfterAuthentication from the D4 8.7 set all conflict
+// with that internal -s on newer OpenSSH clients.
 func scpOptions(opts []string) ([]string, error) {
 	out := make([]string, 0, len(opts))
 	for i := 0; i < len(opts); i++ {
@@ -74,12 +75,13 @@ func scpOptions(opts []string) ([]string, error) {
 			if a == "-p" {
 				a = "-P"
 			}
-			if a == "-o" && opts[i] == "SessionType=default" {
+			if a == "-o" && isD4ScpDrop(opts[i]) {
 				continue
 			}
 			out = append(out, a, opts[i])
 		} else if strings.HasPrefix(a, "-o") {
-			if a != "-oSessionType=default" {
+			v := strings.TrimPrefix(a, "-o")
+			if !isD4ScpDrop(v) {
 				out = append(out, a)
 			}
 		} else {
@@ -87,6 +89,14 @@ func scpOptions(opts []string) ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// isD4ScpDrop reports whether kv is one of the D4 8.7 options that must not
+// reach scp: StdinNull, SessionType and ForkAfterAuthentication all conflict
+// with scp's internal -s (SFTP subsystem) on OpenSSH 9.x and later.
+func isD4ScpDrop(kv string) bool {
+	k, _, _ := strings.Cut(kv, "=")
+	return k == "StdinNull" || k == "SessionType" || k == "ForkAfterAuthentication"
 }
 
 // checkLocalOperand refuses a local path scp or rsync would read as a remote
