@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -96,6 +97,13 @@ func TestMountEmptyFileE125(t *testing.T) {
 	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "")
 	t.Setenv("NSELF_PLUGIN_LICENSE_KEY_OWNER", "")
 	t.Setenv("LICENSE_CACHE_PATH", filepath.Join(t.TempDir(), "missing"))
+	// Missing-token tests must not renew a licence configured on the CI host.
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "")
+	for i := 1; i <= 10; i++ {
+		t.Setenv("NSELF_LICENSE_KEY_"+strconv.Itoa(i), "")
+	}
 	t.Setenv("LICENSE_PUBLIC_KEY_OVERRIDE", "")
 	dir, in := entitlementFixture(t, "licensed")
 	path := filepath.Join(dir, "fixture", pluginComposeFilename)
