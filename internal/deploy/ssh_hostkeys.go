@@ -13,7 +13,6 @@ package deploy
 import (
 	"context"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -21,13 +20,13 @@ import (
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/hostpin"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
 // DeployKnownHostsPath is the dedicated pin file. The operator's SSH file is read only.
 func DeployKnownHostsPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "nself", "deploy_known_hosts")
+	return hostpin.KnownHostsPath()
 }
 
 // knownHostsOption quotes the absolute pin path for OpenSSH.
@@ -35,21 +34,9 @@ func knownHostsOption() (string, error) {
 	return remote.GlobalKnownHostsFileOption(DeployKnownHostsPath())
 }
 
-func deployHostPort(spec remote.HostSpec) int {
-	if spec.Port == 0 {
-		return 22
-	}
-	return spec.Port
-}
-
-// deployKeyAlias is the pin alias. A port or an IP literal needs a synthetic
-// alias: the sdk refuses an IP literal as a pin alias.
-func deployKeyAlias(spec remote.HostSpec) string {
-	if spec.Port != 0 || net.ParseIP(spec.Host) != nil {
-		return "nself-" + strings.ReplaceAll(spec.Host, ":", "-") + "-" + strconv.Itoa(deployHostPort(spec))
-	}
-	return spec.Host
-}
+func deployHostPort(spec remote.HostSpec) int    { return hostpin.HostPort(spec.Port) }
+func deployKeyAlias(spec remote.HostSpec) string { return hostpin.KeyAlias(spec.Host, spec.Port) }
+func legacyKeyAlias(spec remote.HostSpec) string { return hostpin.LegacyKeyAlias(spec.Host, spec.Port) }
 
 // TrustHostKey scans live keys and pins only the key with the offered fingerprint.
 func TrustHostKey(ctx context.Context, host, offered string) error {
@@ -86,7 +73,26 @@ func pinnedFingerprints(ctx context.Context, alias string) (map[string]bool, err
 	if _, err := pin.Lookup(alias); err != nil {
 		return nil, errs.New("E487", fmt.Sprintf("deploy pin file %s refused: %v", DeployKnownHostsPath(), err))
 	}
-	return deployTrustedFingerprints(ctx, alias, DeployKnownHostsPath()), nil
+	return hostpin.TrustedFingerprints(ctx, alias, DeployKnownHostsPath(), remote.Fingerprint), nil
+}
+
+// deployPinnedFingerprints reads legacy IP/port pins only when no new pin
+// exists. It returns the alias SSH must check and never rewrites the pin file.
+func deployPinnedFingerprints(ctx context.Context, spec remote.HostSpec) (string, map[string]bool, error) {
+	alias := deployKeyAlias(spec)
+	pinned, err := pinnedFingerprints(ctx, alias)
+	if err != nil || len(pinned) != 0 || alias == spec.Host {
+		return alias, pinned, err
+	}
+	legacy := legacyKeyAlias(spec)
+	pinned, err = pinnedFingerprints(ctx, legacy)
+	return legacy, pinned, err
+}
+
+// PinAlias delegates to hostpin.PinAlias; kept here so existing deploy callers
+// keep compiling without importing hostpin directly.
+func PinAlias(ctx context.Context, spec remote.HostSpec) string {
+	return hostpin.PinAlias(ctx, spec.Host, spec.Port, remote.Fingerprint)
 }
 
 // hostKeyPolicy is the unexported spelling of HostKeyPolicy, kept for the
@@ -120,9 +126,8 @@ func HostKeyPolicy(ctx context.Context, host, env, server string, strict, shipsS
 	if spec.Port != 0 {
 		operatorAlias = "[" + spec.Host + "]:" + strconv.Itoa(spec.Port)
 	}
-	alias := deployKeyAlias(spec)
-	operator := deployTrustedFingerprints(ctx, operatorAlias, filepath.Join(home, ".ssh", "known_hosts"))
-	pinned, err := pinnedFingerprints(ctx, alias)
+	operator := hostpin.TrustedFingerprints(ctx, operatorAlias, filepath.Join(home, ".ssh", "known_hosts"), remote.Fingerprint)
+	alias, pinned, err := deployPinnedFingerprints(ctx, spec)
 	if err != nil {
 		return nil, err
 	}

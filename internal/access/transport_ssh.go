@@ -17,12 +17,12 @@ import (
 	"context"
 	"fmt"
 	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/hostpin"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -92,7 +92,7 @@ func (t *SSHTransport) sshArgsContext(ctx context.Context) ([]string, error) {
 		}
 		args = append(args, "-o", "StrictHostKeyChecking=yes", "-o", option)
 		if spec.Port != 0 {
-			alias := "nself-" + strings.ReplaceAll(spec.Host, ":", "-") + "-" + strconv.Itoa(spec.Port)
+			alias := hostpin.PinAlias(ctx, spec.Host, spec.Port, remote.Fingerprint)
 			args = append(args, "-o", "HostKeyAlias="+alias)
 		}
 	} else {

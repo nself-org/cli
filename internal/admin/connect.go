@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/hostpin"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
@@ -166,8 +168,8 @@ func adminHostKeyOptions(ctx context.Context, spec remote.HostSpec) ([]string, e
 		operatorAlias = resolved.HostKeyAlias
 	}
 	pinAlias := spec.Host
-	if spec.Port != 0 && spec.Port != 22 {
-		pinAlias = "nself-" + strings.ReplaceAll(spec.Host, ":", "-") + "-" + strconv.Itoa(spec.Port)
+	if (spec.Port != 0 && spec.Port != 22) || net.ParseIP(spec.Host) != nil {
+		pinAlias = hostpin.PinAlias(ctx, spec.Host, spec.Port, remote.Fingerprint)
 	}
 	operator := adminTrustedFingerprints(ctx, operatorAlias, filepath.Join(home, ".ssh", "known_hosts"))
 	pinned := adminTrustedFingerprints(ctx, pinAlias, pinFile)
@@ -179,7 +181,7 @@ func adminHostKeyOptions(ctx context.Context, spec remote.HostSpec) ([]string, e
 				"-o", "ControlMaster=no", "-o", "ControlPath=none",
 				"-o", pinOption,
 			}
-			if spec.Port != 0 && spec.Port != 22 && !operator[key.Fingerprint] {
+			if !operator[key.Fingerprint] && (spec.Port != 0 && spec.Port != 22 || net.ParseIP(spec.Host) != nil) {
 				opts = append(opts, "-o", "HostKeyAlias="+pinAlias)
 			}
 			return opts, nil

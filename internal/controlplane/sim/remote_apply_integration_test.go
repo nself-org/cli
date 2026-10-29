@@ -15,6 +15,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/nself-org/cli/internal/deploy/pathmap"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -180,7 +181,7 @@ func stageSet(t *testing.T, rp, version string) (deploy.ArtifactSet, []string) {
 	w(filepath.Join(scratch, "hasura", "metadata", "version.yaml"), "version: 3\n")
 	w(filepath.Join(scratch, ".env.prod"), "ENV=prod\n")
 	set, err := deploy.Stage(deploy.StageInput{
-		Map:      deploy.PathMap{ScratchRoot: scratch, OperatorRoot: operator, PluginDir: plugins, Home: filepath.Join(base, "home"), RemotePath: rp},
+		Map:      pathmap.PathMap{ScratchRoot: scratch, OperatorRoot: operator, PluginDir: plugins, Home: filepath.Join(base, "home"), RemotePath: rp},
 		StageDir: filepath.Join(base, "stage"), Compose: []string{filepath.Join(scratch, "docker-compose.yml"), filepath.Join(plugins, "ai", "docker-compose.plugin.yml")},
 		EnvFiles: []string{filepath.Join(scratch, ".env"), filepath.Join(scratch, ".nself", "compose.env")}, EnvSnapshot: filepath.Join(scratch, ".env.prod"), EnvName: "prod",
 	})

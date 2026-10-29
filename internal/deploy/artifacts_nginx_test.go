@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"bytes"
+	"github.com/nself-org/cli/internal/deploy/pathmap"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,7 +44,7 @@ func nginxScratch(t *testing.T, policy *NginxPolicy) StageInput {
 	for rel, body := range files {
 		writeFile(t, filepath.Join(scratch, filepath.FromSlash(rel)), body, 0o644)
 	}
-	m := PathMap{ScratchRoot: scratch, OperatorRoot: filepath.Join(base, "proj"), PluginDir: filepath.Join(base, "plugins"), Home: filepath.Join(base, "home"), RemotePath: "/opt/nself"}
+	m := pathmap.PathMap{ScratchRoot: scratch, OperatorRoot: filepath.Join(base, "proj"), PluginDir: filepath.Join(base, "plugins"), Home: filepath.Join(base, "home"), RemotePath: "/opt/nself"}
 	return StageInput{Map: m, StageDir: t.TempDir(), EnvName: "prod", Nginx: policy}
 }
 

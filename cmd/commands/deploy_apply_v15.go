@@ -244,8 +244,8 @@ func remoteDeployV15(ctx context.Context, workdir, host, cascade string, jsonOut
 	ctx, stop := deploy.WithInterrupt(ctx)
 	defer stop()
 	key := sshKeyPath()
-	if key != "" && !sshKeyRe.MatchString(key) {
-		return fmt.Errorf("NSELF_DEPLOY_SSH_KEY contains unsafe characters (got %q): only [a-zA-Z0-9/_.~-] allowed", key)
+	if err := deploy.CheckKeyPath(key); err != nil {
+		return err
 	}
 	spec, err := remote.ParseHostSpec(host)
 	if err != nil {

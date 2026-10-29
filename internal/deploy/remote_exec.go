@@ -20,10 +20,10 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 
+	"github.com/nself-org/cli/internal/hostpin"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
@@ -88,17 +88,7 @@ func parseScannedKeys(out string) []remote.HostKey {
 }
 
 func deployTrustedFingerprints(ctx context.Context, alias, path string) map[string]bool {
-	seen := map[string]bool{}
-	out, err := exec.CommandContext(ctx, "ssh-keygen", "-F", alias, "-f", path).Output()
-	if err != nil {
-		return seen
-	}
-	for _, line := range strings.Split(string(out), "\n") {
-		if fp, err := remote.Fingerprint(line); err == nil {
-			seen[fp] = true
-		}
-	}
-	return seen
+	return hostpin.TrustedFingerprints(ctx, alias, path, remote.Fingerprint)
 }
 
 // RemoteTarget describes a resolved remote host for a non-deploy command.

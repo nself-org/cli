@@ -1,4 +1,4 @@
-package deploy
+package pathmap
 
 // Purpose: rewrite the absolute local paths a build leaves in compose files,
 //          manifests and env files to the remote layout (D24 step 3), and
