@@ -141,7 +141,7 @@ func trackMembers(ctx context.Context, h Hooks, members []Member) error {
 // waitMembers is the readiness step.
 func waitMembers(ctx context.Context, h Hooks, members []Member) (string, error) {
 	var waited, unwaited []string
-	deadline := time.Now().Add(h.timeout()) // one bound for the step, not per member
+	deadline := h.clock().Add(h.timeout()) // one bound for the step, not per member
 	for _, m := range members {
 		if !m.BootMigrations {
 			if m.HasMigrationsDir {
@@ -152,7 +152,7 @@ func waitMembers(ctx context.Context, h Hooks, members []Member) (string, error)
 		if m.Port <= 0 && h.HealthURL == nil {
 			return "", &StepError{Plugin: m.Name, Err: fmt.Errorf("plugin %s: plugin.json declares no port, so migrations readiness cannot be probed", m.Name)}
 		}
-		if err := readiness.Wait(ctx, m.Name, h.healthURL(m), remaining(deadline), readiness.WithInterval(h.interval())); err != nil {
+		if err := readiness.Wait(ctx, m.Name, h.healthURL(m), h.remaining(deadline), readiness.WithInterval(h.interval())); err != nil {
 			return "", &StepError{Plugin: m.Name, Err: err}
 		}
 		waited = append(waited, m.Name)
@@ -175,7 +175,7 @@ func checkHealth(ctx context.Context, h Hooks, members []Member) (string, error)
 		}
 	}
 	probed := 0
-	deadline := time.Now().Add(h.timeout()) // one bound for the step, not per member
+	deadline := h.clock().Add(h.timeout()) // one bound for the step, not per member
 	for _, m := range members {
 		if m.Port <= 0 && h.HealthURL == nil {
 			continue
@@ -206,7 +206,7 @@ func waitHealthy(ctx context.Context, h Hooks, m Member, deadline time.Time) err
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if time.Now().Add(h.interval()).After(deadline) {
+		if h.clock().Add(h.interval()).After(deadline) {
 			return fmt.Errorf("plugin %s: /health at %s did not answer 200 within %s: %w", m.Name, url, h.timeout(), err)
 		}
 		pause(ctx, h.interval())
@@ -222,8 +222,8 @@ func isE119(err error) bool {
 
 // remaining is the time left until deadline, never below one millisecond so a
 // spent budget still gets one probe and a clear E118.
-func remaining(deadline time.Time) time.Duration {
-	if d := time.Until(deadline); d > time.Millisecond {
+func (h Hooks) remaining(deadline time.Time) time.Duration {
+	if d := deadline.Sub(h.clock()); d > time.Millisecond {
 		return d
 	}
 	return time.Millisecond
