@@ -45,6 +45,8 @@ case "$*" in
     fi ;;
   *"up -d --no-deps"*) for last; do :; done; n=$(cat "/tmp/sim-up-$last" 2>/dev/null || echo 0); echo $((n+1)) > "/tmp/sim-up-$last" ;;
   "inspect -f"*) shift 3; for i in "$@"; do n=$(cat "/tmp/sim-up-${i#id-}" 2>/dev/null || echo 0); printf '2026-10-10T00:00:%02dZ\n' "$n"; done ;;
+  "image inspect --format {{.Id}} "*)
+    printf 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n' ;;
   "network inspect"*) exit 1 ;;
 esac
 exit 0

@@ -227,6 +227,8 @@ func TestNginxReloadOnlyWhenRunning(t *testing.T) {
 	inner := stackHandler(rp2, "")
 	f2.handler = func(s string) (string, bool) {
 		switch {
+		case strings.Contains(s, "docker image inspect"):
+			return fakeImageID("a") + " p:1\n" + fakeImageID("b") + " w:1\n", true
 		case strings.Contains(s, "config --format json"):
 			return `{"name":"proj","services":{"db":{"image":"p:1","healthcheck":{"test":["CMD","x"]}},"web":{"image":"w:1","restart":"always"}}}`, true
 		case strings.Contains(s, "config --services"):

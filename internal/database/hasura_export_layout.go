@@ -23,16 +23,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"github.com/nself-org/cli/internal/database/metadatavalue"
 )
 
 const metadataIndexFile = "config.yaml"
-
-var metadataKeepChomp = regexp.MustCompile(`(?m)[|>](?:[1-9]?\+|\+[1-9])\n`)
 
 // metadataFile is one file of the layout; Name is relative to the metadata dir.
 type metadataFile struct {
@@ -59,7 +56,7 @@ func metadataLayout(data []byte) ([]metadataFile, error) {
 	files := make([]metadataFile, 0, len(keys)+1)
 	var index strings.Builder
 	for _, k := range keys {
-		body, err := marshalMetadataValue(raw[k])
+		body, err := metadatavalue.Marshal(raw[k])
 		if err != nil {
 			return nil, fmt.Errorf("marshal %s to YAML: %w", k, err)
 		}
@@ -69,28 +66,6 @@ func metadataLayout(data []byte) ([]metadataFile, error) {
 	files = append(files, metadataFile{Name: metadataIndexFile, Data: []byte(index.String())})
 	sort.Slice(files, func(i, j int) bool { return files[i].Name < files[j].Name })
 	return files, nil
-}
-
-// marshalMetadataValue encodes one top-level value for its <key>.yaml file:
-// block YAML, except single-line bodies, keep-chomp scalars, and "!include", which
-// become one line of JSON with "!include" escaped (see the header for why).
-func marshalMetadataValue(v interface{}) ([]byte, error) {
-	body, err := yaml.Marshal(v)
-	if err != nil {
-		return nil, err
-	}
-	oneLine := strings.Count(strings.TrimRight(string(body), "\n"), "\n") == 0
-	// The textual include resolver trims terminal newlines, so keep-chomp
-	// scalars must use JSON escapes to preserve their exact string values.
-	if !oneLine && !strings.Contains(string(body), "!include") && !metadataKeepChomp.Match(body) {
-		return body, nil
-	}
-	js, err := json.Marshal(v)
-	if err != nil {
-		return nil, err
-	}
-	esc := strings.ReplaceAll(string(js), "!include", `\u0021include`)
-	return []byte(esc + "\n"), nil
 }
 
 // checkMetadataKey rejects a top-level key that would escape the directory,
