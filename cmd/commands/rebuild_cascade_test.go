@@ -36,7 +36,7 @@ func TestRebuildCascade(t *testing.T) {
 	for _, scenario := range []string{"prod_class_refusal", "hand_edit_refused_then_force"} {
 		for _, caller := range callers {
 			t.Run(scenario+"/"+caller.name, func(t *testing.T) {
-				t.Cleanup(build.SnapshotEnv())
+				isolateConfigFixture(t)
 				isolateDoctorHome(t)
 				if runtime.GOOS == "windows" && caller.name == "restart_smart" {
 					t.Skip("the docker stub is a POSIX shell script; a real docker.exe answers instead")
