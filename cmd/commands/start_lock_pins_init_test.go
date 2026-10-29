@@ -78,7 +78,7 @@ func TestProjectLockPinsSurviveInitDefaults(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			edited := strings.Replace(string(raw), "HASURA_VERSION=\n", "HASURA_VERSION=v2.51.0\n", 1)
+			edited := strings.Replace(string(raw), "HASURA_VERSION=\n", "HASURA_VERSION=v2.51.2\n", 1)
 			if edited == string(raw) {
 				t.Fatal("init must leave HASURA_VERSION blank")
 			}
@@ -86,8 +86,8 @@ func TestProjectLockPinsSurviveInitDefaults(t *testing.T) {
 				t.Fatal(err)
 			}
 			got = renderStackIn(t, dir, nil)
-			if got["hasura"] == pins["hasura"] || !strings.Contains(got["hasura"], "v2.51.0") {
-				t.Errorf("HASURA_VERSION=v2.51.0 must drop the hasura pin: image %s", got["hasura"])
+			if got["hasura"] == pins["hasura"] || !strings.Contains(got["hasura"], "v2.51.2") {
+				t.Errorf("HASURA_VERSION=v2.51.2 must drop the hasura pin: image %s", got["hasura"])
 			}
 			if n := strings.Count(notices.String(), "notice:"); n != 1 || !strings.Contains(notices.String(), "HASURA_VERSION is set") {
 				t.Errorf("want one notice naming HASURA_VERSION, got %q", notices.String())
