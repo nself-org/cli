@@ -26,7 +26,7 @@ ROOT="$(cd "$HERE/../../.." && pwd)"
 TOOL="${MIRROR_TOOL:-$ROOT/scripts/images/mirror-images.sh}"
 FIX="$HERE/fixtures"
 CRANE_IMAGE="$(sed -n 's/^CRANE_IMAGE="\(.*\)"$/\1/p' "$TOOL")"
-WORK="$(mktemp -d "$HERE/.work.vp$$.XXXXXX")"
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/mirror-platforms.XXXXXX")"
 PASSED=0
 
 # Synthetic digests: the lock pins amd64=a…a and arm64=b…b under index 9…9;
@@ -62,6 +62,7 @@ while [ $# -gt 0 ] && [ "$1" != "$FAKE_CRANE_IMAGE" ]; do shift; done
 shift
 case "$1" in
   digest)
+    [ "$2" = "$FAKE_MIRROR@$FAKE_IDX" ] || { echo "fake docker: expected digest-only probe: $2" >&2; exit 1; }
     [ -f "$FAKE_STATE/copied" ] || { echo "MANIFEST_UNKNOWN: $2" >&2; exit 1; }
     printf '%s\n' "$FAKE_IDX" ;;
   copy)
@@ -93,10 +94,11 @@ write_lock() {
 apply_with() {
   local idx="${2:-$IDX}"
   rm -rf "$WORK/state" && mkdir "$WORK/state"
+  [ "${4:-}" != present ] || touch "$WORK/state/copied"
   RC=0
   OUT="$(PATH="$WORK/bin:$PATH" FAKE_STATE="$WORK/state" FAKE_CRANE_IMAGE="$CRANE_IMAGE" \
-    FAKE_IDX="$idx" FAKE_SRC="upstream.invalid/test-a@$idx" FAKE_DST="$DST" FAKE_MANIFEST="$1" \
-    "$TOOL" --lock "$WORK/images.lock.json" --sources "$WORK/mirror-sources.yaml" --apply \
+    FAKE_IDX="$idx" FAKE_SRC="upstream.invalid/test-a@$idx" FAKE_DST="$DST" FAKE_MIRROR="$MIRROR" FAKE_MANIFEST="$1" \
+    "$TOOL" --lock "$WORK/images.lock.json" --sources "$WORK/mirror-sources.yaml" "${3:---apply}" \
     2>"$WORK/err.log")" || RC=$?
   ERR="$(cat "$WORK/err.log")"
 }
@@ -185,5 +187,18 @@ apply_with "$WORK/nodigest.json"
 want_rc 1
 want_err "missing from the mirror index at $DST: $ARM\$"
 ok "index entries without a digest do not satisfy a lock platform"
+
+apply_with "$FIX/index-exact.json" "$IDX" --check
+want_rc 1
+want_out "MISSING test-a $IDX -"
+ok "--check fails when the pinned mirror digest is absent"
+
+for mode in --check --plan --apply; do
+  apply_with "$FIX/index-exact.json" "$IDX" "$mode" present
+  want_rc 0
+  want_out "PRESENT test-a $IDX $IDX"
+  [ "$(wc -l < "$WORK/state/calls.log" | tr -d ' ')" = 1 ] || fail "$mode must only probe the pinned digest"
+done
+ok "check, plan and idempotent apply resolve the locked digest without querying version tags"
 
 echo "PASS: $PASSED assertions"

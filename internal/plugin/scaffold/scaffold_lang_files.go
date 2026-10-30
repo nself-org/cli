@@ -153,28 +153,28 @@ func addStaticFiles(files map[string]string, p Params) error {
 func buildDockerfile(p Params) (string, error) {
 	switch p.Language {
 	case "rust":
-		return render(`FROM rust:1.77-alpine AS builder
+		return render(`FROM {{image "rust"}} AS builder
 WORKDIR /app
 RUN apk add --no-cache musl-dev
 COPY Cargo.toml Cargo.lock ./
 COPY src/ src/
 RUN cargo build --release
 
-FROM alpine:3.19
+FROM {{image "alpine"}}
 RUN apk add --no-cache ca-certificates
 COPY --from=builder /app/target/release/{{.Name}} /usr/local/bin/plugin
 EXPOSE {{.Port}}
 CMD ["plugin"]
 `, p)
 	case "node":
-		return render(`FROM node:20-alpine AS builder
+		return render(`FROM {{image "node"}} AS builder
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
 RUN corepack enable && pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm build
 
-FROM node:20-alpine
+FROM {{image "node"}}
 WORKDIR /app
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
@@ -183,14 +183,14 @@ EXPOSE {{.Port}}
 CMD ["node", "dist/index.js"]
 `, p)
 	case "static":
-		return render(`FROM nginx:alpine
+		return render(`FROM {{image "nginx"}}
 COPY static/ /usr/share/nginx/html/
 EXPOSE {{.Port}}
 CMD ["nginx", "-g", "daemon off;"]
 `, p)
 	default: // go
 		return render(`# syntax=docker/dockerfile:1.7
-FROM golang:1.23-alpine AS build
+FROM {{image "golang"}} AS build
 WORKDIR /src
 COPY go.mod go.sum* ./
 RUN go mod download
@@ -198,7 +198,7 @@ COPY . .
 ARG VERSION=0.1.0
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.Version=${VERSION}" -o /out/{{.Name}} ./cmd
 
-FROM gcr.io/distroless/static:nonroot
+FROM {{image "distroless-static"}}
 USER nonroot:nonroot
 COPY --from=build /out/{{.Name}} /{{.Name}}
 EXPOSE {{.Port}}

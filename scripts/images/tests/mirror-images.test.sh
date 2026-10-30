@@ -25,7 +25,7 @@ SRC="${SUF}src"
 DST="${SUF}dst"
 SRC_REF="$SRC:5000"
 DST_REF="$DST:5000"
-WORK="$(mktemp -d "$ROOT/scripts/images/tests/.work.${SUF}.XXXXXX")"
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/mirror-images.XXXXXX")"
 PASSED=0
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
@@ -178,21 +178,21 @@ want_err "skip test-b: .* already at"
 want_no_err "mirror-images: copy "
 ok "second --apply copies nothing (skip lines only)"
 
-# ---- DIFFERS ------------------------------------------------------------------
+# ---- mutable tag drift leaves the locked digest available ---------------------
 crane copy "$SRC_REF/test-a@$A_IDX" "$DST_REF/nself/test-b:2.0" >/dev/null 2>&1
 tool_run
 want_rc 0
-want_out "PRESENT test-a $A_IDX $A_IDX" "DIFFERS test-b $B_IDX $A_IDX"
-ok "a re-pointed mirror tag prints DIFFERS with the mirror digest"
+want_out "PRESENT test-a $A_IDX $A_IDX" "PRESENT test-b $B_IDX $B_IDX"
+ok "a re-pointed mirror tag does not hide an available locked digest"
 tool_run --check
-want_rc 1
-ok "--check exits 1 on DIFFERS"
+want_rc 0
+ok "--check resolves the pinned digest despite mirror tag drift"
 tool_run --check --only test-a
 want_rc 0
 want_out "PRESENT test-a $A_IDX $A_IDX"
 ok "--only restricts to one entry"
 tool_run --check --only test-b
-want_rc 1
+want_rc 0
 tool_run --only no-such-entry
 [ "$RC" != 0 ] || fail "--only with an unknown name must fail"
 ok "--only with an unknown name exits non-zero"

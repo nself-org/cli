@@ -15,7 +15,10 @@ import (
 )
 
 // writeScaffold creates the starter files for the custom service.
-func writeScaffold(dir, name, lang string, port int) ([]string, error) {
+func writeScaffold(dir, name, lang string, port int, imageRef func(string, string) string) ([]string, error) {
+	if imageRef == nil {
+		return nil, fmt.Errorf("image resolver is required to scaffold service files")
+	}
 	type fileSpec struct {
 		rel     string
 		content string
@@ -62,18 +65,18 @@ func run() error {
 	return http.ListenAndServe(":"+port, nil)
 }
 `, upperName, port, name), 0644},
-			fileSpec{"Dockerfile", fmt.Sprintf(`FROM golang:1.23-alpine AS build
+			fileSpec{"Dockerfile", fmt.Sprintf(`FROM %s AS build
 WORKDIR /src
 COPY go.mod ./
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -o /out/%s .
 
-FROM gcr.io/distroless/static:nonroot
+FROM %s
 COPY --from=build /out/%s /%s
 EXPOSE %d
 ENTRYPOINT ["/%s"]
-`, name, name, name, port, name), 0644},
+`, imageRef("golang", ""), name, imageRef("distroless-static", ""), name, name, port, name), 0644},
 		)
 	case "node":
 		specs = append(specs,
@@ -92,14 +95,14 @@ createServer((req, res) => {
   res.writeHead(404); res.end("not found");
 }).listen(port, () => console.log("%s listening on :" + port));
 `, upperName, port, name), 0644},
-			fileSpec{"Dockerfile", fmt.Sprintf(`FROM node:20-alpine
+			fileSpec{"Dockerfile", fmt.Sprintf(`FROM %s
 WORKDIR /app
 COPY package.json ./
 RUN npm install
 COPY . .
 EXPOSE %d
 CMD ["node", "-e", "require('./src/index.ts')"]
-`, port), 0644},
+`, imageRef("node", ""), port), 0644},
 		)
 	case "python":
 		specs = append(specs,
@@ -118,14 +121,14 @@ if __name__ == "__main__":
     port = int(os.environ.get("%s_PORT", %d))
     uvicorn.run(app, host="0.0.0.0", port=port)
 `, upperName, port), 0644},
-			fileSpec{"Dockerfile", fmt.Sprintf(`FROM python:3.12-slim
+			fileSpec{"Dockerfile", fmt.Sprintf(`FROM %s
 WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 EXPOSE %d
 CMD ["python", "main.py"]
-`, port), 0644},
+`, imageRef("python", ""), port), 0644},
 		)
 	case "static":
 		specs = append(specs,
@@ -145,12 +148,12 @@ server {
     location / { try_files $uri $uri/ =404; }
 }
 `, port), 0644},
-			fileSpec{"Dockerfile", fmt.Sprintf(`FROM nginx:alpine
+			fileSpec{"Dockerfile", fmt.Sprintf(`FROM %s
 COPY index.html /usr/share/nginx/html/index.html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE %d
 CMD ["nginx", "-g", "daemon off;"]
-`, port), 0644},
+`, imageRef("nginx", ""), port), 0644},
 		)
 	case "rust":
 		specs = append(specs,
@@ -176,18 +179,18 @@ async fn main() -> std::io::Result<()> {
         .run().await
 }
 `, upperName, port, name), 0644},
-			fileSpec{"Dockerfile", fmt.Sprintf(`FROM rust:1.77-alpine AS builder
+			fileSpec{"Dockerfile", fmt.Sprintf(`FROM %s AS builder
 WORKDIR /app
 RUN apk add --no-cache musl-dev
 COPY Cargo.toml ./
 COPY src/ src/
 RUN cargo build --release
-FROM alpine:3.19
+FROM %s
 RUN apk add --no-cache ca-certificates
 COPY --from=builder /app/target/release/%s /usr/local/bin/service
 EXPOSE %d
 CMD ["service"]
-`, name, port), 0644},
+`, imageRef("rust", ""), imageRef("alpine", ""), name, port), 0644},
 		)
 	default: // "other"
 		specs = append(specs,
@@ -197,12 +200,12 @@ echo "%s listening on $PORT"
 # Replace with your service entrypoint.
 exec nc -l -p "$PORT"
 `, upperName, port, name), 0750},
-			fileSpec{"Dockerfile", fmt.Sprintf(`FROM alpine:3.19
+			fileSpec{"Dockerfile", fmt.Sprintf(`FROM %s
 COPY main.sh /main.sh
 RUN chmod +x /main.sh
 EXPOSE %d
 CMD ["/main.sh"]
-`, port), 0644},
+`, imageRef("alpine", ""), port), 0644},
 		)
 	}
 

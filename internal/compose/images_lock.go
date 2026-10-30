@@ -98,17 +98,44 @@ func (r Ref) LegacyVersion() string {
 
 var digestRE = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
-// MarshalLock renders a lock deterministically: 2-space indent, trailing
+// MarshalLock renders a lock deterministically: one entry per line, trailing
 // newline, no HTML escaping, platforms with sorted keys.
 func MarshalLock(f *LockFile) ([]byte, error) {
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
 	enc.SetEscapeHTML(false)
-	enc.SetIndent("", "  ")
 	if err := enc.Encode(f); err != nil {
 		return nil, err
 	}
-	return b.Bytes(), nil
+	// Indent the envelope while keeping each image and its platform map on a
+	// single line, so large locks remain readable without growing unbounded.
+	raw := bytes.TrimSpace(b.Bytes())
+	start := bytes.Index(raw, []byte(`"images":[`))
+	if start < 0 {
+		return nil, fmt.Errorf("image lock: missing images array")
+	}
+	var out bytes.Buffer
+	var envelope bytes.Buffer
+	if err := json.Indent(&envelope, append(append([]byte{}, raw[:start]...), []byte(`"images":[]}`)...), "", "  "); err != nil {
+		return nil, err
+	}
+	head := envelope.Bytes()
+	out.Write(head[:bytes.Index(head, []byte(`"images": []`))])
+	out.WriteString("\"images\": [\n")
+	for i, image := range f.Images {
+		b.Reset()
+		if err := enc.Encode(image); err != nil {
+			return nil, err
+		}
+		out.WriteString("    ")
+		out.Write(bytes.TrimSpace(b.Bytes()))
+		if i < len(f.Images)-1 {
+			out.WriteByte(',')
+		}
+		out.WriteByte('\n')
+	}
+	out.WriteString("  ]\n}\n")
+	return out.Bytes(), nil
 }
 
 // ParseLock decodes and validates a lock: header, schema version, entries

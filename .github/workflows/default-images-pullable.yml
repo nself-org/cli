@@ -26,6 +26,7 @@ on:
       - 'internal/compose/images.lock.json'
       - 'tools/imagelist/**'
       - 'tools/imagelock/**'
+      - 'scripts/images/**'
       - '.github/workflows/default-images-pullable.yml'
   pull_request:
     paths:
@@ -33,6 +34,7 @@ on:
       - 'internal/compose/images.lock.json'
       - 'tools/imagelist/**'
       - 'tools/imagelock/**'
+      - 'scripts/images/**'
       - '.github/workflows/default-images-pullable.yml'
   workflow_dispatch:
     inputs:
@@ -60,8 +62,6 @@ jobs:
           cache: false
 
       - name: Check every default image manifest resolves
-        env:
-          IMAGE_MIRROR_PROBE: ${{ vars.IMAGE_MIRROR_PROBE }}
         run: |
           set -uo pipefail
 
@@ -137,16 +137,6 @@ jobs:
                 fi
             done
             
-            if [ "$IMAGE_MIRROR_PROBE" = "true" ] && [[ "$service" != plugin/* ]]; then
-                mirror="docker.io/nself/${service}@${digest}"
-                echo "Probing mirror -> ${mirror}"
-                if ! docker manifest inspect "${mirror}" >/dev/null 2>&1; then
-                    failed=1
-                    echo "FAIL  ${service} mirror ${mirror}"
-                    echo "::error title=${service} mirror not pullable::${mirror}"
-                fi
-            fi
-
           done < /tmp/default-images.tsv
 
           echo
@@ -158,6 +148,13 @@ jobs:
             exit 1
           fi
           echo "All default images resolve."
+
+      - name: Test mirror digest verification
+        run: bash scripts/images/tests/verify-platforms.test.sh
+
+      - name: Check every locked mirror digest resolves
+        if: always()
+        run: bash scripts/images/mirror-images.sh --check
 
   alert:
     name: Manage alert issue on failure
