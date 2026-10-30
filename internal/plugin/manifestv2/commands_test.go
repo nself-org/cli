@@ -276,3 +276,10 @@ func TestRootFlags(t *testing.T) {
 		t.Errorf("root confirm naming a root bool flag: %v", err)
 	}
 }
+
+// A field from a newer manifest reader fails with advice to upgrade nself,
+// naming the field (for example commands.flags on an older build).
+func TestUnknownFieldSaysUpgrade(t *testing.T) {
+	_, err := manifestv2.Parse(mutate(t, "v2/surface.json", func(d map[string]any) { d["from_the_future"] = true }))
+	wantCode(t, err, "E106", `unknown field "from_the_future"`, "upgrade nself")
+}
