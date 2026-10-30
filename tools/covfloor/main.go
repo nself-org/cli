@@ -1,7 +1,7 @@
 // Command covfloor checks per-package statement coverage against floors kept
 // as data (contract cap:cli.coverage-floors, EPIC P7-GUARD decision G7).
 //
-//	go run -mod=vendor ./tools/covfloor -profile coverage.out -floors .github/coverage-floors.txt [-strict] [-json]
+//	go run -mod=vendor ./tools/covfloor -profile coverage.out -floors .github/coverage-floors.txt [-strict] [-default-floor N] [-json]
 //	go run -mod=vendor ./tools/covfloor -profile coverage.out -floors .github/coverage-floors.txt -write
 //
 // The profile is the single `go test -coverprofile` output of ./...; a package
@@ -12,10 +12,11 @@
 // It fails closed. Exit 1 when a package is below its floor, when a floors line
 // names a package with no statements in the profile (stale), when the profile
 // or the floors file is missing, empty or malformed, and, with -strict, when a
-// profiled package has no floors line. Without -strict such UNFLOORED packages
-// are only printed. -write appends the missing packages at
-// max(0, floor(measured)-2) and never changes an existing line. Exit 2 is a
-// usage error.
+// profiled package has no floors line. Without -strict, packages without a
+// floors line are checked against a fixed default floor (-default-floor,
+// default 80); they are reported as DEFAULTED when they meet it and fail
+// otherwise. -write appends the missing packages at max(0, floor(measured)-2)
+// and never changes an existing line. Exit 2 is a usage error.
 package main
 
 import (
@@ -41,6 +42,7 @@ func run(args []string, stdout, stderr io.Writer, now time.Time) int {
 	gomod := fs.String("gomod", "go.mod", "go.mod to read the module path from")
 	write := fs.Bool("write", false, "append packages without a floor at max(0, floor(pct)-2)")
 	strict := fs.Bool("strict", false, "fail when a profiled package has no floors line")
+	defaultFloor := fs.Int("default-floor", 80, "fixed floor for packages without a floors line (non-strict mode)")
 	asJSON := fs.Bool("json", false, "print the report as JSON")
 	date := fs.String("date", now.UTC().Format("2006-01-02"), "date written into -write comments")
 	if err := fs.Parse(args); err != nil {
@@ -48,6 +50,10 @@ func run(args []string, stdout, stderr io.Writer, now time.Time) int {
 	}
 	if *profile == "" || *floorsFile == "" || fs.NArg() != 0 {
 		sayln(stderr, "covfloor: -profile and -floors are required")
+		return 2
+	}
+	if *defaultFloor < 0 || *defaultFloor > 100 {
+		sayln(stderr, "covfloor: -default-floor must be 0..100")
 		return 2
 	}
 	mod := *module
@@ -86,7 +92,7 @@ func run(args []string, stdout, stderr io.Writer, now time.Time) int {
 		say(stderr, "covfloor: wrote %d new floor line(s)\n", len(missing))
 	}
 	floors := fl.Map()
-	rep := Evaluate(cov, floors)
+	rep := Evaluate(cov, floors, *strict, *defaultFloor)
 	if *asJSON {
 		out, err := json.MarshalIndent(rep, "", "  ")
 		if err != nil {

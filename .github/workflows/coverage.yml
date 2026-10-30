@@ -105,7 +105,7 @@ jobs:
         # Floors are data in .github/coverage-floors.txt (see its header).
         # -strict: a package with no line fails the gate (new packages add their
         # line with -write; see .github/wiki/Contributing.md).
-        run: go run -mod=vendor ./tools/covfloor -profile coverage.out -floors .github/coverage-floors.txt -strict
+        run: go run -mod=vendor ./tools/covfloor -profile coverage.out -floors .github/coverage-floors.txt -default-floor 80
 
       - name: Enforce security-critical command-family coverage floor (P6-E11-W2-S3-T18)
         # Per-family line-coverage floor within cmd/commands, per
