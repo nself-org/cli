@@ -8,7 +8,7 @@ package build
 // (cron, push, nself-alert-router) — the regression guard for the
 // "Dockerfile.golang" -> "Dockerfilelang" corruption (E2E golden path step
 // 13; see plugins_dockerfile_test.go for the isolated unit-level repro).
-// Inputs: the sibling repos at /Volumes/UG/Sites/nself/{plugins,plugins-pro}
+// Inputs: the sibling repos at /Volumes/D5/Sites/nself/{plugins,plugins-pro}
 // on this machine's checkout layout — read-only, copied into a t.TempDir()
 // before any normalization runs.
 // Outputs: t.Fatalf naming every plugin whose dockerfile: value(s) drifted
