@@ -58,6 +58,18 @@ jobs:
           echo "$TRIVY_SHA256  $RUNNER_TEMP/trivy.tar.gz" | sha256sum --check --strict -
           tar -xzf "$RUNNER_TEMP/trivy.tar.gz" -C "$RUNNER_TEMP" trivy
           sudo install -m 0755 "$RUNNER_TEMP/trivy" /usr/local/bin/trivy
+      # Pull the digest-pinned sim host image (sdk/go/simharness OpenSSHRef)
+      # before the replay, so a registry throttle on the shared runner IP is
+      # absorbed here with a bounded backoff instead of failing the fleet start.
+      - name: Pre-pull the sim host image
+        env:
+          SIM_IMAGE: lscr.io/linuxserver/openssh-server@sha256:46f115de7c251558297e7e87566fc3fc08544b63e55502b5cf294454db5d29d1
+        run: |
+          for i in 1 2 3 4; do
+            docker pull --quiet "$SIM_IMAGE" && exit 0
+            sleep $((i * 30))
+          done
+          exit 1
       - name: Self-test (verifier and sandbox refusals)
         run: bash scripts/e2e/agent/run.sh --self-test
       - name: Replay over MCP
