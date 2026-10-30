@@ -90,12 +90,6 @@ func TestMountIgnoresOverride(t *testing.T) {
 }
 
 func TestMountEmptyFileE125(t *testing.T) {
-	// Missing-token behavior must not renew a license configured on the test host.
-	t.Setenv("NSELF_PING_API_URL", "http://127.0.0.1:1")
-	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "synthetic-license-key")
-	for i := 1; i <= 10; i++ {
-		t.Setenv("NSELF_LICENSE_KEY_"+strconv.Itoa(i), "")
-	}
 	compattest.Set(t, true)
 	// No licence key from the host: a stored or env key would renew a real JWT online.
 	t.Setenv("HOME", t.TempDir())
@@ -103,14 +97,16 @@ func TestMountEmptyFileE125(t *testing.T) {
 	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "")
 	t.Setenv("NSELF_PLUGIN_LICENSE_KEY_OWNER", "")
 	t.Setenv("LICENSE_CACHE_PATH", filepath.Join(t.TempDir(), "missing"))
-	// Missing-token tests must not renew a licence configured on the CI host.
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("USERPROFILE", t.TempDir())
-	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "")
+	// No external program (Docker or a host scheduler) may influence this case.
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("NSELF_ENTITLEMENT_AUTOREFRESH", "false")
 	for i := 1; i <= 10; i++ {
 		t.Setenv("NSELF_LICENSE_KEY_"+strconv.Itoa(i), "")
 	}
 	t.Setenv("LICENSE_PUBLIC_KEY_OVERRIDE", "")
+	if len(license.CollectLicenseKeys()) != 0 {
+		t.Fatal("missing-token fixture inherited a licence key")
+	}
 	dir, in := entitlementFixture(t, "licensed")
 	path := filepath.Join(dir, "fixture", pluginComposeFilename)
 	if err := os.WriteFile(path, in, 0644); err != nil {
