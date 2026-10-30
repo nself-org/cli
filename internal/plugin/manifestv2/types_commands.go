@@ -1,17 +1,20 @@
 package manifestv2
 
 // Commands is the CLI surface block (v1 `cli` is a different key and type).
-// The optional root summary, side_effect, output and json decode and round-trip;
+// The optional root summary, side_effect, output, json and flags decode and round-trip;
 // absent they mean side_effect destructive and json none (CANON mount contract).
 type Commands struct {
-	Command     string       `json:"command"`
-	Binary      string       `json:"binary"`
-	Summary     string       `json:"summary,omitempty"`
-	SideEffect  string       `json:"side_effect,omitempty"`
-	Output      string       `json:"output,omitempty"`
-	JSON        string       `json:"json,omitempty"`
-	Confirm     *Confirm     `json:"confirm,omitempty"`
-	Surface     string       `json:"surface,omitempty"`
+	Command    string   `json:"command"`
+	Binary     string   `json:"binary"`
+	Summary    string   `json:"summary,omitempty"`
+	SideEffect string   `json:"side_effect,omitempty"`
+	Output     string   `json:"output,omitempty"`
+	JSON       string   `json:"json,omitempty"`
+	Confirm    *Confirm `json:"confirm,omitempty"`
+	Surface    string   `json:"surface,omitempty"`
+	// Flags are the flags of the root command itself (`nself <command> --x`),
+	// declared like a subcommand's. Absent means the root takes free-form argv.
+	Flags       []Flag       `json:"flags,omitempty"`
 	Subcommands []Subcommand `json:"subcommands,omitempty"`
 }
 

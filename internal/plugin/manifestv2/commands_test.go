@@ -213,3 +213,66 @@ func TestCommandsJSONEnvelope(t *testing.T) {
 		}
 	}
 }
+
+func TestRootFlags(t *testing.T) {
+	withRoot := func(d map[string]any) {
+		d["commands"].(map[string]any)["flags"] = []any{
+			map[string]any{"name": "detach", "type": "bool", "usage": "run in the background"},
+			map[string]any{"name": "run-id", "type": "string"},
+		}
+	}
+	m, err := manifestv2.Parse(mutate(t, "v2/surface.json", withRoot))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := m.Commands.Flags; len(f) != 2 || f[0].Name != "detach" || f[0].Type != "bool" {
+		t.Fatalf("root flags did not decode: %+v", f)
+	}
+	out, err := manifestv2.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m2, err := manifestv2.Parse(out); err != nil || len(m2.Commands.Flags) != 2 {
+		t.Fatalf("root flags did not round-trip: %v", err)
+	}
+	// A manifest without root flags still parses and has none.
+	if old, err := manifestv2.Load("testdata/v2/surface.json"); err != nil || len(old.Commands.Flags) != 0 {
+		t.Fatalf("older manifest: %v %+v", err, old.Commands.Flags)
+	}
+	cases := []struct {
+		name, field string
+		edit        func(d map[string]any)
+	}{
+		{"no-type", "commands.flags[0].type", func(d map[string]any) {
+			withRoot(d)
+			delete(d["commands"].(map[string]any)["flags"].([]any)[0].(map[string]any), "type")
+		}},
+		{"bad-name", "commands.flags[1].name", func(d map[string]any) {
+			withRoot(d)
+			d["commands"].(map[string]any)["flags"].([]any)[1].(map[string]any)["name"] = "Run_ID"
+		}},
+		{"duplicate", "commands.flags[1].name", func(d map[string]any) {
+			withRoot(d)
+			d["commands"].(map[string]any)["flags"].([]any)[1].(map[string]any)["name"] = "detach"
+		}},
+		{"bad-side-effect", "commands.flags[0].side_effect", func(d map[string]any) {
+			withRoot(d)
+			d["commands"].(map[string]any)["flags"].([]any)[0].(map[string]any)["side_effect"] = "nuke"
+		}},
+		{"confirm-undeclared", "commands.confirm.flags[0]", func(d map[string]any) {
+			d["commands"].(map[string]any)["confirm"] = map[string]any{"flags": []any{"detach"}}
+		}},
+	}
+	for _, c := range cases {
+		_, err := manifestv2.Parse(mutate(t, "v2/surface.json", c.edit))
+		wantCode(t, err, "E106", c.field)
+	}
+	// The root confirm may name a declared bool flag of the root.
+	ok := mutate(t, "v2/surface.json", func(d map[string]any) {
+		withRoot(d)
+		d["commands"].(map[string]any)["confirm"] = map[string]any{"flags": []any{"detach"}}
+	})
+	if _, err := manifestv2.Parse(ok); err != nil {
+		t.Errorf("root confirm naming a root bool flag: %v", err)
+	}
+}

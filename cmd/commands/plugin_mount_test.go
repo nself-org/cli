@@ -346,3 +346,17 @@ func TestMountProxyFailureKeepsJSONIntent(t *testing.T) {
 		}
 	}
 }
+
+// A root command that declares flags carries them in its mount annotation, so
+// the registry lists them and the MCP tool offers them (SHIP-02).
+func TestMountRootFlagsAnnotated(t *testing.T) {
+	flags := []byte(`[{"name":"detach","type":"bool"}]`)
+	n := installedNode(mount.Spec{Slug: "demo", Command: "demo", Binary: "nself-demo", Flags: flags})
+	if got := n.Annotations[mount.AnnFlags]; got != string(flags) {
+		t.Errorf("root flags annotation %q", got)
+	}
+	bare := installedNode(mount.Spec{Slug: "demo", Command: "demo", Binary: "nself-demo"})
+	if _, has := bare.Annotations[mount.AnnFlags]; has {
+		t.Error("a root without flags must carry no flags annotation")
+	}
+}

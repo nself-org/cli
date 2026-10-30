@@ -183,3 +183,35 @@ func BenchmarkDiscover(b *testing.B) {
 		}
 	}
 }
+
+func TestDiscoverRootFlags(t *testing.T) {
+	d := t.TempDir()
+	fixture(t, d, "demo", "demo")
+	binary(t, d, "demo")
+	p := filepath.Join(d, "demo", "plugin.json")
+	raw, _ := os.ReadFile(p)
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	doc["commands"].(map[string]any)["flags"] = []any{map[string]any{"name": "detach", "type": "bool", "usage": "background"}}
+	raw, _ = json.Marshal(doc)
+	if err := os.WriteFile(p, raw, 0644); err != nil {
+		t.Fatal(err)
+	}
+	s, probs := Discover(d, []string{"start"})
+	if len(probs) != 0 || len(s) != 1 {
+		t.Fatalf("specs=%+v problems=%+v", s, probs)
+	}
+	var flags []struct{ Name, Type string }
+	if err := json.Unmarshal(s[0].Flags, &flags); err != nil || len(flags) != 1 || flags[0].Name != "detach" || flags[0].Type != "bool" {
+		t.Errorf("root flags %s (%v)", s[0].Flags, err)
+	}
+	// A root without flags carries none.
+	d2 := t.TempDir()
+	fixture(t, d2, "demo", "demo")
+	binary(t, d2, "demo")
+	if s2, _ := Discover(d2, nil); len(s2) != 1 || s2[0].Flags != nil {
+		t.Errorf("a root without flags: %+v", s2)
+	}
+}

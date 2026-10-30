@@ -98,7 +98,8 @@ func discoverOne(dir, slug string, verbs []string) (*Spec, *Problem) {
 		return nil, p
 	}
 	return &Spec{
-		Slug: slug, Command: c.Command, Binary: c.Binary, BinaryPath: binPath,
+		Flags: rawFlags(c.Flags),
+		Slug:  slug, Command: c.Command, Binary: c.Binary, BinaryPath: binPath,
 		Summary: c.Summary, SideEffect: c.SideEffect, Output: c.Output, JSON: c.JSON,
 		Confirm: rawConfirm(c.Confirm), Surface: c.Surface,
 		Subcommands: subs(c.Subcommands),
@@ -231,6 +232,18 @@ func rawConfirm(c *manifestv2.Confirm) json.RawMessage {
 		return nil
 	}
 	b, err := json.Marshal(c)
+	if err != nil {
+		return nil
+	}
+	return b
+}
+
+// rawFlags marshals declared flags to JSON; nil when there are none.
+func rawFlags(f []manifestv2.Flag) json.RawMessage {
+	if len(f) == 0 {
+		return nil
+	}
+	b, err := json.Marshal(f)
 	if err != nil {
 		return nil
 	}

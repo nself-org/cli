@@ -194,7 +194,7 @@ func installedNode(s mount.Spec) *cobra.Command {
 		PersistentPreRunE:  func(*cobra.Command, []string) error { return nil },
 		PersistentPostRunE: func(*cobra.Command, []string) error { return nil },
 	}
-	annotate(root, s.Slug, sourceInstalled, s.SideEffect, s.Output, s.JSON, nil, nil, s.Confirm, s.Surface)
+	annotate(root, s.Slug, sourceInstalled, s.SideEffect, s.Output, s.JSON, nil, s.Flags, s.Confirm, s.Surface)
 	proxyRunE(root, s, nil)
 	byPath := map[string]*cobra.Command{"": root}
 	for _, sub := range s.Subcommands {
