@@ -68,8 +68,8 @@ func renderMarkdown(rows []Row) string {
 			r.Path, group, wiki, r.MCPTools, r.EnvVars, r.HTTPRoutes)
 	}
 
-	fmt.Fprintf(&b, "\nTotal: %d commands. Missing wiki page: %d. No MCP tool: %d. "+
-		"No HTTP route: %d. Env vars found but undocumented: %d.\n", len(rows), missingWiki, missingMCP, missingHTTP, undocEnv)
+	fmt.Fprintf(&b, "\n<!-- BEGIN GENERATED:surface-parity -->\nTotal: %d commands. Missing wiki page: %d. No MCP tool: %d. "+
+		"No HTTP route: %d. Env vars found but undocumented: %d.\n<!-- END GENERATED:surface-parity -->\n", len(rows), missingWiki, missingMCP, missingHTTP, undocEnv)
 
 	return b.String()
 }

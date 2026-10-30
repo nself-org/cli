@@ -1,6 +1,6 @@
 # Guide: SDKs
 
-nSelf has two SDK families. There is no Flutter SDK.
+nSelf has two SDK families.
 
 ## API clients: @nself/cli-api
 

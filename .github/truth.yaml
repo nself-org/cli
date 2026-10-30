@@ -1,8 +1,13 @@
 # cli truth rules (Epic TRUTH D17; P7-TRUTH-08). Read by the `truth` check of nself-ci (checks.truth.rules in .nself/ci.yaml).
 # Includes the vendored org and claim rules (scripts/truth/vendor-rules.sh, refresh with it) and exempts, with a reason,
 # only history and code. Every other path is held to the rules; fix the file, do not add an exemption.
+# vendor/ is skipped whole: it is third-party code and binary archives (wasmtime .a), not our prose (D-1510).
 version: 1
 include: [.github/truth/org.yaml, .github/truth/claims.yaml]
+generated_regions:
+  surface-parity: the totals line of .github/surface-parity.md is rendered by tools/parity from the command inventory
+skip:
+  - "vendor/**"
 allow:
   - rule: "*"
     paths: ["**/CHANGELOG*", "**/Changelog*", ".github/wiki/Migration-Signals-v1.0.9.md", "**/deprecation-registry*"]

@@ -31,4 +31,6 @@ One row per top-level command (CLI-R17), scored against the four surfaces a comm
 | `nself stop` | core | yes | 1 | n/a | 1 |
 | `nself update` | account | yes | 10 | documented | 10 |
 
+<!-- BEGIN GENERATED:surface-parity -->
 Total: 20 commands. Missing wiki page: 0. No MCP tool: 1. No HTTP route: 1. Env vars found but undocumented: 7.
+<!-- END GENERATED:surface-parity -->
