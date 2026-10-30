@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
@@ -277,6 +278,13 @@ func projectRoot() (string, error) {
 // runCLISelf invokes this same binary with args (used for build/start chaining).
 // Falls back to exec.LookPath("nself") if os.Executable fails.
 func runCLISelf(ctx context.Context, workdir string, args ...string) error {
+	return runCLISelfCapturing(ctx, workdir, false, args...)
+}
+
+// runCLISelfCapturing is runCLISelf that, when capture is set, also keeps the
+// child's stderr tail and returns it inside the error (see childFailure). The
+// stream still reaches os.Stderr as before.
+func runCLISelfCapturing(ctx context.Context, workdir string, capture bool, args ...string) error {
 	bin, err := os.Executable()
 	if err != nil || bin == "" {
 		bin, _ = exec.LookPath("nself")
@@ -289,7 +297,15 @@ func runCLISelf(ctx context.Context, workdir string, args ...string) error {
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
 	c.Env = os.Environ()
-	return c.Run()
+	if !capture {
+		return c.Run()
+	}
+	tail := &childStderrTail{}
+	c.Stderr = io.MultiWriter(os.Stderr, tail)
+	if err := c.Run(); err != nil {
+		return &childFailure{err: err, tail: tail.String()}
+	}
+	return nil
 }
 
 // ── T04: deploy environments ──────────────────────────────────────────────────

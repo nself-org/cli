@@ -51,3 +51,7 @@ func redactDetail(d *errs.Detail) *errs.Detail {
 	}
 	return &c
 }
+
+// RedactText is redactText for callers outside the package that put the text
+// of a child process into an error message (deploy's scratch build stderr).
+func RedactText(s string) string { return redactText(s) }

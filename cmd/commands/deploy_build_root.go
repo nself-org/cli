@@ -138,7 +138,7 @@ func verifyDeployComposeFreshness(workdir string, buildStart time.Time) error {
 func runDeployBuildStep(ctx context.Context, workdir string, remote bool, steps []deployStep) ([]deployStep, error) {
 	buildStart := time.Now()
 	profile, _ := ctx.Value(deployProfileContextKey{}).(string)
-	if err := runCLISelf(ctx, workdir, deployBuildArgsForProfile(workdir, remote, profile)...); err != nil {
+	if err := runCLISelfCapturing(ctx, workdir, true, deployBuildArgsForProfile(workdir, remote, profile)...); err != nil {
 		return append(steps, deployStep{Name: "Build images", Status: "failed"}), err
 	}
 	if err := verifyDeployComposeFreshness(workdir, buildStart); err != nil {

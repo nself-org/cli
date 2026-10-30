@@ -83,3 +83,20 @@ func TestRemoteDeployIgnoresLocalOnlyKeys(t *testing.T) {
 		t.Fatalf("local-only CLI keys must not block a remote deploy: %v", err)
 	}
 }
+
+// TestRemoteDeployAcceptsInvokerEnv: `nself deploy` run over MCP or HTTP has the
+// invoker's environment (NO_COLOR=1, CI=1, NSELF_*), and the `nself build` child
+// it spawns inherits it. That env must not read as process-only build config, or
+// every remote deploy from an agent is refused (SHIP-02 deploy-qa).
+func TestRemoteDeployAcceptsInvokerEnv(t *testing.T) {
+	compattest.Set(t, true)
+	isolateRemoteConfigEnv(t)
+	t.Setenv("ENV", "qa")
+	for _, kv := range []string{"NSELF_V15=1", "NSELF_NONINTERACTIVE=1", "CI=1", "NO_COLOR=1", "NSELF_INVOKED_BY=mcp", "NSELF_INVOKE_TRANSPORT=mcp"} {
+		k, v, _ := strings.Cut(kv, "=")
+		t.Setenv(k, v)
+	}
+	if err := ValidateRemoteEnv(map[string]string{}); err != nil {
+		t.Fatalf("invoker env refused a remote deploy: %v", err)
+	}
+}
