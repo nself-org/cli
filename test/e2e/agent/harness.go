@@ -106,6 +106,12 @@ func (h *SimHarness) Do(ctx context.Context, s Step, w *Writer) error {
 			return err
 		}
 		note = s.Action + ": " + strings.Join(names, ", ")
+	case "seed-image-digests":
+		n, err := h.seedImageDigests(ctx)
+		if err != nil {
+			return err
+		}
+		note = fmt.Sprintf("%s: %d images", s.Action, n)
 	case "ci-plugin-from-source":
 		msg, err := h.installCIPlugin()
 		if err != nil {
@@ -196,6 +202,43 @@ func (h *SimHarness) seedTargetPlugins() ([]string, error) {
 		h.Fleet.Exec(h.T, host.Server, "chown", "-R", host.User, home+"/.nself")
 	}
 	return names, nil
+}
+
+// seedImageDigests writes "<ref> <repo>@sha256:<digest>" for every image the
+// local project runs (as the operator's Docker pulled it) to each sim host's
+// /tmp/agent-e2e/digests, which the docker stub's `image inspect` reports.
+func (h *SimHarness) seedImageDigests(ctx context.Context) (int, error) {
+	out, err := run(ctx, "", "docker", "ps", "--format", "{{.Image}}",
+		"--filter", "label=com.docker.compose.project="+h.Box.ComposeProject())
+	if err != nil {
+		return 0, err
+	}
+	seen := map[string]bool{}
+	var lines []string
+	for _, ref := range strings.Fields(out) {
+		if seen[ref] {
+			continue
+		}
+		seen[ref] = true
+		rd, err := run(ctx, "", "docker", "image", "inspect", "--format", "{{index .RepoDigests 0}}", ref)
+		if err != nil {
+			return 0, err
+		}
+		lines = append(lines, ref+" "+strings.TrimSpace(rd))
+	}
+	if len(lines) == 0 {
+		return 0, fmt.Errorf("the project runs no images to seed")
+	}
+	sort.Strings(lines)
+	f := filepath.Join(h.T.TempDir(), "digests")
+	if err := os.WriteFile(f, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+		return 0, err
+	}
+	for _, host := range h.Hosts {
+		h.Fleet.CopyTo(h.T, host.Server, f, "/tmp/agent-e2e/digests")
+		h.Fleet.Exec(h.T, host.Server, "chmod", "644", "/tmp/agent-e2e/digests")
+	}
+	return len(lines), nil
 }
 
 func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
