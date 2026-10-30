@@ -61,6 +61,9 @@ func ProxyProvider(cfg *config.Config, workdir, pluginDir string) (string, error
 	if err := proxyComposeDiscoverable(workdir, pluginDir, ProviderTraefik); err != nil {
 		return "", err
 	}
+	if err := validateTraefikPorts(cfg); err != nil {
+		return "", err
+	}
 	return ProviderTraefik, nil
 }
 
