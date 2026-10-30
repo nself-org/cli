@@ -11,6 +11,7 @@ import (
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/deploy"
+	"github.com/nself-org/cli/internal/deploy/childerr"
 	"github.com/nself-org/cli/internal/errs"
 
 	"github.com/spf13/cobra"
@@ -287,9 +288,8 @@ func runCLISelf(ctx context.Context, workdir string, args ...string) error {
 	c := exec.CommandContext(ctx, bin, args...)
 	c.Dir = workdir
 	c.Stdout = os.Stdout
-	c.Stderr = os.Stderr
 	c.Env = os.Environ()
-	return c.Run()
+	return childerr.Run(c) // keeps the child stderr tail in the error
 }
 
 // ── T04: deploy environments ──────────────────────────────────────────────────

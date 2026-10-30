@@ -16,8 +16,9 @@ import (
 )
 
 // localOnlyConfigKeys are process variables that point the local CLI at its own
-// directories or registry; the remote host never reads them.
+// directories or registry, or set how the CLI prints; the remote host never reads them.
 var localOnlyConfigKeys = map[string]bool{
+	"NO_COLOR":                 true, // the MCP and HTTP invoker sets it on every child (internal/invoke)
 	"AI_AUTO_INSTALL":          true,
 	"NSELF_PLUGIN_DIR":         true,
 	"NSELF_PLUGIN_CACHE":       true,
