@@ -18,7 +18,17 @@ echo "$*" >> "$S/docker.log"
 F=docker-compose.yml
 prev=''
 for a; do [ "$prev" = "-f" ] && F=$a; prev=$a; done
-services() { awk '/^services:/{s=1;next} s&&/^[^ ]/{s=0} s&&/^  [A-Za-z0-9_.-]+:/{svc=$1;sub(":","",svc)} s&&svc!=""&&/^    image:/{gsub(/["\047]/,"",$2);print svc" "$2}' "$F" 2>/dev/null | sort -u; }
+services() { # "<service> <image>" for every service of $F, at any indentation
+  awk '
+    function ind(l) { match(l, /^ */); return RLENGTH }
+    /^services:/ { s=1; si=-1; next }
+    s && /^[^ #]/ { s=0 }
+    !s || /^ *(#|$)/ { next }
+    si < 0 && /^ +[A-Za-z0-9_.-]+: *$/ { si=ind($0) }
+    ind($0) == si && /^ +[A-Za-z0-9_.-]+: *$/ { svc=$1; sub(":", "", svc); next }
+    svc != "" && ind($0) > si && $1 == "image:" { img=$2; gsub(/["\047]/, "", img); print svc " " img }
+  ' "$F" 2>/dev/null | sort -u
+}
 idof() { printf 'sha256:%s' "$(printf '%s' "$1" | sha256sum | cut -c1-64)"; }
 platform() { case "$(uname -m)" in aarch64|arm64) echo linux/arm64 ;; *) echo linux/amd64 ;; esac; }
 up() { # svc...: record those services (all when none) as running
