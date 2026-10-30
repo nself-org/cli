@@ -1,0 +1,88 @@
+name: Agent E2E
+
+# MCP-only agent E2E proof (P7-SHIP-02, SHIP Epic D7): replays
+# test/e2e/agent/testdata/replay.jsonl over a sandboxed `nself mcp` against two
+# loopback sim hosts and uploads the transcript. GitHub-hosted ubuntu only; the
+# live Claude session runs on the owner machine (P7-SHIP-13).
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - test/e2e/agent/**
+      - scripts/e2e/agent/**
+      - .github/workflows/agent-e2e.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      NSELF_V15: "1"
+      GITLEAKS_SHA256: "5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba" # gitleaks 8.21.2 linux_x64
+      TRIVY_SHA256: "e24b1c51293c1b15e4ba8d45bbc7891ba053f90278ec2698f3562c993e145fe7" # trivy 0.76.0 Linux-64bit
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Checkout plugins main (ci plugin source)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: nself-org/plugins
+          ref: main
+          path: plugins-src
+          persist-credentials: false
+      # The replay's CI run uses the default pipeline (gitleaks and trivy jobs);
+      # a job whose tool is missing cannot be placed and fails the run. The
+      # sandboxed server sees only the system PATH, so both go to /usr/local/bin.
+      - name: Install gitleaks and trivy
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --proto '=https' --output "$RUNNER_TEMP/gitleaks.tar.gz" \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz
+          echo "$GITLEAKS_SHA256  $RUNNER_TEMP/gitleaks.tar.gz" | sha256sum --check --strict -
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
+          sudo install -m 0755 "$RUNNER_TEMP/gitleaks" /usr/local/bin/gitleaks
+          curl --fail --silent --show-error --location --proto '=https' --output "$RUNNER_TEMP/trivy.tar.gz" \
+            https://github.com/aquasecurity/trivy/releases/download/v0.76.0/trivy_0.76.0_Linux-64bit.tar.gz
+          echo "$TRIVY_SHA256  $RUNNER_TEMP/trivy.tar.gz" | sha256sum --check --strict -
+          tar -xzf "$RUNNER_TEMP/trivy.tar.gz" -C "$RUNNER_TEMP" trivy
+          sudo install -m 0755 "$RUNNER_TEMP/trivy" /usr/local/bin/trivy
+      # Pull the digest-pinned sim host image (sdk/go/simharness OpenSSHRef)
+      # before the replay, so a registry throttle on the shared runner IP is
+      # absorbed here with a bounded backoff instead of failing the fleet start.
+      - name: Pre-pull the sim host image
+        env:
+          SIM_IMAGE: lscr.io/linuxserver/openssh-server@sha256:46f115de7c251558297e7e87566fc3fc08544b63e55502b5cf294454db5d29d1
+        run: |
+          for i in 1 2 3 4; do
+            docker pull --quiet "$SIM_IMAGE" && exit 0
+            sleep $((i * 30))
+          done
+          exit 1
+      - name: Self-test (verifier and sandbox refusals)
+        run: bash scripts/e2e/agent/run.sh --self-test
+      - name: Replay over MCP
+        # The ci plugin comes from plugins main until a served ci release
+        # carries the machine surface (P7-CI-62).
+        run: bash scripts/e2e/agent/run.sh --replay --transcript "$RUNNER_TEMP/agent-e2e/replay.jsonl" --ci-plugin-src plugins-src/free/ci
+      - name: Verify the transcript
+        run: bash scripts/e2e/agent/run.sh --verify-transcript "$RUNNER_TEMP/agent-e2e/replay.jsonl"
+      - name: Upload transcript
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: agent-e2e-transcript
+          path: ${{ runner.temp }}/agent-e2e/replay.jsonl
+          if-no-files-found: warn
+          retention-days: 14

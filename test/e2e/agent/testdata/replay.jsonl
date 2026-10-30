@@ -1,0 +1,35 @@
+// P7-SHIP-02 replay (SHIP Epic D7). One step per line; `//` lines are comments.
+// Agent steps are MCP tools/call (or tools/list) to the sandboxed `nself mcp`
+// with v1.5 tool names. Harness steps are `role: harness` records, never agent
+// actions. A step with "confirm": true expects a confirmation request first and
+// repeats the identical call with the server's token (plan id or nonce).
+{"id":"init","role":"agent","tool":"nself_init","arguments":{"flags":{"non-interactive":true}}}
+{"id":"commit-after-init","role":"harness","action":"git-commit"}
+{"id":"build","role":"agent","tool":"nself_build","confirm":true}
+{"id":"start","role":"agent","tool":"nself_start"}
+{"id":"status-healthy","role":"agent","tool":"nself_status","expect":"state-ok"}
+// Leg: failure recovery.
+{"id":"stop-one-service","role":"harness","action":"stop-service"}
+{"id":"status-unhealthy","role":"agent","tool":"nself_status","expect":"unhealthy"}
+{"id":"recover","role":"agent","tool":"nself_start"}
+{"id":"status-recovered","role":"agent","tool":"nself_status","expect":"state-ok"}
+// Leg: destructive gate (reset is never confirmed).
+{"id":"gate-volumes-before","role":"harness","action":"volumes-before"}
+{"id":"reset-unconfirmed","role":"agent","tool":"nself_reset","expect":"confirmation"}
+{"id":"gate-volumes-after","role":"harness","action":"volumes-after"}
+{"id":"migrate-create","role":"agent","tool":"nself_db_migrate_create","arguments":{"args":["agent_e2e_first"]}}
+{"id":"migrate","role":"agent","tool":"nself_db_migrate_up"}
+{"id":"add-ci","role":"agent","tool":"nself_add","arguments":{"args":["ci"]},"confirm":true}
+{"id":"ci-plugin-from-source","role":"harness","action":"ci-plugin-from-source","note":"until a served ci release carries the machine surface (P7-CI-62)"}
+{"id":"status-after-add","role":"agent","tool":"nself_status"}
+{"id":"discover-ci","role":"agent","kind":"tools/list","require":["nself_ci","nself_ci_runs_wait","nself_ci_evidence"]}
+{"id":"ci-detach","role":"agent","tool":"nself_ci","arguments":{"flags":{"detach":true}},"confirm":true,"capture":{"run_id":"run_id"}}
+{"id":"ci-wait","role":"agent","tool":"nself_ci_runs_wait","arguments":{"args":["${run_id}"]},"until":"terminal","max_repeats":30}
+{"id":"ci-evidence","role":"agent","tool":"nself_ci_evidence","arguments":{"args":["${run_id}"]},"expect":"evidence-pass"}
+{"id":"seed-target-plugins","role":"harness","action":"seed-target-plugins","note":"the sim hosts stand in for servers provisioned with the project's plugins"}
+{"id":"seed-image-digests","role":"harness","action":"seed-image-digests","note":"the stubbed hosts report the registry digests of the images the project pulled"}
+{"id":"deploy-qa","role":"agent","tool":"nself_deploy","arguments":{"args":["qa"]},"confirm":true}
+{"id":"digest-before","role":"harness","action":"digest-before"}
+{"id":"promote-dry-run","role":"agent","tool":"nself_deploy_promote","arguments":{"args":["qa","prod"],"flags":{"dry-run":true}},"confirm":true}
+{"id":"promote","role":"agent","tool":"nself_deploy_promote","arguments":{"args":["qa","prod"]},"confirm":true}
+{"id":"digest-compare","role":"harness","action":"digest-compare"}
