@@ -2,6 +2,8 @@
 # Recording docker stub for the agent E2E sim hosts (P7-SHIP-02), modelled on
 # the stubs of internal/controlplane/sim. The sim hosts are sshd containers
 # without a Docker engine, so:
+# - `compose config --format json` is a model of every service (image,
+#   restart) of the compose file named by -f, as deploy-sim's fixture is;
 # - `compose ... up -d --dry-run` lists every service of the compose file named
 #   by -f as "Recreate", and `up -d [--no-deps] [svc...]` records "<service>
 #   <image>" lines in /tmp/agent-e2e/running and bumps a start counter;
@@ -32,7 +34,10 @@ up() { # svc...: record those services (all when none) as running
 }
 case "$*" in
   *"config --services"*) services | awk '{print $1}' ;;
-  *"config --format json"*) printf '{"services":{}}' ;;
+  *"config --format json"*)
+    printf '{"name":"app","services":{'; sep=''
+    services | while read -r svc ref; do printf '%s"%s":{"image":"%s","restart":"always"}' "$sep" "$svc" "$ref"; sep=','; done
+    printf '}}' ;;
   *"up -d --dry-run"*) services | while read -r svc ref; do printf ' Container app-%s-1 Recreate\n' "$svc"; done ;;
   *" up "*|*" up")
     known=$(services | awk '{print $1}')
