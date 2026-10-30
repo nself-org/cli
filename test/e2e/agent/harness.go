@@ -59,6 +59,15 @@ func StartSim(t *testing.T) (*simharness.Fleet, []SimHost) {
 		}
 		fleet.Exec(t, n.Name, "sh", "-c", "mkdir -p "+SimRemotePath+" /tmp/agent-e2e && chown -R "+n.User+" /tmp/nself-agent-e2e /tmp/agent-e2e && chmod 1777 /tmp")
 	}
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		for _, h := range hosts {
+			t.Logf("sim host %s calls:\n%s", h.Server, fleet.Exec(t, h.Server, "sh", "-c",
+				"tail -n 60 /tmp/agent-e2e/docker.log /tmp/agent-e2e/nself.log 2>/dev/null; cat /tmp/agent-e2e/running 2>/dev/null; true"))
+		}
+	})
 	return fleet, hosts
 }
 
