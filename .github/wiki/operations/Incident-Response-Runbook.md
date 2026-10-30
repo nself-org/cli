@@ -193,7 +193,7 @@ nself monitor --last 15m
 
 ```bash
 # What deployed in the last 2 hours?
-cd /Volumes/UG/Sites/nself/cli && git log --oneline --since="2 hours ago"
+cd /Volumes/D5/Sites/nself/cli && git log --oneline --since="2 hours ago"
 
 # Any nself update recently?
 nself version && nself update --dry-run
@@ -226,7 +226,7 @@ Navigate to the matching scenario, then follow it to resolution:
 vercel rollback --prod
 
 # CLI fix pushed to prod — roll back to prior tag
-cd /Volumes/UG/Sites/nself/cli
+cd /Volumes/D5/Sites/nself/cli
 git tag --sort=-creatordate | head -5  # find prior tag
 # then trigger deploy via nself deploy with prior version
 ```
