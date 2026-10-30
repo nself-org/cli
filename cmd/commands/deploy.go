@@ -3,7 +3,6 @@ package commands
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"regexp"
@@ -12,6 +11,7 @@ import (
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/deploy"
+	"github.com/nself-org/cli/internal/deploy/childerr"
 	"github.com/nself-org/cli/internal/errs"
 
 	"github.com/spf13/cobra"
@@ -278,13 +278,6 @@ func projectRoot() (string, error) {
 // runCLISelf invokes this same binary with args (used for build/start chaining).
 // Falls back to exec.LookPath("nself") if os.Executable fails.
 func runCLISelf(ctx context.Context, workdir string, args ...string) error {
-	return runCLISelfCapturing(ctx, workdir, false, args...)
-}
-
-// runCLISelfCapturing is runCLISelf that, when capture is set, also keeps the
-// child's stderr tail and returns it inside the error (see childFailure). The
-// stream still reaches os.Stderr as before.
-func runCLISelfCapturing(ctx context.Context, workdir string, capture bool, args ...string) error {
 	bin, err := os.Executable()
 	if err != nil || bin == "" {
 		bin, _ = exec.LookPath("nself")
@@ -295,17 +288,8 @@ func runCLISelfCapturing(ctx context.Context, workdir string, capture bool, args
 	c := exec.CommandContext(ctx, bin, args...)
 	c.Dir = workdir
 	c.Stdout = os.Stdout
-	c.Stderr = os.Stderr
 	c.Env = os.Environ()
-	if !capture {
-		return c.Run()
-	}
-	tail := &childStderrTail{}
-	c.Stderr = io.MultiWriter(os.Stderr, tail)
-	if err := c.Run(); err != nil {
-		return &childFailure{err: err, tail: tail.String()}
-	}
-	return nil
+	return childerr.Run(c) // keeps the child stderr tail in the error
 }
 
 // ── T04: deploy environments ──────────────────────────────────────────────────
