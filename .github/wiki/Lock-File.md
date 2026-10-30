@@ -18,7 +18,7 @@ images:
   hasura: docker.io/hasura/graphql-engine:v2.44.0@sha256:4d34…
   postgres: docker.io/library/postgres:16-alpine@sha256:7218…
 unpinned:
-  redis: redis:6
+  redis: redis:6-alpine
 plugins:
   ai:
     version: 2.0.0

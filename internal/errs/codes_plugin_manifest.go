@@ -9,7 +9,7 @@ func init() {
 			Code:       "E111",
 			Category:   "plugin",
 			Summary:    "Forbidden key in a v2 plugin manifest",
-			DefaultWhy: "A manifest_version 2 plugin.json carries a key that belongs to the registry or to a legacy format (bundles, tier_pair, author_public_key, signature, checksum).",
+			DefaultWhy: "A plugin.json that sets manifest_version 2 carries a key that belongs to the registry or to a legacy format (bundles, tier_pair, author_public_key, signature, checksum).",
 			DefaultFix: "Remove the key from plugin.json. Bundle membership lives in bundles.json and signatures are added by the release pipeline.",
 			DocsPath:   "reference/error-codes#e111",
 			Exit:       1,
