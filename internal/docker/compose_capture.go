@@ -11,20 +11,14 @@ package docker
 // Stream or StreamLines.
 
 import (
-	"bytes"
 	"context"
-	"fmt"
-	"os/exec"
 )
 
 // ComposeOutput runs `docker compose args...` in dir and returns what it wrote to stdout.
 func ComposeOutput(ctx context.Context, dir string, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "docker", append([]string{"compose"}, args...)...)
-	cmd.Dir = dir
-	var so, se bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &so, &se
-	if err := cmd.Run(); err != nil {
-		return so.Bytes(), fmt.Errorf("docker compose %s: %w: %s", firstArg(args), err, lastLine(se.String()))
+	c := NewProjectCompose(dir)
+	if hasGlobalEnvFile(args) {
+		c.EnvFiles = nil
 	}
-	return so.Bytes(), nil
+	return c.OutputProject(ctx, dir, ProjectRun{}, args...)
 }

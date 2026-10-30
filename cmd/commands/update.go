@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/compose"
+	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/lock"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/reconcile"
@@ -119,11 +120,7 @@ the upgrade steps without changing anything, and --yes to apply it.`,
 				ui.Warn("Cannot restart services: no nself project found in current directory")
 			} else {
 				ui.Info("Restarting services...")
-				restartExec := exec.Command("docker", "compose", "restart")
-				restartExec.Dir = projectDir
-				restartExec.Stdout = os.Stdout
-				restartExec.Stderr = os.Stderr
-				if err := restartExec.Run(); err != nil {
+				if err := restartUpdatedProject(cmd.Context(), projectDir); err != nil {
 					return fmt.Errorf("restarting services: %w", err)
 				}
 				ui.Success("Services restarted.")
@@ -132,6 +129,12 @@ the upgrade steps without changing anything, and --yes to apply it.`,
 
 		return nil
 	},
+}
+
+// restartUpdatedProject reloads services with the project's interpolation files.
+func restartUpdatedProject(ctx context.Context, projectDir string) error {
+	return docker.NewProjectCompose(projectDir).RunProject(ctx, projectDir,
+		docker.ProjectRun{Stdout: os.Stdout, Stderr: os.Stderr}, "restart")
 }
 
 // alreadyLatestError is returned (non-nil) when the binary is already on the

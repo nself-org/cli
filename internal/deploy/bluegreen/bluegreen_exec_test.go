@@ -101,6 +101,8 @@ func TestBlueGreenComposeCallsCarryEnvFiles(t *testing.T) {
 		{"wait green", func() error { return waitForHealth(ctx, cfg, EnvGreen, 5*time.Second) }},
 		{"stop green", func() error { return stopGreen(ctx, cfg) }},
 		{"stop blue", func() error { return stopBlue(ctx, cfg) }},
+		{"nginx reload", func() error { return reloadNginx(root) }},
+		{"soak measurement", func() error { _, err := measureErrorRate(ctx, cfg); return err }},
 	}
 	for _, s := range steps {
 		if err := s.run(); err != nil {
@@ -121,6 +123,8 @@ func TestBlueGreenComposeCallsCarryEnvFiles(t *testing.T) {
 		" -p nself-green ps --format ",
 		" -p nself-green down --remove-orphans ",
 		" -p nself-blue down --remove-orphans ",
+		" exec -T nginx nginx -s reload ",
+		" -p nself-green ps --format ",
 	} {
 		if line := strings.Join(got[i], " "); !strings.Contains(line, wantSub) {
 			t.Errorf("call %d (%s) = %q, want it to contain %q", i, steps[i].name, line, wantSub)

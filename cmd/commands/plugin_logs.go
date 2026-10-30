@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -131,8 +132,11 @@ func resolvePluginContainer(pluginName string) (string, error) {
 
 // resolveViaCompose attempts to find the container via docker compose ps.
 func resolveViaCompose(pluginName string) (string, error) {
-	psCmd := exec.Command("docker", "compose", "ps", "--format", "json")
-	out, err := psCmd.Output()
+	workdir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	out, err := docker.ComposeOutput(context.Background(), workdir, "ps", "--format", "json")
 	if err != nil {
 		return "", fmt.Errorf("plugin container for %q not found — is the plugin installed and running?", pluginName)
 	}

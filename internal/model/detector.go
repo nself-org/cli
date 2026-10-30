@@ -10,11 +10,13 @@
 package model
 
 import (
+	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/nself-org/cli/internal/docker"
 )
 
 // Model identifies the distribution model of a plugin.
@@ -65,8 +67,7 @@ func defaultResolveOpts() resolveOpts {
 		dockerCheck: func(name string) bool {
 			// Best-effort: ask docker compose for a service named plugin-<name>.
 			// Errors (no docker, not a project) are treated as "no service".
-			cmd := exec.Command("docker", "compose", "ps", "--services")
-			out, err := cmd.Output()
+			out, err := docker.ComposeOutput(context.Background(), cwd, "ps", "--services")
 			if err != nil {
 				return false
 			}

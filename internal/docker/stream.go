@@ -34,6 +34,7 @@ var streamWaitDelay = 5 * time.Second
 // Stream runs `docker args...` in dir until it exits or is stopped, forwarding
 // its stdout and stderr to the writers.
 func Stream(ctx context.Context, dir string, args []string, stdout, stderr io.Writer) error {
+	args = projectStreamArgs(dir, args)
 	if stdout == nil {
 		stdout = io.Discard
 	}

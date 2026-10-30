@@ -107,7 +107,7 @@ func (c *Compose) OutputProject(ctx context.Context, workdir string, p ProjectRu
 	cmd.Stderr = &se
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("docker compose %s: %w: %s", strings.Join(args, " "), err, lastLine(se.String()))
+		return out, fmt.Errorf("docker compose %s: %w: %s", strings.Join(args, " "), err, lastLine(se.String()))
 	}
 	return out, nil
 }

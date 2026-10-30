@@ -5,6 +5,7 @@
 # `go test ./internal/repoqa -update`, delete it once the count is 20 or less.
 internal/compat 25
 internal/config 37
-internal/docker 27
+# D-0747: migration, model and security now use the required docker funnel.
+internal/docker 30
 internal/errs 58
 internal/httptimeout 25
