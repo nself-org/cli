@@ -174,7 +174,7 @@ func TestAgentReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	box.Timeout = replayTimeout
-	if err := box.WriteDockerConfig(); err != nil {
+	if err := box.WriteDockerConfig(composePluginPath(t)); err != nil {
 		t.Fatal(err)
 	}
 	for _, step := range []func() error{
@@ -215,6 +215,18 @@ func TestAgentReplay(t *testing.T) {
 	if err := Verify(w.Records); err != nil {
 		t.Fatalf("transcript %s does not verify:\n%v", tpath, err)
 	}
+}
+
+// composePluginPath is the docker compose CLI plugin path `docker info`
+// reports (run with the operator's HOME, before the sandbox HOME is set).
+func composePluginPath(t *testing.T) string {
+	t.Helper()
+	out, err := exec.Command("docker", "info", "--format",
+		`{{range .ClientInfo.Plugins}}{{if eq .Name "compose"}}{{.Path}}{{end}}{{end}}`).Output()
+	if err != nil {
+		t.Fatalf("find the docker compose plugin: %v", err)
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // trustHosts records each sim host's ed25519 key in the sandbox HOME (the

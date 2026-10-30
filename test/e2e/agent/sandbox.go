@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -107,20 +106,14 @@ var systemPluginDirs = map[string]bool{
 }
 
 // WriteDockerConfig lets the docker CLI in the sandbox find the compose
-// plugin when it lives outside the system plugin dirs (Homebrew, Docker
-// Desktop): HOME/.docker/config.json with only cliPluginsExtraDirs, no auths.
-// Call it before HOME points at the sandbox.
-func (s *Sandbox) WriteDockerConfig() error {
-	out, err := exec.Command("docker", "info", "--format",
-		`{{range .ClientInfo.Plugins}}{{if eq .Name "compose"}}{{.Path}}{{end}}{{end}}`).Output()
-	if err != nil {
-		return fmt.Errorf("sandbox: find the docker compose plugin: %w", err)
-	}
-	path := strings.TrimSpace(string(out))
-	if path == "" {
+// plugin (at composePlugin, the path `docker info` reports) when it lives
+// outside the system plugin dirs (Homebrew, Docker Desktop):
+// HOME/.docker/config.json with only cliPluginsExtraDirs, no auths.
+func (s *Sandbox) WriteDockerConfig(composePlugin string) error {
+	if composePlugin == "" {
 		return fmt.Errorf("sandbox: docker has no compose plugin")
 	}
-	dir := filepath.Dir(path)
+	dir := filepath.Dir(composePlugin)
 	if systemPluginDirs[dir] {
 		return nil
 	}

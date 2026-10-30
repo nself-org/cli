@@ -39,7 +39,7 @@ func TestAgentLive(t *testing.T) {
 		t.Fatal(err)
 	}
 	box.Timeout = replayTimeout
-	if err := box.WriteDockerConfig(); err != nil {
+	if err := box.WriteDockerConfig(composePluginPath(t)); err != nil {
 		t.Fatal(err)
 	}
 	if err := box.InstallKey(fleet.KeyPath()); err != nil {
