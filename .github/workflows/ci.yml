@@ -160,7 +160,8 @@ jobs:
 
       - name: Test
         if: matrix.skip_docker_tests != 'true' && matrix.os != 'ubuntu-latest'
-        run: go test -mod=vendor -timeout 10m ./...
+        # cmd/commands needs about 12 minutes on loaded runners.
+        run: go test -mod=vendor -timeout 30m ./...
 
       # D-0275: the default run above is v1.4 only, so a test that breaks under
       # the v1.5 strict host-key and pipeline paths stayed unseen until the
