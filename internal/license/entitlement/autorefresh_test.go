@@ -448,6 +448,122 @@ func TestDefaultPluginDir(t *testing.T) {
 	}
 }
 
+// installFailure formats timer-install errors for the reconcile notice; it must truncate
+// long messages and name the no-backend sentinel so doctor E132 can be matched.
+func TestInstallFailureFormatsAndTruncates(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"no-backend", ErrTimerNoBackend, "no-backend"},
+		{"short message", errors.New("dbus unavailable"), "install-failed: dbus unavailable"},
+		{"collapses whitespace", errors.New("  multiple   spaces\tand\nnewlines  "), "install-failed: multiple spaces and newlines"},
+		{"truncates at 200", errors.New(strings.Repeat("x", 250)), "install-failed: " + strings.Repeat("x", 200)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := installFailure(tc.err); got != tc.want {
+				t.Fatalf("installFailure = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// ensureTimer and removeTimer must return their documented zero values when no backend is
+// wired; reconcileTimer depends on these contracts to stay silent during tests and in v1.4 mode.
+func TestEnsureAndRemoveTimerNilBackend(t *testing.T) {
+	old := HostTimers
+	t.Cleanup(func() { HostTimers = old })
+	HostTimers = Timers{}
+	res, err := ensureTimer("/tmp/proj", "/usr/local/bin/nself")
+	if !errors.Is(err, ErrTimerNoBackend) || res.Backend != "" || res.Changed {
+		t.Fatalf("ensureTimer with nil backend = (%+v, %v), want (zero, ErrTimerNoBackend)", res, err)
+	}
+	rm, rerr := removeTimer("/tmp/proj")
+	if rerr != nil || rm.Removed || rm.RootRequired {
+		t.Fatalf("removeTimer with nil backend = (%+v, %v), want (zero, nil)", rm, rerr)
+	}
+}
+
+// reconcileTimer prints distinct warnings for unsafe-path, generic install failures and
+// successful installs; it must stay silent when selfBinary fails or v1.4/dev-key mode is active.
+func TestReconcileTimerInstallNotices(t *testing.T) {
+	compattest.Set(t, true)
+	timer := fakeTimer(t)
+	dir := t.TempDir()
+	for _, tc := range []struct {
+		name      string
+		ensureErr error
+		changed   bool
+		binErr    error
+		wantSub   string
+		wantEmpty bool
+	}{
+		{"unsafe-path", ErrTimerUnsafePath, false, nil, "unsafe-path", false},
+		{"generic failure", errors.New("dbus down"), false, nil, "install-failed: dbus down", false},
+		{"installed", nil, true, nil, "timer installed (cron", false},
+		{"idempotent (no change)", nil, false, nil, "", true},
+		{"selfBinary error", nil, false, errors.New("go test binary"), "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			timer.notes.Reset()
+			timer.changed = tc.changed
+			if tc.binErr != nil {
+				selfBinary = func() (string, error) { return "", tc.binErr }
+			}
+			HostTimers.Ensure = func(string, string) (TimerInstall, error) {
+				return TimerInstall{Backend: "cron", Changed: tc.changed}, tc.ensureErr
+			}
+			reconcileTimer(dir, []string{"chat"}, "")
+			got := timer.notes.String()
+			if tc.wantEmpty {
+				if strings.TrimSpace(got) != "" {
+					t.Fatalf("expected no notice, got %q", got)
+				}
+				return
+			}
+			if !strings.Contains(got, tc.wantSub) {
+				t.Fatalf("notice %q does not contain %q", got, tc.wantSub)
+			}
+		})
+	}
+}
+
+// AutorefreshDisabled treats any casing/whitespace of the falsy values as disabled and
+// everything else (including empty) as enabled; the same rule as maintenance.AutorefreshDisabled.
+func TestAutorefreshDisabledVariants(t *testing.T) {
+	for _, tc := range []struct {
+		val  string
+		want bool
+	}{
+		{"false", true}, {"FALSE", true}, {" False ", true},
+		{"0", true}, {"no", true}, {"off", true},
+		{"", false}, {"true", false}, {"1", false}, {"yes", false},
+	} {
+		t.Run(tc.val, func(t *testing.T) {
+			t.Setenv("NSELF_ENTITLEMENT_AUTOREFRESH", tc.val)
+			if got := AutorefreshDisabled(); got != tc.want {
+				t.Fatalf("AutorefreshDisabled(%q) = %v, want %v", tc.val, got, tc.want)
+			}
+		})
+	}
+}
+
+// PublishFromCache is a no-op in v1.4 mode and when dev keys are configured; both early
+// returns must succeed without touching the filesystem or the licence cache.
+func TestPublishFromCacheEarlyReturns(t *testing.T) {
+	compattest.Set(t, false)
+	if err := PublishFromCache(t.TempDir()); err != nil {
+		t.Fatalf("PublishFromCache in v1.4 = %v, want nil", err)
+	}
+	compattest.Set(t, true)
+	t.Setenv("LICENSE_PUBLIC_KEY_OVERRIDE", "dev-key")
+	t.Cleanup(func() { os.Unsetenv("LICENSE_PUBLIC_KEY_OVERRIDE") })
+	if err := PublishFromCache(t.TempDir()); err != nil {
+		t.Fatalf("PublishFromCache with dev key = %v, want nil", err)
+	}
+}
+
 // The removal notice appears only when a timer was really removed.
 func TestReconcileRemovalNotice(t *testing.T) {
 	compattest.Set(t, true)
