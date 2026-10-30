@@ -2,12 +2,14 @@
 # run.sh — the MCP-only agent E2E harness (P7-SHIP-02, SHIP Epic D7).
 #
 # Modes (run from the cli repo root):
-#   run.sh --replay [--transcript FILE]
+#   run.sh --replay [--transcript FILE] [--ci-plugin-src DIR]
 #       Build nself, start two loopback sim hosts (qa tier local-servers,
 #       prod tier prod) and replay test/e2e/agent/testdata/replay.jsonl over
 #       `nself mcp` in the sandbox. Writes the transcript (default
 #       $AGENT_E2E_OUT/replay.jsonl, else $TMPDIR/agent-e2e-out) and verifies it.
-#       Needs Docker.
+#       Needs Docker. --ci-plugin-src (a plugins checkout's free/ci) makes the
+#       harness swap in a ci plugin built from that source after the agent's
+#       `add ci`, until a served ci release carries the machine surface.
 #   run.sh --live --transcript FILE [--prod-probe DIR]
 #       The same fleet and sandbox, driven by a headless `claude -p` session
 #       whose only tools are the sandboxed nself server (P7-SHIP-13).
@@ -33,7 +35,7 @@ PKG=./test/e2e/agent/
 SANDBOX="$ROOT/scripts/e2e/agent/mcp-sandbox.sh"
 GOTEST="go test -mod=vendor -tags e2eagent -count=1"
 
-usage() { sed -n '2,28p' "$0" >&2; exit 2; }
+usage() { sed -n '2,29p' "$0" >&2; exit 2; }
 fail() { printf 'agent-e2e: %s\n' "$1" >&2; exit 1; }
 
 scratch() { mktemp -d "${TMPDIR:-/tmp}/agent-e2e.XXXXXX"; }
@@ -52,13 +54,18 @@ abspath() { (cd "$(dirname "$1")" && printf '%s/%s' "$(pwd)" "$(basename "$1")")
 
 mode_replay() {
   out="${AGENT_E2E_OUT:-${TMPDIR:-/tmp}/agent-e2e-out}"
-  transcript="$out/replay.jsonl"
+  transcript="$out/replay.jsonl" cisrc=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --transcript) transcript="${2:-}"; shift 2 ;;
+      --ci-plugin-src) cisrc="${2:-}"; shift 2 ;;
       *) usage ;;
     esac
   done
+  if [ -n "$cisrc" ]; then
+    [ -f "$cisrc/plugin.json" ] || fail "--ci-plugin-src $cisrc has no plugin.json"
+    cisrc=$(cd "$cisrc" && pwd)
+  fi
   need_docker
   mkdir -p "$(dirname "$transcript")" || fail "cannot create $(dirname "$transcript")"
   transcript=$(abspath "$transcript")
@@ -67,7 +74,7 @@ mode_replay() {
   # GOTMPDIR becomes the test's TMPDIR: keep the fixture project under TMPDIR
   # (a Colima VM shares only $HOME, so bind mounts elsewhere fail).
   (cd "$ROOT" && GOTMPDIR="$tmp" INTEGRATION=1 NSELF_V15=1 AGENT_E2E_BIN="$bin" AGENT_E2E_TRANSCRIPT_OUT="$transcript" \
-    $GOTEST -timeout 60m -v -run '^TestAgentReplay$' "$PKG")
+    AGENT_E2E_CI_PLUGIN_SRC="$cisrc" $GOTEST -timeout 60m -v -run '^TestAgentReplay$' "$PKG")
   rc=$?
   rm -rf "$tmp"
   [ $rc -eq 0 ] || fail "replay failed; transcript: $transcript"

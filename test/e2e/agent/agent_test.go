@@ -186,6 +186,7 @@ func TestAgentReplay(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	ciPlugin := BuildCIPlugin(t)
 	t.Setenv("HOME", box.Home)
 	trustHosts(t, hosts)
 	tpath := os.Getenv("AGENT_E2E_TRANSCRIPT_OUT")
@@ -197,7 +198,7 @@ func TestAgentReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer w.Close()
-	h := &SimHarness{T: t, Fleet: fleet, Box: box, Hosts: hosts}
+	h := &SimHarness{T: t, Fleet: fleet, Box: box, Hosts: hosts, CI: ciPlugin}
 	t.Cleanup(h.Teardown)
 	ctx := context.Background()
 	if _, err := run(ctx, box.Project, "git", "init", "-q"); err != nil {

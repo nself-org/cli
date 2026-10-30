@@ -33,10 +33,19 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      - name: Checkout plugins main (ci plugin source)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: nself-org/plugins
+          ref: main
+          path: plugins-src
+          persist-credentials: false
       - name: Self-test (verifier and sandbox refusals)
         run: bash scripts/e2e/agent/run.sh --self-test
       - name: Replay over MCP
-        run: bash scripts/e2e/agent/run.sh --replay --transcript "$RUNNER_TEMP/agent-e2e/replay.jsonl"
+        # The ci plugin comes from plugins main until a served ci release
+        # carries the machine surface (P7-CI-62).
+        run: bash scripts/e2e/agent/run.sh --replay --transcript "$RUNNER_TEMP/agent-e2e/replay.jsonl" --ci-plugin-src plugins-src/free/ci
       - name: Verify the transcript
         run: bash scripts/e2e/agent/run.sh --verify-transcript "$RUNNER_TEMP/agent-e2e/replay.jsonl"
       - name: Upload transcript

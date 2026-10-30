@@ -34,6 +34,8 @@ type SimHarness struct {
 	Fleet *simharness.Fleet
 	Box   *Sandbox
 	Hosts []SimHost
+	// CI, when set, replaces the ci plugin after the agent's add (ci_plugin.go).
+	CI *CIPlugin
 	// before holds the image sets of the sim hosts captured by digest-before.
 	before map[string]string
 }
@@ -97,6 +99,12 @@ func (h *SimHarness) Do(ctx context.Context, s Step, w *Writer) error {
 		return err
 	case "digest-before", "digest-compare":
 		return h.digests(s.Action, w)
+	case "ci-plugin-from-source":
+		msg, err := h.installCIPlugin()
+		if err != nil {
+			return err
+		}
+		note = s.Action + ": " + msg
 	default:
 		return fmt.Errorf("unknown harness action %q", s.Action)
 	}

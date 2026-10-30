@@ -24,7 +24,7 @@ Scripts: `scripts/e2e/agent/run.sh` (all modes) and `scripts/e2e/agent/mcp-sandb
 
 ```text
 bash scripts/e2e/agent/run.sh --self-test
-bash scripts/e2e/agent/run.sh --replay --transcript /tmp/agent-e2e/replay.jsonl
+bash scripts/e2e/agent/run.sh --replay --transcript /tmp/agent-e2e/replay.jsonl [--ci-plugin-src ../plugins/free/ci]
 bash scripts/e2e/agent/run.sh --verify-transcript /tmp/agent-e2e/replay.jsonl
 bash scripts/e2e/agent/run.sh --tools-list ./nself --env NSELF_V15=1
 bash scripts/e2e/agent/run.sh --live --transcript /tmp/agent-e2e/live.jsonl [--prod-probe DIR]
@@ -46,5 +46,5 @@ The verifier fails a transcript that has a non-MCP agent step, a missing D7 step
 
 - The server starts in the empty fixture project and lists `nself_init` plus the read-only tools; after `init` it lists every tool, and after `add ci` it sends `notifications/tools/list_changed` and the ci tools appear.
 - The replay and live runs start `nself mcp --timeout 30m`: a cold `start` pulls every image and outlasts the 5m default.
-- The ci leg needs the served ci plugin to declare its machine surface (P7-CI-62); without it `tools/list` after `add ci` lacks `nself_ci`, and the replay stops there with that message.
+- The served ci release (1.2.13) predates the ci machine surface (P7-CI-62). `run.sh --replay --ci-plugin-src <plugins>/free/ci` builds ci from that source; after the agent's `nself_add ci` the harness swaps the build in (a `role: harness` record naming the revision) and an agent `nself_status` call lets the server refresh its tool list. The workflow uses plugins main. Without the flag the served plugin is kept, and `discover-ci` fails until a release carries the surface. The live mode has no such swap, so it needs that release.
 - The sim hosts get recording `docker` and `nself` stubs, as the deploy-sim tests do. The image-digest compare after the promote reads the stubs' record of `compose up`.

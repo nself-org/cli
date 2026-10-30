@@ -20,6 +20,8 @@
 {"id":"migrate-create","role":"agent","tool":"nself_db_migrate_create","arguments":{"args":["agent_e2e_first"]}}
 {"id":"migrate","role":"agent","tool":"nself_db_migrate_up"}
 {"id":"add-ci","role":"agent","tool":"nself_add","arguments":{"args":["ci"]},"confirm":true}
+{"id":"ci-plugin-from-source","role":"harness","action":"ci-plugin-from-source","note":"until a served ci release carries the machine surface (P7-CI-62)"}
+{"id":"status-after-add","role":"agent","tool":"nself_status"}
 {"id":"discover-ci","role":"agent","kind":"tools/list","require":["nself_ci","nself_ci_runs_wait","nself_ci_evidence"]}
 {"id":"ci-detach","role":"agent","tool":"nself_ci","arguments":{"flags":{"detach":true}},"confirm":true,"capture":{"run_id":"run_id"}}
 {"id":"ci-wait","role":"agent","tool":"nself_ci_runs_wait","arguments":{"args":["${run_id}"]},"until":"terminal","max_repeats":30}
