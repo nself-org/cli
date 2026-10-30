@@ -12,21 +12,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/nself-org/cli/internal/docker"
 )
 
 // composeDown runs `docker compose down` in the given directory.
 func composeDown(ctx context.Context, dir string) error {
-	cmd := exec.CommandContext(ctx, "docker", "compose", "down")
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("%w\n%s", err, strings.TrimSpace(string(out)))
-	}
-	return nil
+	return docker.NewProjectCompose(dir).ComposeDown(ctx, dir, docker.DownOptions{})
 }
 
 // createBackup copies key project files to backupDir and writes a manifest.json.

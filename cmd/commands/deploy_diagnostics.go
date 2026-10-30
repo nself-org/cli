@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/controlplane"
+	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/ui"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 
@@ -51,7 +52,7 @@ func runDeployLogs(cmd *cobra.Command, args []string) error {
 				if err != nil {
 					return err
 				}
-				logsCmd := fmt.Sprintf("cd %s && docker compose logs --tail=200 -f", remote.ShellQuote(remotePath))
+				logsCmd := remoteProjectLogsCommand(remotePath)
 				keyOpts, err := controlplane.HostKeyOptions(cmd.Context(), env.Name, srv.Name, env.Tier, srv.Host, false)
 				if err != nil {
 					return err
@@ -73,11 +74,7 @@ func runDeployLogs(cmd *cobra.Command, args []string) error {
 	}
 
 	// Default: local docker compose logs.
-	c := exec.CommandContext(cmd.Context(), "docker", "compose", "logs", "--tail=200")
-	c.Dir = workdir
-	c.Stdout = os.Stdout
-	c.Stderr = os.Stderr
-	return c.Run()
+	return docker.Stream(cmd.Context(), workdir, []string{"compose", "logs", "--tail=200"}, os.Stdout, os.Stderr)
 }
 
 func runDeployHealth(cmd *cobra.Command, args []string) error {

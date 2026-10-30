@@ -181,10 +181,11 @@ func rebuildPlugin(ctx context.Context, workdir, pluginName string) error {
 
 // newDevCompose returns the compose client of `nself dev`; tests replace it.
 // It passes the project's env files like start/stop/restart do, so ${VAR}
-// values that live only in .nself/compose.env resolve (D-0550). No -f flags:
-// compose discovers docker-compose.yml in workdir, as dev always did.
+// values that live only in .nself/compose.env resolve (D-0550). The manifest
+// includes the same plugin fragments used by nself start.
 var newDevCompose = func(workdir string) *docker.Compose {
-	c := docker.NewCompose()
+	files, _ := build.ReadComposeManifest(workdir)
+	c := docker.NewCompose(files...)
 	c.EnvFiles = build.ComposeEnvFiles(workdir)
 	return c
 }

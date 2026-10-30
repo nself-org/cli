@@ -1,14 +1,11 @@
 package main
 
 import (
-	"archive/tar"
 	"bytes"
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -22,7 +19,7 @@ import (
 // released v1.4.12 reader decodes must stay readable in a v2 file, either as a
 // shared key (same name and type) or as a generated compatibility key.
 //
-// The scan extracts the v1.4.12 tag (git archive), parses it with go/ast and
+// The scan reads the committed v1.4.12 source fixture, parses it with go/ast and
 // finds every struct decoded by json.Unmarshal or a json Decoder in a file that
 // names "plugin.json" or defines parseManifest. testdata/v1412-readers.txt is
 // its committed output: the test fails when a reader appears or disappears.
@@ -33,73 +30,6 @@ const readerTag = "v1.4.12"
 // registryOnly are keys PluginManifest declares for registry entries, never for
 // plugin.json: D1 forbids them in a v2 file (E111).
 var registryOnly = map[string]bool{"bundles": true, "tier_pair": true, "author_public_key": true, "signature": true, "checksum": true}
-
-func repoRoot(t *testing.T) string {
-	t.Helper()
-	dir, _ := os.Getwd()
-	for d := dir; d != filepath.Dir(d); d = filepath.Dir(d) {
-		if _, err := os.Stat(filepath.Join(d, "go.mod")); err == nil {
-			return d
-		}
-	}
-	t.Fatal("go.mod not found")
-	return ""
-}
-
-func extractTag(t *testing.T, root string) string {
-	t.Helper()
-	archive := func() (*bytes.Buffer, error) {
-		cmd := exec.Command("git", "-C", root, "archive", "--format=tar", readerTag, "internal", "cmd")
-		var out bytes.Buffer
-		cmd.Stdout = &out
-		return &out, cmd.Run()
-	}
-	out, err := archive()
-	if err != nil {
-		// A shallow CI checkout carries no tags: fetch just this one, never skip.
-		// A gate host without an SSH agent cannot use the origin URL, so a
-		// failed fetch retries the public HTTPS URL before failing.
-		spec := "refs/tags/" + readerTag + ":refs/tags/" + readerTag
-		var ferr error
-		var detail []byte
-		for _, remote := range []string{"origin", "https://github.com/nself-org/cli.git"} {
-			fetch := exec.Command("git", "-C", root, "fetch", "-q", "--depth=1", "--no-tags", remote, spec)
-			fetch.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
-			if detail, ferr = fetch.CombinedOutput(); ferr == nil {
-				break
-			}
-		}
-		if ferr != nil {
-			t.Fatalf("tag %s is not available and fetching it failed (run `git fetch --tags origin`): %v: %s", readerTag, ferr, detail)
-		}
-		if out, err = archive(); err != nil {
-			t.Fatalf("git archive %s failed: %v", readerTag, err)
-		}
-	}
-	dst := t.TempDir()
-	tr := tar.NewReader(out)
-	for {
-		h, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		if h.Typeflag != tar.TypeReg || !strings.HasSuffix(h.Name, ".go") || strings.HasSuffix(h.Name, "_test.go") {
-			continue
-		}
-		p := filepath.Join(dst, filepath.FromSlash(h.Name))
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		b, _ := io.ReadAll(tr)
-		if err := os.WriteFile(p, b, 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	return dst
-}
 
 type field struct{ key, typ string }
 
@@ -286,8 +216,7 @@ func renderReaders(readers map[string][]field) string {
 }
 
 func TestReaderScan(t *testing.T) {
-	root := repoRoot(t)
-	readers := readerFields(t, extractTag(t, root))
+	readers := readerFields(t, readerFixture(t))
 	if len(readers) < 5 {
 		t.Fatalf("reader scan found only %d readers; the scan is broken", len(readers))
 	}

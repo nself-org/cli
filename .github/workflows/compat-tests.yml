@@ -1,0 +1,190 @@
+name: Go compatibility CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  ci:
+    name: Vet, Build & Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    # 10-min job timeout was too tight for cold-cache Windows / macOS runs:
+    # windows-2022 + macOS spend ~2-3 minutes on vet alone (unlike Linux ~15s)
+    # and 5-7 minutes on -short tests when Go module/build cache is empty.
+    # 20 minutes gives cold-cache headroom; warm-cache passes typically finish
+    # in under 5 minutes across all OSes.
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - ubuntu-24.04-arm   # linux/arm64 — first execution test before ship
+          - macos-15-intel     # macOS Intel (darwin/amd64) — macos-13 retired Dec 2025
+          - macos-15           # Apple Silicon (darwin/arm64)
+          - windows-2022       # Windows — pure-Go only; Docker tests skipped
+        include:
+          # Windows: skip Docker-dependent integration tests.
+          # Docker Desktop on windows-2022 runners is unavailable by default.
+          # Covered by WSL2 docs (S49-T04). Native Windows binary deferred to v1.1.0.
+          - os: windows-2022
+            skip_docker_tests: "true"
+
+    env:
+      CGO_ENABLED: 0
+      # Defense-in-depth alongside the cmd/commands TestMain guard: `nself
+      # start`'s zero-config AI auto-install must never fire a real network
+      # install during CI's unit-test run. Same guard already used by
+      # e2e-golden-path.yml and rls-pentest-smoke.yml for the same reason.
+      AI_AUTO_INSTALL: 'false'
+      # D-0413: the P7-SURF-12 config secrets leak gate
+      # (TestConfigSecretsStoreHoldsNoSecret) fails instead of skipping when
+      # age is missing. The step below installs it on the Linux and macOS legs.
+      # Windows is left out: the leak test skips there anyway (its pilot
+      # harness needs a POSIX docker stub), and age on PATH un-skips
+      # TestSecretsEdit_RoundTrip, whose fake editor is a .sh file Windows
+      # cannot exec.
+      NSELF_REQUIRE_AGE: ${{ startsWith(matrix.os, 'windows') && '0' || '1' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+
+      # One pinned release on every non-Windows leg through the Go toolchain
+      # the job already has (apt and brew ship different age versions).
+      - name: Install age and age-keygen
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          go install filippo.io/age/cmd/age@v1.3.2 filippo.io/age/cmd/age-keygen@v1.3.2
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Check age is on PATH
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          age --version
+          age-keygen --version
+
+      - name: Cache Go modules
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('go.mod') }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      # D-0140: the required `nself-ci` job runs go vet, go build and go test
+      # (-mod=vendor, Linux amd64, v1.4 mode) on this same runner, so the
+      # ubuntu-latest leg keeps only the checks below that nself-ci lacks. The
+      # other OS legs are not replaced and still run all three.
+      - name: Vet
+        if: matrix.skip_docker_tests != 'true' && matrix.os != 'ubuntu-latest'
+        run: go vet -mod=vendor ./...
+
+      - name: Vet (Windows — pure-Go packages only)
+        if: matrix.skip_docker_tests == 'true'
+        run: go vet -mod=vendor ./...
+        shell: cmd
+
+      - name: Build
+        if: matrix.skip_docker_tests != 'true' && matrix.os != 'ubuntu-latest'
+        run: go build -mod=vendor ./...
+
+      - name: Build (Windows)
+        if: matrix.skip_docker_tests == 'true'
+        run: go build -mod=vendor ./...
+        shell: cmd
+
+      - name: Test
+        if: matrix.skip_docker_tests != 'true' && matrix.os != 'ubuntu-latest'
+        # cmd/commands needs about 12 minutes on loaded runners.
+        run: go test -mod=vendor -timeout 30m ./...
+
+      # D-0275: cover all command tests in v1.5; only reconcile debt remains.
+      - name: Test (v1.5 mode, NSELF_V15=1)
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          NSELF_V15: '1'
+        run: |
+          go test -mod=vendor -timeout 20m -skip '^(TestShadowInvocationFiles|TestContainerImpactBrokenCompose|TestStateFaultInjection)$' ./...
+
+      - name: Test (Windows — pure-Go packages; Docker integration tests skipped)
+        if: matrix.skip_docker_tests == 'true'
+        # Docker integration tests require Docker Desktop which is not available
+        # on windows-2022 GitHub-hosted runners. Only pure-Go packages run here.
+        # -timeout=240s (4 min) ensures a hung test panics with a goroutine dump
+        # instead of silently filling the 20-min job cap.
+        run: go test -mod=vendor -short -timeout=240s ./...
+        shell: cmd
+
+      # D-0482: go.mod replaces the sdk module with ./sdk/go and every build
+      # uses -mod=vendor, so an sdk/go change that is not re-vendored passes
+      # its own tests while the cli binary keeps the stale copy. Run in this
+      # required leg so drift blocks a merge. The _test.sh run is the positive
+      # control: it proves the check fails on planted drift.
+      - name: Vendor check controls
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/ci/vendor-sync-check_test.sh
+
+      # D-1152: the hasura upgrade smoke's switch start must skip the metadata
+      # re-apply, or its preservation checks cannot fail. Static, no Docker.
+      - name: Hasura upgrade smoke guard
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/ci/hasura-upgrade-smoke_test.sh
+
+      - name: Vendor sync check (vendor/ matches go mod vendor)
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/ci/vendor-sync-check.sh
+
+      # D-0117: CONSTITUTION §4 rule 2 (no panics outside main). The ratchet
+      # fails when a library file gains a raw panic() site; the _test.sh run is
+      # the positive control.
+      - name: Panic ratchet
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          bash scripts/ci/panic-ratchet_test.sh
+          bash scripts/ci/panic-ratchet.sh
+
+      # D-1482: scripts/golden-path.sh writes its report from an EXIT trap, so a
+      # run that aborts outside a step's own failure path still names the step.
+      # Stubbed nself/docker, offline.
+      - name: Golden path report controls
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/ci/golden-path_test.sh
+
+      # D-0140: `make contract-check` (P7-REG-10) runs in the required `nself-ci`
+      # job (.nself/ci.yaml `contract-check`); only the smoke below stays here.
+
+      # D-0204: docker-publish-version.sh stub-gh test (P7-HYG-06 follow-up).
+      - name: Docker publish version script test
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/ci/docker-publish-version_test.sh
+
+      # D-0204: concurrency group expression must normalise dispatch input to
+      # v<ver> and handle blank input; kills two surviving mutants.
+      - name: Docker publish concurrency expression test
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/ci/docker-publish-concurrency_test.sh
+
+      # D-0204: :latest only moves while the promoted tag is still GitHub's latest.
+      - name: Docker publish promote script test
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/ci/docker-publish-promote_test.sh
+
+      - name: Contract smoke (Linux, both compat modes)
+        if: runner.os == 'Linux'
+        run: bash scripts/ci/contract-smoke.sh

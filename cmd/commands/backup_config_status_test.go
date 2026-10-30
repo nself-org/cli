@@ -174,6 +174,7 @@ func TestBackupStatusOffboxFlags(t *testing.T) {
 // TestBackupStatusInProjectKeepsExistingFields: inside a project without a
 // heartbeat remote the JSON gains only offbox.source = none.
 func TestBackupStatusInProjectKeepsExistingFields(t *testing.T) {
+	restoreProcessEnv(t)
 	proj := t.TempDir()
 	if err := os.WriteFile(filepath.Join(proj, ".env"), []byte("PROJECT_NAME=proj\nENV=dev\n"), 0o600); err != nil {
 		t.Fatal(err)

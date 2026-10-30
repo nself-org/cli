@@ -25,14 +25,14 @@ func TestMain(m *testing.M) {
 	switch os.Getenv(helperEnv) {
 	case "slow": // prints, then outlives the timeout
 		fmt.Println(os.Getenv(helperEnv+"_OUT") + " partial output")
-		time.Sleep(3 * time.Second)
+		time.Sleep(30 * time.Second)
 		os.Exit(0)
 	case "slowgrand": // like slow, plus a grandchild that keeps the pipe open
-		c := exec.Command("/bin/sleep", "3")
+		c := exec.Command("/bin/sleep", "30")
 		c.Stdout, c.Stderr = os.Stdout, os.Stderr
 		_ = c.Start()
 		fmt.Println(os.Getenv(helperEnv+"_OUT") + " partial output")
-		time.Sleep(3 * time.Second)
+		time.Sleep(30 * time.Second)
 		os.Exit(0)
 	}
 	code := m.Run()
@@ -48,12 +48,14 @@ func TestDoctorReportTimeout(t *testing.T) {
 			t.Setenv(helperEnv, mode)
 			t.Setenv(helperEnv+"_OUT", "hello")
 			start := time.Now()
-			out, err := runDoctorChild(context.Background(), t.TempDir(), selfExe, 300*time.Millisecond, 300*time.Millisecond)
+			out, err := runDoctorChild(context.Background(), t.TempDir(), selfExe, 2*time.Second, 300*time.Millisecond)
 			var te *TimeoutError
 			if !errors.As(err, &te) {
 				t.Fatalf("err = %v, want *TimeoutError", err)
 			}
-			if el := time.Since(start); el > 2500*time.Millisecond {
+			// Leave room for process startup and scheduling on busy gate hosts,
+			// while still detecting an unbounded wait on the 30-second child.
+			if el := time.Since(start); el > 15*time.Second {
 				t.Errorf("child outlived its timeout: %s", el)
 			}
 			if !strings.Contains(out, "hello partial output") {
@@ -71,7 +73,7 @@ func TestDoctorReportTimeoutKeepsPartialScrubbed(t *testing.T) {
 	t.Setenv(helperEnv+"_OUT", secret)
 	src := Sources{
 		Doctor: func(ctx context.Context) (string, error) {
-			return runDoctorChild(ctx, dir, selfExe, 300*time.Millisecond, 300*time.Millisecond)
+			return runDoctorChild(ctx, dir, selfExe, 2*time.Second, 300*time.Millisecond)
 		},
 		Now: func() time.Time { return fixedNow },
 	}

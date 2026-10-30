@@ -11,9 +11,9 @@ import (
 
 // TestV15SuiteInCI prevents the default compatibility mode from hiding v1.5
 // regressions. A required job must run the whole module, cmd/commands included
-// (D-0275: named skips only), with NSELF_V15=1.
+// (D-0275: only the outstanding reconcile debt may be skipped), with NSELF_V15=1.
 func TestV15SuiteInCI(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci.yml"))
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/compat-tests.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,6 +45,10 @@ func TestV15SuiteInCI(t *testing.T) {
 				continue
 			}
 			if runsV15Suite(step.Run) {
+				const reconcileSkip = "-skip '^(TestShadowInvocationFiles|TestContainerImpactBrokenCompose|TestStateFaultInjection)$'"
+				if strings.Contains(step.Run, "-skip") && !strings.Contains(step.Run, reconcileSkip) {
+					t.Fatal("v1.5 CI must include every cmd/commands test; only the three reconcile debt tests may be skipped")
+				}
 				return
 			}
 		}

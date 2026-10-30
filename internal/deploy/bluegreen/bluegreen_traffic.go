@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/health"
 	"github.com/nself-org/cli/internal/nginxtopo"
 )
@@ -97,15 +98,13 @@ func frontedByFor(projectRoot string) string {
 // reloadNginx sends a reload signal to the nginx container or the system nginx.
 func reloadNginx(projectRoot string) error {
 	// Try docker compose exec nginx nginx -s reload.
-	cmd := exec.Command("docker", "compose", "exec", "-T", "nginx", "nginx", "-s", "reload")
-	cmd.Dir = projectRoot
-	cmd.Env = os.Environ()
-	if err := cmd.Run(); err == nil {
+	if err := newCompose(projectRoot).RunProject(context.Background(), projectRoot,
+		docker.ProjectRun{}, "exec", "-T", "nginx", "nginx", "-s", "reload"); err == nil {
 		return nil
 	}
 
 	// Fall back to system nginx reload.
-	cmd = exec.Command("nginx", "-s", "reload")
+	cmd := exec.Command("nginx", "-s", "reload")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("both docker compose exec nginx reload and system nginx reload failed: %w", err)
 	}
@@ -152,11 +151,10 @@ func soak(ctx context.Context, cfg DeployConfig, duration time.Duration) (bool, 
 // is which is reported.
 func measureErrorRate(ctx context.Context, cfg DeployConfig) (float64, error) {
 	project := composeProjectName(EnvGreen)
-	out, err := exec.CommandContext(ctx,
-		"docker", "compose",
-		"-p", project,
+	out, err := newCompose(cfg.ProjectRoot).OutputProject(ctx, cfg.ProjectRoot,
+		docker.ProjectRun{Project: project},
 		"ps", "--format", containerStatusFormat,
-	).Output()
+	)
 	if err != nil {
 		return 0.0, fmt.Errorf("querying green container status for project %s: %w", project, err)
 	}
