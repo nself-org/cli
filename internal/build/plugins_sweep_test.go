@@ -29,8 +29,8 @@ import (
 
 // sweepPluginSourceRoots are the sibling repos' plugin trees, read-only.
 var sweepPluginSourceRoots = []string{
-	"/Volumes/UG/Sites/nself/plugins",
-	"/Volumes/UG/Sites/nself/plugins-pro",
+	"/Volumes/D5/Sites/nself/plugins",
+	"/Volumes/D5/Sites/nself/plugins-pro",
 }
 
 // sweepKnownEscapingPlugins are the only plugins whose docker-compose.plugin.yml
