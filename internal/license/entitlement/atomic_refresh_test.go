@@ -17,11 +17,11 @@ func TestUnmountedRefreshReplacesInode(t *testing.T) {
 	if err := writeAtomic(path, []byte("first")); err != nil {
 		t.Fatal(err)
 	}
-	before, _ := os.Stat(path)
+	before := fileIdentity(t, path)
 	if err := writeAtomic(path, []byte("second")); err != nil {
 		t.Fatal(err)
 	}
-	after, _ := os.Stat(path)
+	after := fileIdentity(t, path)
 	if os.SameFile(before, after) {
 		t.Fatal("unmounted refresh rewrote the live inode")
 	}
@@ -80,4 +80,21 @@ func TestMountProbePolicy(t *testing.T) {
 			}
 		})
 	}
+}
+
+// fileIdentity stats through an open handle: on Windows os.Stat resolves the
+// file id lazily, by path, when SameFile runs, so two Stat results of one path
+// always compare equal even after the file was replaced.
+func fileIdentity(t *testing.T, path string) os.FileInfo {
+	t.Helper()
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info
 }
