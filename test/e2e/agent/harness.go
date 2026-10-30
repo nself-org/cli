@@ -15,6 +15,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -99,6 +100,12 @@ func (h *SimHarness) Do(ctx context.Context, s Step, w *Writer) error {
 		return err
 	case "digest-before", "digest-compare":
 		return h.digests(s.Action, w)
+	case "seed-target-plugins":
+		names, err := h.seedTargetPlugins()
+		if err != nil {
+			return err
+		}
+		note = s.Action + ": " + strings.Join(names, ", ")
 	case "ci-plugin-from-source":
 		msg, err := h.installCIPlugin()
 		if err != nil {
@@ -162,6 +169,36 @@ func (h *SimHarness) Teardown() {
 		}
 	}
 }
+
+// seedTargetPlugins copies the manifest of every plugin installed in the
+// sandbox HOME to each sim host's ~/.nself/plugins, so the hosts stand in for
+// servers already provisioned with the project's plugins (deploy refuses a
+// target whose plugin set differs, E485).
+func (h *SimHarness) seedTargetPlugins() ([]string, error) {
+	root := filepath.Join(h.Box.Home, ".nself", "plugins")
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() && fileExists(filepath.Join(root, e.Name(), "plugin.json")) {
+			names = append(names, e.Name())
+		}
+	}
+	for _, host := range h.Hosts {
+		home := strings.TrimSpace(h.Fleet.Exec(h.T, host.Server, "sh", "-c", "getent passwd "+host.User+" | cut -d: -f6"))
+		for _, name := range names {
+			dir := home + "/.nself/plugins/" + name
+			h.Fleet.Exec(h.T, host.Server, "mkdir", "-p", dir)
+			h.Fleet.CopyTo(h.T, host.Server, filepath.Join(root, name, "plugin.json"), dir+"/plugin.json")
+		}
+		h.Fleet.Exec(h.T, host.Server, "chown", "-R", host.User, home+"/.nself")
+	}
+	return names, nil
+}
+
+func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
 
 // serviceContainer picks one running service container of the project
 // (hasura when present, else the first by name).

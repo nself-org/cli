@@ -26,6 +26,7 @@
 {"id":"ci-detach","role":"agent","tool":"nself_ci","arguments":{"flags":{"detach":true}},"confirm":true,"capture":{"run_id":"run_id"}}
 {"id":"ci-wait","role":"agent","tool":"nself_ci_runs_wait","arguments":{"args":["${run_id}"]},"until":"terminal","max_repeats":30}
 {"id":"ci-evidence","role":"agent","tool":"nself_ci_evidence","arguments":{"args":["${run_id}"]},"expect":"evidence-pass"}
+{"id":"seed-target-plugins","role":"harness","action":"seed-target-plugins","note":"the sim hosts stand in for servers provisioned with the project's plugins"}
 {"id":"deploy-qa","role":"agent","tool":"nself_deploy","arguments":{"args":["qa"]},"confirm":true}
 {"id":"digest-before","role":"harness","action":"digest-before"}
 {"id":"promote-dry-run","role":"agent","tool":"nself_deploy_promote","arguments":{"args":["qa","prod"],"flags":{"dry-run":true}},"confirm":true}
