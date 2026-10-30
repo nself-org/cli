@@ -117,6 +117,78 @@
             "object"
           ]
         },
+        "flags": {
+          "description": "Flags of the root command itself; absent means the root takes free-form argv.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "cli_only": {
+                "type": "boolean"
+              },
+              "default": {
+                "type": "string"
+              },
+              "env": {
+                "type": "string"
+              },
+              "hidden": {
+                "type": "boolean"
+              },
+              "json": {
+                "enum": [
+                  "none",
+                  "legacy",
+                  "envelope"
+                ],
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "output": {
+                "enum": [
+                  "document",
+                  "stream",
+                  "interactive"
+                ],
+                "type": "string"
+              },
+              "persistent": {
+                "type": "boolean"
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "secret": {
+                "type": "boolean"
+              },
+              "shorthand": {
+                "type": "string"
+              },
+              "side_effect": {
+                "enum": [
+                  "read",
+                  "write",
+                  "remote",
+                  "destructive"
+                ],
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "usage": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "type"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
         "json": {
           "enum": [
             "none",

@@ -102,7 +102,7 @@ func decodeV2(data []byte, raw map[string]json.RawMessage) (*Manifest, error) {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&m); err != nil {
-		return nil, invalid("plugin.json", err.Error())
+		return nil, invalid("plugin.json", decodeMessage(err))
 	}
 	if dec.More() {
 		return nil, invalid("plugin.json", "unexpected data after the JSON object")
@@ -112,6 +112,18 @@ func decodeV2(data []byte, raw map[string]json.RawMessage) (*Manifest, error) {
 		return nil, err
 	}
 	return &m, nil
+}
+
+// decodeMessage turns the decoder's unknown-field error into advice: a field
+// this build does not know almost always comes from a newer manifest reader,
+// so the fix is to upgrade nself, not to edit the plugin.
+func decodeMessage(err error) string {
+	const prefix = "json: unknown field "
+	msg := err.Error()
+	if !strings.HasPrefix(msg, prefix) {
+		return msg
+	}
+	return "unknown field " + strings.TrimPrefix(msg, prefix) + ": this plugin.json uses a manifest field that this version of nself does not know; upgrade nself (nself update)"
 }
 
 // DecodeV2 decodes and validates a v2 file without the compatibility check.

@@ -34,7 +34,10 @@ func validateCommands(m *Manifest) error {
 	if err := checkAttrs("commands", c.SideEffect, c.Output, c.JSON, c.Surface); err != nil {
 		return err
 	}
-	if err := checkConfirm("commands", c.Confirm, nil); err != nil {
+	if err := validateFlags("commands", c.Flags); err != nil {
+		return err
+	}
+	if err := checkConfirm("commands", c.Confirm, c.Flags); err != nil {
 		return err
 	}
 	seen := map[string]bool{}
@@ -68,11 +71,25 @@ func validateSub(p string, s Subcommand, seen map[string]bool) error {
 			return invalid(p+".args["+itoa(i)+"].name", "must match "+NamePattern)
 		}
 	}
-	for i, f := range s.Flags {
+	if err := validateFlags(p, s.Flags); err != nil {
+		return err
+	}
+	return checkConfirm(p, s.Confirm, s.Flags)
+}
+
+// validateFlags checks the flags of one command (the root or a subcommand):
+// a name that matches NamePattern, a type, valid attributes, and no name twice.
+func validateFlags(p string, flags []Flag) error {
+	seen := map[string]bool{}
+	for i, f := range flags {
 		fp := p + ".flags[" + itoa(i) + "]"
 		if !segmentRe.MatchString(f.Name) {
 			return invalid(fp+".name", "must match "+NamePattern)
 		}
+		if seen[f.Name] {
+			return invalidf(fp+".name", "%q is declared twice", f.Name)
+		}
+		seen[f.Name] = true
 		if f.Type == "" {
 			return invalid(fp+".type", "is required")
 		}
@@ -80,7 +97,7 @@ func validateSub(p string, s Subcommand, seen map[string]bool) error {
 			return err
 		}
 	}
-	return checkConfirm(p, s.Confirm, s.Flags)
+	return nil
 }
 
 // checkAttrs validates the optional enum attributes; empty means absent.
@@ -97,8 +114,8 @@ func checkAttrs(p, side, out, js, surface string) error {
 }
 
 // checkConfirm validates confirm: every flag and plan.flag names a declared
-// bool flag of the same command, plan.id_flag a declared string flag. The root
-// declares no flags, so only an empty list is valid there.
+// bool flag of the same command, plan.id_flag a declared string flag. A root
+// that declares no flags can only carry an empty confirm list.
 func checkConfirm(p string, c *Confirm, flags []Flag) error {
 	if c == nil {
 		return nil

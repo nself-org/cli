@@ -64,10 +64,15 @@ func init() {
 	for _, p := range []string{"flags", "args"} {
 		ovs = append(ovs, set(sub+"/properties/"+p, map[string]any{"type": "array"}))
 	}
-	ovs = append(ovs,
-		set(sub+"/properties/flags/items/properties/side_effect", map[string]any{"enum": anyList(manifestv2.SideEffects)}),
-		set(sub+"/properties/flags/items/properties/output", map[string]any{"enum": anyList(manifestv2.Outputs)}),
-		set(sub+"/properties/flags/items/properties/json", map[string]any{"enum": anyList(manifestv2.JSONModes)}),
-	)
+	// The root declares flags like a subcommand (not args).
+	const rootFlags = "/properties/commands/properties/flags"
+	ovs = append(ovs, set(rootFlags, map[string]any{"type": "array", "description": "Flags of the root command itself; absent means the root takes free-form argv."}))
+	for _, fp := range []string{sub + "/properties/flags", rootFlags} {
+		ovs = append(ovs,
+			set(fp+"/items/properties/side_effect", map[string]any{"enum": anyList(manifestv2.SideEffects)}),
+			set(fp+"/items/properties/output", map[string]any{"enum": anyList(manifestv2.Outputs)}),
+			set(fp+"/items/properties/json", map[string]any{"enum": anyList(manifestv2.JSONModes)}),
+		)
+	}
 	Register(Spec{Out: "plugin-manifest.v2.schema.json", Type: manifestv2.Manifest{}, Overrides: ovs})
 }
