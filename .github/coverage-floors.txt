@@ -32,6 +32,7 @@ internal/backup 15  # measured 17.1 2026-10-05
 internal/backup/destinations 40  # measured 42.1 2026-10-05
 internal/backup/pitr 25  # measured 27.6 2026-10-05
 internal/build 71  # measured 73.5 2026-10-05
+internal/build/trustplan 74  # measured 76.2 2026-10-30
 internal/builtin/admin 12  # measured 12.4 2026-10-08 (P7-CANON-19, moved from cmd/commands)
 internal/bundle 64  # measured 67.0 2026-10-05
 internal/bundle/appready 85  # measured 92.1 2026-10-10 (P7-PLUG-19)

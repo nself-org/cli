@@ -559,13 +559,17 @@ func TestSurfaceIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	// docker and brew are stubs: no daemon, and no Homebrew index download from doctor.
-	for name, body := range map[string]string{"docker": dockerStub, "brew": "#!/bin/sh\nexit 1\n"} {
+	// mkcert is a failing stub and CAROOT a fixed empty dir: no surface creates a
+	// CA or touches the host trust store, so every surface plans the same named
+	// trust step whatever the host has installed (P7-SHIP-02).
+	for name, body := range map[string]string{"docker": dockerStub, "brew": "#!/bin/sh\nexit 1\n", "mkcert": "#!/bin/sh\nexit 1\n"} {
 		if err := os.WriteFile(filepath.Join(stubs, name), []byte(body), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
+	t.Setenv("CAROOT", filepath.Join(home, "mkcert-ca"))
 	t.Setenv("PATH", stubs+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("NSELF_PLUGIN_DIR", filepath.Join(home, "plugins"))
 	t.Setenv("NSELF_PLUGIN_CACHE", filepath.Join(home, "cache"))
@@ -582,7 +586,7 @@ func TestSurfaceIdentity(t *testing.T) {
 	e := &surfaceEnv{bin: bin, proj: proj, token: "surface-identity-token", stubs: stubs}
 	e.resetProject(t) // the MCP server refuses to start outside a project
 	e.base = startSurfaceHTTP(t, proj, e.token)
-	s, err := newMCPServer("stdio", true)
+	s, err := newMCPServer("stdio", true, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -614,7 +618,7 @@ var (
 // handToolAllowed are the only files that may register an MCP tool: the
 // generator, its wiring, and the legacy hand registrations P7-SHIP-09 deletes.
 var handToolAllowed = map[string]bool{
-	"internal/mcpgen/tools.go": true, "cmd/commands/mcp_generated.go": true,
+	"internal/mcpgen/tools.go": true, "internal/mcpgen/surface.go": true, "cmd/commands/mcp_generated.go": true,
 	"cmd/commands/mcp.go": true, "cmd/commands/mcp_sentry.go": true,
 }
 

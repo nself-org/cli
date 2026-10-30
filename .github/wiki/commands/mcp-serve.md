@@ -5,7 +5,7 @@ Start a Model Context Protocol (MCP) server for the local ɳSelf instance. Enabl
 ## Synopsis
 
 ```
-nself mcp [--transport <stdio|sse|http>] [--port <port>]
+nself mcp [--transport <stdio|sse|http>] [--port <port>] [--timeout <duration>]
 ```
 
 There is no separate `serve` or `status` subcommand — `nself mcp` itself starts the server.
@@ -14,7 +14,7 @@ There is no separate `serve` or `status` subcommand — `nself mcp` itself start
 
 `nself mcp` starts the MCP server in **stdio mode** by default, the native transport that Claude Code expects. Pass `--transport sse` or `--transport http` to expose it over a local HTTP port instead; set `NSELF_MCP_TOKEN` to require a bearer token on those transports.
 
-Run `nself mcp` from inside an nSelf project directory — it fails fast if one isn't found.
+Run `nself mcp` from inside an nSelf project directory. Started where no project exists, it serves `nself_init` and the read-only tools until `init` creates one, then lists every tool and sends `notifications/tools/list_changed` (it does the same after a plugin is added or removed).
 
 ## Options
 
@@ -22,6 +22,7 @@ Run `nself mcp` from inside an nSelf project directory — it fails fast if one 
 |---|---|---|
 | `--transport`, `-t` | `stdio` | Transport: `stdio`, `sse`, or `http`. |
 | `--port`, `-p` | `3825` | Port for the `sse`/`http` transports. |
+| `--timeout` | `5m0s` | Longest one tool call may run before its command is stopped (`E423`). |
 
 ## Environment variables
 

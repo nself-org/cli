@@ -368,10 +368,11 @@ func dropSecrets(t *testing.T, f *fixture) {
 		"HASURA_GRAPHQL_ADMIN_SECRET="+fixtureValue(t, "HASURA_GRAPHQL_ADMIN_SECRET")+"\n", 0o600)
 }
 
-// TestPlanCoversGeneratedSecrets (review M2a, Codex 2): a build that generates
-// secrets lists .env.secrets as an artifact with planned bytes, refuses
-// --plan-id with E451 (random values cannot be bound), and an apply without
-// --plan-id writes exactly the confirmed render.
+// TestPlanCoversGeneratedSecrets (review M2a, Codex 2; P7-SHIP-02 gap 2): a
+// build that generates secrets lists .env.secrets and the secrets-persist
+// effect, its plan id is the binding id (the same for every seed), a plan id
+// from one render binds an apply with another seed, and the apply persists
+// fresh secrets.
 func TestPlanCoversGeneratedSecrets(t *testing.T) {
 	f := loadFixture(t, "dev-minimal")
 	dropSecrets(t, f)
@@ -380,22 +381,55 @@ func TestPlanCoversGeneratedSecrets(t *testing.T) {
 	for _, a := range p.Artifacts {
 		listed = listed || (a.Path == ".env.secrets" && a.Action == ActionAdd && a.DiffLines > 0)
 	}
-	if !listed {
-		t.Fatalf(".env.secrets is not a planned artifact: %+v", p.Artifacts)
+	if !listed || !hasEffect(p, EffectSecretsPersist) {
+		t.Fatalf(".env.secrets or secrets-persist is not planned: %+v %+v", p.Artifacts, p.Effects)
 	}
-	before := treeHash(t, f.root)
-	_, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project}, ApplyOptions{PlanID: p.PlanID, Yes: true})
-	if d := errs.Describe(err); d == nil || d.Code != "E451" {
-		t.Fatalf("want E451, got %v", err)
+	if other := planOf(t, f, func(r *Request) { r.Seed = []byte("another seed") }); other.PlanID != p.PlanID {
+		t.Fatalf("the plan id of a generating render depends on the seed: %s vs %s", p.PlanID, other.PlanID)
 	}
-	if treeHash(t, f.root) != before {
-		t.Fatal("E451 apply wrote")
-	}
-	if _, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, Seed: []byte("s")}, ApplyOptions{Yes: true}); err != nil {
+	bc, err := compute(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, Seed: bindingSeed[:], binding: true})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(f.project + "/.env.secrets"); err != nil {
-		t.Fatal("apply did not persist the generated secrets")
+	if _, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project}, ApplyOptions{PlanID: p.PlanID, Yes: true}); err != nil {
+		t.Fatalf("a plan id must bind a first build: %v", err)
+	}
+	if got := readFile(t, f.project+"/.env.secrets"); got == "" || got == string(bc.after[".env.secrets"].Data) {
+		t.Fatal("apply wrote no secrets, or the binding render's values")
+	}
+	if data := planOf(t, f, nil); !data.Empty {
+		t.Fatalf("the apply wrote something other than the plan: %+v", data.Artifacts)
+	}
+}
+
+// TestGeneratedPlanIDRefusesDrift: the binding id still binds the inputs. An
+// input changed after the plan is E450 and nothing is written.
+func TestGeneratedPlanIDRefusesDrift(t *testing.T) {
+	f := loadFixture(t, "dev-minimal")
+	dropSecrets(t, f)
+	p := planOf(t, f, nil)
+	writeFile(t, f.project+"/.env", readFile(t, f.project+"/.env")+"MONITORING_ENABLED=true\n", 0o600)
+	before := treeHash(t, f.root)
+	_, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project}, ApplyOptions{PlanID: p.PlanID, Yes: true})
+	if d := errs.Describe(err); d == nil || d.Code != "E450" {
+		t.Fatalf("want E450, got %v", err)
+	}
+	if treeHash(t, f.root) != before {
+		t.Fatal("the refused apply wrote")
+	}
+}
+
+// TestSameShape: plans equal but for plan_id agree; any other field differs.
+func TestSameShape(t *testing.T) {
+	a := Plan{PlanID: "a", Command: CmdBuild, Artifacts: []Artifact{{Path: ".env.secrets", DiffLines: 3}}}
+	b := a
+	b.PlanID = "b"
+	if same, err := sameShape(a, b); err != nil || !same {
+		t.Fatalf("same plans with other ids: %v %v", same, err)
+	}
+	b.Artifacts = []Artifact{{Path: ".env.secrets", DiffLines: 4}}
+	if same, _ := sameShape(a, b); same {
+		t.Fatal("plans with other artifacts compared equal")
 	}
 }
 

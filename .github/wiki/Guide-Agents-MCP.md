@@ -16,7 +16,7 @@ nself mcp setup --client claude-code --write # doc-check: skip registered in cmd
 
 ## One server per project
 
-Run one MCP server per project. `nself mcp` must start inside a directory that holds an nSelf project, and its tools act on that project only. Do not point one server at several projects. If you work on two projects, register two servers, each started from its own project directory. Tool results then never mix up which stack was changed.
+Run one MCP server per project. Start `nself mcp` in the project's directory; its tools act on that project only. Started in a directory with no project yet, it serves `nself_init` and the read-only tools; once `init` has created the project it lists every tool and sends `notifications/tools/list_changed`, and it does the same after a plugin is added or removed (for example the `ci` tools after `add ci`). Do not point one server at several projects. If you work on two projects, register two servers, each started from its own project directory. Tool results then never mix up which stack was changed.
 
 ## The confirm and dry-run gate
 

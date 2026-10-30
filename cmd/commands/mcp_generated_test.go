@@ -39,6 +39,8 @@ type stdioSession struct {
 	in  io.WriteCloser
 	out *bufio.Reader
 	id  int
+	// notes are the methods of the notifications read so far.
+	notes []string
 }
 
 func startStdio(t *testing.T, s *server.MCPServer) *stdioSession {
@@ -78,11 +80,13 @@ func (s *stdioSession) call(method, params string) json.RawMessage {
 		}
 		var msg struct {
 			ID     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
 			Result json.RawMessage `json:"result"`
 			Error  json.RawMessage `json:"error"`
 		}
 		if json.Unmarshal(raw, &msg) != nil || len(msg.ID) == 0 {
-			continue // a notification
+			s.notes = append(s.notes, msg.Method) // a notification
+			continue
 		}
 		if len(msg.Error) > 0 {
 			return append(json.RawMessage(`{"jsonrpc_error":`), append(msg.Error, '}')...)
@@ -195,7 +199,7 @@ func TestMCPGeneratedStdio(t *testing.T) {
 		return
 	}
 	stdioFixture(t, true)
-	s, err := newMCPServer("stdio", true)
+	s, err := newMCPServer("stdio", true, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +335,7 @@ func TestMCPResourcesV15(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, "cache", "catalog.json"), cat, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	s, err := newMCPServer("stdio", true)
+	s, err := newMCPServer("stdio", true, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -428,7 +432,7 @@ func TestMCPAliasesV15(t *testing.T) {
 	}
 
 	// Without the plugin the five sentry names answer E404 naming nself add sentry-cli.
-	s, err := newMCPServer("stdio", true)
+	s, err := newMCPServer("stdio", true, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -459,7 +463,7 @@ func TestMCPAliasesV15(t *testing.T) {
 	// With a fixture sentry-cli plugin installed the aliases run its commands.
 	installSentryFixture(t, filepath.Join(home, "plugins"))
 	resetMachineRegistry()
-	s, err = newMCPServer("stdio", true)
+	s, err = newMCPServer("stdio", true, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -538,14 +542,14 @@ func TestMCPGeneratedFailureByMode(t *testing.T) {
 	machineCache.mu.Lock()
 	machineCache.done, machineCache.reg, machineCache.err = true, nil, fmt.Errorf("fixture: broken plugin manifest")
 	machineCache.mu.Unlock()
-	s, err := newMCPServer("stdio", false)
+	s, err := newMCPServer("stdio", false, 0)
 	if err != nil {
 		t.Fatalf("v1.4 mode must keep serving: %v", err)
 	}
 	if n := len(s.ListTools()); n != 26 {
 		t.Errorf("v1.4 fallback serves %d tools, want the 26 hand tools", n)
 	}
-	if _, err := newMCPServer("stdio", true); err == nil {
+	if _, err := newMCPServer("stdio", true, 0); err == nil {
 		t.Error("v1.5 mode started without a registry")
 	}
 	t.Log("CHECKED-TestMCPGeneratedFailureByMode")
@@ -556,7 +560,7 @@ func TestMCPV14KeepsHandTools(t *testing.T) {
 		return
 	}
 	stdioFixture(t, false)
-	s, err := newMCPServer("stdio", false)
+	s, err := newMCPServer("stdio", false, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -637,7 +641,7 @@ func TestMCPPromptSpellings(t *testing.T) {
 	if len(texts) != 3 {
 		t.Fatalf("%d prompts", len(texts))
 	}
-	s, err := newMCPServer("stdio", true)
+	s, err := newMCPServer("stdio", true, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

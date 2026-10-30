@@ -1128,6 +1128,7 @@
       "--allowed-host",
       "--host",
       "--port",
+      "--timeout",
       "--transport"
     ],
     "subcommands": [
