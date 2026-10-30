@@ -34,7 +34,7 @@ bash scripts/e2e/agent/run.sh --live --transcript /tmp/agent-e2e/live.jsonl [--p
 
 ## Sandbox
 
-`mcp-sandbox.sh` starts the server with `env -i` (PATH, HOME, TMPDIR, NSELF_V15 and a fixed list of extras). HOME is a temp dir with only the sim key (generated per run by `sdk/go/simharness`, never committed), an ssh config and known hosts. The script refuses to start when SSH_AUTH_SOCK is set, when HOME links to or names the operator's `~/.ssh`, or when HOME, the inventory or the ssh config names a host other than `127.0.0.1` or `localhost`.
+`mcp-sandbox.sh` starts the server with `env -i` (PATH, HOME, TMPDIR, NSELF_V15 and a fixed list of extras). HOME is a temp dir with only the sim key (generated per run by `sdk/go/simharness`, never committed), an ssh config, known hosts and, when the compose plugin is outside the system plugin dirs, a docker config naming its directory (no auths). The script refuses to start when SSH_AUTH_SOCK is set, when HOME links to or names the operator's `~/.ssh`, or when HOME, the inventory or the ssh config names a host other than `127.0.0.1` or `localhost`.
 
 ## Transcript
 

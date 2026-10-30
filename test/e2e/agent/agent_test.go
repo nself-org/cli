@@ -174,6 +174,9 @@ func TestAgentReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	box.Timeout = replayTimeout
+	if err := box.WriteDockerConfig(); err != nil {
+		t.Fatal(err)
+	}
 	for _, step := range []func() error{
 		func() error { return box.InstallKey(fleet.KeyPath()) },
 		box.WriteSSHConfig,
