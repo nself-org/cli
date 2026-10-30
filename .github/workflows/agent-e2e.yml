@@ -11,7 +11,7 @@ on:
     paths:
       - test/e2e/agent/**
       - scripts/e2e/agent/**
-      - .github/workflows/agent-e2e.yml
+      - .github/workflows/agent-*.yml
 
 permissions:
   contents: read
@@ -75,14 +75,14 @@ jobs:
       - name: Replay over MCP
         # The ci plugin comes from plugins main until a served ci release
         # carries the machine surface (P7-CI-62).
-        run: bash scripts/e2e/agent/run.sh --replay --transcript "$RUNNER_TEMP/agent-e2e/replay.jsonl" --ci-plugin-src plugins-src/free/ci
+        run: bash scripts/e2e/agent/run.sh --replay --transcript "$RUNNER_TEMP/agent-run/replay.jsonl" --ci-plugin-src plugins-src/free/ci
       - name: Verify the transcript
-        run: bash scripts/e2e/agent/run.sh --verify-transcript "$RUNNER_TEMP/agent-e2e/replay.jsonl"
+        run: bash scripts/e2e/agent/run.sh --verify-transcript "$RUNNER_TEMP/agent-run/replay.jsonl"
       - name: Upload transcript
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: agent-e2e-transcript
-          path: ${{ runner.temp }}/agent-e2e/replay.jsonl
+          path: ${{ runner.temp }}/agent-run/replay.jsonl
           if-no-files-found: warn
           retention-days: 14
