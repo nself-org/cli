@@ -27,6 +27,7 @@ jobs:
     env:
       NSELF_V15: "1"
       GITLEAKS_SHA256: "5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba" # gitleaks 8.21.2 linux_x64
+      TRIVY_SHA256: "e24b1c51293c1b15e4ba8d45bbc7891ba053f90278ec2698f3562c993e145fe7" # trivy 0.76.0 Linux-64bit
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -41,9 +42,10 @@ jobs:
           ref: main
           path: plugins-src
           persist-credentials: false
-      # The replay's CI run needs gitleaks; the sandboxed server sees only the
-      # system PATH, so it goes to /usr/local/bin (same pin as nself-ci.yml).
-      - name: Install gitleaks
+      # The replay's CI run uses the default pipeline (gitleaks and trivy jobs);
+      # a job whose tool is missing cannot be placed and fails the run. The
+      # sandboxed server sees only the system PATH, so both go to /usr/local/bin.
+      - name: Install gitleaks and trivy
         run: |
           set -euo pipefail
           curl --fail --silent --show-error --location --proto '=https' --output "$RUNNER_TEMP/gitleaks.tar.gz" \
@@ -51,6 +53,11 @@ jobs:
           echo "$GITLEAKS_SHA256  $RUNNER_TEMP/gitleaks.tar.gz" | sha256sum --check --strict -
           tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
           sudo install -m 0755 "$RUNNER_TEMP/gitleaks" /usr/local/bin/gitleaks
+          curl --fail --silent --show-error --location --proto '=https' --output "$RUNNER_TEMP/trivy.tar.gz" \
+            https://github.com/aquasecurity/trivy/releases/download/v0.76.0/trivy_0.76.0_Linux-64bit.tar.gz
+          echo "$TRIVY_SHA256  $RUNNER_TEMP/trivy.tar.gz" | sha256sum --check --strict -
+          tar -xzf "$RUNNER_TEMP/trivy.tar.gz" -C "$RUNNER_TEMP" trivy
+          sudo install -m 0755 "$RUNNER_TEMP/trivy" /usr/local/bin/trivy
       - name: Self-test (verifier and sandbox refusals)
         run: bash scripts/e2e/agent/run.sh --self-test
       - name: Replay over MCP
