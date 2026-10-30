@@ -26,8 +26,12 @@ By default the server runs over `stdio`, which is the correct mode for Claude Co
 to expose the server over a local port instead — set `NSELF_MCP_TOKEN` to require a bearer
 token on those two transports (stdio has no network exposure, so it never needs one).
 
-`nself mcp` must be run from inside a directory that contains an nSelf project (i.e. one
-initialised by `nself init`). The server exits immediately if no project is found.
+Run `nself mcp` from inside an nSelf project. Started in a directory with no project, it
+serves `nself_init` and the read-only tools only; once `init` has created the project it
+lists every tool and sends `notifications/tools/list_changed`. It does the same after a
+call that adds or removes a plugin, so the `ci` tools appear after `add ci` without a
+restart. `--timeout` (default `5m0s`) bounds each tool call; a call that runs longer is
+stopped and answers `E423`.
 
 ### Tools
 
@@ -142,6 +146,7 @@ For blocked statement types, run `nself db migrate` directly from the CLI.
 | `--allowed-host` |  | `stringSlice` | `[]` |  |  |  | Host name this server is reachable under; required (repeatable) for a non-loopback --host |
 | `--host` |  | `string` | `127.0.0.1` |  |  |  | Bind address for the sse/http transports |
 | `--port` | `-p` | `int` | `3825` |  |  |  | Port for the sse/http transports |
+| `--timeout` |  | `duration` | `5m0s` |  |  |  | Longest one tool call may run before its command is stopped, such as 15m |
 | `--transport` | `-t` | `string` | `stdio` |  |  |  | Transport: stdio, sse, or http |
 | `--help` | `-h` | `bool` | `false` | | | | Show help |
 <!-- END GENERATED:flags -->

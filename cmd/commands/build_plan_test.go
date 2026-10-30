@@ -597,10 +597,11 @@ func TestBuildProjectEnvCannotToggleGate(t *testing.T) {
 	}
 }
 
-// TestBuildFreshProjectPlanIDRefused: a first build generates secrets, so
-// --plan-id is refused with E451; confirming without it applies and persists
-// .env.secrets with the bytes that were planned.
-func TestBuildFreshProjectPlanIDRefused(t *testing.T) {
+// TestBuildFreshProjectPlanIDBinds (P7-SHIP-02 gap 2): a first build
+// generates secrets; its plan declares secrets-persist and its plan_id binds
+// the inputs, so --plan-id applies it and persists fresh .env.secrets. A plan
+// id from before an input changed is E450 and writes nothing.
+func TestBuildFreshProjectPlanIDBinds(t *testing.T) {
 	p := newL03Project(t, "prod-ssl")
 	env, _ := os.ReadFile(filepath.Join(p.project, ".env"))
 	var keep []string
@@ -612,22 +613,34 @@ func TestBuildFreshProjectPlanIDRefused(t *testing.T) {
 	}
 	l03Write(t, filepath.Join(p.project, ".env"), strings.Join(keep, "\n"), 0o600)
 	data := p.planData(t, true)
-	var listed bool
+	var listed, declared bool
 	for _, a := range data["artifacts"].([]any) {
 		listed = listed || a.(map[string]any)["path"] == ".env.secrets"
 	}
-	if !listed {
-		t.Fatal(".env.secrets is not in the plan")
+	for _, e := range data["effects"].([]any) {
+		declared = declared || e.(map[string]any)["kind"] == "secrets-persist"
 	}
-	r := p.run(t, true, "build", "--yes", "--plan-id", data["plan_id"].(string), "--json")
-	if code, exit := errorEnvelope(t, r.stdout); r.code != 1 || code != "E451" || exit != 1 {
-		t.Fatalf("exit %d %s: want E451\n%s", r.code, code, r.stderr)
+	if !listed || !declared {
+		t.Fatalf(".env.secrets or secrets-persist is not in the plan: %v", data)
+	}
+	if again := p.planData(t, true); again["plan_id"] != data["plan_id"] {
+		t.Fatalf("two plans of the same first build have different ids: %v vs %v", data["plan_id"], again["plan_id"])
+	}
+	stale := data["plan_id"].(string)
+	l03Write(t, filepath.Join(p.project, ".env"), strings.Replace(strings.Join(keep, "\n"), "POSTGRES_PASSWORD=Kq7vZp3Lw9XnR2tYb8MdQa4s", "POSTGRES_PASSWORD=Kq7vZp3Lw9XnR2tYb8MdQa4t", 1), 0o600)
+	r := p.run(t, true, "build", "--yes", "--plan-id", stale, "--json")
+	if code, _ := errorEnvelope(t, r.stdout); r.code != 1 || code != "E450" {
+		t.Fatalf("exit %d %s: want E450\n%s", r.code, code, r.stderr)
 	}
 	if _, err := os.Stat(filepath.Join(p.project, ".env.secrets")); err == nil {
-		t.Fatal("E451 wrote")
+		t.Fatal("E450 wrote")
 	}
-	if r := p.run(t, true, "build", "--yes"); r.code != 0 {
-		t.Fatalf("build --yes exited %d\n%s", r.code, r.stderr)
+	fresh := p.planData(t, true)["plan_id"].(string)
+	if r := p.run(t, true, "build", "--yes", "--plan-id", fresh, "--json"); r.code != 0 {
+		t.Fatalf("build --plan-id exited %d\n%s", r.code, r.stderr)
+	}
+	if _, err := os.Stat(filepath.Join(p.project, ".env.secrets")); err != nil {
+		t.Fatal("the bound first build did not persist .env.secrets")
 	}
 }
 

@@ -5122,7 +5122,7 @@ export interface DeployOpsRequest {
   confirm?: string;
 }
 
-export type DeployPromoteArgs = [string?];
+export type DeployPromoteArgs = [string?, string?];
 
 export interface DeployPromoteData {
   backup_id?: string;

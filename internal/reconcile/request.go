@@ -73,6 +73,8 @@ type Request struct {
 	envChanged, envChangedSet bool
 	// resolvedEnv is the cascade selector shared by every render of an apply.
 	resolvedEnv string
+	// binding marks the fixed-seed render of binding.go, which is never bound again.
+	binding bool
 }
 
 // ApplyOptions are the operator's answers to a plan.

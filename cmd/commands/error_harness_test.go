@@ -306,7 +306,8 @@ var errorHarnessCases = []errorHarnessCase{
 	// maintenance root returns cmd.Help() (nil) — soft case.
 
 	// ── mcp ────────────────────────────────────────────────────────────────
-	{"mcp", []string{"mcp"}, "(a) no project dir"},
+	// mcp starts without a project (P7-SHIP-02 gap 1), so its (a) case is a bad --timeout.
+	{"mcp", []string{"mcp", "--timeout", "0s"}, "(a) no project dir"},
 	{"mcp", []string{"mcp", "--no-such-flag-xyz"}, "(b) invalid flag"},
 	{"mcp", []string{"mcp", "unknownsub_xyz"}, "(c) unknown sub"},
 

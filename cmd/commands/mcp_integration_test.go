@@ -10,11 +10,10 @@ package commands
 //   and test this repo.
 // Outputs: a temp project directory, built via `nself init`, then advanced
 //   through nself_build / nself_start / nself_status tool calls.
-// Constraints: `nself init` itself is NOT an MCP tool (the MCP server
-//   requires a project to already exist before it will even start — see
-//   runMCPServe's FindNSelfRoot guard) so it runs as a direct subprocess of
-//   the built binary, matching how any agent would have to bootstrap a new
-//   project before pointing an MCP client at it. Everything after that
+// Constraints: these are the v1.4 hand handlers, which have no init tool, so
+//   `nself init` runs as a direct subprocess of the built binary (the v1.5
+//   generated surface serves nself_init, even before a project exists: see
+//   internal/mcpgen/surface.go). Everything after that
 //   (build, and — gated behind INTEGRATION=1 — start/status/stop) goes
 //   through the exact tool handler functions the server registers, not
 //   through a re-implementation. The Docker-dependent half is gated because

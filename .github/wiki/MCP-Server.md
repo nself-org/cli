@@ -23,7 +23,7 @@ After the path matches, the child rebuilds the registry from its mounted command
 
 Running as a child keeps global state, `os.Exit` and the project operation lock identical to a typed command. There is no shell anywhere: every request value is exactly one argv element.
 
-The **machine registry** is the v1.5 registry of the running binary with installed plugin commands mounted. It is the same in both compat modes ([[Compat-V15]]), so tool names and routes are the v1.5 shape in 1.4.x too. The plugin set is read when the server starts; install a plugin, then restart the server.
+The **machine registry** is the v1.5 registry of the running binary with installed plugin commands mounted. It is the same in both compat modes ([[Compat-V15]]), so tool names and routes are the v1.5 shape in 1.4.x too. The plugin set is read when the server starts and again after any successful call that changed it: `nself mcp` then rebuilds the registry, replaces its tools and sends `notifications/tools/list_changed`, so tools of a plugin added in the session (`add ci`) appear without a restart. Started with no project, `nself mcp` lists `nself_init` and the read-only tools only, and lists the rest the same way once a project exists. Resources keep the registry of the server start.
 Plugin commands are listed as tools like any other command, but a call that arrives while a secret bundle was restored is refused with `E421` because plugins do not yet support the secret-handoff protocol (D-0651). A machine-invoked plugin call that carries no secrets runs normally.
 
 ## Exposure rules
@@ -100,7 +100,7 @@ Any inherited value of these names is dropped first. The working directory is th
 
 ## Timeout and output limits
 
-A document request times out after 300 seconds by default (the invoker takes the timeout as an option; the servers expose it as `--timeout`). The child leads its own process group. The group gets SIGTERM, and SIGKILL five seconds later or as soon as the child is gone, so grandchildren (docker compose, ssh, helpers) do not outlive a timed-out or cancelled request; the result is `E423`. An NDJSON request has no timeout and ends when the client disconnects. A long-polling command such as `nself ci runs wait` reads `NSELF_INVOKE_DEADLINE_MS` and returns before the kill.
+A document request times out after 300 seconds by default (`nself mcp --timeout 15m` raises it for that server; the invoker takes the timeout as an option). The child leads its own process group. The group gets SIGTERM, and SIGKILL five seconds later or as soon as the child is gone, so grandchildren (docker compose, ssh, helpers) do not outlive a timed-out or cancelled request; the result is `E423`. An NDJSON request has no timeout and ends when the client disconnects. A long-polling command such as `nself ci runs wait` reads `NSELF_INVOKE_DEADLINE_MS` and returns before the kill.
 
 The child's standard output is capped at 32 MiB and must be exactly one JSON object. Anything else is `E422` (exit class infra); its `cause` is the last 2 KiB of the child's standard error, with the request's secret values replaced and the usual redaction applied. A child envelope that carries `meta.deprecations` or `meta.warnings` passes through byte for byte.
 
@@ -141,7 +141,7 @@ The gate decides on the effective side effect of the request (flag escalation ap
 - Consent and plan-id flags belong to the invoker. A request that sets one is refused with `E425` before anything runs.
 - `read` runs.
 - `write` without a plan form runs, with no consent flags.
-- A command with a plan form and no `confirm`: the invoker runs the plan form once (`<path> --json --<plan.flag> ...`) and reads `data.plan_id` and `data.requires_confirmation` from the child's change plan. When `requires_confirmation` is true, or the class is `remote` or `destructive`, it returns a confirmation of kind `plan` whose `confirm` is the plan id. Otherwise it runs the command once with `--<id_flag>=<plan_id>`. A plan exec that fails returns the child's error envelope unchanged; a plan without a valid `plan_id` or `requires_confirmation` is `E422`. The plan exec and the run are two children, each with the full invocation timeout.
+- A command with a plan form and no `confirm`: the invoker runs the plan form once (`<path> --json --<plan.flag> ...`) and reads `data.plan_id` and `data.requires_confirmation` from the child's change plan. When `requires_confirmation` is true, the class is `remote` or `destructive`, or the plan declares a `secrets-persist`, `certificates` or `trust-store` step (a first build that generates secrets, issues a certificate or installs the mkcert CA), it returns a confirmation of kind `plan` whose `confirm` is the plan id. Otherwise it runs the command once with `--<id_flag>=<plan_id>`. A plan exec that fails returns the child's error envelope unchanged; a plan without a valid `plan_id` or `requires_confirmation` is `E422`. The plan exec and the run are two children, each with the full invocation timeout.
 - `remote` or `destructive` without a plan form and no `confirm`: a confirmation of kind `request`, whose `confirm` is a nonce.
 - A server without a confirmation store refuses every remote and destructive command with `E421`.
 
