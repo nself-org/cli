@@ -14,6 +14,8 @@ package agent
 // operator's ~/.ssh.
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -53,9 +55,15 @@ type Sandbox struct {
 	Timeout string
 }
 
-// NewSandbox makes root/home (with an empty .ssh) and root/project.
+// NewSandbox makes root/home (with an empty .ssh) and root/ae2e<hex>, the
+// project. The random name becomes the compose project name, so container,
+// volume and network names never collide with another run on the same host.
 func NewSandbox(root string) (*Sandbox, error) {
-	s := &Sandbox{Root: root, Home: filepath.Join(root, "home"), Project: filepath.Join(root, "project")}
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return nil, err
+	}
+	s := &Sandbox{Root: root, Home: filepath.Join(root, "home"), Project: filepath.Join(root, "ae2e"+hex.EncodeToString(b[:]))}
 	for _, d := range []string{filepath.Join(s.Home, ".ssh"), s.Project} {
 		if err := os.MkdirAll(d, 0o700); err != nil {
 			return nil, err
@@ -136,6 +144,9 @@ func (s *Sandbox) WriteInventory(hosts ...SimHost) error {
 	}
 	return controlplane.Write(s.Project, inv)
 }
+
+// ComposeProject is the compose project name of the fixture project.
+func (s *Sandbox) ComposeProject() string { return strings.ToLower(filepath.Base(s.Project)) }
 
 // InventoryPath is where controlplane.Write puts the inventory.
 func (s *Sandbox) InventoryPath() string {

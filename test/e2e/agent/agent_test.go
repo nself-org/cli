@@ -198,6 +198,7 @@ func TestAgentReplay(t *testing.T) {
 	}
 	defer w.Close()
 	h := &SimHarness{T: t, Fleet: fleet, Box: box, Hosts: hosts}
+	t.Cleanup(h.Teardown)
 	ctx := context.Background()
 	if _, err := run(ctx, box.Project, "git", "init", "-q"); err != nil {
 		t.Fatal(err)

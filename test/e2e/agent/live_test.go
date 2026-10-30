@@ -60,6 +60,7 @@ func TestAgentLive(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer w.Close()
+	t.Cleanup((&SimHarness{T: t, Box: box}).Teardown)
 	ctx := context.Background()
 	if _, err := run(ctx, box.Project, "git", "init", "-q"); err != nil {
 		t.Fatal(err)

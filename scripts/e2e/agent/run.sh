@@ -64,7 +64,9 @@ mode_replay() {
   transcript=$(abspath "$transcript")
   tmp=$(scratch); bin="$tmp/nself"
   build_bin "$bin"
-  (cd "$ROOT" && INTEGRATION=1 NSELF_V15=1 AGENT_E2E_BIN="$bin" AGENT_E2E_TRANSCRIPT_OUT="$transcript" \
+  # GOTMPDIR becomes the test's TMPDIR: keep the fixture project under TMPDIR
+  # (a Colima VM shares only $HOME, so bind mounts elsewhere fail).
+  (cd "$ROOT" && GOTMPDIR="$tmp" INTEGRATION=1 NSELF_V15=1 AGENT_E2E_BIN="$bin" AGENT_E2E_TRANSCRIPT_OUT="$transcript" \
     $GOTEST -timeout 60m -v -run '^TestAgentReplay$' "$PKG")
   rc=$?
   rm -rf "$tmp"
@@ -96,7 +98,7 @@ mode_live() {
   if [ -n "$probe" ]; then mkdir -p "$probe" && prod_probe "$probe" before; fi
   tmp=$(scratch); bin="$tmp/nself"
   build_bin "$bin"
-  (cd "$ROOT" && INTEGRATION=1 NSELF_V15=1 AGENT_E2E_LIVE=1 AGENT_E2E_BIN="$bin" AGENT_E2E_TRANSCRIPT_OUT="$transcript" \
+  (cd "$ROOT" && GOTMPDIR="$tmp" INTEGRATION=1 NSELF_V15=1 AGENT_E2E_LIVE=1 AGENT_E2E_BIN="$bin" AGENT_E2E_TRANSCRIPT_OUT="$transcript" \
     $GOTEST -timeout 90m -v -run '^TestAgentLive$' "$PKG")
   rc=$?
   rm -rf "$tmp"

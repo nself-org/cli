@@ -84,7 +84,8 @@ func (h *SimHarness) Do(ctx context.Context, s Step, w *Writer) error {
 		}
 		note = NoteStopService + ": " + name
 	case "volumes-before", "volumes-after":
-		out, err := run(ctx, "", "docker", "volume", "ls", "--format", "{{.Name}}")
+		out, err := run(ctx, "", "docker", "volume", "ls", "--format", "{{.Name}}",
+			"--filter", "label=com.docker.compose.project="+h.Box.ComposeProject())
 		if err != nil {
 			return err
 		}
@@ -128,6 +129,30 @@ func (h *SimHarness) digests(action string, w *Writer) error {
 		return fmt.Errorf("prod does not run the qa images by digest:\nqa:   %s\nprod: %s", h.before["qa"], now["prod"])
 	}
 	return nil
+}
+
+// Teardown removes the fixture project's containers, volumes and networks
+// (by its unique compose project label) after the run, pass or fail. It is a
+// harness cleanup, never an agent step, and touches nothing else.
+func (h *SimHarness) Teardown() {
+	ctx := context.Background()
+	label := "label=com.docker.compose.project=" + h.Box.ComposeProject()
+	for _, kind := range [][]string{{"container", "rm", "-f", "-v"}, {"volume", "rm", "-f"}, {"network", "rm"}} {
+		lsArgs := []string{kind[0], "ls", "-q", "--filter", label}
+		if kind[0] == "container" {
+			lsArgs = []string{"ps", "-aq", "--filter", label}
+		}
+		out, err := run(ctx, "", "docker", lsArgs...)
+		if err != nil {
+			h.T.Logf("teardown: %v", err)
+			continue
+		}
+		if ids := strings.Fields(out); len(ids) > 0 {
+			if _, err := run(ctx, "", "docker", append(kind, ids...)...); err != nil {
+				h.T.Logf("teardown: %v", err)
+			}
+		}
+	}
 }
 
 // serviceContainer picks one running service container of the project
