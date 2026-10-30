@@ -208,23 +208,30 @@ func (h *SimHarness) seedTargetPlugins() ([]string, error) {
 // local project runs (as the operator's Docker pulled it) to each sim host's
 // /tmp/agent-e2e/digests, which the docker stub's `image inspect` reports.
 func (h *SimHarness) seedImageDigests(ctx context.Context) (int, error) {
-	out, err := run(ctx, "", "docker", "ps", "--format", "{{.Image}}",
+	// Resolve through each container's image id: an image pulled by digest has
+	// no local tag, so inspecting the reference by name can fail.
+	out, err := run(ctx, "", "docker", "ps", "--format", "{{.Image}} {{.ID}}",
 		"--filter", "label=com.docker.compose.project="+h.Box.ComposeProject())
 	if err != nil {
 		return 0, err
 	}
 	seen := map[string]bool{}
 	var lines []string
-	for _, ref := range strings.Fields(out) {
-		if seen[ref] {
+	for _, row := range strings.Split(strings.TrimSpace(out), "\n") {
+		f := strings.Fields(row)
+		if len(f) != 2 || seen[f[0]] {
 			continue
 		}
-		seen[ref] = true
-		rd, err := run(ctx, "", "docker", "image", "inspect", "--format", "{{index .RepoDigests 0}}", ref)
+		seen[f[0]] = true
+		id, err := run(ctx, "", "docker", "inspect", "--format", "{{.Image}}", f[1])
 		if err != nil {
 			return 0, err
 		}
-		lines = append(lines, ref+" "+strings.TrimSpace(rd))
+		rd, err := run(ctx, "", "docker", "image", "inspect", "--format", "{{index .RepoDigests 0}}", strings.TrimSpace(id))
+		if err != nil {
+			return 0, err
+		}
+		lines = append(lines, f[0]+" "+strings.TrimSpace(rd))
 	}
 	if len(lines) == 0 {
 		return 0, fmt.Errorf("the project runs no images to seed")
