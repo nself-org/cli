@@ -6,7 +6,7 @@
 #       Build nself, start two loopback sim hosts (qa tier local-servers,
 #       prod tier prod) and replay test/e2e/agent/testdata/replay.jsonl over
 #       `nself mcp` in the sandbox. Writes the transcript (default
-#       $AGENT_E2E_OUT/replay.jsonl, else $TMPDIR/agent-e2e-out) and verifies it.
+#       $AGENT_E2E_OUT/replay.jsonl, else $AGENT_E2E_TMP/out) and verifies it.
 #       Needs Docker. --ci-plugin-src (a plugins checkout's free/ci) makes the
 #       harness swap in a ci plugin built from that source after the agent's
 #       `add ci`, until a served ci release carries the machine surface.
@@ -38,7 +38,10 @@ GOTEST="go test -mod=vendor -tags e2eagent -count=1"
 usage() { sed -n '2,29p' "$0" >&2; exit 2; }
 fail() { printf 'agent-e2e: %s\n' "$1" >&2; exit 1; }
 
-scratch() { mktemp -d "${TMPDIR:-/tmp}/agent-e2e.XXXXXX"; }
+# Scratch lives under $HOME by default: a Colima or Docker Desktop VM shares
+# only the home directory, so bind mounts from a system TMPDIR fail there.
+E2E_TMP="${AGENT_E2E_TMP:-$HOME/.cache/nself-agent-e2e}"
+scratch() { mkdir -p "$E2E_TMP" && mktemp -d "$E2E_TMP/run.XXXXXX"; }
 
 need_docker() {
   command -v docker >/dev/null 2>&1 || fail "Docker is required (no docker CLI)"
@@ -53,7 +56,7 @@ build_bin() { # out
 abspath() { (cd "$(dirname "$1")" && printf '%s/%s' "$(pwd)" "$(basename "$1")"); }
 
 mode_replay() {
-  out="${AGENT_E2E_OUT:-${TMPDIR:-/tmp}/agent-e2e-out}"
+  out="${AGENT_E2E_OUT:-$E2E_TMP/out}"
   transcript="$out/replay.jsonl" cisrc=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -73,7 +76,7 @@ mode_replay() {
   build_bin "$bin"
   # GOTMPDIR becomes the test's TMPDIR: keep the fixture project under TMPDIR
   # (a Colima VM shares only $HOME, so bind mounts elsewhere fail).
-  (cd "$ROOT" && GOTMPDIR="$tmp" INTEGRATION=1 NSELF_V15=1 AGENT_E2E_BIN="$bin" AGENT_E2E_TRANSCRIPT_OUT="$transcript" \
+  (cd "$ROOT" && TMPDIR="$tmp" GOTMPDIR="$tmp" INTEGRATION=1 NSELF_V15=1 AGENT_E2E_BIN="$bin" AGENT_E2E_TRANSCRIPT_OUT="$transcript" \
     AGENT_E2E_CI_PLUGIN_SRC="$cisrc" $GOTEST -timeout 60m -v -run '^TestAgentReplay$' "$PKG")
   rc=$?
   rm -rf "$tmp"
@@ -105,7 +108,7 @@ mode_live() {
   if [ -n "$probe" ]; then mkdir -p "$probe" && prod_probe "$probe" before; fi
   tmp=$(scratch); bin="$tmp/nself"
   build_bin "$bin"
-  (cd "$ROOT" && GOTMPDIR="$tmp" INTEGRATION=1 NSELF_V15=1 AGENT_E2E_LIVE=1 AGENT_E2E_BIN="$bin" AGENT_E2E_TRANSCRIPT_OUT="$transcript" \
+  (cd "$ROOT" && TMPDIR="$tmp" GOTMPDIR="$tmp" INTEGRATION=1 NSELF_V15=1 AGENT_E2E_LIVE=1 AGENT_E2E_BIN="$bin" AGENT_E2E_TRANSCRIPT_OUT="$transcript" \
     $GOTEST -timeout 90m -v -run '^TestAgentLive$' "$PKG")
   rc=$?
   rm -rf "$tmp"

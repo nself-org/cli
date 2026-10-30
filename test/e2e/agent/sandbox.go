@@ -130,10 +130,18 @@ func (s *Sandbox) WriteInventory(hosts ...SimHost) error {
 	inv := &controlplane.Inventory{SchemaVersion: 2, Environments: map[string]controlplane.Environment{
 		"local": {Name: "local", Kind: "local", Tier: controlplane.TierLocal},
 	}}
+	// The prod sim env declares no verified release: D7 proves the promote and
+	// its digest compare; release verification (DEPL D20) has its own proof and
+	// needs a signed release-class pipeline the fixture project does not have.
+	noRelease := false
 	for _, h := range hosts {
-		inv.Environments[h.Env] = controlplane.Environment{Name: h.Env, Kind: "remote", Tier: h.Tier,
+		env := controlplane.Environment{Name: h.Env, Kind: "remote", Tier: h.Tier,
 			Servers: []controlplane.Server{{Name: h.Server, Role: controlplane.RoleApp, Host: h.Host(),
 				RemotePath: h.RemotePath, Primary: true, SSHKeyRef: SimKeyEnv}}}
+		if h.Tier == controlplane.TierProd {
+			env.RequireVerifiedRelease = &noRelease
+		}
+		inv.Environments[h.Env] = env
 	}
 	return controlplane.Write(s.Project, inv)
 }
