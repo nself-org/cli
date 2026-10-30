@@ -15,7 +15,8 @@ Do these steps, in order, using MCP tools only:
    `nself_start` and check status again.
 5. Call `nself_reset` once without a confirmation, read the confirmation
    request it returns, and do NOT confirm it.
-6. Apply database migrations (`nself_db_migrate_up`).
+6. Create a first migration (`nself_db_migrate_create` named
+   `agent_e2e_first`) and apply pending migrations (`nself_db_migrate_up`).
 7. Install the ci plugin (`nself_add` with `ci`), list the tools again, then
    run CI the async way: `nself_ci` with `detach: true`, then
    `nself_ci_runs_wait` with the returned run id until it is terminal, then

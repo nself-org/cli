@@ -17,6 +17,7 @@
 {"id":"gate-volumes-before","role":"harness","action":"volumes-before"}
 {"id":"reset-unconfirmed","role":"agent","tool":"nself_reset","expect":"confirmation"}
 {"id":"gate-volumes-after","role":"harness","action":"volumes-after"}
+{"id":"migrate-create","role":"agent","tool":"nself_db_migrate_create","arguments":{"args":["agent_e2e_first"]}}
 {"id":"migrate","role":"agent","tool":"nself_db_migrate_up"}
 {"id":"add-ci","role":"agent","tool":"nself_add","arguments":{"args":["ci"]},"confirm":true}
 {"id":"discover-ci","role":"agent","kind":"tools/list","require":["nself_ci","nself_ci_runs_wait","nself_ci_evidence"]}
