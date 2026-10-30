@@ -60,7 +60,7 @@ func newDiskSink(root string) *diskSink { return &diskSink{root: root} }
 func (d *diskSink) abs(p string) string { return resolveSinkPath(d.root, d.fronting, p) }
 
 func (d *diskSink) WriteFile(p string, data []byte, perm fs.FileMode) error {
-	return os.WriteFile(d.abs(p), data, perm)
+	return writeFilePlannedMode(d.abs(p), data, perm)
 }
 func (d *diskSink) WriteAtomic(p string, data []byte, perm fs.FileMode) error {
 	return atomicWrite(d.abs(p), data, perm)
