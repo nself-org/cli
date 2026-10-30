@@ -20,7 +20,7 @@ func TestServiceDockerfilesUseImageLock(t *testing.T) {
 			} {
 				t.Run(lang, func(t *testing.T) {
 					dir := t.TempDir()
-					if _, err := writeScaffold(dir, "example", lang, 3000); err != nil {
+					if _, err := writeScaffold(dir, "example", lang, 3000, compose.ImageRef); err != nil {
 						t.Fatal(err)
 					}
 					raw, err := os.ReadFile(filepath.Join(dir, "Dockerfile"))
@@ -45,5 +45,19 @@ func TestServiceDockerfilesUseImageLock(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+func TestServiceRequiresImageResolver(t *testing.T) {
+	dir := t.TempDir()
+	_, err := Run(Options{Name: "example", Lang: "go", ProjectDir: dir})
+	if err == nil || !strings.Contains(err.Error(), "image resolver is required") {
+		t.Fatalf("Run without resolver: got %v, want required resolver error", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "services")); !os.IsNotExist(err) {
+		t.Fatalf("Run without resolver created service files: %v", err)
+	}
+	if _, err := writeScaffold(dir, "example", "go", 3000, nil); err == nil {
+		t.Fatal("writeScaffold without resolver must return an error")
 	}
 }

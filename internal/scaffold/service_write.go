@@ -12,12 +12,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/nself-org/cli/internal/compose"
 )
 
 // writeScaffold creates the starter files for the custom service.
-func writeScaffold(dir, name, lang string, port int) ([]string, error) {
+func writeScaffold(dir, name, lang string, port int, imageRef func(string, string) string) ([]string, error) {
+	if imageRef == nil {
+		return nil, fmt.Errorf("image resolver is required to scaffold service files")
+	}
 	type fileSpec struct {
 		rel     string
 		content string
@@ -75,7 +76,7 @@ FROM %s
 COPY --from=build /out/%s /%s
 EXPOSE %d
 ENTRYPOINT ["/%s"]
-`, compose.ImageRef("golang", ""), name, compose.ImageRef("distroless-static", ""), name, name, port, name), 0644},
+`, imageRef("golang", ""), name, imageRef("distroless-static", ""), name, name, port, name), 0644},
 		)
 	case "node":
 		specs = append(specs,
@@ -101,7 +102,7 @@ RUN npm install
 COPY . .
 EXPOSE %d
 CMD ["node", "-e", "require('./src/index.ts')"]
-`, compose.ImageRef("node", ""), port), 0644},
+`, imageRef("node", ""), port), 0644},
 		)
 	case "python":
 		specs = append(specs,
@@ -127,7 +128,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 EXPOSE %d
 CMD ["python", "main.py"]
-`, compose.ImageRef("python", ""), port), 0644},
+`, imageRef("python", ""), port), 0644},
 		)
 	case "static":
 		specs = append(specs,
@@ -152,7 +153,7 @@ COPY index.html /usr/share/nginx/html/index.html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE %d
 CMD ["nginx", "-g", "daemon off;"]
-`, compose.ImageRef("nginx", ""), port), 0644},
+`, imageRef("nginx", ""), port), 0644},
 		)
 	case "rust":
 		specs = append(specs,
@@ -189,7 +190,7 @@ RUN apk add --no-cache ca-certificates
 COPY --from=builder /app/target/release/%s /usr/local/bin/service
 EXPOSE %d
 CMD ["service"]
-`, compose.ImageRef("rust", ""), compose.ImageRef("alpine", ""), name, port), 0644},
+`, imageRef("rust", ""), imageRef("alpine", ""), name, port), 0644},
 		)
 	default: // "other"
 		specs = append(specs,
@@ -204,7 +205,7 @@ COPY main.sh /main.sh
 RUN chmod +x /main.sh
 EXPOSE %d
 CMD ["/main.sh"]
-`, compose.ImageRef("alpine", ""), port), 0644},
+`, imageRef("alpine", ""), port), 0644},
 		)
 	}
 

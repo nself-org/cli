@@ -32,6 +32,9 @@ func SupportedLangs() []string {
 
 // Options configures a custom service scaffold run.
 type Options struct {
+	// ImageRef resolves Dockerfile base images from the caller's image lock.
+	// Required for runs that write files.
+	ImageRef func(name, tag string) string
 	// Name is the service name (e.g. "my-api"). Validated against customServiceNameRe.
 	Name string
 	// Lang is one of: go, node, python, rust, other. Default "go".
@@ -109,6 +112,9 @@ func Run(opts Options) (*Result, error) {
 			Files:      scaffoldFileList(opts.Name, opts.Lang),
 		}, nil
 	}
+	if opts.ImageRef == nil {
+		return nil, fmt.Errorf("image resolver is required to scaffold service files")
+	}
 
 	// Create service directory.
 	if !opts.Force {
@@ -121,7 +127,7 @@ func Run(opts Options) (*Result, error) {
 	}
 
 	// Write scaffold files.
-	files, err := writeScaffold(serviceDir, opts.Name, opts.Lang, port)
+	files, err := writeScaffold(serviceDir, opts.Name, opts.Lang, port, opts.ImageRef)
 	if err != nil {
 		return nil, fmt.Errorf("writing scaffold files: %w", err)
 	}

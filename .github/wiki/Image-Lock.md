@@ -184,3 +184,8 @@ Alpine, and distroless tool entries use the same authored image list and bump
 policy as other images. Scaffold Dockerfiles do not consult a project's compose
 pin file. The generated lock keeps each image on one line to make pin reviews
 compact, with platform keys sorted deterministically.
+
+The command layer supplies `compose.ImageRef` to the custom service scaffold
+through `scaffold.Options.ImageRef`, including `nself init --cs-template`.
+Service scaffolding requires this resolver when writing files, so it can use
+the image lock without importing the compose package.
