@@ -131,6 +131,13 @@ func (p *artifactPublisher) target(path string) (*os.Root, string, error) {
 	return root, filepath.FromSlash(rel), nil
 }
 
+func (p *artifactPublisher) releaseCleanupRoot(path string) {
+	if abs, err := filepath.Abs(p.sink.abs(path)); err == nil && p.roots[abs] != nil {
+		_ = p.roots[abs].Close()
+		delete(p.roots, abs)
+	}
+}
+
 func (p *artifactPublisher) publish() error {
 	for _, k := range sortedArtifactKeys(p.sink.dirs) {
 		if err := p.mkdir(p.sink.abs(k), p.sink.dirs[k]); err != nil {
@@ -173,6 +180,7 @@ func (p *artifactPublisher) publish() error {
 		if err != nil {
 			return err
 		}
+		p.releaseCleanupRoot(k) // Windows cannot remove a directory with an open handle
 		if err := root.Remove(rel); err != nil {
 			return err
 		}

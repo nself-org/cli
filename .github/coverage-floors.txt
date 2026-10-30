@@ -61,10 +61,12 @@ internal/database/vectorsearch 94  # measured 96.9 2026-10-10
 internal/deploy 53  # measured 55.2 2026-10-05
 internal/deploy/archguard 76  # measured 78.6 2026-10-09
 internal/deploy/bluegreen 44  # measured 46.3 2026-10-05
+internal/deploy/pathmap 0  # measured 0.0 2026-10-29 (no test files yet)
 internal/deploy/imagetags 98  # measured 100.0 2026-10-29
 internal/deploy/pintest 57  # measured 59.5 2026-10-13 (P7-HYG-49)
 internal/deploy/progress 86  # measured 88.8 2026-10-12
 internal/deprecation 75  # measured 77.3 2026-10-05
+internal/dirwritable 91  # measured 93.8 2026-10-29
 internal/docker 52  # measured 54.7 2026-10-05
 internal/docker/dockertest 85  # measured 89.5 (darwin, local) 2026-10-11; new package (D-0286)
 internal/doctor 47  # measured 49.6 2026-10-05
@@ -72,6 +74,7 @@ internal/doctor/report 85  # measured 87.8 2026-10-11
 internal/domain 60  # measured 62.1 2026-10-05
 internal/embedded 78  # measured 80.8 2026-10-05
 internal/env 19  # measured 21.7 2026-10-05
+internal/envrestore 61  # measured 63.4 2026-10-29
 internal/errs 93  # measured 95.8 2026-10-05
 internal/eval 77  # measured 79.1 2026-10-05
 internal/exporter 58  # measured 60.2 2026-10-12 (P7-ADOPT-17; snapshot, pg_dump and auth reads need a live Postgres, covered by scripts/e2e/export.sh)
@@ -81,6 +84,7 @@ internal/generate 65  # measured 67.5 2026-10-05
 internal/hasura 87  # measured 89.1 2026-10-05
 internal/health 26  # measured 28.1 2026-10-05
 internal/hostcase 95  # measured 100.0 2026-10-17 (D-0881)
+internal/hostpin 0  # measured 0.0 2026-10-29 (no test files yet)
 internal/httpapi 93  # measured 95.1 2026-10-11 (P7-SURF-02)
 internal/httptimeout 98  # measured 100.0 2026-10-05
 internal/importer 47  # measured 49.7 2026-10-12
@@ -125,6 +129,7 @@ internal/oplock 74  # measured 79.3 2026-10-05
 internal/oplock/oplockcmd 88  # measured 93.5 2026-10-05
 internal/output 96  # measured 98.2 2026-10-05
 internal/plugin 50  # measured 53.0 2026-10-05
+internal/plugin/autoinstall 0  # measured 0.0 2026-10-30 (no test files yet)
 internal/plugin/catalog 81  # measured 83.0 2026-10-13
 internal/plugin/count 98  # measured 100.0 2026-10-05
 internal/plugin/lifecycle 74  # measured 76.4 2026-10-05
@@ -137,6 +142,7 @@ internal/plugin/verify 85  # measured 87.2 2026-10-05
 internal/plugin/verify/signature 95  # measured 99.1 2026-10-13 (P7-PLUG-23)
 internal/plugin/verify/signature/signaturetest 0  # measured 0.0 2026-10-13; test-only key-table swap helper, exercised from other packages' tests (P7-PLUG-23)
 internal/pluginname 85  # measured 90.0 2026-10-26 (D-0602)
+internal/pluginperm 48  # measured 50.0 2026-10-29
 internal/portable 85  # measured 87.5 2026-10-05
 internal/ports 9  # measured 11.5 2026-10-05
 internal/postgres 49  # measured 51.4 2026-10-05

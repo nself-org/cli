@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -17,6 +18,12 @@ import (
 // read that handle, so replacing the path after the open cannot change what
 // gets verified or extracted.
 func TestArchiveSnapshotSurvivesPathReplacement(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Go opens files without FILE_SHARE_DELETE, so the path of an open
+		// archive cannot be unlinked there and the replacement below would
+		// rewrite the very file the handle reads. The contract is POSIX-only.
+		t.Skip("an open file cannot be unlinked on Windows")
+	}
 	var archive bytes.Buffer
 	gz := gzip.NewWriter(&archive)
 	tw := tar.NewWriter(gz)

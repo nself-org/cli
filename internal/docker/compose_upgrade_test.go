@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -11,6 +12,9 @@ import (
 // Model Compose's image reuse contract: a tagged image survives an up unless
 // --build is supplied. The installed plugin context has already been upgraded.
 func TestComposeUpRebuildsInstalledPlugin(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake docker is a POSIX shell script")
+	}
 	for _, services := range [][]string{nil, {"plugin"}} {
 		name := "all services"
 		if len(services) > 0 {

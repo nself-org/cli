@@ -544,6 +544,10 @@ func TestApplyRecordWriteFailureIsPublished(t *testing.T) {
 // generated file was written, with a completed result. The apply fails but the
 // files stay, so the error must match ErrPublished; a failure with no result
 // (nothing committed) or with a caller Rollback that restores the files must not.
+// publishedCompose is the compose file the faked build publishes. It must be
+// valid compose: under NSELF_V15=1 the next apply reads it for the image pins.
+const publishedCompose = "services: {}\n"
+
 func TestApplyEntitlementRefreshFailureIsPublished(t *testing.T) {
 	f := loadFixture(t, "dev-minimal")
 	_ = os.RemoveAll(filepath.Join(f.project, ".nself", "state"))
@@ -551,7 +555,7 @@ func TestApplyEntitlementRefreshFailureIsPublished(t *testing.T) {
 	t.Cleanup(func() { buildBuild = oldBuild })
 	refresh := &nbuild.EntitlementRefreshError{Err: errs.New("E125", "plugin entitlement unavailable")}
 	buildBuild = func(projectDir string, opts nbuild.BuildOptions) (*nbuild.BuildResult, error) {
-		if err := os.WriteFile(filepath.Join(projectDir, "docker-compose.yml"), []byte("published"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(projectDir, "docker-compose.yml"), []byte(publishedCompose), 0o644); err != nil {
 			return nil, err
 		}
 		return &nbuild.BuildResult{}, refresh
@@ -565,7 +569,7 @@ func TestApplyEntitlementRefreshFailureIsPublished(t *testing.T) {
 		t.Fatalf("err = %v, want the E125 cause kept on the chain", err)
 	}
 
-	if data, readErr := os.ReadFile(filepath.Join(f.project, "docker-compose.yml")); readErr != nil || string(data) != "published" {
+	if data, readErr := os.ReadFile(filepath.Join(f.project, "docker-compose.yml")); readErr != nil || string(data) != publishedCompose {
 		t.Fatalf("published artifacts must remain after E125: %q, %v", data, readErr)
 	}
 	if detail := errs.Describe(err); detail == nil || detail.Code != "E125" || errs.ExitCodeFor(err) != 3 {

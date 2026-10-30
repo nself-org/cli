@@ -71,8 +71,13 @@ func TestConfigExplainMonorepoExecution(t *testing.T) {
 			if tc.redirect {
 				wantDir = backend
 			}
-			if cwd, err := os.Getwd(); err != nil || cwd != wantDir {
-				t.Errorf("cwd = %q (%v), want %q", cwd, err, wantDir)
+			// Paths differ in form (macOS /var vs /private/var, Windows 8.3 short
+			// names), so compare the directories themselves.
+			cwdInfo, cwdErr := os.Stat(".")
+			wantInfo, wantErr := os.Stat(wantDir)
+			if cwdErr != nil || wantErr != nil || !os.SameFile(cwdInfo, wantInfo) {
+				cwd, _ := os.Getwd()
+				t.Errorf("cwd = %q (%v), want the directory %q (%v)", cwd, cwdErr, wantDir, wantErr)
 			}
 		})
 	}
