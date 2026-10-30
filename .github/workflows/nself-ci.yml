@@ -28,9 +28,9 @@ permissions:
   contents: read
 
 env:
-  CI_VERSION: "1.2.11"
-  CI_RELEASE_URL: "https://github.com/nself-org/plugins/releases/download/v1.2.11/ci-1.2.11-linux-amd64.tar.gz"
-  CI_RELEASE_SHA256: "0ca65f839b007764f70ba9e8e719aee88f336efb74b932297b2b9097cbdd0016"
+  CI_VERSION: "1.2.13"
+  CI_RELEASE_URL: "https://github.com/nself-org/plugins/releases/download/v1.2.13/ci-1.2.13-linux-amd64.tar.gz"
+  CI_RELEASE_SHA256: "2b2d24a17937cecbe3c1d4ee2e59f1c488fe2a7ea6e3e60bd5c814c56454272e"
   GITLEAKS_SHA256: "5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba" # gitleaks 8.21.2 linux_x64
   NSELF_V15: "1"          # the ci binary does not follow the cli flip; kept until v1.6
 
@@ -97,11 +97,18 @@ jobs:
       - name: Run the gate
         env:
           NSELF_CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          # A pull request checkout is a merge ref no branch contains, so the engine's source trust
+          # classes it as a collaborator and refuses to run (E625). A head in this very repository is the
+          # owner's own code on a disposable hosted runner: say so with the audited --trust owner. A fork
+          # head leaves this empty, stays untrusted and is refused, as intended.
+          NSELF_CI_TRUST: ${{ github.event.pull_request.head.repo.full_name == github.repository && 'owner' || '' }}
         run: |
           set -o pipefail
           mkdir -p "$RUNNER_TEMP/evidence"
           status=0
-          "$NSELF_CI_BIN" --no-status --json > "$RUNNER_TEMP/evidence/nself-ci.json" || status=$?
+          args=(--no-status --json)
+          if [ -n "$NSELF_CI_TRUST" ]; then args+=(--trust "$NSELF_CI_TRUST"); fi
+          "$NSELF_CI_BIN" "${args[@]}" > "$RUNNER_TEMP/evidence/nself-ci.json" || status=$?
           {
             echo "### nself-ci $CI_VERSION"
             echo "exit code: $status"
