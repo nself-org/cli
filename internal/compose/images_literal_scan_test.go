@@ -7,9 +7,8 @@ package compose
 // images.lock.json); this test fails on any single Go string literal under
 // internal/ and cmd/ that spells an image reference, so the three-source drift
 // behind D-0122 cannot return.
-// Not seen (by design of a literal scan): literals built from parts such as
-// "postgres:" + version (D-0213), Dockerfile templates in raw strings, tools/,
-// untagged repository strings.
+// Includes concatenated image prefixes and Dockerfile FROM instructions in
+// raw strings and template files. Untagged repository strings and tools/ are excluded.
 // Inputs: non-test Go files under ../../internal and ../../cmd;
 // testdata/image-literal-allowlist.txt, lines `<path> <image> # <reason>`.
 // Outputs: a failure per literal that is neither in the lock accessor path nor
@@ -86,7 +85,26 @@ func scanImageLiterals(t *testing.T, roots ...string) []string {
 			if err != nil {
 				return err
 			}
-			if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			if d.IsDir() || strings.Contains(filepath.ToSlash(path), "/testdata/") || strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
+			base, _ := filepath.Abs("../..")
+			abs, _ := filepath.Abs(path)
+			rel, _ := filepath.Rel(base, abs)
+			add := func(s string) {
+				for _, ref := range templateImageLiterals(s, repos) {
+					hits = append(hits, filepath.ToSlash(rel)+" "+ref)
+				}
+			}
+			if strings.HasSuffix(path, ".tmpl") || strings.HasPrefix(filepath.Base(path), "Dockerfile") {
+				data, err := os.ReadFile(path)
+				if err != nil {
+					return err
+				}
+				add(string(data))
+				return nil
+			}
+			if !strings.HasSuffix(path, ".go") {
 				return nil
 			}
 			f, perr := parser.ParseFile(token.NewFileSet(), path, nil, 0)
@@ -94,10 +112,12 @@ func scanImageLiterals(t *testing.T, roots ...string) []string {
 				t.Fatalf("parse %s: %v", path, perr)
 			}
 			ast.Inspect(f, func(n ast.Node) bool {
+				if ref := concatenatedImagePrefix(n, repos); ref != "" {
+					hits = append(hits, filepath.ToSlash(rel)+" "+ref)
+				}
 				if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.STRING {
-					if s, uerr := strconv.Unquote(lit.Value); uerr == nil && isImageLiteral(s, repos) {
-						rel, _ := filepath.Rel("../..", path)
-						hits = append(hits, filepath.ToSlash(rel)+" "+s)
+					if s, uerr := strconv.Unquote(lit.Value); uerr == nil {
+						add(s)
 					}
 				}
 				return true
