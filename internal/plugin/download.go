@@ -75,9 +75,10 @@ func downloadPluginPackage(ctx context.Context, name, version, repository, binar
 // someone on macOS. Those live as per-platform release assets, so they are
 // tried first, with the generic package as the fallback for a plugin whose
 // release predates per-platform assets.
-func downloadPluginPackageForTier(ctx context.Context, name, version, repository, binaryName string, paid bool) (string, string, error) {
-	// Platform-specific package first, for a plugin that provides a command.
-	if binaryName != "" {
+func downloadPluginPackageForTier(ctx context.Context, name, version, repository, binaryName string, paid bool, tierPair ...bool) (string, string, error) {
+	// Tier pairs must use the API to select the resolved archive.
+	paired := len(tierPair) > 0 && tierPair[0]
+	if binaryName != "" && !paired {
 		if platform, err := PlatformArch(); err == nil {
 			repo := repository
 			if repo == "" {
@@ -92,6 +93,9 @@ func downloadPluginPackageForTier(ctx context.Context, name, version, repository
 	}
 
 	primaryURL := buildDownloadURLForTier(name, version, repository, paid)
+	if paired {
+		primaryURL = tierPairDownloadURL(name, paid)
+	}
 
 	var extraHeaders map[string]string
 	if paid {
@@ -109,7 +113,7 @@ func downloadPluginPackageForTier(ctx context.Context, name, version, repository
 	}
 
 	// If not a paid plugin, attempt GitHub Releases fallback on primary failure.
-	if !paid {
+	if !paid && !paired {
 		fallbackURL := buildFallbackDownloadURL(name, version, repository)
 		if fallbackURL != primaryURL {
 			tmp2, fallbackErr := downloadFromURL(ctx, fallbackURL, nil)

@@ -22,13 +22,29 @@ func (s *Server) invokeTracked(ctx context.Context, path string, req invoke.Requ
 		return invoke.Result{}, context.Canceled
 	}
 	s.invocations.Add(1)
+	s.activeInvocations++
 	s.invokeMu.Unlock()
-	defer s.invocations.Done()
+	defer func() {
+		s.invokeMu.Lock()
+		s.activeInvocations--
+		s.invocations.Done()
+		s.invokeMu.Unlock()
+	}()
 	return s.o.Invoker(ctx, s.o.Registry, path, req, o)
 }
 
-// drainInvocations waits after HTTP shutdown for document SIGKILL (5 s), the
-// audit flock bound (5 s), and scheduling slack (1 s). A cap expiry logs once.
+// invocationDrainBudget closes admission and budgets for all serialized writers.
+// Each audit append can try the five-second flock eight times if the file is
+// rotated underneath it. Include polling slack, child cleanup (5 s), and
+// scheduling slack (1 s). Reads are counted conservatively as possible writers.
+func (s *Server) invocationDrainBudget() time.Duration {
+	s.invokeMu.Lock()
+	defer s.invokeMu.Unlock()
+	s.draining = true
+	return 6*time.Second + time.Duration(s.activeInvocations)*41*time.Second
+}
+
+// drainInvocations waits for cleanup and audit completion. A cap expiry logs once.
 func (s *Server) drainInvocations(limit time.Duration) {
 	s.invokeMu.Lock()
 	s.draining = true

@@ -165,7 +165,7 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 	// Tier comes from the registry manifest, not the paidPlugins name map,
 	// which has drifted — see isPaidPluginManifest in license.go.
 	paid := isPaidPluginManifest(manifest)
-	archivePath, artifactKind, err := downloadPluginPackageForTier(ctx, name, manifest.Version, manifest.Repository, firstBinary, paid)
+	archivePath, artifactKind, err := downloadPluginPackageForTier(ctx, name, manifest.Version, manifest.Repository, firstBinary, paid, manifest.TierPair)
 	if err != nil {
 		return fmt.Errorf("downloading plugin %q: %w", name, err)
 	}

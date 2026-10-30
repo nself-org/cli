@@ -99,17 +99,18 @@ type Options struct {
 // Server owns one authenticated mux, startup registry snapshot and invocation
 // guard. Configure mounts before serving; concurrent mount changes are unsupported.
 type Server struct {
-	o           Options
-	guard       *invoke.Guard
-	routes      map[string]string
-	hosts       map[string]bool
-	openapi     []byte
-	sem         chan struct{}
-	mux         *http.ServeMux
-	logMu       sync.Mutex
-	invokeMu    sync.Mutex
-	invocations sync.WaitGroup
-	draining    bool
+	o                 Options
+	guard             *invoke.Guard
+	routes            map[string]string
+	hosts             map[string]bool
+	openapi           []byte
+	sem               chan struct{}
+	mux               *http.ServeMux
+	logMu             sync.Mutex
+	invokeMu          sync.Mutex
+	invocations       sync.WaitGroup
+	activeInvocations int
+	draining          bool
 }
 
 // New validates options and builds routes, OpenAPI and one shared invocation
@@ -186,9 +187,9 @@ func (s *Server) Mount(prefix string, h http.Handler) (err error) {
 
 // ListenAndServe listens on addr without TLS or a write timeout. Cancellation
 // stops accepting requests and permits five seconds to drain before closing
-// remaining connections and canceling their request contexts. It then waits up
-// to eleven seconds for invocation child cleanup and audit writes. Context values are
-// preserved; its deadline and cancellation do not interrupt the graceful drain.
+// remaining connections and canceling their request contexts. It then waits
+// for invocation child cleanup and serialized audit writes, budgeting for every
+// outstanding invocation. Context values are preserved; its deadline and cancellation do not interrupt the graceful drain.
 // A completed shutdown returns nil; listener failures return their error.
 func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	ln, err := net.Listen("tcp", addr)
@@ -220,7 +221,7 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	close(done)
 	<-stopped
 	_ = h.Close()
-	s.drainInvocations(11 * time.Second)
+	s.drainInvocations(s.invocationDrainBudget())
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
