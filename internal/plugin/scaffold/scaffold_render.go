@@ -11,12 +11,14 @@ import (
 	"fmt"
 	"strings"
 	"text/template"
+
+	"github.com/nself-org/cli/internal/compose"
 )
 
 // render executes a Go template with the given params, returning the result.
 // Returns an error if template parsing or execution fails.
 func render(tmpl string, p Params) (string, error) {
-	t, err := template.New("").Parse(tmpl)
+	t, err := template.New("").Funcs(template.FuncMap{"image": scaffoldImage}).Parse(tmpl)
 	if err != nil {
 		return "", fmt.Errorf("scaffold: template parse error: %w", err)
 	}
@@ -30,7 +32,7 @@ func render(tmpl string, p Params) (string, error) {
 // renderAnyErr is like renderAny but returns an error instead of panicking.
 // Used in paths where the caller can propagate the error (e.g. buildFiles).
 func renderAnyErr(tmpl string, data any) (string, error) {
-	t, err := template.New("").Parse(tmpl)
+	t, err := template.New("").Funcs(template.FuncMap{"image": scaffoldImage}).Parse(tmpl)
 	if err != nil {
 		return "", fmt.Errorf("scaffold: template parse error: %w", err)
 	}
@@ -63,4 +65,20 @@ func licenseForTier(tier string) string {
 		return "Source-Available"
 	}
 	return "MIT"
+}
+
+// scaffoldImage resolves the supported Dockerfile bases using the active lock mode.
+func scaffoldImage(name string) (string, error) {
+	images := map[string]string{
+		"golang":            compose.ImageRef("golang", ""),
+		"distroless-static": compose.ImageRef("distroless-static", ""),
+		"node":              compose.ImageRef("node", ""),
+		"rust":              compose.ImageRef("rust", ""),
+		"alpine":            compose.ImageRef("alpine", ""),
+		"nginx":             compose.ImageRef("nginx", ""),
+	}
+	if ref := images[name]; ref != "" {
+		return ref, nil
+	}
+	return "", fmt.Errorf("unknown image lock entry %q", name)
 }
