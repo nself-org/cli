@@ -549,18 +549,13 @@ func TestAutorefreshDisabledVariants(t *testing.T) {
 	}
 }
 
-// PublishFromCache is a no-op in v1.4 mode and when dev keys are configured; both early
-// returns must succeed without touching the filesystem or the licence cache.
+// PublishFromCache is a no-op in v1.4 mode; the early return must succeed without touching
+// the filesystem or the licence cache. The dev-key early return exists only in nself_devkeys
+// builds and is covered by devkeys_publish_test.go.
 func TestPublishFromCacheEarlyReturns(t *testing.T) {
 	compattest.Set(t, false)
 	if err := PublishFromCache(t.TempDir()); err != nil {
 		t.Fatalf("PublishFromCache in v1.4 = %v, want nil", err)
-	}
-	compattest.Set(t, true)
-	t.Setenv("LICENSE_PUBLIC_KEY_OVERRIDE", "dev-key")
-	t.Cleanup(func() { os.Unsetenv("LICENSE_PUBLIC_KEY_OVERRIDE") })
-	if err := PublishFromCache(t.TempDir()); err != nil {
-		t.Fatalf("PublishFromCache with dev key = %v, want nil", err)
 	}
 }
 
