@@ -20,6 +20,19 @@ func TestRedactText(t *testing.T) {
 		{"jwt shaped", "bearer " + fakeJWT + " refused", []string{fakeJWT}, nil},
 		{"prose left alone", "invalid token: expired", nil, []string{"invalid token: expired"}},
 		{"clean step text", "Restart web (sequenced rolling)", nil, []string{"Restart web (sequenced rolling)"}},
+		// D-0742 probes: passwords containing @, bare user:pass@host without a
+		// scheme, and Azure SAS sig= query parameters must all be masked. The
+		// shared output.RedactText (via credmask + observability) handles these;
+		// the old local userinfoRe leaked them. The gone strings verify the
+		// secret value does not survive; the shared redactor may mask more
+		// aggressively than the old local rule (e.g. treating the host after a
+		// DSN password that itself contains '@' as credentials too), so we do
+		// not assert specific keep strings for these adversarial shapes.
+		{"password with at-sign", "dial postgres://app:S1@ss@db.example.test/x failed", []string{"S1@ss"}, nil},
+		{"bare user:pass at host", "connecting app:S2/x@db.internal:5432 refused", []string{"S2/x"}, nil},
+		// Azure SAS sig= masking is covered by internal/credmask's own tests;
+		// the old local userinfoRe here did not handle query parameters at all,
+		// so there is no regression to guard against in this package.
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
