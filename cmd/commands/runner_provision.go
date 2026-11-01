@@ -5,8 +5,8 @@ package commands
 //   with passwordless sudo, and register N runner instances as systemd
 //   services. See internal/runner/provision.go for the actual steps.
 // Inputs:  --host (repeatable; local when omitted), --instances,
-//   --install-root, --github-url, --labels, --token (or GITHUB_RUNNER_TOKEN
-//   env), --ssh-key.
+//   --install-root, --github-url, --labels, GITHUB_RUNNER_TOKEN env
+//   (--token is deprecated and warns on use), --ssh-key.
 // Outputs: each provisioning step's name + captured output printed to
 //   stdout; non-zero exit on the first failing step.
 // Constraints: the registration token is read from an env var by default
@@ -48,7 +48,7 @@ func init() {
 	runnerProvisionCmd.Flags().String("install-root", "", "Base install directory (default: /opt/actions-runner)")
 	runnerProvisionCmd.Flags().String("github-url", "", "Repo or org URL runners register against, e.g. https://github.com/nself-org/cli")
 	runnerProvisionCmd.Flags().StringSlice("labels", nil, "Extra labels appended after self-hosted,Linux,X64")
-	runnerProvisionCmd.Flags().String("token", "", "GitHub Actions runner registration token (overrides GITHUB_RUNNER_TOKEN env). Never logged.")
+	runnerProvisionCmd.Flags().String("token", "", "DEPRECATED: use GITHUB_RUNNER_TOKEN env instead. Token passed via argv is visible in process listings and shell history.")
 }
 
 func runRunnerProvision(cmd *cobra.Command, args []string) error {
@@ -60,6 +60,9 @@ func runRunnerProvision(cmd *cobra.Command, args []string) error {
 	labels, _ := cmd.Flags().GetStringSlice("labels")
 	token, _ := cmd.Flags().GetString("token")
 
+	if cmd.Flags().Changed("token") {
+		fmt.Fprintln(os.Stderr, "warning: --token is deprecated and exposes the registration token in process listings and shell history; set GITHUB_RUNNER_TOKEN instead")
+	}
 	if token == "" {
 		token = os.Getenv("GITHUB_RUNNER_TOKEN")
 	}
