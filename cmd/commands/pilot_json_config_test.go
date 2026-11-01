@@ -189,9 +189,17 @@ func TestPilotJSONConfig(t *testing.T) {
 			{"config-list.txt", []string{"config", "list"}},
 			{"config-list.txt", []string{"config", "list", "--json"}},
 		} {
-			want, err := os.ReadFile(filepath.Join("testdata", "json", "human", tc.golden))
-			if err != nil {
-				t.Fatal(err)
+			parts := []string{tc.golden}
+			if tc.golden == "config-list.txt" {
+				parts = []string{"config-list.part1.txt", "config-list.part2.txt"}
+			}
+			var want []byte
+			for _, part := range parts {
+				data, err := os.ReadFile(filepath.Join("testdata", "json", "human", part))
+				if err != nil {
+					t.Fatal(err)
+				}
+				want = append(want, data...)
 			}
 			r := runPilot(t, p, false, nil, tc.args...)
 			if r.code != 0 || r.stdout+r.stderr != string(want) {

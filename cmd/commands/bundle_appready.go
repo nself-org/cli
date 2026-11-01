@@ -7,7 +7,7 @@ package commands
 // Outputs: *appready.Hooks whose functions run against the current project.
 // Constraints: every hook that needs a project returns appready.ErrNoProject
 // (reconcile) or an error outside one; start runs in process through startCmd
-// with its default flags; nothing calls compose or build directly.
+// with its default flags; the build package only supplies Compose env-file reads.
 
 import (
 	"context"
@@ -16,6 +16,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/bundle/appready"
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
@@ -158,6 +159,7 @@ func newBundleAppReadyHooks(cmd *cobra.Command, slug string) *appready.Hooks {
 	projectConfig := cachedProjectConfig()
 	// compat.V15(P7-PLUG-19): bundle install reconciles only -> also starts the stack and waits for app-ready
 	if compat.V15() {
+		h.Preflight = appready.RequiredEnvPreflight(bundleComposeEnv)
 		h.Start = func(ctx context.Context) error { return bundleStartStack(ctx) }
 		h.ExportMetadata = func(ctx context.Context) ([]byte, error) {
 			cfg, _, err := projectConfig()
@@ -206,4 +208,12 @@ func newBundleAppReadyHooks(cmd *cobra.Command, slug string) *appready.Hooks {
 		}
 	}
 	return h
+}
+
+func bundleComposeEnv() (map[string]string, error) {
+	root, err := bundleProjectDir()
+	if err != nil {
+		return nil, err
+	}
+	return build.ReadComposeEnv(root)
 }

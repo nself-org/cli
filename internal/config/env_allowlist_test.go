@@ -16,6 +16,7 @@ func TestAppOwnedVarsAreKnown(t *testing.T) {
 	for _, v := range []string{
 		"NODE_ENV", "JWT_SECRET", "SSL_AUTO_TRUST", "COOKIE_SECRET",
 		"ENABLE_DEBUG", "LOG_LEVEL", "NSELF_PROJECT_NAME", "ENV_ALLOWLIST",
+		"TOKENS_ENCRYPTION_KEY",
 	} {
 		if !knownSet[v] {
 			t.Errorf("app-owned var %s missing from knownEnvVars (would warn)", v)
