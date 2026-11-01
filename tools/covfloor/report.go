@@ -11,14 +11,18 @@ const (
 	statusPass      = "PASS"
 	statusFail      = "FAIL"
 	statusUnfloored = "UNFLOORED"
+	statusDefaulted = "DEFAULTED"
 )
 
 // PkgResult is one package of the report. Floor is null when unfloored.
+// Defaulted is true when the package had no explicit floor line and was checked
+// against the fixed default floor (non-strict mode).
 type PkgResult struct {
-	Package  string  `json:"package"`
-	Coverage float64 `json:"coverage"`
-	Floor    *int    `json:"floor"`
-	Status   string  `json:"status"`
+	Package   string  `json:"package"`
+	Coverage  float64 `json:"coverage"`
+	Floor     *int    `json:"floor"`
+	Status    string  `json:"status"`
+	Defaulted bool    `json:"defaulted,omitempty"`
 }
 
 // Report is the verdict over a profile and a floors file. The slices are never
@@ -32,8 +36,11 @@ type Report struct {
 
 // Evaluate compares every package of the profile with its floor. A package
 // below its floor fails; a floors line whose package has no statements in the
-// profile is stale; a profiled package with no line is unfloored.
-func Evaluate(cov map[string]*Cover, floors map[string]int) Report {
+// profile is stale; a profiled package with no line is unfloored. In strict
+// mode an unfloored package fails the gate. Otherwise it is checked against
+// defaultFloor: such packages are reported as DEFAULTED when they meet it and
+// FAIL otherwise.
+func Evaluate(cov map[string]*Cover, floors map[string]int, strict bool, defaultFloor int) Report {
 	r := Report{Packages: []PkgResult{}, Failed: []string{}, Stale: []string{}, Unfloored: []string{}}
 	pkgs := make([]string, 0, len(cov))
 	for p := range cov {
@@ -52,6 +59,17 @@ func Evaluate(cov map[string]*Cover, floors map[string]int) Report {
 				res.Status = statusFail
 				r.Failed = append(r.Failed, p)
 			}
+		} else if !strict {
+			f := defaultFloor
+			res.Floor = &f
+			res.Defaulted = true
+			if pct >= float64(defaultFloor) {
+				res.Status = statusDefaulted
+			} else {
+				res.Status = statusFail
+				r.Failed = append(r.Failed, p)
+			}
+			r.Unfloored = append(r.Unfloored, p)
 		} else {
 			res.Status = statusUnfloored
 			r.Unfloored = append(r.Unfloored, p)
@@ -73,12 +91,18 @@ func (r Report) OK(strict bool) bool {
 	return len(r.Failed) == 0 && len(r.Stale) == 0 && (!strict || len(r.Unfloored) == 0)
 }
 
-// PrintText writes one line per package (`PASS|FAIL|UNFLOORED <pkg> <pct>%
-// floor <n>%`), the stale lines and a summary.
+// PrintText writes one line per package (`PASS|FAIL|UNFLOORED|DEFAULTED <pkg>
+// <pct>% floor <n>%`), the stale lines and a summary. Defaulted packages are
+// those without an explicit floor that were checked against the fixed default
+// floor in non-strict mode.
 func (r Report) PrintText(w io.Writer, floors map[string]int, strict bool) {
 	for _, p := range r.Packages {
 		if p.Floor == nil {
 			say(w, "%s %s %.1f%% floor none\n", p.Status, p.Package, p.Coverage)
+			continue
+		}
+		if p.Defaulted {
+			say(w, "%s %s %.1f%% floor %d%% (default)\n", p.Status, p.Package, p.Coverage, *p.Floor)
 			continue
 		}
 		say(w, "%s %s %.1f%% floor %d%%\n", p.Status, p.Package, p.Coverage, *p.Floor)
@@ -87,7 +111,9 @@ func (r Report) PrintText(w io.Writer, floors map[string]int, strict bool) {
 		say(w, "STALE %s floor %d%% (no statements in the profile; remove the line or fix the path)\n", p, floors[p])
 	}
 	say(w, "covfloor: %d packages, %d below floor, %d stale, %d unfloored", len(r.Packages), len(r.Failed), len(r.Stale), len(r.Unfloored))
-	if len(r.Unfloored) > 0 && strict {
+	if len(r.Unfloored) > 0 && !strict {
+		say(w, "%s", " (unfloored packages were checked against their default floor)")
+	} else if len(r.Unfloored) > 0 && strict {
 		say(w, "%s", " (strict: an unfloored package fails the gate; run covfloor -write)")
 	}
 	sayln(w)

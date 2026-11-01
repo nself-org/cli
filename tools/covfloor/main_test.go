@@ -72,15 +72,69 @@ func TestStaleFloorLineFails(t *testing.T) {
 	}
 }
 
+func TestDefaultFloorPassAndFail(t *testing.T) {
+	floors := tmpFile(t, "f.txt", "internal/a 70\n")
+	args := []string{"-module", "example.com/mod", "-profile", "testdata/pass.out", "-floors", floors}
+	// Default floor is 80. pass.out has . at 100% (passes as DEFAULTED),
+	// internal/b at 50% (FAILS against default 80). Exit code 1.
+	code, out, _ := cov(t, args...)
+	if code != 1 {
+		t.Errorf("default: exit %d, want 1\n%s", code, out)
+	}
+	if !strings.Contains(out, "DEFAULTED . 100.0% floor 80% (default)") {
+		t.Errorf("missing DEFAULTED . line:\n%s", out)
+	}
+	if !strings.Contains(out, "FAIL internal/b 50.0% floor 80% (default)") {
+		t.Errorf("missing FAIL internal/b line:\n%s", out)
+	}
+	// With -default-floor 40, internal/b at 50% passes as DEFAULTED.
+	code2, out2, _ := cov(t, append(args, "-default-floor", "40")...)
+	if code2 != 0 {
+		t.Errorf("-default-floor 40: exit %d, want 0\n%s", code2, out2)
+	}
+	if !strings.Contains(out2, "DEFAULTED internal/b 50.0% floor 40% (default)") {
+		t.Errorf("missing DEFAULTED internal/b with floor 40:\n%s", out2)
+	}
+	if !strings.Contains(out2, "DEFAULTED . 100.0% floor 40% (default)") {
+		t.Errorf("missing DEFAULTED . with floor 40:\n%s", out2)
+	}
+}
+
 func TestUnflooredIsPrintedAndOnlyFailsInStrictMode(t *testing.T) {
 	floors := tmpFile(t, "f.txt", "internal/a 70\n")
 	args := []string{"-module", "example.com/mod", "-profile", "testdata/pass.out", "-floors", floors}
+	// Non-strict: unfloored packages are checked against default floor;
+	// the summary mentions they were checked against their default floor.
 	code, out, _ := cov(t, args...)
-	if code != 0 || !strings.Contains(out, "UNFLOORED internal/b 50.0% floor none") || !strings.Contains(out, "UNFLOORED . 100.0%") {
-		t.Errorf("default: exit %d\n%s", code, out)
+	if code != 1 {
+		t.Fatalf("non-strict: exit %d, want 1\n%s", code, out)
 	}
-	if code, _, _ := cov(t, append(args, "-strict")...); code != 1 {
-		t.Errorf("strict: exit %d, want 1", code)
+	if !strings.Contains(out, "unfloored packages were checked against their default floor") {
+		t.Errorf("missing default-floor summary note:\n%s", out)
+	}
+	// Strict: unfloored packages fail the gate regardless of coverage.
+	strictCode, strictOut, _ := cov(t, append(args, "-strict")...)
+	if strictCode != 1 {
+		t.Errorf("strict: exit %d, want 1\n%s", strictCode, strictOut)
+	}
+	if !strings.Contains(strictOut, "UNFLOORED") {
+		t.Errorf("strict output missing UNFLOORED status:\n%s", strictOut)
+	}
+}
+
+func TestExistingFloorLinesAreUsedUnchanged(t *testing.T) {
+	floors := tmpFile(t, "f.txt", "internal/a 70\n")
+	code, out, _ := cov(t, "-module", "example.com/mod", "-profile", "testdata/pass.out", "-floors", floors)
+	// internal/a has an explicit floor of 70; it should PASS with that floor,
+	// not be DEFAULTED.
+	if code != 1 {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	if !strings.Contains(out, "PASS internal/a 80.0% floor 70%") {
+		t.Errorf("existing floor changed or not reported:\n%s", out)
+	}
+	if strings.Contains(out, "DEFAULTED internal/a") {
+		t.Errorf("internal/a should not be defaulted:\n%s", out)
 	}
 }
 
@@ -170,7 +224,7 @@ func TestUsageErrorsExit2(t *testing.T) {
 func TestJSONShape(t *testing.T) {
 	floors := tmpFile(t, "f.txt", "internal/a 70\n")
 	code, out, _ := cov(t, "-json", "-module", "example.com/mod", "-profile", "testdata/pass.out", "-floors", floors)
-	if code != 0 {
+	if code != 1 {
 		t.Fatalf("exit %d", code)
 	}
 	var d struct {
@@ -186,14 +240,21 @@ func TestJSONShape(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(d.Packages) != 3 || d.Packages[1].Package != "internal/a" || d.Packages[1].Coverage != 80 ||
-		d.Packages[1].Floor == nil || *d.Packages[1].Floor != 70 || d.Packages[1].Status != "PASS" ||
-		d.Packages[0].Floor != nil || d.Packages[0].Status != "UNFLOORED" {
+		d.Packages[1].Floor == nil || *d.Packages[1].Floor != 70 || d.Packages[1].Status != "PASS" {
 		t.Errorf("packages: %+v", d.Packages)
+	}
+	// Unfloored packages in non-strict mode get the fixed default floor (80).
+	if d.Packages[0].Floor == nil || *d.Packages[0].Floor != 80 || d.Packages[0].Status != "DEFAULTED" {
+		t.Errorf("expected DEFAULTED . with floor 80, got %+v", d.Packages[0])
+	}
+	// internal/b at 50% fails against default 80.
+	if d.Packages[2].Floor == nil || *d.Packages[2].Floor != 80 || d.Packages[2].Status != "FAIL" {
+		t.Errorf("expected FAIL internal/b with floor 80, got %+v", d.Packages[2])
 	}
 	if d.Failed == nil || d.Stale == nil || len(d.Unfloored) != 2 {
 		t.Errorf("failed %v stale %v unfloored %v (slices must be [] not null)", d.Failed, d.Stale, d.Unfloored)
 	}
-	if !strings.Contains(out, `"failed": []`) || !strings.Contains(out, `"stale": []`) {
+	if !strings.Contains(out, `"stale": []`) {
 		t.Errorf("empty slices must render as []:\n%s", out)
 	}
 }
