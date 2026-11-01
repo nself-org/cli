@@ -152,6 +152,16 @@ func init() {
 	healthCmd.PersistentFlags().BoolVar(&healthJSON, "json", false, "Output in JSON format")
 	healthCmd.PersistentFlags().BoolVar(&healthQuiet, "quiet", false, "Only output on failure")
 
+	// D-0435: --retries < 1 makes the retry loop skip entirely and the human
+	// path dereferences a nil report; reject it at parse time so every caller
+	// (human, envelope, machine) gets a clean error instead of a panic or null.
+	healthCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		if healthRetries < 1 {
+			return fmt.Errorf("--retries must be at least 1 (got %d)", healthRetries)
+		}
+		return nil
+	}
+
 	// Register subcommands.
 	healthCmd.AddCommand(healthCheckCmd)
 	healthCmd.AddCommand(healthServiceCmd)

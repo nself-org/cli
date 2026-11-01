@@ -23,12 +23,24 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// detectMigrateStatusData is the v1.5 envelope payload for `db migrate status --detect`.
+// The bare shape is the results slice; the envelope wraps it so machine callers
+// get typed data instead of null (D-0435).
+type detectMigrateStatusData struct {
+	Migrations []database.DetectResult `json:"migrations"`
+}
+
 func runDBMigrateStatusDetect(cmd *cobra.Command, cfg *config.Config, migrationDir string) error {
 	results, err := database.DetectMigrations(cmd.Context(), cfg, migrationDir)
 	if err != nil {
 		return fmt.Errorf("detect migrations: %w", err)
 	}
+	// D-0435: set envelope data before any output so --json callers get typed data.
+	setData(cmd, detectMigrateStatusData{Migrations: results})
 	if len(results) == 0 {
+		if jsonEnvelopeOn(cmd) {
+			return emitEnv(cmd, detectMigrateStatusData{Migrations: []database.DetectResult{}}, false)
+		}
 		fmt.Println("No pending migrations to classify.")
 		return nil
 	}
@@ -48,24 +60,34 @@ func runDBMigrateStatusDetect(cmd *cobra.Command, cfg *config.Config, migrationD
 			conflicts = append(conflicts, r.Name)
 		}
 	}
-	tbl.Render()
+	// In envelope mode the table is suppressed: the JSON carries the same data.
+	if !jsonEnvelopeOn(cmd) {
+		tbl.Render()
+	}
 
 	if len(conflicts) > 0 {
-		fmt.Println()
-		ui.Warn(fmt.Sprintf(
-			"%d migration(s) are CONFLICT: some of their objects exist, some don't. "+
-				"Not auto-resolved — review each manually.", len(conflicts)))
-		for _, name := range conflicts {
-			fmt.Printf("  - %s\n", name)
+		if !jsonEnvelopeOn(cmd) {
+			fmt.Println()
+			ui.Warn(fmt.Sprintf(
+				"%d migration(s) are CONFLICT: some of their objects exist, some don't. "+
+					"Not auto-resolved — review each manually.", len(conflicts)))
+			for _, name := range conflicts {
+				fmt.Printf("  - %s\n", name)
+			}
 		}
 	}
 
 	if len(baselineCandidates) > 0 {
-		fmt.Println()
-		ui.Info("Every object these migrations create already exists. Review, then run:")
-		fmt.Printf("  nself db migrate baseline %s --yes\n", strings.Join(baselineCandidates, " "))
+		if !jsonEnvelopeOn(cmd) {
+			fmt.Println()
+			ui.Info("Every object these migrations create already exists. Review, then run:")
+			fmt.Printf("  nself db migrate baseline %s --yes\n", strings.Join(baselineCandidates, " "))
+		}
 	}
 
+	if jsonEnvelopeOn(cmd) {
+		return emitEnv(cmd, detectMigrateStatusData{Migrations: results}, false)
+	}
 	return nil
 }
 

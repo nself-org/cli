@@ -73,6 +73,12 @@ func runDBLint(cmd *cobra.Command, _ []string) error {
 
 	// --metric: emit Prometheus text line and exit.
 	if metricFlag {
+		// D-0435: --metric is a Prometheus text format; refuse it with --format json
+		// or the v1.5 envelope so machine callers do not get empty stdout or a
+		// mixed-format response.
+		if formatFlag == "json" || jsonEnvelopeOn(cmd) {
+			return fmt.Errorf("--metric cannot be combined with --format json or the JSON envelope; use plain output for Prometheus scraping")
+		}
 		count := tenant.DisabledTableCount(report)
 		fmt.Printf("# HELP nself_rls_disabled_tables Number of user-data tables without RLS.\n")
 		fmt.Printf("# TYPE nself_rls_disabled_tables gauge\n")

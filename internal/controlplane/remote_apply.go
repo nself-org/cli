@@ -77,10 +77,17 @@ func deployTo(ctx context.Context, envName string, srv Server, cfg deploy.SSHCon
 // per-server step, and the legacy single-host deploy's.
 func ApplyServer(ctx context.Context, envName string, srv Server, keyPath string, ra *RemoteApply) error {
 	if srv.RemotePath == "" || srv.RemotePath != ra.Set.RemotePath {
-		return errs.New("E485", fmt.Sprintf("environments.%s.servers.%s.remote_path: %q must equal %q, the path the artifact set was built for; every server of an env shares one remote_path in v1.5", envName, srv.Name, srv.RemotePath, ra.Set.RemotePath))
+		err := errs.New("E485", fmt.Sprintf("environments.%s.servers.%s.remote_path: %q must equal %q, the path the artifact set was built for; every server of an env shares one remote_path in v1.5", envName, srv.Name, srv.RemotePath, ra.Set.RemotePath))
+		if ra.Record != nil {
+			ra.Record(srv, deploy.ApplyResult{}, err)
+		}
+		return err
 	}
 	r, err := ra.OpenRemote(ctx, srv, keyPath, envName)
 	if err != nil {
+		if ra.Record != nil {
+			ra.Record(srv, deploy.ApplyResult{}, err)
+		}
 		return err
 	}
 	expected := ra.Expected
