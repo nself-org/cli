@@ -80,6 +80,9 @@ func TestD0353ComposeCascadeDoesNotChangeHash(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// The up path starts a background cleanup that runs docker from PATH; wait for it
+			// so it cannot run inside a later test's docker stub.
+			t.Cleanup(postStartCleanups.Wait)
 			if os.Getenv("D0353_VALUE") != "dev-conflict" {
 				t.Fatal("fixture did not load the conflicting .env.dev value")
 			}
