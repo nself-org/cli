@@ -9,17 +9,11 @@ package commands
 import (
 	"context"
 	"fmt"
-	"sync"
-	"time"
 
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/ui"
 )
-
-// postStartCleanups tracks the background post-start cleanup, so a test that reaches it can wait
-// before its docker stub and environment are torn down.
-var postStartCleanups sync.WaitGroup
 
 func startRemainingServicesPhase(ctx context.Context, compose *docker.Compose, projectDir string, cfg *config.Config) error {
 	svcSp := ui.NewSpinner("Running docker compose up...")
@@ -39,12 +33,6 @@ func startRemainingServicesPhase(ctx context.Context, compose *docker.Compose, p
 		return fmt.Errorf("compose up: %w", err)
 	}
 	svcSp.Success("All services started")
-	postStartCleanups.Add(1)
-	go func() {
-		defer postStartCleanups.Done()
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cleanupCancel()
-		_ = docker.RunPostStartCleanup(cleanupCtx, cfg.ProjectName)
-	}()
+	docker.StartPostStartCleanup(cfg.ProjectName)
 	return nil
 }
