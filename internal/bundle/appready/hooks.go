@@ -54,6 +54,8 @@ type Hooks struct {
 	Reconcile func(ctx context.Context) error
 	// Start boots the stack (the in-process `nself start`).
 	Start func(ctx context.Context) error
+	// Preflight checks required project configuration before Start and polling.
+	Preflight func(ctx context.Context, pluginDir string, names []string) error
 	// TrackTables tracks the members' manifest tables in Hasura (P7-PLUG-78).
 	// The tracking step calls it before the ExportMetadata verification; nil
 	// skips it (v1.4 builds none). Return *StepError to name the plugin.
@@ -82,6 +84,7 @@ type Member struct {
 	Tables           []string
 	BootMigrations   bool // manifest declares migrations.apply: boot
 	HasMigrationsDir bool // a migrations directory exists on disk
+	EnvVars          []manifestv2.EnvVar
 }
 
 // LoadMembers reads the named plugins' manifests from pluginDir.
@@ -97,7 +100,7 @@ func LoadMembers(pluginDir string, names []string) ([]Member, error) {
 		if err != nil {
 			return nil, &StepError{Plugin: name, Err: fmt.Errorf("plugin %s: plugin.json invalid: %w", name, err)}
 		}
-		mem := Member{Name: name, Dir: dir, Port: m.Port, HealthEndpoint: m.HealthEndpoint, Tables: m.Tables}
+		mem := Member{Name: name, Dir: dir, Port: m.Port, HealthEndpoint: m.HealthEndpoint, Tables: m.Tables, EnvVars: m.EnvVars}
 		if m.Service != nil {
 			if mem.Port == 0 && m.Service.Port != nil {
 				mem.Port = *m.Service.Port

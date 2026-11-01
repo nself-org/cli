@@ -81,7 +81,13 @@ func Run(ctx context.Context, rn *Runner, h Hooks, pluginDir string, names []str
 	}
 	startNoProject := false
 	rn.step(StepStart, true, "", func() (string, error) {
-		err := h.Start(ctx)
+		var err error
+		if h.Preflight != nil {
+			err = h.Preflight(ctx, pluginDir, names)
+		}
+		if err == nil {
+			err = h.Start(ctx)
+		}
 		if errors.Is(err, ErrNoProject) {
 			startNoProject = true
 			return "", nil

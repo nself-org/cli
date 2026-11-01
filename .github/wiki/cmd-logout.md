@@ -16,6 +16,8 @@ See [[cmd-license]] for the current command. [[Command-Canon]] lists every move.
 <!-- BEGIN PROSE:description -->
 `nself logout` clears the stored session token from the local credential store (`~/.nself/auth.json`). After logging out, commands that require cloud authentication will prompt you to log in again.
 
+If the server rejects the stored token, logout reports that the session is already invalid on the server and still deletes the local credentials. This also applies to `nself account logout`.
+
 Plugin license keys are NOT removed by `nself logout`. To clear license keys, use `nself license clear`.
 <!-- END PROSE:description -->
 
