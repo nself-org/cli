@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/migration"
 	"github.com/nself-org/cli/internal/scaffold"
 	"github.com/nself-org/cli/internal/setup"
@@ -253,6 +254,7 @@ func runInitFlow(cmd *cobra.Command, args []string, res *InitResult) error {
 			svcName = name
 		}
 		svcOpts := scaffold.Options{
+			ImageRef:   compose.ImageRef,
 			Name:       svcName,
 			Lang:       csTemplate,
 			ProjectDir: cwd,

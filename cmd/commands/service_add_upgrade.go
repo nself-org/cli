@@ -22,6 +22,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/reconcile"
 	"github.com/nself-org/cli/internal/scaffold"
@@ -64,6 +65,7 @@ func runServiceAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	opts := scaffold.Options{
+		ImageRef:   compose.ImageRef,
 		Name:       name,
 		Lang:       lang,
 		ProjectDir: cwd,

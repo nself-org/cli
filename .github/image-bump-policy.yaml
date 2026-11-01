@@ -18,6 +18,12 @@
 # is a deliberate edit of images.yaml, not a weekly bump.
 schema_version: 1
 services:
+  # Scaffold toolchains keep their existing minor/major lines.
+  alpine: {regex: '^(\d+)\.(\d+)$', track: patch}
+  distroless-static: {regex: '^nonroot$', track: patch}
+  golang: {regex: '^(\d+)\.(\d+)-alpine$', track: patch}
+  node: {regex: '^(\d+)-alpine$', track: patch}
+  rust: {regex: '^(\d+)\.(\d+)-alpine$', track: patch}
   # --- floating tags: the digest refreshes weekly, the tag does not move ---
   admin: {regex: '^latest$', track: patch}
   deno: {regex: '^alpine$', track: patch}

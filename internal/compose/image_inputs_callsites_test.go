@@ -25,10 +25,15 @@ import (
 
 // notPinResolved are lock entries rendered with ImageRef and never passed to
 // ResolveImage, so no project pin is ever consulted for them. The monitoring
-// generator (internal/compose/monitoring) is the only such renderer.
+// generator and scaffold Dockerfiles are such renderers.
 var notPinResolved = map[string]string{
-	"tempo":          "monitoring/tempo.go renders it with ImageRef only",
-	"otel-collector": "monitoring/tempo.go renders it with ImageRef only",
+	"golang":            "scaffold Dockerfile builder, outside generated compose",
+	"distroless-static": "scaffold Dockerfile runtime, outside generated compose",
+	"node":              "scaffold Dockerfile builder/runtime, outside generated compose",
+	"rust":              "scaffold Dockerfile builder, outside generated compose",
+	"alpine":            "scaffold Dockerfile runtime, outside generated compose",
+	"tempo":             "monitoring/tempo.go renders it with ImageRef only",
+	"otel-collector":    "monitoring/tempo.go renders it with ImageRef only",
 }
 
 // lookupFiles may call ImageRef with a name that is not a literal: they are the

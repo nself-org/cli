@@ -15,11 +15,22 @@ scripts/images/mirror-images.sh --plan
 # Applies the planned copies to the configured mirror namespace.
 scripts/images/mirror-images.sh --apply
 
-# Exits 1 if any image in the lock is missing or differs from the mirror.
+# Exits 1 if any pinned index digest is missing from its configured mirror.
 scripts/images/mirror-images.sh --check
 ```
 
 By default, the tool copies images into `docker.io/nself/<name>`.
+
+Checks resolve each lock entry's `mirror@index_digest`, so a moved version tag
+cannot hide a missing pin or invalidate an available digest. Copies use the
+upstream index digest and verify that the destination preserves it and all
+locked platform manifests.
+
+The daily default-image workflow runs this check for every mirrored lock entry,
+without an opt-in variable. After lock changes merge, the image-pin-bump workflow
+copies missing digests when the owner's `IMAGE_MIRROR_APPLY` switch is enabled.
+If the check reports missing mirrors, an authorized maintainer must enable that
+switch with registry credentials configured or run `--apply` to repair them.
 
 ### Crane Image
 

@@ -109,7 +109,7 @@ crane_run() {
   docker "${args[@]}"
 }
 
-# mirror_digest REPO:TAG — print the tag's digest, or fail when the reference
+# mirror_digest REPO@DIGEST — print the pinned digest, or fail when the reference
 # does not resolve (read as MISSING by the caller).
 mirror_digest() {
   crane_run digest "$1" 2>/dev/null
@@ -142,9 +142,9 @@ source_hint() {
 }
 
 # ---- status computation -----------------------------------------------------
-# probe_entry NAME INDEX_DIGEST MIRROR:VERSION — print one status line
+# probe_entry NAME INDEX_DIGEST MIRROR@DIGEST — print one status line
 # (PRESENT|MISSING|DIFFERS + name + upstream index digest + mirror digest/-)
-# by resolving the mirror tag; non-PRESENT also returns 1.
+# by resolving the pinned mirror digest; non-PRESENT also returns 1.
 probe_entry() {
   local name="$1" want="$2" dst="$3" have
   have="$(mirror_digest "$dst" || true)"
@@ -225,10 +225,11 @@ for e in "${ENTRIES[@]}"; do
   mirror="$(jq -r '.mirror' <<<"$e")"
   src="$repo@$idx"
   dst="$mirror:$version"
+  pinned="$mirror@$idx"
   mapfile -t plats < <(jq -r '.platforms[]' <<<"$e")
 
   if [ "$OPT_MODE" = apply ]; then
-    if [ "$(mirror_digest "$dst" || true)" = "$idx" ]; then
+    if [ "$(mirror_digest "$pinned" || true)" = "$idx" ]; then
       note "skip $name: $dst already at $idx"
       printf 'PRESENT %s %s %s\n' "$name" "$idx" "$idx"
       source_hint "$name" "$mirror"
@@ -236,14 +237,14 @@ for e in "${ENTRIES[@]}"; do
     fi
     note "copy $name: $src -> $dst"
     crane_run copy "$src" "$dst" >&2
-    have="$(crane_run digest "$dst")"
+    have="$(crane_run digest "$pinned")"
     [ "$have" = "$idx" ] || fail "mirror digest mismatch for $name: lock=$idx mirror=$have"
     verify_platforms "$dst" "$idx" "${plats[@]}"
     note "verify $name: index and ${#plats[@]} platform manifest(s) preserved"
     printf 'PRESENT %s %s %s\n' "$name" "$idx" "$have"
     source_hint "$name" "$mirror"
   else
-    line="$(probe_entry "$name" "$idx" "$dst" || true)"
+    line="$(probe_entry "$name" "$idx" "$pinned" || true)"
     printf '%s\n' "$line"
     case "$line" in PRESENT\ *) ;; *) STATUS_FAIL=1 ;; esac
     if [ "$OPT_MODE" = plan ]; then

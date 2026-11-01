@@ -174,3 +174,18 @@ Each non-plugin entry names a mirror, `docker.io/nself/<name>`, at the same dige
 ## Accessors
 
 `compose.LockedRef(name)` returns one entry, `compose.LockedImages()` all of them sorted by name, `compose.ImageRef(name, version)` the string for the active mode, and `compose.PinningMode()` the resolved mode.
+
+## Scaffold Dockerfiles
+
+`nself service add` and `nself plugin scaffold` resolve every Dockerfile base
+through the embedded image lock. `IMAGE_PINNING=lock` emits the reviewed index
+digest; legacy mode preserves the original template tag. The Go, Node, Rust,
+Alpine, and distroless tool entries use the same authored image list and bump
+policy as other images. Scaffold Dockerfiles do not consult a project's compose
+pin file. The generated lock keeps each image on one line to make pin reviews
+compact, with platform keys sorted deterministically.
+
+The command layer supplies `compose.ImageRef` to the custom service scaffold
+through `scaffold.Options.ImageRef`, including `nself init --cs-template`.
+Service scaffolding requires this resolver when writing files, so it can use
+the image lock without importing the compose package.
