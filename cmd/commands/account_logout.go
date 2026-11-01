@@ -43,7 +43,7 @@ func runAccountLogout(cmd *cobra.Command, _ []string) error {
 
 	// Revoke on server (best-effort — still delete local file on failure).
 	if revokeErr := auth.RevokeSession(cmdCtx(cmd), af.AccessToken, all); revokeErr != nil {
-		ui.Warn(fmt.Sprintf("Could not revoke session on server: %v", revokeErr))
+		ui.Warn(auth.LogoutRevokeWarning(revokeErr))
 		ui.Warn("Deleting local credentials anyway.")
 	}
 
