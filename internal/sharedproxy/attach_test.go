@@ -27,8 +27,12 @@ case "$1" in
   inspect)
     case "$3" in
       '{{json .NetworkSettings.Networks}}') nets_json ;;
-      *) st=$(cat "$FAKE_DIR/state" 2>/dev/null || echo running)
-         printf '{"Id":"ownerid","Name":"/owner_nginx","State":{"Status":"%s"},"Config":{"Labels":{"com.docker.compose.service":"nginx","com.docker.compose.project.working_dir":"%s"}}}' "$st" "$OWNER_DIR" ;;
+      '{{json .}}')
+        st=$(cat "$FAKE_DIR/state" 2>/dev/null || echo running)
+        printf '{"Id":"ownerid","Name":"/owner_nginx","Image":"sha256:abc","Config":{"Image":"nginx:test","Labels":{"com.docker.compose.service":"nginx","com.docker.compose.project.working_dir":"%s"}},"Mounts":[{"Source":"%s","Destination":"/etc/nginx","Type":"bind","RW":true}],"State":{"Status":"%s"}}' "$OWNER_DIR" "$OWNER_DIR" "$st" ;;
+      *)
+        st=$(cat "$FAKE_DIR/state" 2>/dev/null || echo running)
+        printf '{"Id":"ownerid","Name":"/owner_nginx","State":{"Status":"%s"},"Config":{"Labels":{"com.docker.compose.service":"nginx","com.docker.compose.project.working_dir":"%s"}}}' "$st" "$OWNER_DIR" ;;
     esac ;;
   start) echo running > "$FAKE_DIR/state" ;;
   stop) echo exited > "$FAKE_DIR/state" ;;
@@ -45,6 +49,26 @@ case "$1" in
       done < "$FAKE_DIR/broken.txt"
       echo "nginx: configuration file /etc/nginx/nginx.conf test is successful" >&2
     elif [ "$5" = reload ]; then echo reload >> "$FAKE_DIR/reloads.log"; fi ;;
+  run)
+    # Simulate docker run --rm nginx:test nginx -t using the same broken.txt logic.
+    # Find the args after the image name.
+    shift
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --rm|--read-only|--pull|--name|--user|--network|--cap-drop|--cap-add|--security-opt|-v|-e|--label) shift 2 ;;
+        never|true|ALL|no-new-privileges:true) shift ;; # leftover values
+        nself-oneshot-*) shift ;; # generated container name
+        nginx:test) shift; break ;;
+        *) shift ;;
+      esac
+    done
+    # Remaining args are the command; we only care about nginx -t.
+    if [ "$1" = "nginx" ] && [ "$2" = "-t" ]; then
+      while read f; do
+        if [ -e "$OWNER_DIR/$f" ]; then echo "nginx: [emerg] unknown directive \"bogus\" in /etc/nginx/$(echo $f | sed 's#^nginx/##'):3" >&2; echo "nginx: configuration file /etc/nginx/nginx.conf test failed" >&2; exit 1; fi
+      done < "$FAKE_DIR/broken.txt"
+      echo "nginx: configuration file /etc/nginx/nginx.conf test is successful" >&2
+    fi ;;
 esac
 `
 
