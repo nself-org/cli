@@ -77,8 +77,14 @@ func TestProxySwapHeaderParity(t *testing.T) {
 		{"handshake", "1", "Upgrade: websocket\r\nSec-WebSocket-Accept: sample\r\n", "sec-websocket-accept: sample\nupgrade: websocket\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cmd := exec.Command("python3", "-c", source, "/dev/stdin", tc.ws)
-			cmd.Stdin = strings.NewReader(tc.input)
+			// The matrix script reads a headers file named by argv[1]. Windows has
+			// no /dev/stdin, so give it a real file, written and closed before the
+			// normalizer starts.
+			headers := filepath.Join(t.TempDir(), "headers")
+			if err := os.WriteFile(headers, []byte(tc.input), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.Command("python3", "-c", source, headers, tc.ws)
 			got, err := cmd.CombinedOutput()
 			if err != nil {
 				t.Fatalf("normalizer: %v: %s", err, got)
