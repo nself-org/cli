@@ -1,4 +1,4 @@
-# VENDORED FROM nself-org/plugins@ce5d909501b9b16bae614eeddc71a5732ab03ba5 — DO NOT HAND EDIT
+# VENDORED FROM nself-org/plugins@867d3adb46af119b5ffcb46898b51fea234e9f6f — DO NOT HAND EDIT
 # nself-org truth claim rules (P7-TRUTH-04, Epic TRUTH D5/D6). Read by the `truth` check of nself-ci.
 #
 # Purpose: keep hand-typed facts out of prose. A count of plugins or commands, a current-version
