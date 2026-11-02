@@ -93,16 +93,8 @@ func checkStartLock(root string, frozen bool, w io.Writer) error {
 		_, _ = fmt.Fprintf(w, "warning: %v\n", err)
 		return nil
 	}
-	if frozen {
-		drift, derr := build.PluginLedgerDrift(build.DefaultPluginDir())
-		if derr != nil {
-			return errs.New("E455", "cannot compare the plugin ledger with the plugin dir: "+derr.Error()).WithFix("run nself build, then start again")
-		}
-		if len(drift) > 0 {
-			return errs.New("E455", fmt.Sprintf("the plugin dir differs from the bundle ledger in %d place(s):\n  %s", len(drift), strings.Join(drift, "\n  "))).
-				WithWhy("--frozen refuses to start when the plugin dir was updated without re-running nself build").
-				WithFix("run nself build to update the bundle ledger, then start again with --frozen")
-		}
+	if err := build.CheckPluginLedgerStart(build.DefaultPluginDir(), frozen); err != nil {
+		return err
 	}
 	actual, err := build.CurrentLock(root)
 	if err != nil {
