@@ -84,7 +84,10 @@ func TestProxySwapHeaderParity(t *testing.T) {
 			if err := os.WriteFile(headers, []byte(tc.input), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			cmd := exec.Command("python3", "-c", source, headers, tc.ws)
+			// Python's text-mode stdout turns "\n" into "\r\n" on Windows. The matrix
+			// runs the script under bash on Linux, so pin the same newline here
+			// rather than loosening the comparison below.
+			cmd := exec.Command("python3", "-c", "import sys; sys.stdout.reconfigure(newline='\\n')\n"+source, headers, tc.ws)
 			got, err := cmd.CombinedOutput()
 			if err != nil {
 				t.Fatalf("normalizer: %v: %s", err, got)
