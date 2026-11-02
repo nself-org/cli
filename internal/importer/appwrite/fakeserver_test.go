@@ -14,13 +14,16 @@ import (
 const fakeKey = "fake-key-not-a-secret-0000"
 
 type fake struct {
-	docs        int  // documents in collection "notes"
-	dropLast    bool // planted bug: the last page of a list is silently dropped
-	t           *testing.T
-	gotBadKey   bool
-	downloadErr bool
-	omit        string // attribute key left out of every document
-	repeat      bool   // planted bug: the server ignores cursorAfter and repeats page one
+	version       string // newer fixture leg requires explicit relationship selection
+	relValue      any
+	relSelections int
+	docs          int  // documents in collection "notes"
+	dropLast      bool // planted bug: the last page of a list is silently dropped
+	t             *testing.T
+	gotBadKey     bool
+	downloadErr   bool
+	omit          string // attribute key left out of every document
+	repeat        bool   // planted bug: the server ignores cursorAfter and repeats page one
 }
 
 // cursorLimit reads the limit and cursorAfter values from the queries[] parameters.
@@ -60,7 +63,7 @@ func (f *fake) handler(w http.ResponseWriter, r *http.Request) {
 	p := strings.TrimPrefix(r.URL.Path, "/v1")
 	switch {
 	case p == "/health/version":
-		_ = json.NewEncoder(w).Encode(map[string]any{"version": "1.5.10"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"version": f.version})
 	case p == "/databases":
 		writeList(w, "databases", 1, []map[string]any{{"$id": "main"}})
 	case p == "/databases/main/collections":
@@ -73,6 +76,22 @@ func (f *fake) handler(w http.ResponseWriter, r *http.Request) {
 	case p == "/databases/main/collections/authors/documents":
 		writeList(w, "documents", 1, []map[string]any{{"$id": "a1", "$createdAt": "2026-01-01T00:00:00.000+00:00", "$updatedAt": "2026-01-01T00:00:00.000+00:00", "$permissions": []string{}, "name": "Ada"}})
 	case p == "/databases/main/collections/notes/documents":
+		if f.version != "1.5.10" {
+			selected := false
+			for _, q := range r.URL.Query()["queries[]"] {
+				var query struct {
+					Method string
+					Values []string
+				}
+				if json.Unmarshal([]byte(q), &query) == nil && query.Method == "select" && strings.Join(query.Values, ",") == "*,author.$id" {
+					selected = true
+					f.relSelections++
+				}
+			}
+			if !selected {
+				f.omit = "author"
+			}
+		}
 		f.documents(w, limit, after)
 	case p == "/users":
 		f.users(w)
@@ -97,6 +116,11 @@ func (f *fake) documents(w http.ResponseWriter, limit int, after string) {
 	for i := start; i < f.docs && len(items) < limit; i++ {
 		items = append(items, map[string]any{"$id": fmt.Sprintf("n%d", i), "$createdAt": "2026-01-01T00:00:00.000+00:00", "$updatedAt": "2026-01-02T00:00:00.000+00:00", "$permissions": []string{}, "title": fmt.Sprintf("note \"%d\", with comma", i), "views": i, "author": map[string]any{"$id": "a1", "name": "Ada"}})
 	}
+	if f.relValue != nil {
+		for _, it := range items {
+			it["author"] = f.relValue
+		}
+	}
 	if f.omit != "" {
 		for _, it := range items {
 			delete(it, f.omit)
@@ -120,7 +144,7 @@ func (f *fake) users(w http.ResponseWriter) {
 
 func newFake(t *testing.T, docs int) (*fake, *client) {
 	t.Helper()
-	f := &fake{docs: docs, t: t}
+	f := &fake{docs: docs, t: t, version: "1.5.10"}
 	srv := httptest.NewServer(http.HandlerFunc(f.handler))
 	t.Cleanup(srv.Close)
 	c, err := newClient(srv.URL, "proj1", fakeKey)

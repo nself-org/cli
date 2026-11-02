@@ -130,8 +130,15 @@ func (c *client) listPage(ctx context.Context, path, key, after string, offset i
 // listPageLimit retries oversized responses at the same position, down to one item.
 // Inputs: list location and requested limit. Outputs: items and the effective limit.
 // Constraints: only byte-cap overflow is retried; other source failures are returned.
-func (c *client) listPageLimit(ctx context.Context, path, key, after string, offset, limit int) (page, error) {
+func (c *client) listPageLimit(ctx context.Context, path, key, after string, offset, limit int, selections ...string) (page, error) {
 	q := url.Values{}
+	if len(selections) > 0 {
+		values := make([]any, len(selections))
+		for i, selection := range selections {
+			values[i] = selection
+		}
+		q.Add("queries[]", queryJSON("select", values...))
+	}
 	q.Add("queries[]", queryJSON("limit", limit))
 	if after != "" {
 		q.Add("queries[]", queryJSON("cursorAfter", after))
@@ -142,7 +149,7 @@ func (c *client) listPageLimit(ctx context.Context, path, key, after string, off
 	var raw map[string]json.RawMessage
 	if err := c.getJSON(ctx, path, q, &raw); err != nil {
 		if errors.Is(err, errPageOverflow) && limit > 1 {
-			return c.listPageLimit(ctx, path, key, after, offset, limit/2)
+			return c.listPageLimit(ctx, path, key, after, offset, limit/2, selections...)
 		}
 		return page{}, err
 	}
@@ -163,14 +170,14 @@ func (c *client) each(ctx context.Context, path, key string, fn func(json.RawMes
 }
 
 // walk is each with a choice of cursor ($id) or offset paging.
-func (c *client) walk(ctx context.Context, path, key string, cursor bool, fn func(json.RawMessage) error) (int64, error) {
+func (c *client) walk(ctx context.Context, path, key string, cursor bool, fn func(json.RawMessage) error, selections ...string) (int64, error) {
 	after, total, seen, limit := "", int64(0), 0, pageSize
 	for first := true; ; first = false {
 		offset, prev := 0, after
 		if !cursor {
 			offset = seen
 		}
-		p, err := c.listPageLimit(ctx, path, key, after, offset, limit)
+		p, err := c.listPageLimit(ctx, path, key, after, offset, limit, selections...)
 		if err != nil {
 			return 0, err
 		}

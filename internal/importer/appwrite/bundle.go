@@ -43,7 +43,7 @@ func (c *client) assemble(ctx context.Context, in importer.Input, cols []*collec
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			exemptions = append(exemptions, portable.Exemption{Kind: "metadata", ID: id + "#missing:" + k, Reason: fmt.Sprintf("%d documents had no value for attribute %s in the API response; their column is NULL (some Appwrite versions do not return relationship values unless asked)", got.Missing[k], k)})
+			exemptions = append(exemptions, portable.Exemption{Kind: "metadata", ID: id + "#missing:" + k, Reason: fmt.Sprintf("%d documents had no value for attribute %s in the API response; their column is NULL", got.Missing[k], k)})
 		}
 		for _, n := range col.notes {
 			exemptions = append(exemptions, portable.Exemption{Kind: "metadata", ID: id + "#" + n.ID, Reason: n.Reason})
