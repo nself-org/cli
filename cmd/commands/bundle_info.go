@@ -110,7 +110,7 @@ func runBundleInfo(cmd *cobra.Command, args []string) error {
 	}
 
 	// ── License status ─────────────────────────────────────────────
-	fmt.Printf("License: %s\n", licenseStatus)
+	fmt.Printf("Cached license: %s\n", licenseStatus)
 
 	// ── Plugin membership ──────────────────────────────────────────
 	fmt.Println()

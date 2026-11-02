@@ -439,7 +439,7 @@ CLI is MIT and needs none of these.
 | `LICENSE_CHECK_INTERVAL` | `6h` | How often a running stack re-validates. |
 | `LICENSE_OFFLINE_MODE` | `false` | Use the exported cache only; never contact the network. |
 | `LICENSE_SUNSET_AT` | unset | Optional hard cutoff. Zero means no sunset. |
-| `LICENSE_PUBLIC_KEY_OVERRIDE` | unset | Hex Ed25519 public key. Testing only. |
+| `LICENSE_PUBLIC_KEY_OVERRIDE` | unset | Hex Ed25519 public key. Honoured only by builds tagged `nself_devkeys`; default and release builds trust committed `PingKeys` and ignore this override. |
 
 ### The offline grace window is not configurable
 
