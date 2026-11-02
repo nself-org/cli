@@ -300,21 +300,24 @@ matrix() {
     printf 'route %s %s status %s\n' "$id" "$host" "$status" >> "$output"
     python3 - "$W/headers" "$ws" >> "$output" <<'PY'
 import pathlib, sys
-# Accepted differences (P7-DEPL-03 lead ruling 2026-10-12): transport framing and Vary are proxy-owned, and Traefik
-# adds no response headers to a 101 upgrade, so a websocket row keeps only its handshake headers.
-# Browsers do not apply CSP or X-Frame-Options from a websocket handshake response (they govern the document). However,
-# Chromium learns HSTS from secure WebSocket handshakes and enforces it on subsequent requests
-# (https://github.com/chromium/chromium/blob/main/net/websockets/websocket_end_to_end_test.cc#L670); the missing HSTS
-# header on 101 responses is therefore an unresolved difference. Vary (D-0769) stays open until the traefik renderer decides
-# whether to add Accept-Encoding; the matrix is tightened in the same change as the renderer.
-skip={'date','server','connection','content-length','transfer-encoding','keep-alive','vary'}
-handshake={'upgrade','sec-websocket-accept'}
+# D-0769: Vary affects cache correctness and must compare verbatim. Adding
+# Accept-Encoding belongs to the external plugins/free/traefik renderer; until
+# that decision lands, a missing Vary deliberately fails parity.
+# Transport framing is connection-specific: chunking, length and persistence
+# may differ while the stable-route body hashes below still prove payload parity.
+skip={'date','server','connection','content-length','transfer-encoding','keep-alive'}
+# CSP and X-Frame-Options govern documents, not WebSocket connections. Traefik
+# does not add these headers after an upgrade. Do not discard other 101 headers:
+# in particular Chromium learns HSTS from secure WebSocket handshakes, so its
+# absence remains a parity failure, not a browser-ignored security difference.
+# https://github.com/chromium/chromium/blob/main/net/websockets/websocket_end_to_end_test.cc
+upgrade_document_headers={'content-security-policy','x-frame-options'}
 headers=[]
 for line in pathlib.Path(sys.argv[1]).read_text().splitlines():
     if ':' not in line: continue
     k,v=line.split(':',1)
     k=k.lower()
-    if k in skip or (sys.argv[2]=='1' and k not in handshake): continue
+    if k in skip or (sys.argv[2]=='1' and k in upgrade_document_headers): continue
     headers.append(k+': '+v.strip())
 print('\n'.join(sorted(headers)))
 PY
