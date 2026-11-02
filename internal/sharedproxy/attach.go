@@ -116,17 +116,20 @@ func e506(msg string, cause error, text string) error {
 // startPoll and startWait bound how long startAndWait waits for the container
 // to report running; variables so tests do not sleep.
 var (
-	startPoll = 250 * time.Millisecond
-	startWait = 10 * time.Second
+	startPoll  = 250 * time.Millisecond
+	startWait  = 10 * time.Second
+	startGrace = 2 * time.Second
 )
 
-// startAndWait starts the container and waits until it stays running for one
-// poll interval.
+// startAndWait starts the container and waits until it has been running
+// continuously for at least startGrace. A container that crashes within the
+// grace window is treated as a crash-loop and reported with its last state.
 func startAndWait(ctx context.Context, name string) error {
 	if err := docker.StartContainer(ctx, name); err != nil {
 		return err
 	}
 	deadline := time.Now().Add(startWait)
+	var runningSince time.Time
 	for {
 		time.Sleep(startPoll)
 		st, err := docker.InspectState(ctx, name)
@@ -134,8 +137,15 @@ func startAndWait(ctx context.Context, name string) error {
 			return err
 		}
 		if st == "running" {
-			return nil
+			if runningSince.IsZero() {
+				runningSince = time.Now()
+			}
+			if time.Since(runningSince) >= startGrace {
+				return nil
+			}
+			continue
 		}
+		runningSince = time.Time{}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("container %s is %s after %s", name, st, startWait)
 		}
@@ -144,6 +154,37 @@ func startAndWait(ctx context.Context, name string) error {
 
 func nginxTest(ctx context.Context, nginx string) (string, string, error) {
 	return docker.ExecCapture(ctx, nginx, []string{"nginx", "-t"})
+}
+
+// preflightNginxTest runs `nginx -t` in a one-off container using the owner
+// image and mounts before starting a cold owner. A broken config is caught
+// before the real container enters a crash-loop, and the stderr can be
+// attributed and quarantined just like a running-owner failure (D-0928).
+func preflightNginxTest(ctx context.Context, nginx string) (string, string, error) {
+	info, err := docker.InspectContainer(ctx, nginx)
+	if err != nil {
+		return "", "", e506("cannot inspect the owner nginx for a preflight config test", err, "")
+	}
+	var mounts []docker.Mount
+	for _, m := range info.Mounts {
+		if m.Type == "bind" {
+			mounts = append(mounts, m)
+		}
+	}
+	spec := docker.RunSpec{
+		Image:       info.ImageRef,
+		Args:        []string{"nginx", "-t"},
+		Mounts:      mounts,
+		PullNever:   true,
+		ReadOnly:    true,
+		CapDrop:     []string{"ALL"},
+		SecurityOpt: []string{"no-new-privileges:true"},
+	}
+	stdout, stderr, err := docker.RunOneShot(ctx, spec)
+	if err != nil {
+		return stdout, stderr, err
+	}
+	return stdout, stderr, nil
 }
 
 func reload(ctx context.Context, nginx string, out *Outcome, undo func()) error {

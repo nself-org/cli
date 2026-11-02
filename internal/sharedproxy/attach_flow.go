@@ -174,6 +174,9 @@ func (a *attachRun) run(regs []Registration) (settled bool, err error) {
 		a.out.Attached = append(a.out.Attached, r.Project)
 	}
 	if cold && len(a.out.Attached) > 0 {
+		if _, stderr, terr := preflightNginxTest(a.ctx, nginx); terr != nil {
+			return a.quarantineBad(terr, stderr)
+		}
 		if err := startAndWait(a.ctx, nginx); err != nil {
 			a.undo()
 			a.out.Attached = nil
