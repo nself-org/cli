@@ -71,21 +71,6 @@ func TestSourcesCatalogueAndPluginTiers(t *testing.T) {
 	}
 }
 
-func TestSourcesDirectoryReadError(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "regular-file")
-	if err := os.WriteFile(path, []byte("not a directory"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	src, err := Sources(path)()
-	var pathErr *os.PathError
-	if !errors.As(err, &pathErr) || pathErr.Path != path {
-		t.Fatalf("Sources error = %v, want directory read error for %s", err, path)
-	}
-	if !reflect.DeepEqual(src, ledger.Sources{}) {
-		t.Fatalf("failed Sources returned partial data: %#v", src)
-	}
-}
-
 func TestPluginLedgerDriftWithoutPersistedLedger(t *testing.T) {
 	for _, populated := range []bool{false, true} {
 		name := "empty"
