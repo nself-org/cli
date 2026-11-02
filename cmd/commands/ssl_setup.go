@@ -172,16 +172,11 @@ func runSSLSetup(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("certbot failed: %w", err)
 	}
 
-	// Install into the tree compose mounts at /etc/nginx/ssl, using the same
-	// certificates/<domain-safe> layout internal/ssl and `ssl add` use. On a
-	// fronted deployment (NGINX_FRONTED_BY set) that tree lives under the
-	// fronting stack's directory, not this project's own ssl/ — writing to
-	// workdir/ssl would be a silent no-op (D-0045).
-	servedSSL, sslErr := nginxtopo.ServedSSLDir(workdir, cfg.Nginx.FrontedBy)
+	// Install into the served stack, including fronted deployments (D-0045).
+	certDir, sslErr := nginxtopo.ServedCertDir(workdir, cfg.Nginx.FrontedBy, domain)
 	if sslErr != nil {
 		return fmt.Errorf("resolving the served ssl directory: %w", sslErr)
 	}
-	certDir := filepath.Join(servedSSL, "certificates", domainToFilesafe(domain))
 	if err := os.MkdirAll(certDir, 0750); err != nil {
 		return fmt.Errorf("creating cert directory: %w", err)
 	}
