@@ -2,6 +2,7 @@ package repoqa
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -48,5 +49,43 @@ func TestProxySwapRecoveryLegsRunOnPullRequests(t *testing.T) {
 		if !seen[leg] {
 			t.Errorf("no workflow step runs proxy-swap.sh %s", leg)
 		}
+	}
+}
+
+// Exercise the matrix's actual normalizer without Docker or fixture credentials.
+func TestProxySwapHeaderParity(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), "scripts/e2e/proxy-swap.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, source, ok := strings.Cut(string(data), "python3 - \"$W/headers\" \"$ws\" >> \"$output\" <<'PY'\n")
+	if !ok {
+		t.Fatal("matrix header normalizer not found")
+	}
+	source, _, ok = strings.Cut(source, "\nPY\n")
+	if !ok {
+		t.Fatal("matrix header normalizer terminator not found")
+	}
+	for _, tc := range []struct{ name, ws, input, want string }{
+		{"vary", "0", "Vary: Accept-Encoding\r\n", "vary: Accept-Encoding\n"},
+		{"upgrade vary", "1", "Vary: Origin\r\n", "vary: Origin\n"},
+		{"upgrade hsts", "1", "Strict-Transport-Security: max-age=31536000\r\n", "strict-transport-security: max-age=31536000\n"},
+		{"upgrade application header", "1", "X-App: value\r\n", "x-app: value\n"},
+		{"document policy", "0", "X-Frame-Options: DENY\r\n", "x-frame-options: DENY\n"},
+		{"upgrade document policy", "1", "Content-Security-Policy: default-src 'self'\r\nX-Frame-Options: DENY\r\n", "\n"},
+		{"framing", "0", "Connection: keep-alive\r\nContent-Length: 42\r\nTransfer-Encoding: chunked\r\nKeep-Alive: timeout=5\r\n", "\n"},
+		{"handshake", "1", "Upgrade: websocket\r\nSec-WebSocket-Accept: sample\r\n", "sec-websocket-accept: sample\nupgrade: websocket\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := exec.Command("python3", "-c", source, "/dev/stdin", tc.ws)
+			cmd.Stdin = strings.NewReader(tc.input)
+			got, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("normalizer: %v: %s", err, got)
+			}
+			if string(got) != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
