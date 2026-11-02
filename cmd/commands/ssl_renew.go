@@ -128,14 +128,9 @@ func runSSLRenew(cmd *cobra.Command, args []string) error {
 }
 
 // installRenewedCertIfDue installs domain's certbot-renewed cert into the
-// served certificate tree, including fronted deployments (D-0045). It runs
-// only when certbot genuinely renewed it (the live fullchain.pem's mtime moved
-// past beforeMtime). certbot renew --cert-name exits 0 whether or not a
-// lineage was actually due, so without this check every invocation would
-// needlessly rewrite unchanged files and could mask a certbot failure by
-// reinstalling stale local files as if they were fresh.
-//
-// The target uses the shared served certificate directory resolver.
+// served certificate tree (D-0045), only when certbot genuinely renewed it
+// (the live fullchain.pem's mtime moved past beforeMtime): renew --cert-name
+// exits 0 even when no lineage was due, and stale files must not be reinstalled.
 func installRenewedCertIfDue(domain, workdir, frontedBy string, beforeMtime time.Time) (bool, error) {
 	liveCertPath := filepath.Join(letsEncryptLiveDir, domain, "fullchain.pem")
 	info, err := os.Stat(liveCertPath)
