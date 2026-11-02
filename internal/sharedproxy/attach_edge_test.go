@@ -247,3 +247,64 @@ func TestAttachRestoreFailure(t *testing.T) {
 		t.Errorf("no connect after a failed restore:\n%s", f.calls())
 	}
 }
+
+func TestAttachColdOwnerPreflightQuarantinesBrokenConf(t *testing.T) {
+	fastStart(t)
+	ctx := context.Background()
+	f := newProxyFixture(t, "b_network", "c_network")
+	f.owner0()
+	b := f.project("b")
+	c := f.project("c")
+	// C's conf is broken; the preflight nginx -t (run in a one-off container)
+	// must catch it before the real owner starts, quarantine C, and let B attach.
+	f.write(filepath.Join(f.fake, "broken.txt"), "nginx/sites/c.api.conf\n")
+	f.setState("exited")
+
+	out, err := Attach(ctx, f.owner, "", []Registration{b, c})
+	if !isE506(err) {
+		t.Fatalf("want E506 for the quarantined project, got %v", err)
+	}
+	if len(out.Quarantined) != 1 || out.Quarantined[0] != "c" {
+		t.Errorf("C must be quarantined: %+v", out)
+	}
+	if len(out.Attached) != 1 || out.Attached[0] != "b" || !out.Reloaded {
+		t.Errorf("B must attach and reload after C is quarantined: %+v", out)
+	}
+	if !strings.Contains(f.calls(), "run") {
+		t.Error("the preflight check must use docker run:\n" + f.calls())
+	}
+}
+
+func TestAttachColdOwnerPreflightPassesWhenConfigIsClean(t *testing.T) {
+	fastStart(t)
+	ctx := context.Background()
+	f := newProxyFixture(t, "b_network")
+	f.owner0()
+	b := f.project("b")
+	f.setState("exited")
+
+	out, err := Attach(ctx, f.owner, "", []Registration{b})
+	if err != nil || len(out.Attached) != 1 || !out.Reloaded {
+		t.Fatalf("a clean cold owner must start and reload: %+v %v", out, err)
+	}
+	if !strings.Contains(f.calls(), "run") {
+		t.Error("the preflight check must run even when it passes:\n" + f.calls())
+	}
+}
+
+func TestStartAndWaitRequiresGracePeriod(t *testing.T) {
+	fastStart(t)
+	oldGrace := startGrace
+	startGrace = 30 * time.Millisecond
+	t.Cleanup(func() { startGrace = oldGrace })
+
+	f := newProxyFixture(t)
+	f.owner0()
+	// The container runs briefly then crashes within the grace window.
+	variantDocker(t, startOK, `start) echo running > "$FAKE_DIR/state"; sleep 0.01; echo exited > "$FAKE_DIR/state" ;;`)
+	f.setState("exited")
+	err := startAndWait(context.Background(), "owner_nginx")
+	if err == nil || !strings.Contains(err.Error(), "is exited after") {
+		t.Fatalf("a container that crashes within the grace window must fail: %v", err)
+	}
+}

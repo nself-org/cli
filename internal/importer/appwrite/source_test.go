@@ -253,9 +253,9 @@ func TestTableAndHashEdgeCases(t *testing.T) {
 
 func TestMissingAttributeKeyIsCounted(t *testing.T) {
 	f, c := newFake(t, 7)
-	f.omit = "author"
+	f.omit = "title"
 	got := rowsOf(t, c, 7)
-	if got.Rows != 7 || got.Missing["author"] != 7 || got.Missing["title"] != 0 {
+	if got.Rows != 7 || got.Missing["title"] != 7 || got.Missing["author"] != 0 {
 		t.Fatalf("missing %v rows %d", got.Missing, got.Rows)
 	}
 }
@@ -267,5 +267,65 @@ func TestRepeatedPageEndsWithError(t *testing.T) {
 	_, err := c.copyDocuments(context.Background(), "main", &collection{ID: "notes", Columns: cols}, filepath.Join(t.TempDir(), "n.csv"))
 	if err == nil {
 		t.Fatal("a server that repeats page one must not loop forever or succeed")
+	}
+}
+
+// The newer fixture models the opt-in relationship responses used by Appwrite 1.6+.
+func TestRelationshipSelectionFixtureLegs(t *testing.T) {
+	for _, version := range []string{"1.5.10", "1.6.2"} {
+		for _, kind := range []string{"rel", "reljson"} {
+			t.Run(version+"/"+kind, func(t *testing.T) {
+				f, c := newFake(t, 250)
+				f.version = version
+				want := `"a1"`
+				if kind == "reljson" {
+					f.relValue = []any{map[string]any{"$id": "a1"}}
+					want = `"[""a1""]"`
+				}
+				cols := []column{{Key: "$id"}, {Key: "author", Kind: kind}}
+				got, err := c.copyDocuments(context.Background(), "main", &collection{ID: "notes", Columns: cols}, filepath.Join(t.TempDir(), "n.csv"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				b, err := os.ReadFile(got.Path)
+				if err != nil || got.Rows != 250 || strings.Count(string(b), want) != 250 {
+					t.Fatalf("rows=%d csv=%.100s err=%v", got.Rows, b, err)
+				}
+				if version == "1.6.2" && f.relSelections != 3 {
+					t.Fatalf("selected pages=%d, want 3", f.relSelections)
+				}
+			})
+		}
+	}
+}
+
+func TestMissingRelationshipFails(t *testing.T) {
+	for _, kind := range []string{"rel", "reljson"} {
+		t.Run(kind, func(t *testing.T) {
+			f, c := newFake(t, 1)
+			f.omit = "author"
+			_, err := c.copyDocuments(context.Background(), "main", &collection{ID: "notes", Columns: []column{{Key: "author", Kind: kind}}}, filepath.Join(t.TempDir(), "n.csv"))
+			if err == nil || !strings.Contains(err.Error(), "relationship value missing") {
+				t.Fatalf("err=%v", err)
+			}
+		})
+	}
+}
+
+func TestExplicitNullRelationshipIsAllowed(t *testing.T) {
+	for _, kind := range []string{"rel", "reljson"} {
+		t.Run(kind, func(t *testing.T) {
+			f, c := newFake(t, 1)
+			// A typed nil slice encodes as an explicit JSON null, not an absent key.
+			f.relValue = []any(nil)
+			got, err := c.copyDocuments(context.Background(), "main", &collection{ID: "notes", Columns: []column{{Key: "$id"}, {Key: "author", Kind: kind}}}, filepath.Join(t.TempDir(), "n.csv"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, err := os.ReadFile(got.Path)
+			if err != nil || string(b) != "\"n0\",\n" || len(got.Missing) != 0 {
+				t.Fatalf("csv=%q missing=%v err=%v", b, got.Missing, err)
+			}
+		})
 	}
 }

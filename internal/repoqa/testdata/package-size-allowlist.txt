@@ -5,9 +5,9 @@
 # under 6000. A new package over 6000 is split by domain, not added here.
 cmd/commands 65362
 internal/backup 6279
-internal/build 13530
-internal/config 7498
-internal/database 10048
-internal/deploy 6667
+internal/build 13521
+internal/config 7487
+internal/database 10032
+internal/deploy 6552
 internal/doctor 9414
 internal/plugin 10068

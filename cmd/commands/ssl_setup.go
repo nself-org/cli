@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/nginxtopo"
 	"github.com/nself-org/cli/internal/ssl/acme"
 	"github.com/nself-org/cli/internal/ui"
 
@@ -171,10 +172,11 @@ func runSSLSetup(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("certbot failed: %w", err)
 	}
 
-	// Install into the tree compose mounts at /etc/nginx/ssl, using the same
-	// certificates/<domain-safe> layout internal/ssl and `ssl add` use.
-	// For a wildcard request the lineage is still named after the bare domain.
-	certDir := filepath.Join(workdir, "ssl", "certificates", domainToFilesafe(domain))
+	// Install into the served stack, including fronted deployments (D-0045).
+	certDir, sslErr := nginxtopo.ServedCertDir(workdir, cfg.Nginx.FrontedBy, domain)
+	if sslErr != nil {
+		return fmt.Errorf("resolving the served ssl directory: %w", sslErr)
+	}
 	if err := os.MkdirAll(certDir, 0750); err != nil {
 		return fmt.Errorf("creating cert directory: %w", err)
 	}

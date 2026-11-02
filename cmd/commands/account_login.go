@@ -25,6 +25,7 @@ Opens your browser to authorize this CLI session. Confirm the short code
 shown here matches the one on screen, then click Authorize.
 
 After authorization, your session is stored at ~/.nself/auth.json (0600).`,
+	Deprecated:   "use nself login (nself license login in v1.5); replace --reauth with --force; --timeout is only supported by this legacy spelling",
 	SilenceUsage: true,
 	RunE:         runAccountLogin,
 }

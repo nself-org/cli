@@ -64,7 +64,11 @@ func TestInstallRenewedCertIfDue_InstallsWhenRenewed(t *testing.T) {
 	}
 
 	workdir := t.TempDir()
-	renewed, err := installRenewedCertIfDue(domain, workdir, beforeMtime)
+	// Empty frontedBy: the served ssl dir is <workdir>/ssl, matching the
+	// assertion below. A non-empty frontedBy would require laying out a
+	// fronting stack directory tree under t.TempDir(), which is beyond
+	// this unit test's scope (covered by nginxtopo.ServedSSLDir tests).
+	renewed, err := installRenewedCertIfDue(domain, workdir, "", beforeMtime)
 	if err != nil {
 		t.Fatalf("installRenewedCertIfDue: %v", err)
 	}
@@ -134,7 +138,7 @@ func TestInstallRenewedCertIfDue_SkipsWhenNotDue(t *testing.T) {
 	beforeMtime := time.Now().Add(1 * time.Hour)
 
 	workdir := t.TempDir()
-	renewed, err := installRenewedCertIfDue(domain, workdir, beforeMtime)
+	renewed, err := installRenewedCertIfDue(domain, workdir, "", beforeMtime)
 	if err != nil {
 		t.Fatalf("installRenewedCertIfDue: %v", err)
 	}

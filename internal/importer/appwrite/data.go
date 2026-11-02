@@ -34,8 +34,14 @@ func (c *client) copyDocuments(ctx context.Context, db string, col *collection, 
 	}
 	w := bufio.NewWriter(f)
 	out := copied{Path: path, Missing: map[string]int64{}}
+	selections := []string{"*"}
+	for _, cl := range col.Columns {
+		if cl.Kind == "rel" || cl.Kind == "reljson" {
+			selections = append(selections, cl.Key+".$id")
+		}
+	}
 	var werr error
-	total, err := c.each(ctx, fmt.Sprintf("/databases/%s/collections/%s/documents", url.PathEscape(db), url.PathEscape(col.ID)), "documents", func(raw json.RawMessage) error {
+	total, err := c.walk(ctx, fmt.Sprintf("/databases/%s/collections/%s/documents", url.PathEscape(db), url.PathEscape(col.ID)), "documents", true, func(raw json.RawMessage) error {
 		doc := map[string]any{}
 		dec := json.NewDecoder(bytes.NewReader(raw))
 		dec.UseNumber()
@@ -48,6 +54,9 @@ func (c *client) copyDocuments(ctx context.Context, db string, col *collection, 
 		cells := make([]string, len(col.Columns))
 		for i, cl := range col.Columns {
 			v, present := doc[cl.Key]
+			if !present && (cl.Kind == "rel" || cl.Kind == "reljson") {
+				return errs.New("E520", "source relationship value missing from document response")
+			}
 			if !present && !strings.HasPrefix(cl.Key, "$") {
 				out.Missing[cl.Key]++
 			}
@@ -58,7 +67,7 @@ func (c *client) copyDocuments(ctx context.Context, db string, col *collection, 
 		}
 		out.Rows++
 		return nil
-	})
+	}, selections...)
 	if err == nil {
 		err = werr
 	}

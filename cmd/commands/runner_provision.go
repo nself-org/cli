@@ -61,7 +61,7 @@ func runRunnerProvision(cmd *cobra.Command, args []string) error {
 	token, _ := cmd.Flags().GetString("token")
 
 	if cmd.Flags().Changed("token") {
-		fmt.Fprintln(os.Stderr, "warning: --token is deprecated and exposes the registration token in process listings and shell history; set GITHUB_RUNNER_TOKEN instead")
+		fmt.Fprintln(cmd.ErrOrStderr(), "warning: --token is deprecated and exposes the registration token in process listings and shell history; set GITHUB_RUNNER_TOKEN instead")
 	}
 	if token == "" {
 		token = os.Getenv("GITHUB_RUNNER_TOKEN")
@@ -70,7 +70,7 @@ func runRunnerProvision(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("--github-url is required (the repo or org runners register against)")
 	}
 	if token == "" {
-		return fmt.Errorf("a runner registration token is required: pass --token or set GITHUB_RUNNER_TOKEN")
+		return fmt.Errorf("a runner registration token is required: set GITHUB_RUNNER_TOKEN")
 	}
 	if len(hosts) > 1 {
 		return fmt.Errorf("provision takes at most one --host per invocation; run it once per host")

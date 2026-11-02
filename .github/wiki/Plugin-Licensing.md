@@ -91,11 +91,9 @@ exits with a non-zero status and the message:
 NSELF_LICENSE_SKIP_VERIFY requires --force flag; standalone skip is not permitted
 ```
 
-The same requirement applies to `nself license import` when importing unsigned cache entries:
-
-```bash
-NSELF_LICENSE_SKIP_VERIFY=1 nself license import cache.json --force
-```
+In v1.5, `nself license import` requires a valid signed cache even with
+`NSELF_LICENSE_SKIP_VERIFY=1` and `--force`. Export a signed cache from an online
+machine for offline use. Only legacy v1.4 mode permits forced unsigned imports.
 
 ## Bundle Entitlements
 
