@@ -60,20 +60,12 @@ func installIssuedCert(domain, certDir string) error {
 	return nil
 }
 
-// servedCertDir returns the directory a custom domain's certificate belongs
-// in: <served ssl dir>/certificates/<domain-safe>. frontedBy is
-// NGINX_FRONTED_BY ("" for a project that runs its own nginx). An unconfirmed
-// fronted layout returns an error wrapping nginxtopo.ErrFrontingUnresolved.
 func servedCertDir(workdir, frontedBy, domain string) (string, error) {
-	sslDir, err := nginxtopo.ServedSSLDir(workdir, frontedBy)
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(sslDir, "certificates", domainToFilesafe(domain)), nil
+	return nginxtopo.ServedCertDir(workdir, frontedBy, domain)
 }
 
 // servedConfDir returns the served nginx conf.d directory custom-domain confs
-// are written to. Same resolution and error as servedCertDir.
+// are written to. An unconfirmed fronted layout returns an error.
 func servedConfDir(workdir, frontedBy string) (string, error) {
 	nginxDir, err := nginxtopo.ServedNginxDir(workdir, frontedBy)
 	if err != nil {

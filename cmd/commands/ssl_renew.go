@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/nginxtopo"
 	"github.com/nself-org/cli/internal/ssl/acme"
 	"github.com/nself-org/cli/internal/ui"
 
@@ -45,8 +46,13 @@ func runSSLRenew(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no nself project found in current directory or parents: run 'nself init' to create a project")
 	}
 
+	cfg, cfgErr := config.Load(workdir)
+	if cfgErr != nil {
+		return fmt.Errorf("loading config: %w", cfgErr)
+	}
+
 	if len(args) > 0 {
-		if err := refuseCertbotOverACME(workdir); err != nil {
+		if err := refuseCertbotOverACME(workdir, cfg.Nginx.FrontedBy); err != nil {
 			return err
 		}
 	}
@@ -77,7 +83,7 @@ func runSSLRenew(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("certbot renew failed: %w", err)
 			}
 
-			renewed, installErr := installRenewedCertIfDue(domain, workdir, beforeMtime)
+			renewed, installErr := installRenewedCertIfDue(domain, workdir, cfg.Nginx.FrontedBy, beforeMtime)
 			if installErr != nil {
 				return fmt.Errorf("installing renewed certificate for %s: %w", domain, installErr)
 			}
@@ -121,18 +127,16 @@ func runSSLRenew(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// installRenewedCertIfDue installs domain's certbot-renewed cert into workdir's
-// ssl/certificates/<domain-safe>/ tree — the path nginx actually mounts — but
+// installRenewedCertIfDue installs domain's certbot-renewed cert into the
+// served certificate tree, including fronted deployments (D-0045). It runs
 // only when certbot genuinely renewed it (the live fullchain.pem's mtime moved
 // past beforeMtime). certbot renew --cert-name exits 0 whether or not a
 // lineage was actually due, so without this check every invocation would
 // needlessly rewrite unchanged files and could mask a certbot failure by
 // reinstalling stale local files as if they were fresh.
 //
-// certDir is derived with domainToFilesafe, the exact convention ssl_add.go
-// and ssl_setup.go already use at their installIssuedCert call sites — do not
-// reimplement the dash-safe transform here.
-func installRenewedCertIfDue(domain, workdir string, beforeMtime time.Time) (bool, error) {
+// The target uses the shared served certificate directory resolver.
+func installRenewedCertIfDue(domain, workdir, frontedBy string, beforeMtime time.Time) (bool, error) {
 	liveCertPath := filepath.Join(letsEncryptLiveDir, domain, "fullchain.pem")
 	info, err := os.Stat(liveCertPath)
 	if err != nil {
@@ -142,7 +146,10 @@ func installRenewedCertIfDue(domain, workdir string, beforeMtime time.Time) (boo
 		return false, nil
 	}
 
-	certDir := filepath.Join(workdir, "ssl", "certificates", domainToFilesafe(domain))
+	certDir, sslErr := nginxtopo.ServedCertDir(workdir, frontedBy, domain)
+	if sslErr != nil {
+		return false, fmt.Errorf("resolving the served ssl directory: %w", sslErr)
+	}
 	if err := os.MkdirAll(certDir, 0750); err != nil {
 		return false, fmt.Errorf("creating %s: %w", certDir, err)
 	}
@@ -153,12 +160,15 @@ func installRenewedCertIfDue(domain, workdir string, beforeMtime time.Time) (boo
 }
 
 // refuseCertbotOverACME stops a certbot renew before it runs when the ACME
-// engine manages workdir's certificates: installRenewedCertIfDue would copy
+// engine manages the served stack's certificates: installRenewedCertIfDue would copy
 // certbot's pair through the generation symlink, in place and outside the
 // ACME lock (D-0461). An unreadable lineages.json refuses too. Same rule as
 // `ssl setup` (D-0411).
-func refuseCertbotOverACME(workdir string) error {
-	sslDir := filepath.Join(workdir, "ssl")
+func refuseCertbotOverACME(workdir, frontedBy string) error {
+	sslDir, err := nginxtopo.ServedSSLDir(workdir, frontedBy)
+	if err != nil {
+		return fmt.Errorf("resolving the served ssl directory: %w", err)
+	}
 	if f, err := acme.Load(sslDir); err != nil {
 		return fmt.Errorf("reading the ACME lineages: %w (fix ssl/.acme/lineages.json, or use --acme)", err)
 	} else if len(f.Lineages) > 0 {
