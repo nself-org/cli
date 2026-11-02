@@ -61,7 +61,7 @@ func runRunnerProvision(cmd *cobra.Command, args []string) error {
 	token, _ := cmd.Flags().GetString("token")
 
 	if cmd.Flags().Changed("token") {
-		fmt.Fprintln(cmd.ErrOrStderr(), "warning: --token is deprecated and exposes the registration token in process listings and shell history; set GITHUB_RUNNER_TOKEN instead")
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning: --token is deprecated and exposes the registration token in process listings and shell history; set GITHUB_RUNNER_TOKEN instead")
 	}
 	if token == "" {
 		token = os.Getenv("GITHUB_RUNNER_TOKEN")
