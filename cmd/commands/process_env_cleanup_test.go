@@ -2,21 +2,39 @@ package commands
 
 import (
 	"os"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/nself-org/cli/internal/compat/compattest"
 )
 
-// TestBackupStatusRestoresProcessEnv exercises the loader-driving test as a
-// subtest so its cleanup runs before the caller checks for fixture pollution.
-func TestBackupStatusRestoresProcessEnv(t *testing.T) {
+// TestBackupLoadersRestoreProcessEnv exercises loader-driving tests as subtests
+// so their cleanup runs before the caller checks for fixture pollution (D-0275).
+func TestBackupLoadersRestoreProcessEnv(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
 		t.Setenv("PROJECT_NAME", "caller-project")
 		t.Setenv("ENV", "staging")
-		t.Run("project status", TestBackupStatusInProjectKeepsExistingFields)
-		for key, want := range map[string]string{"PROJECT_NAME": "caller-project", "ENV": "staging"} {
-			if got := os.Getenv(key); got != want {
-				t.Errorf("backup status leaked %s: got %q, want %q", key, got, want)
+		snapshot := func() map[string]string {
+			env := make(map[string]string)
+			for _, entry := range os.Environ() {
+				key, value, _ := strings.Cut(entry, "=")
+				env[key] = value
+			}
+			return env
+		}
+		for _, tc := range []struct {
+			name string
+			run  func(*testing.T)
+		}{
+			{"project status", TestBackupStatusInProjectKeepsExistingFields},
+			{"schedule credentials", TestBackupScheduleProdMinioCredentials},
+			{"stream credentials", TestBackupStreamProdMinioCredentials},
+		} {
+			before := snapshot()
+			t.Run(tc.name, tc.run)
+			if !reflect.DeepEqual(snapshot(), before) {
+				t.Errorf("%s leaked process environment changes", tc.name)
 			}
 		}
 	})

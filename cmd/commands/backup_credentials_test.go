@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/nself-org/cli/internal/compat/compattest"
 )
 
 func TestBackupScheduleProdMinioCredentials(t *testing.T) {
@@ -56,7 +58,8 @@ func prodBackupMinioProject(t *testing.T) {
 	// The loader exports this .env into the process; keep it from leaking into
 	// later v1.5 remote-deploy tests, which refuse process-only config (D-0275).
 	restoreProcessEnv(t)
-	for _, key := range []string{"ENV", "MINIO_ENABLED", "STORAGE_ENABLED", "MINIO_ROOT_USER", "MINIO_ROOT_PASSWORD", "NSELF_V15", "IMAGE_PINNING"} {
+	compattest.Set(t, false)
+	for _, key := range []string{"ENV", "MINIO_ENABLED", "STORAGE_ENABLED", "MINIO_ROOT_USER", "MINIO_ROOT_PASSWORD", "IMAGE_PINNING"} {
 		t.Setenv(key, "")
 	}
 	dir := t.TempDir()
