@@ -93,6 +93,9 @@ func checkStartLock(root string, frozen bool, w io.Writer) error {
 		_, _ = fmt.Fprintf(w, "warning: %v\n", err)
 		return nil
 	}
+	if err := build.CheckPluginLedgerStart(build.DefaultPluginDir(), frozen); err != nil {
+		return err
+	}
 	actual, err := build.CurrentLock(root)
 	if err != nil {
 		if frozen {
