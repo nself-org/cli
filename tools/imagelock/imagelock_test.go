@@ -11,11 +11,56 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/nself-org/cli/internal/compose"
 )
+
+// D-0264: re-resolving these images must leave a reviewable release in the
+// diff, while legacy mode continues emitting the original floating references.
+func TestPreviouslyFloatingImagesUseReleaseTags(t *testing.T) {
+	raw, err := os.ReadFile("../../internal/compose/images.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sources, err := LoadSources(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := map[string]string{
+		"admin":          "nself/nself-admin:latest",
+		"functions":      "nhost/functions:latest",
+		"mailpit":        "axllent/mailpit:latest",
+		"minio":          "docker.io/pgsty/minio:latest",
+		"otel-collector": "otel/opentelemetry-collector-contrib:latest",
+		"tempo":          "grafana/tempo:latest",
+		"python":         "python:3.12-slim",
+	}
+	release := regexp.MustCompile(`^(v?[0-9]+\.[0-9]+\.[0-9]+|[0-9]+-[0-9]+\.[0-9]+\.[0-9]+|RELEASE\.[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z)$`)
+	python := regexp.MustCompile(`^3\.12\.[0-9]+-slim$`)
+	for _, s := range sources {
+		wantLegacy, ok := legacy[s.Name]
+		if !ok {
+			continue
+		}
+		pattern := release
+		if s.Name == "python" {
+			pattern = python
+		}
+		if !pattern.MatchString(s.Version) {
+			t.Errorf("%s: version %q must name a concrete release", s.Name, s.Version)
+		}
+		if s.LegacyRef != wantLegacy {
+			t.Errorf("%s: legacy_ref = %q, want %q", s.Name, s.LegacyRef, wantLegacy)
+		}
+		delete(legacy, s.Name)
+	}
+	for name := range legacy {
+		t.Errorf("missing image %s", name)
+	}
+}
 
 // fakeIndexer serves one canned index per repository, for any tag or digest.
 type fakeIndexer struct {

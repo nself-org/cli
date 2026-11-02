@@ -25,23 +25,25 @@ services:
   node: {regex: '^(\d+)-alpine$', track: patch}
   rust: {regex: '^(\d+)\.(\d+)-alpine$', track: patch}
   # --- floating tags: the digest refreshes weekly, the tag does not move ---
-  admin: {regex: '^latest$', track: patch}
   deno: {regex: '^alpine$', track: patch}
-  functions: {regex: '^latest$', track: patch}
-  mailpit: {regex: '^latest$', track: patch}
-  minio: {regex: '^latest$', track: patch}
   nginx: {regex: '^alpine$', track: patch}
-  otel-collector: {regex: '^latest$', track: patch}
   pgvector: {regex: '^pg16$', track: patch}
-  tempo: {regex: '^latest$', track: patch}
   # --- floating major/minor lines: one group or two fixed groups, never moves ---
   meilisearch: {regex: '^v(\d+)\.(\d+)$', track: patch}
   meilisearch-init: {regex: '^(\d+)\.(\d+)$', track: patch}
   postgres: {regex: '^(\d+)-alpine$', track: patch}
-  python: {regex: '^(\d+)\.(\d+)-slim$', track: patch}
   redis: {regex: '^(\d+)-alpine$', track: patch}
   valkey: {regex: '^(\d+)\.(\d+)-alpine$', track: patch}
   # --- exact versions: patch releases within the current minor ---
+  admin: {regex: '^(\d+)\.(\d+)\.(\d+)$', track: patch}
+  # Keep the functions runtime prefix fixed; patch only its semantic version.
+  functions: {regex: '^24-(\d+)\.(\d+)\.(\d+)$', track: patch}
+  mailpit: {regex: '^v(\d+)\.(\d+)\.(\d+)$', track: patch}
+  # Timestamp releases: patch keeps the year and month fixed.
+  minio: {regex: '^RELEASE\.(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})Z$', track: patch}
+  otel-collector: {regex: '^(\d+)\.(\d+)\.(\d+)$', track: patch}
+  python: {regex: '^(\d+)\.(\d+)\.(\d+)-slim$', track: patch}
+  tempo: {regex: '^(\d+)\.(\d+)\.(\d+)$', track: patch}
   alertmanager: {regex: '^v(\d+)\.(\d+)\.(\d+)$', track: patch}
   auth: {regex: '^(\d+)\.(\d+)\.(\d+)$', track: patch}
   # auth-v14 / hasura-v14: the v1.4 line stays on its own minor (auth 0.36, hasura 2.44);

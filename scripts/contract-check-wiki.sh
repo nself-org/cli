@@ -58,11 +58,13 @@ while IFS= read -r p; do
   [ -f "$root/schemas/$p" ] || problem "JSON-Output.md names schemas/$p, which does not exist"
 done <<< "$rows"
 pattern_row=0
-printf '%s\n' "$rows" | grep -qx 'commands/<command>.v1.schema.json' && pattern_row=1
+# Feed quiet grep directly: with pipefail a successful early match can SIGPIPE
+# a printf producer and falsely report a missing row (seen on hosted Linux CI).
+grep -qxF 'commands/<command>.v1.schema.json' <<< "$rows" && pattern_row=1
 while IFS= read -r p; do
   case "$p" in
     commands/*) [ "$pattern_row" = 1 ] || problem "JSON-Output.md has no schemas/commands/<command>.v1.schema.json row for schemas/$p" ;;
-    *) printf '%s\n' "$rows" | grep -qxF "$p" || problem "schemas/$p is in schemas/index.json but has no row in the JSON-Output.md schemas table" ;;
+    *) grep -qxF "$p" <<< "$rows" || problem "schemas/$p is in schemas/index.json but has no row in the JSON-Output.md schemas table" ;;
   esac
 done < <(jq -r '.schemas[].path' "$index")
 
