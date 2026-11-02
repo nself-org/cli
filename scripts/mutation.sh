@@ -91,6 +91,7 @@ ARITHMETIC_BASE at internal/license/validate.go:23:32 | unmeasurable, not equiva
 CONDITIONALS_BOUNDARY at internal/plugin/verify/signature/floor.go:100:22 | the branch is entered only when len(x[i]) != len(y[i]), so < and <= return the same value
 CONDITIONALS_BOUNDARY at internal/plugin/verify/signature/floor.go:102:16 | reached only after x[i] == y[i] continued the loop, so the identifiers differ and < and <= return the same value
 CONDITIONALS_BOUNDARY at internal/license/entitlement/lifecycle.go:78:30 | claims.Exp <= 0 to < 0 in retainedToken: the only new input is exp=0, whose grace deadline is the const 1970-01-31 (PostExpiryGraceWindow), so the next clause rejects it and both return ""; TestRetainedTokenRejectsNonPositiveExp pins it
+CONDITIONALS_BOUNDARY at internal/license/entitlement/autorefresh.go:195:14 | equivalent: len(msg) > 200 to >= 200 in installFailure; at len 200 the branch runs msg[:200], which is msg itself, so both return the same string for every input
 CONDITIONALS_BOUNDARY at internal/license/entitlement/selection.go:27:31 | equivalent: bestExp and fallbackExp init to 0, so exp=0 never satisfies claims.Exp > bestExp or claims.Exp > fallbackExp regardless of whether the filter is <= or <; the token is never selected and the mutant is observationally identical to the original
 '
 
