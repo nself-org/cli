@@ -21,6 +21,7 @@ Revokes the current session on the auth server and deletes the local
 credentials file at ~/.nself/auth.json.
 
 Use --all to revoke every active session (useful when a device is lost).`,
+	Deprecated:   "use nself logout (nself license logout in v1.5)",
 	SilenceUsage: true,
 	RunE:         runAccountLogout,
 }

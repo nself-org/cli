@@ -97,6 +97,44 @@ func TestCanonAccountInheritedFlags(t *testing.T) {
 	}
 }
 
+// Retiring the duplicate spelling must not silently discard the legacy login
+// options: its timeout and reauthentication flags differ from license login.
+func TestAccountAuthRetirement(t *testing.T) {
+	compattest.Both(t, func(t *testing.T) {
+		undo := prepareTreeWith(&canonTable, RootCmd, compat.V15(), false)
+		defer undo()
+		prefix := "account "
+		if compat.V15() {
+			prefix = "license account "
+		}
+		for _, name := range []string{"login", "logout"} {
+			cmd, rest, err := RootCmd.Find(strings.Fields(prefix + name))
+			if err != nil || len(rest) != 0 {
+				t.Fatalf("find %s: rest=%v err=%v", prefix+name, rest, err)
+			}
+			if !strings.Contains(cmd.Deprecated, "nself license "+name) {
+				t.Errorf("%s has no canonical replacement: %q", prefix+name, cmd.Deprecated)
+			}
+			if cmd.IsAvailableCommand() {
+				t.Errorf("%s still advertised in help", prefix+name)
+			}
+			if cmd.RunE == nil {
+				t.Errorf("%s lost its compatibility handler", prefix+name)
+			}
+		}
+		for _, flag := range []string{"reauth", "timeout", "no-browser"} {
+			if accountLoginCmd.Flags().Lookup(flag) == nil {
+				t.Errorf("legacy login lost --%s", flag)
+			}
+		}
+		for _, hint := range []string{"--reauth", "--force", "--timeout"} {
+			if !strings.Contains(accountLoginCmd.Deprecated, hint) {
+				t.Errorf("login retirement omits migration guidance for %s", hint)
+			}
+		}
+	})
+}
+
 func TestCanonAccountRegistry(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
 		r, err := canon.Effective(compat.V15())
