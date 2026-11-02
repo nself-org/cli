@@ -69,3 +69,16 @@ func TestBundleInfoPluginsAllowed(t *testing.T) {
 		}
 	})
 }
+
+func TestBundleInfoLabelsCachedLicense(t *testing.T) {
+	t.Setenv("LICENSE_CACHE_PATH", filepath.Join(t.TempDir(), "missing.json"))
+	out, err := captureStdout(t, func() error {
+		return runBundleInfo(nil, []string{"chat"})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Cached license: not activated") {
+		t.Fatalf("bundle info must identify the local cache status: %s", out)
+	}
+}
