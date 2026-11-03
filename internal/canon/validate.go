@@ -119,6 +119,9 @@ func validateEntry(key string, e Entry, verbs map[string]bool) []string {
 	if e.Surface != "" && e.Surface != "all" && e.Surface != "cli-only" {
 		p = append(p, fmt.Sprintf("%s: surface %q is not all or cli-only", at, e.Surface))
 	}
+	if e.Surface == "cli-only" && strings.TrimSpace(e.ExemptReason) == "" {
+		p = append(p, at+": surface cli-only needs a non-empty exempt_reason (a short plain phrase)")
+	}
 	if e.Confirm != nil {
 		seen := map[string]bool{}
 		for _, name := range e.Confirm.Flags {

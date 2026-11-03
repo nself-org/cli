@@ -125,10 +125,13 @@ type Entry struct {
 	// ExitCodesV15 documents state exit codes in v1.5 mode (D10).
 	ExitCodesV15 map[string]string `yaml:"exit_codes_v15"`
 	// Flags maps a flag name to the escalation it causes when set.
-	Flags      map[string]FlagOverride `yaml:"flags"`
-	Confirm    *Confirm                `yaml:"confirm"`
-	Surface    string                  `yaml:"surface"`
-	SecretArgs []string                `yaml:"secret_args"`
+	Flags   map[string]FlagOverride `yaml:"flags"`
+	Confirm *Confirm                `yaml:"confirm"`
+	Surface string                  `yaml:"surface"`
+	// ExemptReason is the short plain phrase that says why a cli-only row stays
+	// off the machine surfaces. Required when Surface is cli-only.
+	ExemptReason string   `yaml:"exempt_reason"`
+	SecretArgs   []string `yaml:"secret_args"`
 	// Mode is empty (the entry exists in both modes) or "v1.4" (it exists only
 	// in v1.4 mode: break-outs, removed commands, shim and retired-hub sources).
 	Mode string `yaml:"mode"`
