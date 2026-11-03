@@ -122,6 +122,13 @@ func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects, s
 			return fmt.Errorf("generating auth encryption key: %w", err)
 		}
 		toWrite = append(toWrite, secretEntry{compose.AuthEncryptionKeyEnv, authKey})
+		// Compose reads cfg.Passthrough, collected before this step, so hand it the
+		// key too: this build then renders what the next build (which loads the
+		// key from .env.secrets) will, and a fresh build is a fixed point.
+		if cfg.Passthrough == nil {
+			cfg.Passthrough = map[string]string{}
+		}
+		cfg.Passthrough[compose.AuthEncryptionKeyEnv] = authKey
 	}
 
 	if len(toWrite) == 0 {
