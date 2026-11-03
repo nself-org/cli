@@ -221,6 +221,7 @@ Authentication is provided by nHost Auth. These variables configure the Auth ser
 | `AUTH_CPU_LIMIT` | string | `0.25` | No | Docker CPU core limit for the Auth container. |
 | `AUTH_LOG_LEVEL` | string | `info` | No | Auth service log verbosity. Accepted values: `debug`, `info`, `warn`, `error`. |
 | `AUTH_JWT_CUSTOM_CLAIMS` | JSON | *(empty)* | No | Custom JWT claims built from user metadata. The `multi-app` template sets `{"source-account-id":"metadata.source_account_id"}` so every Hasura permission filter can compare against `x-hasura-source-account-id`. See [[Multi-App-Isolation]]. |
+| `AUTH_ENCRYPTION_KEY` | string | *(generated)* | No | Key the Auth service uses to encrypt TOTP secrets. `nself build` generates it once into `.env.secrets` (mode 0600). It is never rotated: changing it locks out every TOTP user. Include `.env.secrets` in backups. |
 
 ### SMTP (for Auth emails)
 

@@ -1,8 +1,8 @@
 package build
 
 // orchestrator_secrets.go — persists auto-generated secrets (plugin
-// internal secrets, Hasura JWT secret, and the generated Postgres password and
-// Hasura admin secret) to .env.secrets during build. Split from
+// internal secrets, Hasura JWT secret, auth encryption key, and the generated
+// Postgres password and Hasura admin secret) to .env.secrets during build. Split from
 // orchestrator.go (T-P6-E2-W1-S1-T3).
 // Inputs:  workdir, resolved *config.Config.
 // Outputs: error — writes .env.secrets as a side effect.
@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/composeenv"
 	"github.com/nself-org/cli/internal/config"
 )
@@ -107,6 +108,20 @@ func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects, s
 		if jwtJSON != "" {
 			toWrite = append(toWrite, secretEntry{"HASURA_GRAPHQL_JWT_SECRET", jwtJSON})
 		}
+	}
+
+	// AUTH_ENCRYPTION_KEY: nhost/auth 0.43+ requires a 32-byte encryption key
+	// encoded as 64 lowercase hex characters. If it is absent from every env file
+	// on disk and the real process environment does not supply it, synthesize
+	// and persist it so the auth service can start and encrypt TOTP secrets.
+	// A value owned by the real process environment is never written, because
+	// env files override the process env and would shadow a later rotation.
+	if !onDisk[compose.AuthEncryptionKeyEnv] && os.Getenv(compose.AuthEncryptionKeyEnv) == "" {
+		authKey, err := config.GenerateHexKey(32) // the build's seeded source, so plan == apply
+		if err != nil {
+			return fmt.Errorf("generating auth encryption key: %w", err)
+		}
+		toWrite = append(toWrite, secretEntry{compose.AuthEncryptionKeyEnv, authKey})
 	}
 
 	if len(toWrite) == 0 {

@@ -10,6 +10,7 @@ package config
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -127,6 +128,21 @@ func UseRandSource(r io.Reader) (restore func()) {
 		randSource.Store(nil)
 		randMu.Unlock()
 	}
+}
+
+// GenerateHexKey returns nBytes from the package's secret source (the seeded
+// reader inside a UseRandSource scope, else crypto/rand) as lowercase hex, so a
+// key the build generates (AUTH_ENCRYPTION_KEY) plans and applies identically.
+func GenerateHexKey(nBytes int) (string, error) {
+	src := io.Reader(rand.Reader)
+	if p := randSource.Load(); p != nil {
+		src = *p
+	}
+	b := make([]byte, nBytes)
+	if _, err := io.ReadFull(src, b); err != nil {
+		return "", fmt.Errorf("generating key: %w", err)
+	}
+	return hex.EncodeToString(b), nil
 }
 
 // generateSecureRandom returns a base64url string of the given length read
