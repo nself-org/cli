@@ -66,6 +66,9 @@ go run -mod=vendor ./tools/perfbench healthy -report /tmp/golden-path-report.jso
 
 # JSON invocation overhead (the --json path of version and status)
 go run -mod=vendor ./tools/perfbench run -scenario json-overhead -json
+
+# HTTP invocation overhead (measures http-invoke scenario against admin serve)
+go run -mod=vendor ./tools/perfbench run -scenario http-invoke -json
 ```
 
 | Metric | Probe | What it measures |
@@ -74,6 +77,7 @@ go run -mod=vendor ./tools/perfbench run -scenario json-overhead -json
 | `cold_start.help` | `nself --help` | Process start to exit of the root help |
 | `cold_start.status` | `nself status` | Same, in an empty directory (exits 1 on purpose) |
 | `json_overhead.version`, `json_overhead.status` | `nself version --json`, `nself status --json` | The machine-readable path, for before and after comparisons of anything that wraps it |
+| `http_invoke.overhead` | `nself admin serve` vs `nself config get --json` | HTTP invocation overhead: the difference in ms between an HTTP POST to `/v1/commands/config/get` and the identical direct CLI call, alternating pair order to avoid warm-cache bias |
 | `time_to_healthy` | golden-path steps 3 to 6 | Sum of the per-step durations in the golden-path report (seconds); exits 1 unless all four steps are `pass` or `warn` |
 
 Each probe states the exit code it must produce (0, or 1 for `status`). Any other code, a signal death, or a run longer than `-timeout` (default 30 s) fails `run` and the `ab` verdict, so a binary that crashes at startup never reports a fast time. The result `sha` is the checkout's HEAD only for a binary `perfbench` built itself; with `-bin` it is empty unless you pass `-sha`.
@@ -93,7 +97,7 @@ go run -mod=vendor ./tools/perfbench ab -scenario json-overhead -base ... -head 
 
 It exits 1 when, for any probe, `head_p50 > 1.25 x base_p50` and `head_p50 - base_p50 > 3 ms` (both flags are adjustable), or when either binary dies, exits with the wrong code or times out. `go run` reports every non-zero exit of the program as 1; build `./tools/perfbench` first when you need to tell exit 1 (regression) from exit 2 (bad usage). `-inject-slowdown F` makes each head sample take F times its measured time; it exists only to prove the comparison can fire. The measured order alternates each round (base first, then head first), so a fixed order effect cannot favour a side. `perf.yml` runs `ab` on every PR (see Cold start gate below).
 
-New scenarios are registered with `scenarios.Register` from a file in `tools/perfbench/scenarios/`; see the package comment.
+New scenarios are registered with `scenarios.Register` from a file in `tools/perfbench/scenarios/`; see the package comment. Scenarios that implement the `Prober` interface (such as `cold-start` and `json-overhead`) expose their probes for `perfbench ab`. Scenarios that require their own setup—like the generated plugin `HOME` for `cold-start-plugins` or the local server for `http-invoke`—do not implement `Prober`, so `perfbench ab` refuses them instead of measuring the wrong thing.
 
 ### Startup with plugins installed
 
@@ -113,6 +117,12 @@ scripts/ci/perf-ab-scenario.sh cold-start-plugins /path/to/base/nself /path/to/h
 ```
 
 It runs base and head interleaved in two passes (base first, then head first) and applies the same rule as `ab`: a metric regressed when head p50 > 1.25 x base p50 and the difference is over 3 ms (`PERF_AB_RATIO`, `PERF_AB_MIN_DELTA_MS`, `PERF_AB_RUNS`, default 40). Exit 0 means no regression, 1 a regression or a metric missing on the head side, 2 a usage error or a failed measurement. It needs `go` and `jq`. No workflow runs it today; run it by hand for changes to plugin discovery or the command mount.
+
+### HTTP invocation overhead
+
+The `http-invoke` scenario measures the overhead of invoking a command via the HTTP API compared to the identical direct CLI call. It starts a local `nself admin serve` instance on a random port, waits until `/openapi.json` returns HTTP 200 (with bearer authentication using a fake token), and then alternates paired runs: an HTTP POST to `/v1/commands/config/get` and a direct `nself config get BASE_DOMAIN --json` execution. Pair order alternates each iteration to avoid a consistent warm-cache bias. The reported metric `http_invoke.overhead` is the difference in milliseconds (HTTP minus CLI) per pair after warm-up rounds.
+
+The scenario uses an isolated temporary project directory and `HOME`, sets `NSELF_V15=1` and `NSELF_MCP_TOKEN` to the fake bearer token, and verifies that the HTTP and CLI response envelopes are byte-identical. Because it requires a running server and its own setup, `http-invoke` does not implement the `Prober` interface and cannot be driven by `perfbench ab`; use `perfbench run -scenario http-invoke` or compare results manually.
 
 ### Checking a result against the budget
 

@@ -112,7 +112,7 @@ git push origin feat/my-feature
 The `Coverage` workflow enforces two kinds of floor, and both fail closed.
 
 - **Whole tree:** total statement coverage must stay at or above `COVERAGE_FLOOR` in `.github/workflows/coverage.yml`.
-- **Per package:** every package must stay at or above its line in `.github/coverage-floors.txt`. `tools/covfloor` checks the single `coverage.out` the workflow produces. A package below its floor, a line for a package that has no statements any more, a package with no line, and an unreadable profile or floors file all fail the job.
+- **Per package:** every package must stay at or above its line in `.github/coverage-floors.txt`. `tools/covfloor` checks the single `coverage.out` the workflow produces. A package below its floor, a line for a package that has no statements any more, and an unreadable profile or floors file all fail the job. A package with no line is checked against a fixed default floor (`-default-floor`, default 80%); it fails if it is below that floor, or unconditionally if `-strict` is passed.
 
 The floors file is data and holds every package's floor, measured on the Linux runner. This page does not copy the numbers; read the file.
 

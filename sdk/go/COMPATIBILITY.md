@@ -27,10 +27,25 @@ For released v1.4.x CLIs, unset `NSELF_ENTITLEMENT_FILE` means serve with one
 warning until v1.6.0. Guard applies this rule. Worker and other non-HTTP callers
 must treat `ErrEntitlementUnconfigured` from `VerifyEntitlement` the same way.
 Set-but-empty, missing, invalid, or non-regular configured files fail closed.
+On Unix platforms the token file is opened with `O_NOFOLLOW` and `O_NONBLOCK`
+and the opened descriptor is checked to be a regular file, closing the window
+where a FIFO or symlink could be swapped in between a path check and the open.
 GET and HEAD on the literal `/health` path bypass Guard; percent-encoded paths
 are guarded. `TestKeysCompiled()` reports the `nself_testkeys` capability even
 when no test key environment variable is set. Release images must return false
 and `go version -m <bin>` must not show `nself_testkeys` in its build tags.
+
+`remote` adds `PinAlias(HostSpec)`, `LegacyPinAliases(HostSpec)`,
+`PinnedHostKeys.MigrateLegacyPin(spec, live)` and
+`PinnedHostKeys.EffectivePinAlias(spec)` (D-0463): one pin-file alias per
+endpoint, `nself+<host>+<port>` (a host name cannot hold `+`), with port 22
+and no port the same endpoint, and a one-time copy of a pin held under the old
+`nself-<host>-<port>` alias. `remote` also adds
+`ScanHostKeysSSHSpec(ctx, spec, nodeID)` which captures a key using the same
+endpoint arguments as the eventual connection, including an explicit user/port
+and SSH configuration. When `scpOptions` builds arguments for `scp`, it drops
+`StdinNull`, `SessionType` and `ForkAfterAuthentication` because they conflict
+with scp's internal `-s` (SFTP subsystem) on OpenSSH 9.x and later.
 
 ## Version mapping
 
@@ -83,7 +98,7 @@ or moved. The proxy ignores them once a valid `sdk/go/v2.M.P` tag exists.
 | nSelf CLI (min) | **1.0.9** | Plugins declaring `minNselfVersion` below this are rejected |
 | Go toolchain | **1.25.0+** | `go.mod` declares `go 1.25.0` |
 | `simharness` package | CLI version | Added with P7-NODE-21; standard library only; additive API; integration-only (`INTEGRATION=1`, Linux Docker Engine, docker CLI); images pinned by digest |
-| `remote` package | CLI version | Added with P7-NODE-04; standard library only; additive API; local OpenSSH 8.0+ (`KnownHostsCommand=none` is sent only to 8.5+; `StdinNull=no`, `SessionType=default` and `ForkAfterAuthentication=no` only to 8.7+); since P7-DEPL-13 `Target.Dest` must be a canonical `HostSpec` destination, port through `-p` |
+| `remote` package | CLI version | Added with P7-NODE-04; standard library only; additive API; local OpenSSH 8.0+ (`KnownHostsCommand=none` is sent only to 8.5+; `StdinNull=no`, `SessionType=default` and `ForkAfterAuthentication=no` only to 8.7+ via ssh, dropped for scp because they conflict with its internal `-s`); since P7-DEPL-13 `Target.Dest` must be a canonical `HostSpec` destination, port through `-p`; D-0463 adds `PinAlias`, `LegacyPinAliases`, `MigrateLegacyPin` and `EffectivePinAlias` for one pin-file alias per endpoint |
 | `signing` package | CLI version | Added with P7-CACHE-06; stable, additive API; key ids always derived, small-order keys refused; standard library only; purposes plugins, agent, ci-release, ci-node, ci-audit; raw Ed25519 base64 std signatures |
 
 ## Compatibility guarantees
