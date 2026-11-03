@@ -10,7 +10,6 @@ package config
 import (
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -112,17 +111,12 @@ var (
 // and plugin secrets) read from r until the returned restore func runs; a nil r
 // keeps crypto/rand. It is for the build orchestrator (build.Options.Rand), so
 // a plan and an apply of one fresh project can generate identical secrets.
-// The scope holds a package lock: concurrent scopes run one after another, and
-// each restores crypto/rand on exit. Callers must call restore exactly once
-// and must not nest scopes. Direct config.Load callers outside a scope always
-// get crypto/rand unless a seeded scope is open in the same process; the seed
-// is a test and plan-fidelity facility, never set it in production.
+// Scopes lock the package and must not nest; call restore once. Never seed in production.
 func UseRandSource(r io.Reader) (restore func()) {
 	randMu.Lock()
+	randSource.Store(nil)
 	if r != nil {
 		randSource.Store(&r)
-	} else {
-		randSource.Store(nil)
 	}
 	return func() {
 		randSource.Store(nil)
@@ -130,19 +124,12 @@ func UseRandSource(r io.Reader) (restore func()) {
 	}
 }
 
-// GenerateHexKey returns nBytes from the package's secret source (the seeded
-// reader inside a UseRandSource scope, else crypto/rand) as lowercase hex, so a
-// key the build generates (AUTH_ENCRYPTION_KEY) plans and applies identically.
-func GenerateHexKey(nBytes int) (string, error) {
-	src := io.Reader(rand.Reader)
+// SecretSource is the byte source secrets are drawn from (see UseRandSource).
+func SecretSource() io.Reader {
 	if p := randSource.Load(); p != nil {
-		src = *p
+		return *p
 	}
-	b := make([]byte, nBytes)
-	if _, err := io.ReadFull(src, b); err != nil {
-		return "", fmt.Errorf("generating key: %w", err)
-	}
-	return hex.EncodeToString(b), nil
+	return rand.Reader
 }
 
 // generateSecureRandom returns a base64url string of the given length read
@@ -157,10 +144,7 @@ func GenerateHexKey(nBytes int) (string, error) {
 // the project stays broken). Such a draw is discarded and the next bytes of the
 // source are used, so a seeded source (plan and apply) still yields one value.
 func generateSecureRandom(length int) (string, error) {
-	src := io.Reader(rand.Reader)
-	if p := randSource.Load(); p != nil {
-		src = *p
-	}
+	src := SecretSource()
 	for attempt := 0; attempt < secretAttempts; attempt++ {
 		// Allocate enough bytes to guarantee the encoded output is >= length.
 		b := make([]byte, length)

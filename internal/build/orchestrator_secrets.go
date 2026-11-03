@@ -1,8 +1,8 @@
 package build
 
 // orchestrator_secrets.go — persists auto-generated secrets (plugin
-// internal secrets, Hasura JWT secret, auth encryption key, and the generated
-// Postgres password and Hasura admin secret) to .env.secrets during build. Split from
+// internal secrets, Hasura JWT secret, auth key, and the generated Postgres
+// password and Hasura admin secret) to .env.secrets during build. Split from
 // orchestrator.go (T-P6-E2-W1-S1-T3).
 // Inputs:  workdir, resolved *config.Config.
 // Outputs: error — writes .env.secrets as a side effect.
@@ -61,21 +61,14 @@ func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects, s
 		}
 	}
 
-	// Core credentials the loader generates when unset (D-0506). Persist a
-	// freshly generated value only when no env file defines the key and the
-	// real process environment does not supply it: that source owns the value,
-	// and a file copy would shadow a later rotated export (files override the
-	// process env on load). The onDisk term stays: .env.secrets is shared by
-	// every env and loads after .env.<env>, so persisting a dev-generated value
-	// while .env.prod (or any scanned env file) defines the key would shadow
-	// that file's real value on the next build of that env.
-	// A running database may already hold a value an earlier build rendered. It
-	// is adopted for THIS build's render only (adoptLiveCredential) and never
-	// written: .nself/compose.env cannot tell a generated value from one an
-	// earlier build took from a process export, and writing the latter would
-	// shadow a later rotated export. The next build adopts it again, because
-	// compose.env then carries the same value. Generated values are base64url
-	// (generateSecureRandom), so they need no quoting in .env.secrets.
+	// Core credentials the loader generates when unset (D-0506). Persist one only
+	// when no env file defines the key and the real process environment does not
+	// supply it: files override the process env, so a copy would shadow a later
+	// rotated export, and .env.secrets (shared by every env) would shadow another
+	// env file's real value. A running database may already hold a value an
+	// earlier build rendered; it is adopted for THIS build only
+	// (adoptLiveCredential), never written, because .nself/compose.env cannot
+	// tell a generated value from a process export.
 	for _, c := range []struct {
 		key string
 		dst *string
@@ -110,25 +103,10 @@ func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects, s
 		}
 	}
 
-	// AUTH_ENCRYPTION_KEY: nhost/auth 0.43+ requires a 32-byte encryption key
-	// encoded as 64 lowercase hex characters. If it is absent from every env file
-	// on disk and the real process environment does not supply it, synthesize
-	// and persist it so the auth service can start and encrypt TOTP secrets.
-	// A value owned by the real process environment is never written, because
-	// env files override the process env and would shadow a later rotation.
-	if !onDisk[compose.AuthEncryptionKeyEnv] && os.Getenv(compose.AuthEncryptionKeyEnv) == "" {
-		authKey, err := config.GenerateHexKey(32) // the build's seeded source, so plan == apply
-		if err != nil {
-			return fmt.Errorf("generating auth encryption key: %w", err)
-		}
-		toWrite = append(toWrite, secretEntry{compose.AuthEncryptionKeyEnv, authKey})
-		// Compose reads cfg.Passthrough, collected before this step, so hand it the
-		// key too: this build then renders what the next build (which loads the
-		// key from .env.secrets) will, and a fresh build is a fixed point.
-		if cfg.Passthrough == nil {
-			cfg.Passthrough = map[string]string{}
-		}
-		cfg.Passthrough[compose.AuthEncryptionKeyEnv] = authKey
+	if k, err := compose.NewAuthEncryptionKey(cfg, onDisk[compose.AuthEncryptionKeyEnv]); err != nil {
+		return err
+	} else if k != "" {
+		toWrite = append(toWrite, secretEntry{compose.AuthEncryptionKeyEnv, k})
 	}
 
 	if len(toWrite) == 0 {
