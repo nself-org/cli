@@ -3,6 +3,7 @@ package build
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -56,7 +57,7 @@ func TestAuthEncryptionKeyFresh(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat .env.secrets: %v", err)
 	}
-	if info.Mode().Perm() != 0600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 		t.Errorf("expected mode 0600, got %v", info.Mode().Perm())
 	}
 }
