@@ -171,7 +171,7 @@ Up to 20 internal routes are supported (N = 1 through 20).
 |----------|-------------|
 | `INTERNAL_ROUTE_N_NAME` | Human-readable identifier for the route (used in generated config comments) |
 | `INTERNAL_ROUTE_N_SUBDOMAIN` | Subdomain prefix under `BASE_DOMAIN` that Nginx will route to this upstream |
-| `INTERNAL_ROUTE_N_TARGET` | Upstream target as a full URL, including the scheme (e.g., `http://myservice:3000`, `http://hasura:8080`). A bare `host:port` is rejected by `nself build`. |
+| `INTERNAL_ROUTE_N_TARGET` | Upstream target as a full URL, including the scheme (e.g., `http://myservice:3000`, `http://hasura:8080`). A bare `host:port` is rejected by `nself build`. Targets containing `$` are also rejected because Nginx would expand them as variables; write `%24` for a literal dollar sign. |
 
 Example, route `metrics.myproject.example.com` to a Grafana container on port 3000:
 

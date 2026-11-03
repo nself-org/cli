@@ -76,7 +76,7 @@ S2, S3 and S6 merge PRs on protected repos. For each one the script polls the PR
 
 ## Version files
 
-`scripts/bump-version.sh` edits every lockstep file in one go: `.github/VERSION`, `internal/version/version.go`, the SDK manifests, the four version-hash goldens (skip with `--no-goldens`; needs `go`), and in admin `package.json`, `src/lib/cli-version.ts` and `Dockerfile`. Do not hand-edit them. Tags are `vX.Y.Z`.
+`scripts/bump-version.sh` edits every lockstep file in one go: `.github/VERSION`, `internal/version/version.go`, every `sdk/*/package.json` (discovered dynamically from the real tree, so a newly added SDK package is bumped automatically), the four version-hash goldens (skip with `--no-goldens`; needs `go`), and in admin `package.json`, `src/lib/cli-version.ts` and `Dockerfile`. Do not hand-edit them. Tags are `vX.Y.Z`.
 
 ## See Also
 

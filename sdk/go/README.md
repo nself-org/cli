@@ -36,7 +36,7 @@ import (
 | `config` | Env-driven config loader with validation |
 | `server` | chi router with `/healthz`, `/readyz`, `/metrics`, `/version` mounted |
 | `metrics` | Shared Prometheus registry + universal counters (see [METRICS.md](METRICS.md)) |
-| `licensing` | Offline license cache, grace period, skip-verify dev flag |
+| `licensing` | Offline license cache, grace period, skip-verify dev flag, runtime entitlement APIs |
 | `httpx` | HTTP client with retries, timeouts, propagated request-ID |
 | `db` | `pgxpool` helpers (connect, health check, migrations hook) |
 | `tracing` | OpenTelemetry tracer + request-ID middleware |
@@ -44,7 +44,7 @@ import (
 | `costmeter` | Shared cost accounting for AI plugins |
 | `identity` | Ed25519 per-plugin keypair + request signing / verification |
 | `signing` | Ed25519 verification with key ids, purposes, scopes and revocations; trust-file parsing; DSSE envelopes; `signingtest` (standard library only) |
-| `remote` | The one SSH/scp/rsync exec funnel: remote path validation, pinned known_hosts, CI option set, `ssh -G` resolver (standard library only) |
+| `remote` | The one SSH/scp/rsync exec funnel: remote path validation, pinned known_hosts, CI option set, `ssh -G` resolver, pin-alias scheme (standard library only) |
 | `simharness` | Integration-test fleets of Docker sshd containers: digest-pinned images, unique names, Exec, CopyTo, Pause, Netem, Partition (standard library only; `INTEGRATION=1`) |
 | `testing` | Test harness (stub upstreams, metrics assertions, fixtures) |
 | `devkit/cmd/new-plugin` | Scaffolding generator for new plugins |
@@ -81,12 +81,19 @@ out, err := remote.RunArgv(ctx, remote.Target{Dest: "ci@node1", Options: opts}, 
 - `PinnedHostKeys{Path}` pins keys by alias in a file you choose; it never
   touches `~/.ssh/known_hosts`. `ScanHostKeysSSH` captures a key through ssh
   itself so ProxyJump works; show the fingerprint and get confirmation before
-  `Add`.
+  `Add`. `ScanHostKeysSSHSpec` does the same from a `HostSpec`, using its
+  explicit user, port and SSH configuration.
+- `PinAlias(HostSpec)` returns the canonical pin-file alias for an endpoint
+  (`nself+<host>+<port>`, or the bare host name on port 22 when it is not an IP
+  literal and does not start with `nself-`). `LegacyPinAliases` lists the older
+  `nself-<host>-<port>` forms. `PinnedHostKeys.MigrateLegacyPin` copies matching
+  live keys to the new alias once; `EffectivePinAlias` resolves which alias
+  currently holds pins without writing.
 - `ResolveSSHHost` reads `ssh -G` for hostname, port, user, proxyjump and
   hostkeyalias.
 - `nself deploy` keeps its historical argv inside `internal/deploy`; this package has no relaxed mode.
 - `Target.Dest` must be the canonical destination a `HostSpec` renders (`[user@]host`, IPv6 in brackets). A port or a legacy `host:/path` in `Dest` is refused: pass the port as `-p` in `Target.Options`, which `HostSpec.Target` does for you. A bare IPv6 address is accepted only when `Options` carries `-p`.
-- `Rsync` caller options are an allowlist of self-contained flags (`-az`, `--delete`, `--exclude=x`; never `-e`, `--rsh`, `--files-from`, a bare `--`, or a flag whose value is a separate element). `Target.Options` accepts the D4 block plus `-o` keys ConnectTimeout, ServerAlive*, Port, User, IdentityFile, IdentitiesOnly, BatchMode, Compression, LogLevel, ConnectionAttempts, AddressFamily, PreferredAuthentications, and `-i`, `-p`, `-4`, `-6`, `-q`, `-v`. `RunArgv` needs a POSIX remote shell.
+- `Rsync` caller options are an allowlist of self-contained flags (`-az`, `--delete`, `--exclude=x`; never `-e`, `--rsh`, `--files-from`, a bare `--`, or a flag whose value is a separate element). `Target.Options` accepts the D4 block plus `-o` keys ConnectTimeout, ServerAlive*, Port, User, IdentityFile, IdentitiesOnly, BatchMode, Compression, LogLevel, ConnectionAttempts, AddressFamily, PreferredAuthentications, and `-i`, `-p`, `-4`, `-6`, `-q`, `-v`. When passed to `scp`, the D4 options `SessionType`, `StdinNull` and `ForkAfterAuthentication` are dropped because they conflict with scp's internal SFTP session on newer OpenSSH clients. `RunArgv` needs a POSIX remote shell.
 
 ## Docker sshd fleets for integration tests (`simharness`)
 
@@ -185,7 +192,7 @@ The `testing` package provides:
 
 ## Requirements
 
-- Go 1.23 or later
+- Go 1.25 or later
 - A recent nSelf CLI (for plugin runtime; see COMPATIBILITY.md)
 
 ## License
