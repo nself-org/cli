@@ -6,7 +6,7 @@ import (
 	"github.com/nself-org/cli/internal/license"
 )
 
-// Purpose: select the newest signed covering token among configured subjects.
+// Purpose: select the newest signed covering single token (publication: selectTokens).
 // Inputs: candidates/slugs/rejected subjects. Outputs: token/policy error.
 // Constraints: rejected keys (this run, persisted, or on the revocation list) grant
 // no authority; signed exp orders candidates.
@@ -54,5 +54,5 @@ func publishAfterKeyRejection(projectDir, key string) error {
 	}
 	token, _ := cachedToken()
 	return publishCandidates(projectDir, names, map[string]bool{license.HashKey(key): true},
-		[]string{token, retainedToken(Path(projectDir))})
+		append([]string{token}, retainedTokens(Path(projectDir))...))
 }

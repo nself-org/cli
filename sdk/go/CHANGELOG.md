@@ -27,6 +27,11 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `ErrEntitlementUnconfigured` and must apply the same compatibility rule.
   Configured invalid files fail closed. Test-tag builds emit a release warning;
   production images must have `TestKeysCompiled() == false`.
+- Multi-line entitlement files (`plugin.entitlement-token` v1.1, D-0851):
+  `VerifyEntitlement` and `Guard` accept any line that verifies for the slug;
+  Guard keeps the latest deadline over matching lines only. Invalid, expired or
+  non-matching lines grant nothing and never block a valid line. Single-line v1
+  files behave as before.
 - `signing` package (P7-CACHE-06): Ed25519 verification pinned to one purpose
   (plugins, agent, ci-release, ci-node, ci-audit) and optionally one scope, with
   key ids (`KeyID`), revocations, key validity windows and sentinel errors;

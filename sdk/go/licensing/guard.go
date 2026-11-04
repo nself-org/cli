@@ -127,8 +127,9 @@ func (g *Middleware) reload() {
 }
 
 // Purpose: verify a new snapshot once. Inputs: current time. Outputs: cached decision.
-// Constraints: caller holds mu; complete invalid tokens revoke authorization.
-// SPORT: plugin.entitlement-token.
+// Constraints: caller holds mu; a line verified for the slug wins (max deadline);
+// otherwise a torn line retries and complete invalid lines revoke authorization.
+// SPORT: plugin.entitlement-token v1.1.
 func (g *Middleware) reloadLocked(now time.Time) {
 	g.lastReload = now
 	data, err := readTokenFile(g.path)
@@ -136,8 +137,9 @@ func (g *Middleware) reloadLocked(now time.Time) {
 		g.valid, g.retryRead = false, false
 		return
 	}
-	token := strings.TrimSpace(string(data))
-	if err != nil || incompleteToken(token) {
+	lines := tokenLines(data)
+	deadline, verified := linesDeadline(lines, g.slug)
+	if !verified && (err != nil || anyIncomplete(lines)) {
 		g.retryRead = g.authorized(now)
 		if !g.retryRead {
 			g.valid = false
@@ -145,8 +147,19 @@ func (g *Middleware) reloadLocked(now time.Time) {
 		return
 	}
 	g.retryRead = false
-	g.deadline, err = verifiedDeadline(token, g.slug)
-	g.valid = err == nil
+	g.deadline, g.valid = deadline, verified
+}
+
+// Purpose: detect a possibly torn multi-line snapshot. Inputs: file lines.
+// Outputs: any line structurally incomplete. Constraints: only consulted when no
+// line verified, so a malformed line never blocks a valid one. SPORT: plugin.entitlement-token v1.1.
+func anyIncomplete(lines []string) bool {
+	for _, line := range lines {
+		if incompleteToken(line) {
+			return true
+		}
+	}
+	return false
 }
 
 // Purpose: identify potentially torn reads before cryptographic verification.

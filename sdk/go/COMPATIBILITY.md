@@ -27,6 +27,12 @@ For released v1.4.x CLIs, unset `NSELF_ENTITLEMENT_FILE` means serve with one
 warning until v1.6.0. Guard applies this rule. Worker and other non-HTTP callers
 must treat `ErrEntitlementUnconfigured` from `VerifyEntitlement` the same way.
 Set-but-empty, missing, invalid, or non-regular configured files fail closed.
+Entitlement files follow contract `plugin.entitlement-token` v1.1 (D-0851): one
+JWT per line. A request is authorized when any line verifies for the slug, and
+Guard caches the latest deadline over matching lines only. A failing line grants
+nothing and does not block other lines. A v1 single-token file reads the same.
+SDK builds released before v1.1 reject multi-line files, so licensed plugins
+must vendor this SDK before a project holds tokens for two licence keys.
 On Unix platforms the token file is opened with `O_NOFOLLOW` and `O_NONBLOCK`
 and the opened descriptor is checked to be a regular file, closing the window
 where a FIFO or symlink could be swapped in between a path check and the open.

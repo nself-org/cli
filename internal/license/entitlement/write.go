@@ -1,6 +1,6 @@
-// Package entitlement writes the ping-issued token consumed by plugin runtimes.
-// Purpose: publish only the verified cached licence JWT as a private file.
-// Inputs: context, project directory, and the existing licence cache.
+// Package entitlement writes the ping-issued tokens consumed by plugin runtimes.
+// Purpose: publish only verified licence JWTs, one line per configured key (v1.1).
+// Inputs: context, project directory, the existing licence cache and file lines.
 // Outputs: .nself/state/entitlement.jwt, or E125 with an empty fail-closed file.
 // Constraints: v1.4 never writes; no JWT is exposed in compose or diagnostics.
 // SPORT: runtime entitlement publication for build, start and license set.
@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
@@ -24,7 +25,7 @@ func Path(projectDir string) string {
 	return filepath.Join(projectDir, ".nself", "state", "entitlement.jwt")
 }
 
-// Refresh publishes a verified cached licence JWT while preserving mounted inodes.
+// Refresh publishes verified licence JWTs while preserving mounted inodes.
 // Purpose: prepare the runtime token. Inputs: context and project root.
 // Outputs: a private JWT file, or an empty file and E125 if no verified token exists.
 // Constraints: trust server signatures, not cache copies; v1.4 is unchanged.
@@ -50,7 +51,7 @@ func RefreshForPlugins(ctx context.Context, projectDir, pluginDir string) error 
 	}
 	defer reconcileTimer(projectDir, names, pluginDir) // P7-PLUG-64: unattended refresh timer
 	token, _ := cachedToken()
-	candidates := []string{token, retainedToken(Path(projectDir))}
+	candidates := append([]string{token}, retainedTokens(Path(projectDir))...)
 	var rejected map[string]bool
 	var recordErr error
 	if len(names) > 0 {
@@ -72,16 +73,16 @@ func RefreshForPlugins(ctx context.Context, projectDir, pluginDir string) error 
 // verified tokens across transient cache failures. SPORT: entitlement lifecycle.
 func publishToken(projectDir string, names []string) error {
 	token, _ := cachedToken()
-	return publishCandidates(projectDir, names, nil, []string{token, retainedToken(Path(projectDir))})
+	return publishCandidates(projectDir, names, nil, append([]string{token}, retainedTokens(Path(projectDir))...))
 }
 
-// Purpose: publish the newest covering token without reviving rejected subjects.
-// Inputs: verified candidates/slugs/rejected hashes. Outputs: file/E125.
-// Constraints: signed expiry only; preserve diagnostic token if none covers.
-// SPORT: per-key rejection and offline entitlement selection.
+// Purpose: publish one line per accepted key without reviving rejected subjects.
+// Inputs: verified candidates/slugs/rejected hashes. Outputs: file/E125 naming
+// each installed licensed plugin no line covers. Constraints: signed expiry only;
+// preserve a diagnostic token if none is in grace. SPORT: plugin.entitlement-token v1.1.
 func publishCandidates(projectDir string, names []string, rejected map[string]bool, candidates []string) error {
-	token, tokenErr := selectToken(candidates, names, rejected)
-	if err := writeAtomic(Path(projectDir), []byte(token)); err != nil {
+	lines, tokenErr := selectTokens(candidates, names, rejected)
+	if err := writeAtomic(Path(projectDir), []byte(strings.Join(lines, "\n"))); err != nil {
 		return errs.Wrap("E125", fmt.Sprintf("could not write the plugin entitlement file: %v", err), err)
 	}
 	if tokenErr != nil {
