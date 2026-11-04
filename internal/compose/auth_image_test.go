@@ -4,7 +4,7 @@ package compose
 //
 // Purpose: prove that v1.4 runs nhost/auth:0.36.0 (auth-v14, the digest
 // nhost/hasura-auth:0.36.0 had), that v1.5 runs the current nhost/auth release
-// only with an AUTH_ENCRYPTION_KEY, that an explicit AUTH_VERSION wins, and that
+// (v1.5 without a key is refused, auth_image_v15_test.go), that an explicit AUTH_VERSION wins, and that
 // a project lock pin of auth 0.36.0 survives v1.5, also in the pre-rename
 // spelling.
 // Inputs: minimalConfig plus the embedded image lock; keys are fake hex.
@@ -67,13 +67,10 @@ func TestAuthImageByMode(t *testing.T) {
 		{"v1.4 lock blank version", "", "", "", PinningLock, v14.String()},
 		{"v1.4 legacy default", "0.36.0", "", "", PinningLegacy, "nhost/auth:0.36.0"},
 		{"v1.4 key ignored", "0.36.0", fakeAuthKey, "", PinningLock, v14.String()},
-		{"v1.5 no key stays on auth-v14", "0.36.0", "", "1", PinningLock, v14.String()},
-		{"v1.5 malformed key stays on auth-v14", "0.36.0", "not-hex", "1", PinningLock, v14.String()},
-		{"v1.5 key moves to the current release", "0.36.0", fakeAuthKey, "1", PinningLock, cur.String()},
+		{"v1.5 key renders the current release", "0.36.0", fakeAuthKey, "1", PinningLock, cur.String()},
 		{"v1.5 key legacy pinning", "", fakeAuthKey, "1", PinningLegacy, cur.LegacyRef},
 		{"current version with key in v1.4", cur.Version, fakeAuthKey, "", PinningLock, cur.String()},
 		{"current version without key stays on auth-v14", cur.Version, "", "", PinningLock, v14.String()},
-		{"current version without key in v1.5", cur.Version, "", "1", PinningLock, v14.String()},
 		{"explicit older release in v1.4", "0.40.0", "", "", PinningLock, "nhost/hasura-auth:0.40.0"},
 		{"explicit 0.42.0 keeps the frozen line", "0.42.0", "", "", PinningLock, "nhost/hasura-auth:0.42.0"},
 		{"explicit older release in v1.5", "0.40.0", fakeAuthKey, "1", PinningLock, "nhost/hasura-auth:0.40.0"},
@@ -146,13 +143,13 @@ func TestAuthKeyNoticeOnce(t *testing.T) {
 	setMode(t, PinningLock)
 	defer SetProjectPins(nil)()
 	notices := captureAuthNotice(t)
-	authImageFor(t, "0.36.0", "")
-	authImageFor(t, "0.36.0", "")
+	authImageFor(t, "0.45.0", "")
+	authImageFor(t, "0.45.0", "")
 	if got := strings.Count(notices.String(), AuthEncryptionKeyEnv); got != 1 {
 		t.Errorf("notice printed %d times, want once: %q", got, notices.String())
 	}
 	quiet := captureAuthNotice(t)
-	authImageFor(t, "0.36.0", fakeAuthKey)
+	authImageFor(t, "0.45.0", fakeAuthKey)
 	compattest.Set(t, false)
 	authImageFor(t, "0.36.0", "")
 	if quiet.Len() != 0 {
@@ -166,15 +163,12 @@ func TestAuthEntryExported(t *testing.T) {
 		if compat.V15() {
 			want = "auth"
 		}
-		if got, missing := AuthEntry(map[string]string{AuthEncryptionKeyEnv: fakeAuthKey}); got != want || missing {
-			t.Errorf("AuthEntry(with key) = %q, %t; want %q, false", got, missing, want)
+		if got := AuthEntry(); got != want {
+			t.Errorf("AuthEntry() = %q; want %q", got, want)
 		}
 		// The key is forwarded verbatim, so a padded one is not valid.
-		if got, _ := AuthEntry(map[string]string{AuthEncryptionKeyEnv: " " + fakeAuthKey}); got != "auth-v14" {
-			t.Errorf("AuthEntry(padded key) = %q, want auth-v14", got)
-		}
-		if got, missing := AuthEntry(nil); got != "auth-v14" || missing != compat.V15() {
-			t.Errorf("AuthEntry(nil) = %q, %t; want auth-v14, %t", got, missing, compat.V15())
+		if AuthKeySet(map[string]string{AuthEncryptionKeyEnv: " " + fakeAuthKey}) || AuthKeySet(nil) || !AuthKeySet(map[string]string{AuthEncryptionKeyEnv: fakeAuthKey}) {
+			t.Error("AuthKeySet must accept exactly 64 hex characters")
 		}
 	})
 }
@@ -194,15 +188,15 @@ func TestAuthBootstrapMapsPreRenameRef(t *testing.T) {
 func TestAuthCatalogShowsModeEntry(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
 		setMode(t, PinningLock)
-		v14, _ := LockedRef("auth-v14")
+		want, _ := LockedRef(AuthEntry())
 		n := 0
 		for _, e := range ServiceCatalog() {
 			if e.Name != "auth" {
 				continue
 			}
 			n++
-			if e.DefaultImage != v14.String() {
-				t.Errorf("catalog auth image = %q, want %q", e.DefaultImage, v14.String())
+			if e.DefaultImage != want.String() {
+				t.Errorf("catalog auth image = %q, want %q", e.DefaultImage, want.String())
 			}
 		}
 		if n != 1 {

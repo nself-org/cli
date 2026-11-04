@@ -120,6 +120,10 @@ func renderImages(t *testing.T, env map[string]string) map[string]string {
 	if rt := env["FUNCTIONS_RUNTIME"]; rt != "" {
 		cfg.Functions.Runtime = rt
 	}
+	if cfg.Passthrough == nil {
+		cfg.Passthrough = map[string]string{}
+	}
+	cfg.Passthrough[AuthEncryptionKeyEnv] = fakeAuthKey // v1.5 renders the current auth, which needs the key (D-0660)
 	raw, err := NewGenerator(cfg).Generate()
 	if err != nil {
 		t.Fatalf("Generate with %v: %v", env, err)

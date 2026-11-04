@@ -42,7 +42,7 @@ func frontedTestConfig(t *testing.T) *config.Config {
 	if err != nil {
 		t.Fatalf("ApplyDefaults() error: %v", err)
 	}
-	return cfg
+	return withTestAuthKey(cfg)
 }
 
 // TestFrontedStackOmitsOwnNginx verifies that NGINX_FRONTED_BY removes the

@@ -76,6 +76,12 @@ func renderStackIn(t *testing.T, dir string, env map[string]string) map[string]s
 	if rt := env["FUNCTIONS_RUNTIME"]; rt != "" {
 		cfg.Functions.Runtime = rt
 	}
+	if compose.AuthEntry() == "auth" && !compose.AuthKeySet(cfg.Passthrough) { // v1.5 renders auth, which needs its key (D-0660)
+		if cfg.Passthrough == nil {
+			cfg.Passthrough = map[string]string{}
+		}
+		cfg.Passthrough[compose.AuthEncryptionKeyEnv] = strings.Repeat("0f", 32)
+	}
 	raw, err := compose.NewGenerator(cfg).Generate()
 	if err != nil {
 		t.Fatalf("Generate with %v: %v", env, err)

@@ -62,7 +62,7 @@ func snapshotConfig() *config.Config {
 			SSLPort:  443,
 		},
 	}
-	return cfg
+	return withTestAuthKey(cfg)
 }
 
 // generateYAML is a test helper that calls Generate() and returns the YAML
@@ -290,6 +290,7 @@ func TestSnapshot_HasuraGraphqlEnvVarForwarding(t *testing.T) {
 		"HASURA_GRAPHQL_ENABLE_ALLOWLIST": "true",
 		"HASURA_GRAPHQL_FOO":              "bar",
 	}
+	withTestAuthKey(cfg)
 	yaml := generateYAML(t, cfg)
 
 	hasuraBlock := extractServiceBlock(yaml, "hasura")

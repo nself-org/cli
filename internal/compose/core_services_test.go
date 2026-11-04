@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
 )
 
@@ -12,6 +13,14 @@ import (
 // surprises.  It does NOT call ApplyDefaults so tests that need specific
 // values can control exactly what ends up in the struct.
 func minimalConfig() *config.Config {
+	cfg := minimalConfigBase()
+	if compat.V15() { // v1.5 renders the current auth, which needs the key (D-0660); v1.4 goldens carry none
+		cfg.Passthrough = map[string]string{AuthEncryptionKeyEnv: fakeAuthKey}
+	}
+	return cfg
+}
+
+func minimalConfigBase() *config.Config {
 	return &config.Config{
 		ProjectName:   "test",
 		BaseDomain:    "localhost",
@@ -99,6 +108,7 @@ func TestAuthResourceLimits_Default(t *testing.T) {
 	if applyErr != nil {
 		t.Fatalf("ApplyDefaults() error: %v", applyErr)
 	}
+	withTestAuthKey(cfg)
 
 	g := NewGenerator(cfg)
 	svc, err := g.buildAuthService()
@@ -300,6 +310,7 @@ func TestAuthNamespacePassthrough(t *testing.T) {
 		t.Run(tt.key, func(t *testing.T) {
 			cfg := minimalConfig()
 			cfg.Passthrough = map[string]string{tt.key: tt.value}
+			withTestAuthKey(cfg)
 
 			g := NewGenerator(cfg)
 			svc, err := g.buildAuthService()
@@ -322,6 +333,7 @@ func TestAuthNamespacePassthrough(t *testing.T) {
 		cfg.Passthrough = map[string]string{
 			"AUTH_JWT_SECRET": "raw-env-file-value-should-not-win",
 		}
+		withTestAuthKey(cfg)
 
 		g := NewGenerator(cfg)
 		svc, err := g.buildAuthService()

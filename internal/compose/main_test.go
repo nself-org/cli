@@ -9,9 +9,24 @@ package compose
 
 import (
 	"fmt"
+	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/config"
 	"os"
 	"testing"
 )
+
+// withTestAuthKey gives a v1.5 test config the AUTH_ENCRYPTION_KEY the build would have
+// generated: v1.5 renders the current auth image, which is refused without it (D-0660).
+// v1.4 configs stay as they are (their goldens carry no key).
+func withTestAuthKey(cfg *config.Config) *config.Config {
+	if compat.V15() {
+		if cfg.Passthrough == nil {
+			cfg.Passthrough = map[string]string{}
+		}
+		cfg.Passthrough[AuthEncryptionKeyEnv] = fakeAuthKey
+	}
+	return cfg
+}
 
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "compose-plugins-")
