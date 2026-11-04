@@ -108,6 +108,7 @@ func TestAuthResourceLimits_Default(t *testing.T) {
 	if applyErr != nil {
 		t.Fatalf("ApplyDefaults() error: %v", applyErr)
 	}
+	withTestAuthKey(cfg)
 
 	g := NewGenerator(cfg)
 	svc, err := g.buildAuthService()
@@ -309,6 +310,7 @@ func TestAuthNamespacePassthrough(t *testing.T) {
 		t.Run(tt.key, func(t *testing.T) {
 			cfg := minimalConfig()
 			cfg.Passthrough = map[string]string{tt.key: tt.value}
+			withTestAuthKey(cfg)
 
 			g := NewGenerator(cfg)
 			svc, err := g.buildAuthService()
@@ -331,6 +333,7 @@ func TestAuthNamespacePassthrough(t *testing.T) {
 		cfg.Passthrough = map[string]string{
 			"AUTH_JWT_SECRET": "raw-env-file-value-should-not-win",
 		}
+		withTestAuthKey(cfg)
 
 		g := NewGenerator(cfg)
 		svc, err := g.buildAuthService()

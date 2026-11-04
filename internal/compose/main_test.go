@@ -20,7 +20,10 @@ import (
 // v1.4 configs stay as they are (their goldens carry no key).
 func withTestAuthKey(cfg *config.Config) *config.Config {
 	if compat.V15() {
-		cfg.Passthrough = map[string]string{AuthEncryptionKeyEnv: fakeAuthKey}
+		if cfg.Passthrough == nil {
+			cfg.Passthrough = map[string]string{}
+		}
+		cfg.Passthrough[AuthEncryptionKeyEnv] = fakeAuthKey
 	}
 	return cfg
 }
