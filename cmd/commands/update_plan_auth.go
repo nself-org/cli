@@ -4,7 +4,7 @@ package commands
 // has two image lock entries on nhost/auth (auth-v14 = 0.36.0, auth = the
 // current release, which needs AUTH_ENCRYPTION_KEY and migrates the database one
 // way), so the generic per-repository lookup cannot choose between them.
-// Inputs: the project's auth pin and AUTH_* passthrough (config).
+// Inputs: the project's auth pin.
 // Outputs: the plan candidate for the auth row; a preflight error before --yes
 // changes anything when the build would refuse the pinned release.
 // Constraints: never moves a pin that migrated the database back, never names
@@ -20,12 +20,11 @@ import (
 )
 
 // authCandidate is the auth row (D-0661): the entry compose.AuthEntry picks for
-// the mode and AUTH_ENCRYPTION_KEY, never a step back from a release that has
+// the mode, never a step back from a release that has
 // migrated the database (that needs the pre-upgrade backup restored), and never a
 // move of a digest-only pin whose release the lock cannot name.
-func authCandidate(pin string, passthrough map[string]string) plan.Candidate {
-	entry, keyMissing := compose.AuthEntry(passthrough)
-	r, ok := compose.LockedRef(entry)
+func authCandidate(pin string) plan.Candidate {
+	r, ok := compose.LockedRef(compose.AuthEntry())
 	v14, _ := compose.LockedRef("auth-v14")
 	if !ok {
 		return plan.Candidate{Reason: plan.ReasonNoImage}
@@ -35,8 +34,6 @@ func authCandidate(pin string, passthrough map[string]string) plan.Candidate {
 	switch {
 	case tagless && digest != v14.IndexDigest && !compose.AuthRefNeedsKey(pin):
 		return plan.Candidate{Reason: "the auth pin names a digest the CLI image lock does not know, so update cannot tell whether it migrated the database; it is left as is"}
-	case compose.AuthRefNeedsKey(pin) && !compose.AuthRefNeedsKey(r.String()) && keyMissing:
-		return plan.Candidate{Reason: "the pinned auth release needs AUTH_ENCRYPTION_KEY: put back the key this project ran with; going back to 0.36.0 needs the pre-upgrade backup restored"}
 	case compose.AuthRefNeedsKey(pin) && !compose.AuthRefNeedsKey(r.String()):
 		return plan.Candidate{Reason: "the pinned auth release has migrated the database one way; going back needs the pre-upgrade backup restored (Image-Lock wiki, Roll back)"}
 	case !compose.AuthRefNeedsKey(pin) && compose.AuthRefNeedsKey(r.String()):

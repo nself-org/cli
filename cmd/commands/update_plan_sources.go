@@ -45,13 +45,13 @@ func gatherPlan(ctx context.Context, d updateDeps, l lock.Lock, target string) (
 	default:
 		return plan.Plan{}, sourceFailure("the CLI release lookup", err)
 	}
-	engine, passthrough, err := configuredCacheEngine()
+	engine, err := configuredCacheEngine()
 	if err != nil {
 		return plan.Plan{}, err
 	}
 	for k, pin := range l.Pins() {
-		if k == "auth" { // two lock entries, chosen by mode and key (D-0661)
-			c.Images[k] = authCandidate(pin, passthrough)
+		if k == "auth" { // two lock entries, chosen by mode (D-0661, D-0660)
+			c.Images[k] = authCandidate(pin)
 			continue
 		}
 		if k == "hasura" { // two lock entries, chosen by mode (P7-LIVE-23)
@@ -91,16 +91,15 @@ func repoNoTag(ref string) string {
 }
 
 // configuredCacheEngine is the REDIS_ENGINE the project sets ("valkey",
-// "redis", or "" when unset), plus the AUTH_* passthrough the auth row needs,
-// read through the same config loader the build uses so the .env file and the
+// "redis", or "" when unset), read through the same config loader the build uses so the .env file and the
 // environment count the same way. An invalid value is an error here, as it is
 // in the build.
-func configuredCacheEngine() (string, map[string]string, error) {
+func configuredCacheEngine() (string, error) {
 	cfg, err := loadConfig()
 	if err != nil {
-		return "", nil, fmt.Errorf("reading REDIS_ENGINE for the plan: %w", err)
+		return "", fmt.Errorf("reading REDIS_ENGINE for the plan: %w", err)
 	}
-	return strings.ToLower(strings.TrimSpace(cfg.Redis.Engine)), cfg.Passthrough, nil
+	return strings.ToLower(strings.TrimSpace(cfg.Redis.Engine)), nil
 }
 
 // cacheEngineEntry is the image lock entry the `redis` service moves to: the

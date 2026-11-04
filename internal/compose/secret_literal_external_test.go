@@ -32,7 +32,9 @@ func optionalSecretsConfig(engine string, sec func(string) string) *config.Confi
 		BaseDomain:    "localhost",
 		Env:           "staging",
 		DockerNetwork: "test_network",
-		Postgres:      config.PostgresConfig{Host: "postgres", User: "postgres", Password: sec("pgSentinel0123456789"), DB: "nself", Port: 5432},
+		// v1.5 renders the current auth, which needs its key (D-0660).
+		Passthrough: map[string]string{compose.AuthEncryptionKeyEnv: strings.Repeat("0f", 32)},
+		Postgres:    config.PostgresConfig{Host: "postgres", User: "postgres", Password: sec("pgSentinel0123456789"), DB: "nself", Port: 5432},
 		Hasura: config.HasuraConfig{
 			AdminSecret: sec("hasuraSentinel0123456789"), JWTKey: "testsecretkey12345678901234567890",
 			JWTType: "HS256", Port: 8080, Version: "v2.36.0", MemLimit: "1g", CPULimit: "1.0",

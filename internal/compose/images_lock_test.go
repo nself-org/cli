@@ -111,7 +111,7 @@ func TestConfigDefaultVersionsStayPinned(t *testing.T) {
 	}
 	for name, key := range keys {
 		if name == "auth" { // auth renders the entry its mode picks (P7-LIVE-20)
-			name, _ = AuthEntry(nil)
+			name = "auth-v14" // the config default (0.36.0) names the auth-v14 release in every mode
 		}
 		if name == "hasura" { // the config default is the v1.4 release (P7-LIVE-23)
 			name = "hasura-v14"
@@ -125,8 +125,7 @@ func TestConfigDefaultVersionsStayPinned(t *testing.T) {
 		}
 	}
 	for name, cfg := range fixtureConfigs(t) {
-		authEntry, _ := AuthEntry(cfg.Passthrough)
-		for svc, v := range map[string]string{"hasura-v14": cfg.Hasura.Version, authEntry: cfg.Auth.Version,
+		for svc, v := range map[string]string{"hasura-v14": cfg.Hasura.Version, "auth-v14": cfg.Auth.Version,
 			"elasticsearch": cfg.Search.Elasticsearch.Version} {
 			if r, _ := LockedRef(svc); ImageRef(svc, v) != r.String() {
 				t.Errorf("%s: ApplyDefaults %s version %q is unpinned in lock mode", name, svc, v)

@@ -1,9 +1,9 @@
 package commands
 
 // update_plan_auth_test.go — the auth row of `nself update --plan` follows
-// compose.AuthEntry (D-0661, P7-LIVE-20): v1.4 and v1.5 without
-// AUTH_ENCRYPTION_KEY stay on auth-v14, v1.5 with the key moves to the current
-// release with a one-way note, a migrated pin is never moved back, and a
+// compose.AuthEntry (D-0661, P7-LIVE-20, D-0660): v1.4 stays on auth-v14, v1.5
+// moves to the current release with a one-way note (the build generates the key,
+// so it no longer gates the move), a migrated pin is never moved back, and a
 // digest-only pin the lock cannot name is left as is. Keys are fake hex.
 
 import (
@@ -28,31 +28,26 @@ func TestUpdatePlanAuthRow(t *testing.T) {
 	if !ok1 || !ok2 {
 		t.Fatal("image lock needs auth and auth-v14")
 	}
-	key := map[string]string{compose.AuthEncryptionKeyEnv: fakeUpdateAuthKey}
-	short := map[string]string{compose.AuthEncryptionKeyEnv: fakeUpdateAuthKey[:63]}
 	migrated := "docker.io/nhost/auth:0.45.0@sha256:" + strings.Repeat("ab", 32)
 	for _, tc := range []struct {
 		name       string
 		v15        bool
 		pin        string
-		pass       map[string]string
 		want, note string // want "" = no value; reason must then contain the note text
 	}{
-		{"v1.4 keeps auth-v14", false, v14.String(), key, v14.String(), ""},
-		{"v1.5 without key keeps auth-v14", true, v14.String(), nil, v14.String(), ""},
-		{"v1.5 with a 63-hex key keeps auth-v14", true, v14.String(), short, v14.String(), ""},
-		{"v1.5 with key moves with a one-way note", true, v14.String(), key, cur.String(), "one way"},
-		{"old spelling moves to the new name only", false, "docker.io/nhost/hasura-auth:0.36.0@" + v14.IndexDigest, nil, v14.String(), ""},
-		{"digest-only auth-v14 pin", false, "docker.io/nhost/auth@" + v14.IndexDigest, nil, v14.String(), ""},
-		{"v1.5 with key keeps the current pin", true, cur.String(), key, cur.String(), ""},
-		{"v1.5 with key keeps a digest-only current pin", true, "docker.io/nhost/auth@" + cur.IndexDigest, key, cur.String(), ""},
-		{"v1.4 with key never moves a migrated pin back", false, cur.String(), key, "", "backup restored"},
-		{"v1.5 without key asks for the key back", true, migrated, nil, "", "AUTH_ENCRYPTION_KEY"},
-		{"unknown digest-only pin is left as is", false, "docker.io/nhost/auth@sha256:" + strings.Repeat("cd", 32), nil, "", "does not know"},
+		{"v1.4 keeps auth-v14", false, v14.String(), v14.String(), ""},
+		{"v1.5 moves with a one-way note", true, v14.String(), cur.String(), "one way"},
+		{"old spelling moves to the new name only", false, "docker.io/nhost/hasura-auth:0.36.0@" + v14.IndexDigest, v14.String(), ""},
+		{"digest-only auth-v14 pin", false, "docker.io/nhost/auth@" + v14.IndexDigest, v14.String(), ""},
+		{"v1.5 keeps the current pin", true, cur.String(), cur.String(), ""},
+		{"v1.5 keeps a digest-only current pin", true, "docker.io/nhost/auth@" + cur.IndexDigest, cur.String(), ""},
+		{"v1.4 never moves a migrated pin back", false, cur.String(), "", "backup restored"},
+		{"v1.5 moves an older migrated pin to the current release", true, migrated, cur.String(), ""},
+		{"unknown digest-only pin is left as is", false, "docker.io/nhost/auth@sha256:" + strings.Repeat("cd", 32), "", "does not know"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			compattest.Set(t, tc.v15)
-			c := authCandidate(tc.pin, tc.pass)
+			c := authCandidate(tc.pin)
 			if tc.want == "" {
 				if c.Value != "" || !strings.Contains(c.Reason, tc.note) {
 					t.Fatalf("candidate = %+v, want no value and a reason containing %q", c, tc.note)
@@ -69,18 +64,18 @@ func TestUpdatePlanAuthRow(t *testing.T) {
 	}
 }
 
-// Through gatherPlan: the key is read from the project's .env like the build
-// reads it, and a migrated pin renders as unresolvable, never as a move.
+// Through gatherPlan: the key no longer gates the move (the build generates it),
+// and the plan never prints it.
 func TestUpdatePlanAuthFromConfig(t *testing.T) {
 	v14, _ := compose.LockedRef("auth-v14")
 	cur, _ := compose.LockedRef("auth")
 	for _, tc := range []struct {
 		name, pin, env string
-		want           string // "" = unresolvable; the pin itself = no move
+		want           string // the pin itself = no move
 	}{
 		{"key in .env moves auth-v14", v14.String(), compose.AuthEncryptionKeyEnv + "=" + fakeUpdateAuthKey + "\n", cur.String()},
-		{"no key keeps auth-v14", v14.String(), "", v14.String()},
-		{"no key never moves a migrated pin", cur.String(), "", ""},
+		{"no key still moves auth-v14", v14.String(), "", cur.String()},
+		{"no key keeps the current pin", cur.String(), "", cur.String()},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := updateProject(t)

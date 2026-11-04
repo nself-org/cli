@@ -184,8 +184,8 @@ func ServiceCatalog() []CatalogEntry {
 		if key == "" {
 			key = out[i].Name
 		}
-		if key == "auth" { // the entry the mode renders without a key (P7-LIVE-20)
-			key, _ = AuthEntry(nil)
+		if key == "auth" { // the entry the mode renders (P7-LIVE-20)
+			key = AuthEntry()
 		}
 		if key == "hasura" { // the entry the mode renders (P7-LIVE-23)
 			key = HasuraEntry()

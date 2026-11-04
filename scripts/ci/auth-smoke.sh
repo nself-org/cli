@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # Purpose: prove the P7-LIVE-20 auth image move (nhost/hasura-auth -> nhost/auth) on a
 #          real stack and print one PASS or FAIL line per assertion:
-#            1. a new v1.5 project without AUTH_ENCRYPTION_KEY renders auth-v14
-#               (nhost/auth 0.36.0) in docker-compose.yml and pins it in nself.lock.yaml
+#            1. a fresh v1.5 project with no hand-set AUTH_ENCRYPTION_KEY: `nself build`
+#               generates the key once into .env.secrets and renders the current auth
+#               release in docker-compose.yml (D-0660); a second build keeps the same
+#               key; the smoke then pins auth-v14 (nhost/auth 0.36.0) to seed the upgrade
 #            2. on auth-v14: password sign-up and sign-in, TOTP MFA enrolment and TOTP
 #               sign-in, and a Hasura request with the issued JWT all work
 #            3. a verified backup (nself backup create, verify, verify --restore-test)
-#            4. the switch to the `auth` ref (current nhost/auth) with a fresh
-#               AUTH_ENCRYPTION_KEY: compose and container run the new image
+#            4. the switch to the `auth` ref (current nhost/auth) with the key the build
+#               generated in step 1 (never hand-set): compose and container run the new image
 #            5. after the switch: password sign-in, a Hasura request with the new JWT,
 #               the pre-upgrade refresh token on POST /token (observed, asserted as
 #               observed), the TOTP secret is encrypted at rest and TOTP sign-in still
@@ -313,7 +315,7 @@ build_start() {
 }
 
 # ---- step 1: new project on auth-v14 -----------------------------------------------
-step "1 new project, auth-v14"
+step "1 fresh project: build generates the key and renders auth; then seed on auth-v14"
 # The stack publishes fixed loopback ports: refuse to start when any is taken.
 if ! python3 -c 'import socket,sys
 for p in (80, 443, 4000, 5432, 8080):
@@ -339,12 +341,24 @@ fi
 printf 'AUTH_MFA_ENABLED=true\n' >> "$PDIR/.env"
 check "project .env has no AUTH_ENCRYPTION_KEY" test "$(grep -c '^AUTH_ENCRYPTION_KEY' "$PDIR/.env")" -eq 0
 nsf build
-[ "$RC" -eq 0 ] || fatal "nself build exits 0" "rc=$RC $(nsf_tail)"
-pass "nself build exits 0"
+[ "$RC" -eq 0 ] || fatal "nself build exits 0 with no hand-set key" "rc=$RC $(nsf_tail)"
+pass "nself build exits 0 with no hand-set key"
+# D-0660: the build generated the key once; v1.5 renders the current auth release.
+check ".env.secrets holds one generated AUTH_ENCRYPTION_KEY (64 hex)" test "$(grep -Ec '^AUTH_ENCRYPTION_KEY="?[0-9a-fA-F]{64}"?$' "$PDIR/.env.secrets")" -eq 1
+KEY_SUM="$(grep '^AUTH_ENCRYPTION_KEY' "$PDIR/.env.secrets" | cksum)"
+if [ "$(compose_auth_image)" = "$REF_NEW" ]; then pass "fresh v1.5 compose auth image is the auth ref (no key was hand-set)"; else fail "fresh v1.5 compose auth image is the auth ref (no key was hand-set)" "got $(compose_auth_image)"; fi
+if [ "$(lock_auth_pin)" = "$REF_NEW" ]; then pass "fresh v1.5 nself.lock.yaml pins the auth ref"; else fail "fresh v1.5 nself.lock.yaml pins the auth ref" "got $(lock_auth_pin)"; fi
+nsf build --force
+[ "$RC" -eq 0 ] || fatal "second nself build exits 0" "rc=$RC $(nsf_tail)"
+if [ "$(grep '^AUTH_ENCRYPTION_KEY' "$PDIR/.env.secrets" | cksum)" = "$KEY_SUM" ]; then pass "a second build keeps the same key"; else fail "a second build keeps the same key"; fi
+# The upgrade path below needs a database auth-v14 created, so seed on auth-v14
+# (starting the current auth now would migrate the schema before the backup).
+set_pin "$REF_V14"
+nsf build
+[ "$RC" -eq 0 ] || fatal "nself build exits 0 on the auth-v14 pin" "rc=$RC $(nsf_tail)"
+pass "nself build exits 0 on the auth-v14 pin"
 if [ "$(compose_auth_image)" = "$REF_V14" ]; then pass "compose auth image is the auth-v14 ref"; else fail "compose auth image is the auth-v14 ref" "got $(compose_auth_image)"; fi
-if [ "$(lock_auth_pin)" = "$REF_V14" ]; then pass "nself.lock.yaml pins auth to the auth-v14 ref"; else fail "nself.lock.yaml pins auth to the auth-v14 ref" "got $(lock_auth_pin)"; fi
 check "compose forwards AUTH_MFA_ENABLED=true" grep -q 'AUTH_MFA_ENABLED: "true"' "$PDIR/docker-compose.yml"
-check "compose carries no AUTH_ENCRYPTION_KEY" test "$(grep -c AUTH_ENCRYPTION_KEY "$PDIR/docker-compose.yml")" -eq 0
 nsf start
 [ "$RC" -eq 0 ] || fatal "nself start exits 0" "rc=$RC $(nsf_tail)"
 pass "nself start exits 0"
@@ -399,9 +413,8 @@ if [ "$RC" -eq 0 ] && grep -q 'restore-test' "$WORK/out"; then pass "nself backu
 
 # ---- step 4: switch to the auth ref -------------------------------------------------
 step "4 switch to the auth ref"
-AUTH_KEY="$(python3 -c 'import secrets;print(secrets.token_hex(32))')"
-printf 'AUTH_ENCRYPTION_KEY=%s\n' "$AUTH_KEY" >> "$PDIR/.env"
-unset AUTH_KEY
+# No hand-set key: the one `nself build` generated in step 1 is reused.
+check "switch: the generated key is still the only key" test "$(grep -c '^AUTH_ENCRYPTION_KEY' "$PDIR/.env")" -eq 0
 set_pin "$REF_NEW"
 # nself update is not merged (P7-LIVE-10): the pin edit above is its stand-in.
 nsf build

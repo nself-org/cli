@@ -29,6 +29,7 @@ func storageFixture(t *testing.T, minio, object, custom bool) *config.Config {
 	}
 	cfg := minimalConfig()
 	cfg.ProjectName = "storage-fixture"
+	cfg.Passthrough = map[string]string{AuthEncryptionKeyEnv: fakeAuthKey} // v1.5 renders the current auth, which needs the key (D-0660)
 	cfg.Minio.Enabled = minio
 	cfg.Minio.RootUser = "test-access-key"
 	cfg.Minio.RootPassword = "fake-secret-not-real-0000"
@@ -252,7 +253,7 @@ func TestMinioWithoutPluginE138(t *testing.T) {
 			t.Setenv(key, "")
 		}
 		dir := t.TempDir()
-		env := "ENV=dev\nPROJECT_NAME=storage-fixture\nBASE_DOMAIN=localhost\nOBJECT_STORAGE_ENABLED=true\nS3_ACCESS_KEY=test-access-key\nS3_SECRET_KEY=fake-secret-not-real-0000\n"
+		env := "ENV=dev\nPROJECT_NAME=storage-fixture\nBASE_DOMAIN=localhost\nOBJECT_STORAGE_ENABLED=true\nS3_ACCESS_KEY=test-access-key\nS3_SECRET_KEY=fake-secret-not-real-0000\nAUTH_ENCRYPTION_KEY=" + fakeAuthKey + "\n"
 		if err := os.WriteFile(filepath.Join(dir, ".env"), []byte(env), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -572,7 +573,7 @@ func TestMinioE138RemedyTwo(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	base := "ENV=dev\nPROJECT_NAME=storage-fixture\nBASE_DOMAIN=localhost\nMINIO_ROOT_USER=nself\nMINIO_ROOT_PASSWORD=fake-secret-not-real-0000\n"
+	base := "ENV=dev\nPROJECT_NAME=storage-fixture\nBASE_DOMAIN=localhost\nMINIO_ROOT_USER=nself\nMINIO_ROOT_PASSWORD=fake-secret-not-real-0000\nAUTH_ENCRYPTION_KEY=" + fakeAuthKey + "\n"
 	load := func(extra string) (*config.Config, error) {
 		dir := t.TempDir()
 		if err := os.WriteFile(filepath.Join(dir, ".env"), []byte(base+extra), 0600); err != nil {
