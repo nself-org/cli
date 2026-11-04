@@ -201,8 +201,8 @@ func installFailure(err error) string {
 func note(line string) { _, _ = fmt.Fprintln(timerNotes, line) }
 
 // RunScheduled is one unattended refresh: it removes the timer when no licensed plugin remains
-// or autorefresh is disabled, otherwise it revalidates online and rewrites the entitlement file
-// in place only after the new JWT verifies and covers every installed licensed plugin.
+// or autorefresh is disabled, otherwise it revalidates online and rewrites the entitlement file in
+// place only after the renewed lines (plus retained lines of keys not renewed) cover every plugin.
 func RunScheduled(ctx context.Context, projectDir string) (Outcome, error) {
 	// compat.V15(P7-PLUG-64): no scheduled refresh -> scheduled revalidation and self-removal
 	if !compat.V15() || DevKeyMode() {
@@ -230,15 +230,15 @@ func RunScheduled(ctx context.Context, projectDir string) (Outcome, error) {
 	if len(renewed) == 0 {
 		return Outcome{}, &RefreshError{Class: class}
 	}
-	token, err := selectToken(renewed, names, rejected)
+	lines, err := selectTokens(withRetained(renewed, Path(projectDir)), names, rejected)
 	if err != nil {
 		return Outcome{}, &RefreshError{Class: ClassNotCovered, Err: err}
 	}
-	claims, err := license.ParseLicenseJWT(token)
+	claims, err := license.ParseLicenseJWT(lines[0])
 	if err != nil {
 		return Outcome{}, &RefreshError{Class: ClassTokenVerify, Err: err}
 	}
-	if err := writeAtomic(Path(projectDir), []byte(token)); err != nil {
+	if err := writeAtomic(Path(projectDir), []byte(strings.Join(lines, "\n"))); err != nil {
 		return Outcome{}, &RefreshError{Class: ClassWriteFailed, Err: err}
 	}
 	return Outcome{Exp: time.Unix(claims.Exp, 0).UTC()}, nil

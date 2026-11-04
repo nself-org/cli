@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -57,38 +56,9 @@ func explicitRejection(remote *validationStatus, result *license.ValidatorResult
 			(result.Status == license.StatusRevoked || result.Status == license.StatusExpired))
 }
 
-// Purpose: retain a verified runtime token if the cache is temporarily absent.
-// Inputs: file path. Outputs: token. Constraints: configured subject and signed
-// grace deadline, bounded regular-file read. SPORT: reboot/offline continuity.
-func retainedToken(path string) string {
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return ""
-	}
-	f, err := os.OpenFile(path, os.O_RDONLY|noFollowFlag, 0)
-	if err != nil {
-		return ""
-	}
-	defer func() { _ = f.Close() }()
-	data, err := io.ReadAll(io.LimitReader(f, 1<<20+1))
-	if err != nil || len(data) > 1<<20 {
-		return ""
-	}
-	claims, err := license.ParseLicenseJWT(string(data))
-	if err != nil || claims.Exp <= 0 || time.Now().After(time.Unix(claims.Exp, 0).Add(license.PostExpiryGraceWindow)) {
-		return ""
-	}
-	for _, key := range license.CollectLicenseKeys() {
-		if claims.Sub == license.HashKey(key) {
-			return string(data)
-		}
-	}
-	return ""
-}
-
-// Purpose: report expired grace and uncovered installed manifest slugs.
+// Purpose: report expired grace and uncovered installed manifest slugs for one token.
 // Inputs: verified token/slugs. Outputs: policy error. Constraints: signed exp.
-// SPORT: honest build diagnostics under the single-token v1 contract.
+// SPORT: single-token diagnostics; multi-line coverage is uncoveredError (v1.1).
 func tokenPolicy(token string, names []string) error {
 	claims, err := license.ParseLicenseJWT(token)
 	if err != nil {

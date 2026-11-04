@@ -112,7 +112,7 @@ func TestRetainedTokenGraceSubjectAndReadLimit(t *testing.T) {
 			if err := os.WriteFile(path, []byte(tc.token), 0600); err != nil {
 				t.Fatal(err)
 			}
-			got := retainedToken(path)
+			got := strings.Join(retainedTokens(path), "\n")
 			if (got != "") != tc.want || tc.want && got != tc.token {
 				t.Fatalf("retained=%v, want=%v", got != "", tc.want)
 			}
@@ -174,9 +174,9 @@ func TestStartMayContinueDistinguishesFailureKinds(t *testing.T) {
 	}
 }
 
-// Boundary tests for the grace clause in retainedToken. (The mutant at
+// Boundary tests for the grace clause in retainedTokens. (The mutant at
 // lifecycle.go:78:30 is the Exp <= 0 guard; see lifecycle_exp_test.go.)
-// retainedToken uses time.Now().After(exp.Add(grace)). We compute exp relative to
+// retainedTokens uses time.Now().After(exp.Add(grace)). We compute exp relative to
 // time.Now() inside each subtest so the window between signing and checking is
 // negligible; the "past" case uses an extra 2s margin to avoid flakiness.
 func TestRetainedTokenExactGraceBoundary(t *testing.T) {
@@ -198,7 +198,7 @@ func TestRetainedTokenExactGraceBoundary(t *testing.T) {
 			if err := os.WriteFile(path, []byte(token), 0600); err != nil {
 				t.Fatal(err)
 			}
-			got := retainedToken(path)
+			got := strings.Join(retainedTokens(path), "\n")
 			if (got != "") != tc.want {
 				t.Fatalf("retained=%v, want=%v (offset=%v)", got != "", tc.want, tc.offset)
 			}
@@ -259,7 +259,7 @@ func TestLoadRejectedExtractsExactHashFromMarkerName(t *testing.T) {
 }
 
 // TestRetainedTokenGraceBoundaryKillsMutant pins the grace clause
-// time.Now().After(exp.Add(grace)) in retainedToken: a token 2s past grace is
+// time.Now().After(exp.Add(grace)) in retainedTokens: a token 2s past grace is
 // not retained.
 func TestRetainedTokenGraceBoundaryKillsMutant(t *testing.T) {
 	sign := policySigner(t)
@@ -271,7 +271,7 @@ func TestRetainedTokenGraceBoundaryKillsMutant(t *testing.T) {
 	if err := os.WriteFile(path, []byte(token), 0600); err != nil {
 		t.Fatal(err)
 	}
-	got := retainedToken(path)
+	got := strings.Join(retainedTokens(path), "\n")
 	if got != "" {
 		t.Fatalf("MUTANT DETECTED: token past grace was retained (len=%d)", len(got))
 	}

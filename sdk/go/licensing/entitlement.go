@@ -37,7 +37,8 @@ func VerifyEntitlement(slug string, now time.Time) error {
 }
 
 // Purpose: verify a file snapshot. Inputs: path, slug, now. Outputs: authorization.
-// Constraints: invalid/unreadable/oversized files fail closed. SPORT: plugin.entitlement-token.
+// Constraints: invalid/unreadable/oversized files fail closed; any one line that
+// verifies for slug at now authorizes (v1.1). SPORT: plugin.entitlement-token.
 func verifyFile(path, slug string, now time.Time) error {
 	if path == "" {
 		return ErrEntitlementExpired
@@ -46,7 +47,39 @@ func verifyFile(path, slug string, now time.Time) error {
 	if err != nil {
 		return ErrEntitlementExpired
 	}
-	return verifyToken(strings.TrimSpace(string(data)), slug, now)
+	for _, token := range tokenLines(data) {
+		if verifyToken(token, slug, now) == nil {
+			return nil
+		}
+	}
+	return ErrEntitlementExpired
+}
+
+// Purpose: split a v1.1 file into one compact JWT per line. Inputs: file bytes.
+// Outputs: nonblank trimmed lines; a v1 file is its single line.
+// Constraints: no line is trusted here. SPORT: plugin.entitlement-token v1.1.
+func tokenLines(data []byte) []string {
+	var lines []string
+	for _, line := range strings.Split(string(data), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
+// Purpose: pick the grant for slug. Inputs: file lines, slug. Outputs: the max
+// signed grace deadline over lines that verify for slug, and whether any did.
+// Constraints: lines that fail or omit slug add nothing. SPORT: plugin.entitlement-token v1.1.
+func linesDeadline(lines []string, slug string) (int64, bool) {
+	var best int64
+	found := false
+	for _, token := range lines {
+		if deadline, err := verifiedDeadline(token, slug); err == nil && (!found || deadline > best) {
+			best, found = deadline, true
+		}
+	}
+	return best, found
 }
 
 // beforeTokenOpen is a test seam run just before the token file is opened.
