@@ -10,6 +10,7 @@ package entitlement
 // SPORT: plugin.entitlement-token v1.1.
 
 import (
+	"cmp"
 	"fmt"
 	"io"
 	"os"
@@ -53,10 +54,10 @@ func (a rankedToken) better(b rankedToken) bool {
 	if a.inGrace != b.inGrace {
 		return a.inGrace
 	}
-	if a.covered != b.covered {
-		return a.covered > b.covered
+	if c := cmp.Compare(a.covered, b.covered); c != 0 {
+		return c == 1
 	}
-	return a.exp > b.exp
+	return a.exp > b.exp // equal exp is not better: ties keep the first seen
 }
 
 // Purpose: select one token per accepted configured key and order the lines.

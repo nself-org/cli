@@ -140,3 +140,42 @@ func TestWithRetainedNeverFallsBackForRenewedKey(t *testing.T) {
 		t.Fatalf("a narrowed bundle was widened by its older line: %v", err)
 	}
 }
+
+func TestSelectTokensTiesAndGraceFallback(t *testing.T) {
+	sign := policySigner(t)
+	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "key-a")
+	t.Setenv("NSELF_LICENSE_KEY_1", "key-b")
+	now := time.Now()
+	hour := now.Add(time.Hour).Unix()
+	first := sign("key-a", []string{"chat"}, hour)
+	twin := sign("key-a", []string{"chat", "other"}, hour) // same key, same rank
+	if lines, err := selectTokens([]string{first, twin}, []string{"chat"}, nil); err != nil || len(lines) != 1 || lines[0] != first {
+		t.Fatalf("a same-rank token replaced the first seen for its key (%d lines, err %v)", len(lines), err)
+	}
+	if lines, err := selectTokens([]string{twin, first}, []string{"chat"}, nil); err != nil || len(lines) != 1 || lines[0] != twin {
+		t.Fatalf("a same-rank token replaced the first seen for its key (%d lines, err %v)", len(lines), err)
+	}
+	if lines, err := selectTokens([]string{sign("key-a", []string{"*"}, 0)}, nil, nil); err == nil || lines != nil {
+		t.Fatalf("a zero-expiry token was selected (%d lines)", len(lines))
+	}
+	past := now.Add(-license.PostExpiryGraceWindow - time.Hour).Unix()
+	olderA := sign("key-a", []string{"claw"}, past-3600) // covers more, signed earlier
+	newerB := sign("key-b", []string{"chat"}, past)
+	tieB := sign("key-b", []string{"chat"}, past-3600) // same exp as olderA, covers less
+	for _, tc := range []struct {
+		name       string
+		candidates []string
+		want       string
+	}{
+		{"newest-wins", []string{olderA, newerB}, newerB},
+		{"newest-wins-reversed", []string{newerB, olderA}, newerB},
+		{"exp-tie-keeps-best-ranked", []string{tieB, olderA}, olderA},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			lines, err := selectTokens(tc.candidates, []string{"claw"}, nil)
+			if len(lines) != 1 || lines[0] != tc.want || err == nil || !strings.Contains(err.Error(), "grace ended") {
+				t.Fatalf("past-grace fallback: %d lines, err %v; want one line with grace ended", len(lines), err)
+			}
+		})
+	}
+}

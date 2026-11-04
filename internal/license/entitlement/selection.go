@@ -6,8 +6,7 @@ import (
 	"github.com/nself-org/cli/internal/license"
 )
 
-// Purpose: select the newest signed covering single token among configured subjects
-// (publication uses selectTokens, v1.1; this stays the single-token reference).
+// Purpose: select the newest signed covering single token (publication: selectTokens).
 // Inputs: candidates/slugs/rejected subjects. Outputs: token/policy error.
 // Constraints: rejected keys (this run, persisted, or on the revocation list) grant
 // no authority; signed exp orders candidates.
