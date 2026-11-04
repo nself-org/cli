@@ -76,7 +76,7 @@ func AuthKeySet(passthrough map[string]string) bool {
 // AUTH_ENCRYPTION_KEY is refused (authImage), not moved back to auth-v14. The
 // update plan asks it too (D-0661).
 func AuthEntry() string {
-	// compat.V15(P7-LIVE-20): auth runs nhost/auth:0.36.0 (auth-v14) -> the current nhost/auth release (auth); the build generates AUTH_ENCRYPTION_KEY (D-0660)
+	// compat.V15(P7-LIVE-20): auth runs nhost/auth:0.36.0 (auth-v14) -> the current nhost/auth release (auth) for a project with no lock pin; a render without a valid AUTH_ENCRYPTION_KEY stops with E059, never auth-v14 (the build generates the key, D-0660)
 	if !compat.V15() {
 		return "auth-v14"
 	}
@@ -104,7 +104,7 @@ func (g *Generator) authImage() (string, error) {
 		version = ""
 	case cur.IsDefaultVersion(version): // the current release, but never without its key
 		version, entry = "", "auth"
-		if !compat.V15() && !AuthKeySet(g.cfg.Passthrough) {
+		if AuthEntry() == "auth-v14" && !AuthKeySet(g.cfg.Passthrough) { // v1.4
 			entry = "auth-v14" // v1.4 unchanged: no key, no move
 		}
 	}
