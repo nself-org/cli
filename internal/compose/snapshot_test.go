@@ -62,7 +62,7 @@ func snapshotConfig() *config.Config {
 			SSLPort:  443,
 		},
 	}
-	return cfg
+	return withTestAuthKey(cfg)
 }
 
 // generateYAML is a test helper that calls Generate() and returns the YAML

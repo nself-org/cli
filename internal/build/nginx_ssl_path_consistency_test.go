@@ -57,6 +57,10 @@ func TestGeneratedSSLCertPath_MatchesComposeMountTarget(t *testing.T) {
 	}
 
 	// compose side.
+	if cfg.Passthrough == nil {
+		cfg.Passthrough = map[string]string{}
+	}
+	cfg.Passthrough[compose.AuthEncryptionKeyEnv] = strings.Repeat("0f", 32) // v1.5 renders auth, which needs its key (D-0660)
 	composeYAML, err := compose.NewGenerator(cfg).Generate()
 	if err != nil {
 		t.Fatalf("compose Generate: %v", err)

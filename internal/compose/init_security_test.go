@@ -18,6 +18,7 @@ func TestMeiliInitGetsOwnershipCaps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyDefaults: %v", err)
 	}
+	withTestAuthKey(cfg)
 	dc, err := NewGenerator(cfg).buildDockerCompose()
 	if err != nil {
 		t.Fatalf("buildDockerCompose: %v", err)

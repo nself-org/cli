@@ -29,7 +29,9 @@ func storageFixture(t *testing.T, minio, object, custom bool) *config.Config {
 	}
 	cfg := minimalConfig()
 	cfg.ProjectName = "storage-fixture"
-	cfg.Passthrough = map[string]string{AuthEncryptionKeyEnv: fakeAuthKey} // v1.5 renders the current auth, which needs the key (D-0660)
+	if compat.V15() { // v1.5 renders the current auth, which needs the key (D-0660); v1.4 goldens carry none
+		cfg.Passthrough = map[string]string{AuthEncryptionKeyEnv: fakeAuthKey}
+	}
 	cfg.Minio.Enabled = minio
 	cfg.Minio.RootUser = "test-access-key"
 	cfg.Minio.RootPassword = "fake-secret-not-real-0000"

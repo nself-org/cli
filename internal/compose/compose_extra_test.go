@@ -205,7 +205,7 @@ func minimalCfg() *config.Config {
 		ProjectName: "testproj",
 	}
 	cfg.DockerNetwork = "testnet"
-	return cfg
+	return withTestAuthKey(cfg)
 }
 
 func TestBuildRedisService_NoPassword(t *testing.T) {

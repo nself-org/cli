@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
 )
 
@@ -12,6 +13,14 @@ import (
 // surprises.  It does NOT call ApplyDefaults so tests that need specific
 // values can control exactly what ends up in the struct.
 func minimalConfig() *config.Config {
+	cfg := minimalConfigBase()
+	if compat.V15() { // v1.5 renders the current auth, which needs the key (D-0660); v1.4 goldens carry none
+		cfg.Passthrough = map[string]string{AuthEncryptionKeyEnv: fakeAuthKey}
+	}
+	return cfg
+}
+
+func minimalConfigBase() *config.Config {
 	return &config.Config{
 		ProjectName:   "test",
 		BaseDomain:    "localhost",
