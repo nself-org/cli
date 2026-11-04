@@ -162,5 +162,13 @@ func ValidateInventory(inv *Inventory) error {
 	if err := Migrate(inv); err != nil {
 		return err
 	}
-	return validateInventoryNames(inv)
+	if err := validateInventoryNames(inv); err != nil {
+		return err
+	}
+	for name, env := range inv.Environments {
+		if err := ValidateDataPolicy(env, name); err != nil {
+			return err
+		}
+	}
+	return nil
 }
