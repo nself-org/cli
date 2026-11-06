@@ -121,7 +121,7 @@ func rollbackV14(cmd *cobra.Command, workdir, target string) error {
 	tag, _ := cmd.Flags().GetString("tag")
 	typed, _ := cmd.Flags().GetString("confirm-project")
 	inv, _ := controlplane.Load(workdir)
-	project, err := rollbackProject(typed, workdir, target, true, target == "" || prodClassFn(inv, target))
+	project, err := rollbackProject(typed, workdir, target, true, prodClassFn(inv, target))
 	if err != nil {
 		return err
 	}
