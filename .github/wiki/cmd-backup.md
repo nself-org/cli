@@ -49,7 +49,7 @@ The pin file is refused if it holds a line nSelf cannot represent, or if it or i
 # Back up to a mounted disk, no rclone installed
 nself backup create --remote path:///mnt/backups
 nself backup list --remote path:///mnt/backups
-nself backup restore-remote --from path:///mnt/backups/myproject_full_20261005.dump --yes
+nself backup restore-remote --from path:///mnt/backups/myproject_full_20261005.dump --confirm-project myproject
 
 # Back up to an inventory server
 nself backup create --remote host://backup1/srv/nself-backups
@@ -210,13 +210,17 @@ Restore a backup directly from a remote URL. No local disk space required.
 ### Pipeline
 
 ```
-rclone cat <from> | age --decrypt | pg_restore
+rclone cat <from> | age --decrypt | pg_restore   (into a scratch database)
 ```
+
+`pg_restore` runs inside the postgres container, so the host needs `docker` (plus `rclone` for rclone remotes and `age` for `.age` objects) but no `pg_restore`. The stream loads an empty scratch database. Only when `pg_restore` succeeds is the scratch database swapped in for the project database and the previous one dropped, the same engine `backup restore` uses. A failed restore leaves the project database untouched.
+
+Confirmation follows `backup restore`: see [Confirmation](#confirmation).
 
 ### Usage
 
 ```bash
-nself backup restore-remote --from <url> [--key <identity-file>] [--yes]
+nself backup restore-remote --from <url> [--key <identity-file>] [--yes] [--confirm-project <name>]
 ```
 
 ### Flags
@@ -225,7 +229,8 @@ nself backup restore-remote --from <url> [--key <identity-file>] [--yes]
 |---|---|---|
 | `--from` | — | Source URL: rclone remote path, `path://<dir>/<object>` or `host://<server>/<dir>/<object>` |
 | `--key` | v1.5: `~/.config/nself/<project>-age.key`, then `<project>-backup-age.key`, then `age-key.txt` (E223 when none). v1.4: `~/.config/nself/age-key.txt` | Path to age identity file, used as given |
-| `--yes` | false | Skip confirmation on production |
+| `--yes` | false | Skip the local confirmation; production still needs the project name |
+| `--confirm-project` | — | Confirm without a prompt by naming the project; must equal `PROJECT_NAME` |
 
 ### Examples
 
@@ -324,6 +329,8 @@ object contents, not object versions, metadata or bucket policies.
 nself backup create [--type full|wal|metadata|minio|all] [--encrypt] [--tag <label>] [--dry-run]
 ```
 
+With a remote configured (`--remote` or `BACKUP_REMOTE`), the full backup is uploaded after it is written and, when encryption is on, after it is encrypted: the `.dump.age` file is what is uploaded. If the upload fails, or is refused because only one of the two S3 keys is set, the command exits non-zero, names the local file it kept, and the backup metric records a failure.
+
 ---
 
 ## backup restore
@@ -331,8 +338,20 @@ nself backup create [--type full|wal|metadata|minio|all] [--encrypt] [--tag <lab
 Restore from a local backup file.
 
 ```bash
-nself backup restore <backup-id|latest> [--only pg,minio,metadata] [--decrypt-key <file>] [--yes]
+nself backup restore <backup-id|latest> [--only pg,minio,metadata] [--decrypt-key <file>] [--yes] [--confirm-project <name>]
 ```
+
+### Confirmation
+
+`backup restore` and `backup restore-remote` replace the project database, so both ask first:
+
+| Situation | What confirms |
+|---|---|
+| Not production | Type `yes`, or pass `--yes` |
+| Production (`ENV=prod` or `production`) | Type the project name. `--yes` alone is refused |
+| Any environment, no terminal | `--confirm-project <name>`, which must equal `PROJECT_NAME`. A wrong name is refused |
+
+`deploy rollback` and promotion rollback run the restore over ssh with `--confirm-project`, after their own confirmation.
 
 Without `--decrypt-key`, v1.5 searches `~/.config/nself/<project>-age.key`, `<project>-backup-age.key`, then `age-key.txt` (E223 when none); v1.4 uses `~/.config/nself/age-key.txt`. The decrypted dump is a unique 0600 temp file beside the backup, removed afterwards; an existing `<backup>.dec` is never touched.
 

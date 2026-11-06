@@ -878,10 +878,16 @@ for the target, it restores the tar on every host in `pre_deploy_tars` in place:
 dir under `.nself/backups/`, `rsync -ac` back only the files the record lists as shipped (no
 directory is moved or re-moded, so a bind-mounted `nginx/` keeps its inode), and remove only the
 listed files that did not exist before. On `backup_host` it then runs `nself backup restore
-<backup_id> --yes` when a verified backup was taken (tier prod), and re-applies the restored compose
+<backup_id> --yes --confirm-project <PROJECT_NAME>` when a verified backup was taken (tier prod), and re-applies the restored compose
 set with the same pull, per-service `up`, health gate, `nginx -t`, nginx reload and hasura metadata
 apply. The database restore returns the data to the moment of the backup: writes made since then,
 while the new containers ran, are lost.
+
+A database restore needs `deploy rollback <target> --yes` or a terminal confirmation first;
+without either, non-interactive use returns `E403` and nothing is changed. The ssh session that runs
+the restore has no stdin, and `backup restore` refuses bare `--yes` on production, so the rollback
+passes `--confirm-project` with the local `PROJECT_NAME`. The host checks it against its own
+`PROJECT_NAME` and refuses a mismatch. Promotion rollback restores the same way.
 
 Rollback resolves SSH keys and server names only from the target environment's inventory;
 the remote path comes from the recorded tar.
@@ -890,7 +896,7 @@ The database is restored at most once per record: `db_restored_at` is saved righ
 `nself backup restore` succeeds, before the re-apply, so a retry of a rollback that failed later
 (on any host) skips it and redoes only files and services. The `backup_host` is rolled back first. If it
 kept no changes of the deploy (so it has no tar), the database is not restored: the rollback prints the
-backup id and the manual `nself backup restore <id> --yes` command and keeps `backup_id` in the record.
+backup id and the manual `nself backup restore <id> --confirm-project <project>` command and keeps `backup_id` in the record.
 `backup_id` is recorded only once a server ran `up`. If that command itself fails midway the
 marker is not set and a retry runs it again. A record already rolled back is refused. The record's
 `success` covers every server of the env, with each server's outcome in `host_outcomes`. Without such

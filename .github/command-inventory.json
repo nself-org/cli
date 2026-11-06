@@ -122,6 +122,7 @@
         "short": "Restore from a backup",
         "hidden": false,
         "flags": [
+          "--confirm-project",
           "--decrypt-key",
           "--only",
           "--point-in-time",
@@ -135,6 +136,7 @@
         "short": "Restore a backup directly from a remote URL",
         "hidden": false,
         "flags": [
+          "--confirm-project",
           "--from",
           "--key",
           "--yes"
