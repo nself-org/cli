@@ -6,7 +6,9 @@ import (
 	"os"
 	"strings"
 
+	"github.com/nself-org/cli/internal/backup"
 	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/promote"
 	"github.com/nself-org/cli/internal/ui"
@@ -103,6 +105,29 @@ Examples:
 	},
 }
 
+var v14Backups = func() (refs []promote.BackupRef, err error) {
+	cfg, err := loadProjectConfig()
+	if err != nil {
+		return nil, err
+	}
+	entries, err := backup.List(cfg, backup.ListOptions{})
+	for _, e := range entries {
+		refs = append(refs, promote.BackupRef{ID: e.ID, Tag: e.Tag, Date: e.Date})
+	}
+	return refs, err
+}
+
+func rollbackV14(cmd *cobra.Command, workdir, target string) error {
+	tag, _ := cmd.Flags().GetString("tag")
+	typed, _ := cmd.Flags().GetString("confirm-project")
+	inv, _ := controlplane.Load(workdir)
+	project, err := rollbackProject(typed, workdir, target, true, target == "" || prodClassFn(inv, target))
+	if err != nil {
+		return err
+	}
+	return promote.RollbackProject(cmd.Context(), workdir, project, tag, v14Backups)
+}
+
 var promoteRollbackCmd = &cobra.Command{
 	Use:   "rollback",
 	Short: "Rollback to pre-promotion backup",
@@ -115,10 +140,8 @@ var promoteRollbackCmd = &cobra.Command{
 			}
 			return runPromoteRecordRollback(cmd)
 		}
-		tag, _ := cmd.Flags().GetString("tag")
 		cwd, _ := os.Getwd()
-
-		if err := promote.Rollback(cmd.Context(), cwd, tag); err != nil {
+		if err := rollbackV14(cmd, cwd, ""); err != nil {
 			return err
 		}
 
@@ -138,7 +161,6 @@ func init() {
 	promoteRollbackCmd.Flags().Bool("yes", false, "Confirm restoring a production-class database")
 	promoteRollbackCmd.Flags().String("confirm-project", "", "Project name passed to backup restore (required to restore a production database)")
 
-	// Add rollback as a sibling, not subcommand of promote
 	RootCmd.AddCommand(promoteCmd)
 	promoteCmd.AddCommand(promoteRollbackCmd)
 }
