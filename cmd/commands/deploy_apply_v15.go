@@ -186,25 +186,6 @@ func resolveDeployEnvSnapshot(workdir, envName string) (string, func(), error) {
 	return writeResolvedDeployEnv(workdir, envName)
 }
 
-// primaryServer picks the server the build is snapshotted against.
-func primaryServer(inv *controlplane.Inventory, env string) (controlplane.Server, bool) {
-	e, ok := inv.Environments[env]
-	if !ok || len(e.Servers) == 0 {
-		return controlplane.Server{}, false
-	}
-	for _, s := range e.Servers {
-		if s.Primary {
-			return s, true
-		}
-	}
-	for _, s := range e.Servers {
-		if s.Role == controlplane.RoleApp {
-			return s, true
-		}
-	}
-	return e.Servers[0], true
-}
-
 // runDeployPipeline runs the control-plane pipeline: v1.4 pushes the generated
 // compose to every server, v1.5 applies the artifact set built in a scratch copy.
 func runDeployPipeline(cmd *cobra.Command, workdir string, inv *controlplane.Inventory, target string, prober controlplane.Prober, composePath, envFile, envName string, jsonOut bool) (*controlplane.DeployResult, error) {
@@ -215,7 +196,7 @@ func runDeployPipeline(cmd *cobra.Command, workdir string, inv *controlplane.Inv
 	}
 	ctx, stop := deploy.WithInterrupt(ctx)
 	defer stop()
-	srv, ok := primaryServer(inv, target)
+	srv, ok := controlplane.PrimaryServer(inv, target)
 	if !ok {
 		return nil, errs.New("E483", fmt.Sprintf("invalid target %q: no servers to deploy to", target))
 	}

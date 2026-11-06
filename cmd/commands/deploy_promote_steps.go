@@ -48,11 +48,11 @@ func preparePromoteEngine(cmd *cobra.Command, workdir, source, target string, dr
 	if err != nil {
 		return cpromote.Engine{}, nil, err
 	}
-	sourceName, ok := inventoryEnvName(inv, source)
+	sourceName, ok := controlplane.EnvName(inv, source)
 	if !ok {
 		return cpromote.Engine{}, nil, errs.Newf("E483", "unknown promotion source %q", source)
 	}
-	targetName, ok := inventoryEnvName(inv, target)
+	targetName, ok := controlplane.EnvName(inv, target)
 	if !ok {
 		return cpromote.Engine{}, nil, errs.Newf("E483", "unknown promotion target %q", target)
 	}
@@ -68,13 +68,13 @@ func preparePromoteEngine(cmd *cobra.Command, workdir, source, target string, dr
 	}
 	w := &promoteWiring{workdir: workdir, source: source, target: target, inv: inv, started: time.Now().UTC()}
 	st.Values["wiring"] = w
-	w.sourceServer, ok = primaryServer(inv, source)
+	w.sourceServer, ok = controlplane.PrimaryServer(inv, source)
 	if !ok && sourceEnv.Kind == "local" {
 		w.sourceServer = controlplane.Server{Name: "local", RemotePath: workdir, Primary: true}
 	} else if !ok {
 		return cpromote.Engine{}, nil, errs.Newf("E486", "promotion source %q has no server", source)
 	}
-	w.targetServer, ok = primaryServer(inv, target)
+	w.targetServer, ok = controlplane.PrimaryServer(inv, target)
 	if !ok {
 		return cpromote.Engine{}, nil, errs.Newf("E486", "promotion target %q has no server", target)
 	}

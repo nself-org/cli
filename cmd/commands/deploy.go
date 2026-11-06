@@ -245,7 +245,7 @@ func resolveTarget(raw string) (string, error) {
 		if root, err := projectRoot(); err == nil {
 			inv, loadErr = controlplane.Load(root)
 		}
-		if name, ok := inventoryEnvName(inv, t); ok {
+		if name, ok := controlplane.EnvName(inv, t); ok {
 			return name, nil
 		}
 		switch t {
