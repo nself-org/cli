@@ -29,6 +29,7 @@ case "$1" in
     case "$1" in
       pg_isready) exit 0;;
       pg_restore)
+        case " $* " in *" --schema-only "*) cat > /dev/null; exit 0;; esac
         [ -n "$FAKE_RESTORE_HANG" ] && exec sleep 30
         cat > "$d/restored.bin"; echo pg_restore > "$d/tool"
         if [ -n "$FAKE_RESTORE_ERR" ]; then printf '%s\n' "$FAKE_RESTORE_ERR" >&2; exit 1; fi
@@ -116,12 +117,16 @@ func TestRestoreFormatFromContentNotExtension(t *testing.T) {
 }
 
 func TestRestoreFatalErrorFails(t *testing.T) {
-	fakeDocker(t)
+	dir := fakeDocker(t)
 	t.Setenv("FAKE_RESTORE_FAIL", "1")
 	f := filepath.Join(t.TempDir(), "x")
 	_ = os.WriteFile(f, []byte("PGDMPx"), 0o600)
-	if err := RestoreIntoContainer(context.Background(), &Container{Name: "nself-drill-0123456789abcdef", User: "u", DB: "d"}, f); err == nil {
+	err := RestoreIntoContainer(context.Background(), &Container{Name: "nself-drill-0123456789abcdef", User: "u", DB: "d"}, f)
+	if err == nil {
 		t.Fatal("a failed pg_restore was reported as success")
+	}
+	if !strings.Contains(readFake(t, dir, "calls.log"), "pg_restore --no-owner --no-acl") || !strings.Contains(err.Error(), "connection to server failed") {
+		t.Fatalf("the failure must come from the final pg_restore, got %v", err)
 	}
 }
 
@@ -217,9 +222,12 @@ func TestRestoreErrorLinesAreFatal(t *testing.T) {
 		"pg_restore: warning: errors ignored on restore: 2":                                 false,
 	}
 	for stderr, fatal := range cases {
-		fakeDocker(t)
+		dir := fakeDocker(t)
 		t.Setenv("FAKE_RESTORE_ERR", stderr)
 		err := RestoreIntoContainer(context.Background(), c, custom)
+		if !strings.Contains(readFake(t, dir, "calls.log"), "pg_restore --no-owner --no-acl") {
+			t.Fatalf("%q: the final pg_restore never ran: %v", stderr, err)
+		}
 		if fatal && (err == nil || !strings.Contains(err.Error(), "pg_restore")) {
 			t.Errorf("%q must fail the restore, got %v", stderr, err)
 		}
