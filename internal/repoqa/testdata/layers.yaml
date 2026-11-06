@@ -32,6 +32,7 @@ rules:
   - {match: "cmd/**", layer: L3}
   - {match: "tools/**", layer: L3}
   - {match: "test/**", layer: L3}
+  - {match: "internal/pingcontract/**", layer: test-only}
   - {match: "internal/repoqa/**", layer: test-only}
   - {match: "schemas/**", layer: L0}
   # L0: shared kernel plus the P7-REG packages
