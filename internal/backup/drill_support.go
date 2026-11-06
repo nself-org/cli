@@ -17,7 +17,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,7 +27,6 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/backup/destinations"
-	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
 )
 
@@ -274,27 +272,4 @@ func linkCount(fi os.FileInfo) uint64 {
 		}
 	}
 	return 1
-}
-
-// restoreVerdict is the one rule for a non-zero pg_restore exit, shared by
-// restore and restore-remote (the drill applies the same fatalRestoreText).
-// v1.5: any "error:" line not on allowedRestoreErrors fails. v1.4: only FATAL
-// or "could not" fails, and unlisted error lines are logged with their count
-// and first lines. strict applies the v1.5 rule in every compat mode.
-func restoreVerdict(stderr string) error { return restoreVerdictMode(stderr, false) }
-
-func restoreVerdictMode(stderr string, strict bool) error {
-	stderr = strings.TrimSpace(stderr)
-	t := fatalRestoreText("pg_restore", stderr)
-	// compat.V15(P7-PROD-08): only FATAL or "could not" fails -> any unlisted pg_restore error: line fails
-	if (compat.V15() || strict) && t != "" {
-		return fmt.Errorf("%w: %s", errs.ErrBackupRestoreFailed, t)
-	} else if t != "" && strings.Contains(strings.ToLower(t), "error:") {
-		slog.Warn("pg_restore reported errors; this restore may be incomplete (v1.5 fails on them)", "errors", strings.Count(t, "; ")+1, "first", fmt.Sprintf("%.300s", t))
-	}
-	if strings.Contains(stderr, "FATAL") || strings.Contains(stderr, "could not") {
-		return fmt.Errorf("%w: %s", errs.ErrBackupRestoreFailed, stderr)
-	}
-	slog.Warn("pg_restore completed with warnings", "output", stderr)
-	return nil
 }
