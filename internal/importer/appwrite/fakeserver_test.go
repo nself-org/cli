@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -49,6 +50,20 @@ func cursorLimit(r *http.Request) (limit int, after string, offset int) {
 	return
 }
 
+// selectValues returns the values of the select query, or nil when the request has none.
+func selectValues(r *http.Request) []string {
+	for _, q := range r.URL.Query()["queries[]"] {
+		var query struct {
+			Method string
+			Values []string
+		}
+		if json.Unmarshal([]byte(q), &query) == nil && query.Method == "select" {
+			return query.Values
+		}
+	}
+	return nil
+}
+
 func writeList(w http.ResponseWriter, key string, total int, items []map[string]any) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"total": total, key: items})
 }
@@ -76,23 +91,15 @@ func (f *fake) handler(w http.ResponseWriter, r *http.Request) {
 	case p == "/databases/main/collections/authors/documents":
 		writeList(w, "documents", 1, []map[string]any{{"$id": "a1", "$createdAt": "2026-01-01T00:00:00.000+00:00", "$updatedAt": "2026-01-01T00:00:00.000+00:00", "$permissions": []string{}, "name": "Ada"}})
 	case p == "/databases/main/collections/notes/documents":
+		sel := selectValues(r)
 		if f.version != "1.5.10" {
-			selected := false
-			for _, q := range r.URL.Query()["queries[]"] {
-				var query struct {
-					Method string
-					Values []string
-				}
-				if json.Unmarshal([]byte(q), &query) == nil && query.Method == "select" && strings.Join(query.Values, ",") == "*,author.$id" {
-					selected = true
-					f.relSelections++
-				}
-			}
-			if !selected {
+			if slices.Contains(sel, "*") && slices.Contains(sel, "author.$id") {
+				f.relSelections++
+			} else {
 				f.omit = "author"
 			}
 		}
-		f.documents(w, limit, after)
+		f.documents(w, limit, after, sel)
 	case p == "/users":
 		f.users(w)
 	case p == "/storage/buckets":
@@ -106,7 +113,7 @@ func (f *fake) handler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (f *fake) documents(w http.ResponseWriter, limit int, after string) {
+func (f *fake) documents(w http.ResponseWriter, limit int, after string, sel []string) {
 	start := 0
 	if after != "" && !f.repeat {
 		fmt.Sscanf(after, "n%d", &start)
@@ -124,6 +131,17 @@ func (f *fake) documents(w http.ResponseWriter, limit int, after string) {
 	if f.omit != "" {
 		for _, it := range items {
 			delete(it, f.omit)
+		}
+	}
+	if sel != nil {
+		// Appwrite 1.5.10 returns only the selected fields: "*" is the user attributes, so the
+		// system fields ($id, $createdAt, $updatedAt, $permissions) come back only when listed.
+		for _, it := range items {
+			for k := range it {
+				if strings.HasPrefix(k, "$") && !slices.Contains(sel, k) {
+					delete(it, k)
+				}
+			}
 		}
 	}
 	if f.dropLast && len(items) < limit && start > 0 {
