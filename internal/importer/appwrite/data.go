@@ -34,7 +34,9 @@ func (c *client) copyDocuments(ctx context.Context, db string, col *collection, 
 	}
 	w := bufio.NewWriter(f)
 	out := copied{Path: path, Missing: map[string]int64{}}
-	selections := []string{"*"}
+	// A select drops the system fields from "*" (verified on Appwrite 1.5.10), and the cursor
+	// walk, the permission count and the id/time columns need them, so list them explicitly.
+	selections := []string{"*", "$id", "$createdAt", "$updatedAt", "$permissions"}
 	for _, cl := range col.Columns {
 		if cl.Kind == "rel" || cl.Kind == "reljson" {
 			selections = append(selections, cl.Key+".$id")

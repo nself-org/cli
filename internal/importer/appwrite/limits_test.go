@@ -28,7 +28,7 @@ func TestOverflowShrinksPageWithoutLosingRows(t *testing.T) {
 				if !cursor && offset > 0 {
 					after = fmt.Sprintf("n%d", offset-1)
 				}
-				f.documents(w, limit, after)
+				f.documents(w, limit, after, nil)
 			}))
 			defer srv.Close()
 			c, err := newClient(srv.URL, "proj1", fakeKey)
@@ -147,5 +147,19 @@ func TestPagingStopsOnMalformedOrSingleItemOverflow(t *testing.T) {
 				t.Fatalf("requests=%d want=%d err=%v", requests, want, err)
 			}
 		})
+	}
+}
+
+// Appwrite 1.5.10 drops $id, $createdAt, $updatedAt and $permissions from a select of "*", so a
+// relationship select must list them; without them the cursor walk fails with E517.
+func TestSelectKeepsSystemFields(t *testing.T) {
+	_, c := newFake(t, 120)
+	cols := []column{{Key: "$id"}, {Key: "$createdAt", Kind: "time"}, {Key: "author", Kind: "rel"}}
+	got, err := c.copyDocuments(context.Background(), "main", &collection{ID: "notes", Columns: cols}, filepath.Join(t.TempDir(), "n.csv"))
+	if err != nil || got.Rows != 120 || got.Total != 120 {
+		t.Fatalf("rows=%d total=%d err=%v", got.Rows, got.Total, err)
+	}
+	if len(got.Missing) != 0 {
+		t.Fatalf("system fields missing: %v", got.Missing)
 	}
 }
