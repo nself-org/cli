@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/backup/policyroles"
 	"github.com/nself-org/cli/internal/errs"
 )
 
@@ -68,7 +69,7 @@ func readFixture(t *testing.T) string {
 }
 
 func TestCollectPolicyRolesFromSchema(t *testing.T) {
-	got, err := collectPolicyRoles(strings.NewReader(readFixture(t)))
+	got, err := policyroles.Collect(strings.NewReader(readFixture(t)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +85,7 @@ func TestCollectPolicyRolesFromSchema(t *testing.T) {
 		"SELECT E'it\\'s; CREATE POLICY q ON t TO \"Bad\"';\nCREATE POLICY p ON t TO r1;":      {"r1"},
 		"/* ; CREATE POLICY q ON t TO \"Bad\"; */ CREATE POLICY p ON t TO r2;\n\\restrict k\n": {"r2"},
 	} {
-		got, err := collectPolicyRoles(strings.NewReader(schema))
+		got, err := policyroles.Collect(strings.NewReader(schema))
 		if err != nil {
 			t.Errorf("%q: %v", schema, err)
 			continue
@@ -142,7 +143,7 @@ func TestRestoreRejectsInvalidRoleName(t *testing.T) {
 		`"9lives"`,
 	} {
 		schema := "CREATE POLICY p ON public.t FOR SELECT TO mux_user, " + role + " USING (true);\n"
-		if _, err := collectPolicyRoles(strings.NewReader(schema)); !errors.Is(err, errs.ErrBackupRestoreFailed) {
+		if _, err := policyroles.Collect(strings.NewReader(schema)); !errors.Is(err, errs.ErrBackupRestoreFailed) {
 			t.Errorf("%s: collect err = %v, want ErrBackupRestoreFailed", role, err)
 		}
 		dir, archive := rolesDocker(t, schema)
