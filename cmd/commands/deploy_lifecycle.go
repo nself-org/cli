@@ -16,7 +16,6 @@ import (
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/deploy/bluegreen"
 	"github.com/nself-org/cli/internal/errs"
-	"github.com/nself-org/cli/internal/promote"
 	"github.com/nself-org/cli/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -160,7 +159,7 @@ func runDeployRollback(cmd *cobra.Command, args []string) error {
 
 	// DEP-04: wire to last promote tag written by nself promote.
 	// An empty tag reads the latest promote record and restores its snapshot.
-	if err := promote.Rollback(cmd.Context(), workdir, ""); err != nil {
+	if err := rollbackV14(cmd, workdir, target, ""); err != nil {
 		return fmt.Errorf("rollback failed: %w", err)
 	}
 

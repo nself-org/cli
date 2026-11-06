@@ -118,7 +118,7 @@ var promoteRollbackCmd = &cobra.Command{
 		tag, _ := cmd.Flags().GetString("tag")
 		cwd, _ := os.Getwd()
 
-		if err := promote.Rollback(cmd.Context(), cwd, tag); err != nil {
+		if err := rollbackV14(cmd, cwd, v14PromoteTarget(cwd), tag); err != nil {
 			return err
 		}
 
