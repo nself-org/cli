@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/promote"
 	"github.com/spf13/cobra"
@@ -78,6 +79,44 @@ func TestV14PromoteRollbackPassesTagAndProject(t *testing.T) {
 		t.Fatal(err)
 	}
 	if want := "backup restore new_id --yes --confirm-project demo"; strings.TrimSpace(string(got)) != want {
+		t.Fatalf("restore argv = %q, want %q", strings.TrimSpace(string(got)), want)
+	}
+}
+
+// neverProdClass makes prodClassFn false for every target, so only the empty
+// target rule in rollbackV14 (the real `promote rollback` case) can mark prod.
+func neverProdClass(t *testing.T) {
+	t.Helper()
+	old := prodClassFn
+	prodClassFn = func(*controlplane.Inventory, string) bool { return false }
+	t.Cleanup(func() { prodClassFn = old })
+}
+
+func TestV14EmptyTargetRollbackNeedsTypedProject(t *testing.T) {
+	neverProdClass(t)
+	argv := fakeNself(t)
+	stubV14Backups(t, promote.BackupRef{ID: "demo_full_1", Tag: "pre-promote-x", Date: time.Now()})
+	err := rollbackV14(v14Cmd("", "pre-promote-x"), t.TempDir(), "")
+	if err == nil || !strings.Contains(err.Error(), "E403") || errs.ExitCodeFor(err) != 4 {
+		t.Fatalf("empty target without --confirm-project: err=%v", err)
+	}
+	if _, statErr := os.Stat(argv); statErr == nil {
+		t.Fatal("a refused rollback ran nself")
+	}
+}
+
+func TestV14EmptyTargetRollbackPassesTagAndProject(t *testing.T) {
+	neverProdClass(t)
+	argv := fakeNself(t)
+	stubV14Backups(t, promote.BackupRef{ID: "demo_full_1", Tag: "pre-promote-x", Date: time.Now()})
+	if err := rollbackV14(v14Cmd("demo", "pre-promote-x"), t.TempDir(), ""); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(argv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "backup restore demo_full_1 --yes --confirm-project demo"; strings.TrimSpace(string(got)) != want {
 		t.Fatalf("restore argv = %q, want %q", strings.TrimSpace(string(got)), want)
 	}
 }
