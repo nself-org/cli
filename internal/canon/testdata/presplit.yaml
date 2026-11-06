@@ -234,7 +234,7 @@ commands:
   deploy health: {side_effect: read, json: legacy}
   deploy logs: {side_effect: read, output: stream}
   deploy promote: {side_effect: remote, confirm: {flags: [yes]}}
-  deploy rollback: {side_effect: destructive, confirm: {flags: [yes]}}
+  deploy rollback: {side_effect: destructive, confirm: {flags: [yes]}, flags: {confirm-project: {cli_only: true}}}
   deploy status: {side_effect: read, json: legacy}
   # cmd/commands/deploy_web_run.go:20 builds locally and publishes the prebuilt output to Vercel
   deploy web: {side_effect: remote, confirm: {flags: []}}
@@ -384,7 +384,7 @@ commands:
   # cmd/commands/plugin_lifecycle.go:101 RunE path changes no persistent state (prints/reads only)
   plugin updates: {side_effect: read}
   promote: {canon: pending, side_effect: remote, json: legacy, confirm: {flags: [yes]}}
-  promote rollback: {side_effect: destructive, confirm: {flags: [yes]}}
+  promote rollback: {side_effect: destructive, confirm: {flags: [yes]}, flags: {confirm-project: {cli_only: true}}}
   remove: {canon: core, side_effect: destructive}
   reset: {canon: core, side_effect: destructive}
   restart: {canon: core, side_effect: write}
