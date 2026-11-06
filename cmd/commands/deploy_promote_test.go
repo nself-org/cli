@@ -352,9 +352,9 @@ func TestPromoteRecordRollbackCommands(t *testing.T) {
 			deployRemoteOpen = func(context.Context, controlplane.Server, string, string) (deploy.Remote, error) { return r, nil }
 			tree := &cobra.Command{Use: "nself"}
 			mounted := deployCmd
-			args := []string{"deploy", "rollback", "prodsim", "--yes"}
+			args := []string{"deploy", "rollback", "prodsim", "--yes", "--confirm-project", "fixture"}
 			if shim {
-				mounted, args = promoteCmd, []string{"promote", "rollback", "--yes"}
+				mounted, args = promoteCmd, []string{"promote", "rollback", "--yes", "--confirm-project", "fixture"}
 			}
 			if mounted.GroupID != "" {
 				tree.AddGroup(&cobra.Group{ID: mounted.GroupID, Title: "Fixture commands"})
