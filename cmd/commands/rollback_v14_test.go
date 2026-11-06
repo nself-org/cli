@@ -9,6 +9,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -23,8 +24,11 @@ func fakeNself(t *testing.T) string {
 	t.Helper()
 	bin := t.TempDir()
 	out := filepath.Join(t.TempDir(), "argv")
-	script := "#!/bin/sh\necho \"$@\" >> '" + out + "'\n"
-	if err := os.WriteFile(filepath.Join(bin, "nself"), []byte(script), 0o755); err != nil {
+	name, script := "nself", "#!/bin/sh\necho \"$@\" >> '"+out+"'\n"
+	if runtime.GOOS == "windows" {
+		name, script = "nself.bat", "@echo off\r\necho %* >> \""+out+"\"\r\n"
+	}
+	if err := os.WriteFile(filepath.Join(bin, name), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
