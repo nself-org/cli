@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nself-org/cli/internal/backup/rollbackv14"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/promote"
 	"github.com/spf13/cobra"
@@ -32,24 +31,25 @@ func fakeNself(t *testing.T) string {
 	return out
 }
 
-func v14Cmd(project string) *cobra.Command {
+func v14Cmd(project, tag string) *cobra.Command {
 	cmd := &cobra.Command{}
 	cmd.SetContext(context.Background())
 	cmd.Flags().String("confirm-project", project, "")
+	cmd.Flags().String("tag", tag, "")
 	return cmd
 }
 
 func stubV14Backups(t *testing.T, entries ...promote.BackupRef) {
 	t.Helper()
-	old := rollbackv14.ListBackups
-	rollbackv14.ListBackups = func(string) ([]promote.BackupRef, error) { return entries, nil }
-	t.Cleanup(func() { rollbackv14.ListBackups = old })
+	old := v14Backups
+	v14Backups = func() ([]promote.BackupRef, error) { return entries, nil }
+	t.Cleanup(func() { v14Backups = old })
 }
 
 func TestV14DeployRollbackNeedsTypedProjectOnProd(t *testing.T) {
 	argv := fakeNself(t)
 	stubV14Backups(t, promote.BackupRef{ID: "demo_full_1", Tag: "pre-promote-x", Date: time.Now()})
-	err := rollbackV14(v14Cmd(""), t.TempDir(), "prod", "pre-promote-x")
+	err := rollbackV14(v14Cmd("", "pre-promote-x"), t.TempDir(), "prod")
 	if err == nil || !strings.Contains(err.Error(), "E403") || errs.ExitCodeFor(err) != 4 {
 		t.Fatalf("production without --confirm-project: err=%v", err)
 	}
@@ -66,7 +66,7 @@ func TestV14PromoteRollbackPassesTagAndProject(t *testing.T) {
 		promote.BackupRef{ID: "new_id", Tag: "pre-promote-x", Date: now},
 		promote.BackupRef{ID: "other_id", Tag: "other", Date: now.Add(time.Hour)},
 	)
-	if err := rollbackV14(v14Cmd("demo"), t.TempDir(), "prod", "pre-promote-x"); err != nil {
+	if err := rollbackV14(v14Cmd("demo", "pre-promote-x"), t.TempDir(), "prod"); err != nil {
 		t.Fatal(err)
 	}
 	got, err := os.ReadFile(argv)

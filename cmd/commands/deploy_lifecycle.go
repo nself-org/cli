@@ -1,8 +1,7 @@
 package commands
 
 // Purpose: RunE implementations for deploy status, rollback, and promote.
-// Constraints: split out of deploy.go (CLI-R12) as a pure move, no behavior change.
-//              rollbackRemoteV15 lives in deploy_lifecycle_rollback.go (size ratchet).
+// Constraints: split out of deploy.go (CLI-R12); rollbackRemoteV15 is in deploy_lifecycle_rollback.go.
 
 import (
 	"fmt"
@@ -26,7 +25,6 @@ func runDeployStatus(cmd *cobra.Command, args []string) error {
 	jsonOut, _ := cmd.Flags().GetBool("json")
 	serverFilter, _ := cmd.Flags().GetString("server")
 
-	// Determine base state from docker ps (local stack indicator).
 	state := "unknown"
 	if env == "" {
 		state = "no-target"
@@ -60,7 +58,6 @@ func runDeployStatus(cmd *cobra.Command, args []string) error {
 					if serverFilter != "" && ts.Server != serverFilter {
 						continue
 					}
-					// Determine role from inventory.
 					role := ""
 					if envDef, ok := inv.Environments[ts.Env]; ok {
 						for _, srv := range envDef.Servers {
@@ -100,7 +97,6 @@ func runDeployStatus(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Fallback: legacy single-host output.
 	status := map[string]string{
 		"target": env,
 		"state":  state,
@@ -155,8 +151,7 @@ func runDeployRollback(cmd *cobra.Command, args []string) error {
 	ui.Warn("nself deploy rollback is a PREVIEW feature. It restores the last pre-promote backup snapshot. No DNS changes are made automatically.")
 	ui.Info(fmt.Sprintf("Rolling back last deployment for target: %s", target))
 
-	// An empty tag restores the latest promote record's snapshot.
-	if err := rollbackV14(cmd, workdir, target, ""); err != nil {
+	if err := rollbackV14(cmd, workdir, target); err != nil {
 		return fmt.Errorf("rollback failed: %w", err)
 	}
 
