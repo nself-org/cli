@@ -6,6 +6,7 @@ package restoreconsent
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -79,5 +80,29 @@ func TestRunRestore(t *testing.T) {
 	}
 	if err := RunRestore(context.Background(), &fakeRunner{}, "/srv/app", "b1", "", &bytes.Buffer{}, nil); err == nil {
 		t.Fatal("restore without a project ran")
+	}
+}
+
+func TestRollbackProject(t *testing.T) {
+	cfgErr := errors.New("config unreadable")
+	fromCfg := func(p string, err error) func() (string, error) { return func() (string, error) { return p, err } }
+	for _, tc := range []struct {
+		name, typed     string
+		restore, prod   bool
+		cfg             func() (string, error)
+		want            string
+		wantErr, wantIs error
+	}{
+		{"prod typed", " typed ", true, true, fromCfg("cfg", nil), "typed", nil, nil},
+		{"prod yes alone", "", true, true, fromCfg("cfg", nil), "", ErrNeedsTypedProject, ErrNeedsTypedProject},
+		{"prod no restore", "", false, true, fromCfg("cfg", nil), "cfg", nil, nil},
+		{"non-prod fallback", "", true, false, fromCfg("cfg", nil), "cfg", nil, nil},
+		{"non-prod config error", "", true, false, fromCfg("", cfgErr), "", cfgErr, cfgErr},
+		{"no restore config error", "", false, false, fromCfg("", cfgErr), "", nil, nil},
+	} {
+		got, err := RollbackProject(tc.typed, "prod", tc.restore, tc.prod, tc.cfg)
+		if got != tc.want || (tc.wantErr == nil) != (err == nil) || (tc.wantIs != nil && !errors.Is(err, tc.wantIs)) {
+			t.Errorf("%s: got %q, %v", tc.name, got, err)
+		}
 	}
 }
