@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
 )
@@ -75,7 +76,6 @@ func TestRestoreFromRemoteSwapsScratchDatabase(t *testing.T) {
 	for _, want := range []string{
 		"CREATE DATABASE \"nself_restore_",
 		"pg_restore -U postgres -d nself_restore_",
-		"--exit-on-error",
 		"BEGIN; ALTER DATABASE \"live\" RENAME TO \"nself_previous_",
 		"DROP DATABASE \"nself_previous_",
 	} {
@@ -91,6 +91,7 @@ func TestRestoreFromRemoteSwapsScratchDatabase(t *testing.T) {
 }
 
 func TestRestoreFromRemoteFailureLeavesLiveUntouched(t *testing.T) {
+	compattest.Set(t, true) // v1.5: a pg_restore error line fails the restore
 	from, target, log := remoteRestoreFixture(t)
 	t.Setenv("FAKE_FAIL_STAGE", "restore")
 	err := RestoreFromRemote(t.Context(), remoteRestoreConfig(), from, "")

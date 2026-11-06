@@ -507,7 +507,7 @@ func TestAutoKeyRestoreRemoteErrorLinesAreFatalInV15(t *testing.T) {
 	_, _, logs := autoKeyEnv(t)
 	bin := t.TempDir()
 	_ = os.WriteFile(filepath.Join(bin, "pg_restore"), []byte("#!/bin/sh\nexit 0\n"), 0o755)
-	_ = os.WriteFile(filepath.Join(bin, "docker"), []byte("#!/bin/sh\ncat >/dev/null\necho 'pg_restore: error: COPY failed for table x' >&2\nexit 1\n"), 0o755)
+	_ = os.WriteFile(filepath.Join(bin, "docker"), []byte("#!/bin/sh\ncase \"$*\" in *pg_restore*) cat >/dev/null; echo 'pg_restore: error: COPY failed for table x' >&2; exit 1;; esac\nexit 0\n"), 0o755)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	dir := t.TempDir()
 	_ = os.WriteFile(filepath.Join(dir, "p_full_1.dump"), []byte("PGDMP"), 0o600)

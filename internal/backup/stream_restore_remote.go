@@ -7,7 +7,8 @@ package backup
 // D-0663 engine, restoreViaScratch), never into the live database (C2-03).
 // Inputs: the remote backup location, an optional age identity and cfg.
 // Outputs: a restored database, or an error naming the failed stage; on any
-// failure before the swap the live database is untouched.
+// failure before the swap the live database is untouched. A non-zero
+// pg_restore exit is judged by restoreVerdict, as before the scratch change.
 // Constraints: pg_restore runs inside the postgres container, so the host
 // needs docker (plus rclone for rclone remotes and age for .age objects) but
 // not pg_restore. Confirmation is the caller's job (cmd/commands).
@@ -208,7 +209,6 @@ func streamRemoteRestore(ctx context.Context, from, keyPath string, encrypted bo
 			"pg_restore",
 			"-U", user,
 			"-d", scratch,
-			"--exit-on-error",
 		}
 		cmd := exec.CommandContext(ctx, "docker", args...)
 		cmd.Stdin = restoreReader
@@ -224,13 +224,14 @@ func streamRemoteRestore(ctx context.Context, from, keyPath string, encrypted bo
 			return
 		}
 		errOut, _ := io.ReadAll(stderr)
+		// restoreVerdict judges a non-zero exit (v1.5: any unlisted error line
+		// fails; v1.4: only FATAL or "could not"). A failing verdict stops
+		// before the swap, so the live database is never touched.
 		if err := cmd.Wait(); err != nil {
-			cancel()
-			detail := strings.TrimSpace(string(errOut))
-			if detail == "" {
-				detail = err.Error()
+			if verr := restoreVerdict(string(errOut)); verr != nil {
+				cancel()
+				errc <- verr
 			}
-			errc <- fmt.Errorf("%w: pg_restore: %s", errs.ErrBackupRestoreFailed, detail)
 		}
 	}()
 
