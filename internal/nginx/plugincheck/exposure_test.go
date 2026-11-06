@@ -97,3 +97,33 @@ func TestDropOwnFailsOnUnreadableFile(t *testing.T) {
 		t.Fatal("an unreadable file passed as cleaned; a stale ungated conf could keep serving")
 	}
 }
+
+// failingRemove reads a stamped file but cannot remove it.
+type failingRemove struct{ err error }
+
+func (f failingRemove) ReadFile(string) ([]byte, error) {
+	return []byte(OwnerPrefix + "proj/backup\n"), nil
+}
+func (f failingRemove) Remove(string) error { return f.err }
+
+func TestDropOwnRemoveErrors(t *testing.T) {
+	if err := DropOwn(failingRemove{os.ErrPermission}, "own", "proj/backup"); err == nil {
+		t.Fatal("a stale ungated conf that could not be removed passed as cleaned")
+	}
+	// A file that vanished between the read and the remove is already gone.
+	if err := DropOwn(failingRemove{os.ErrNotExist}, "own", "proj/backup"); err != nil {
+		t.Fatalf("already-removed file failed the build: %v", err)
+	}
+}
+
+func TestOwnerOf(t *testing.T) {
+	for _, c := range []struct{ name, in, want string }{
+		{"second line", "# Generated\n" + OwnerPrefix + " a/b \nx", "a/b"},
+		{"none", "server {}\n", ""},
+		{"past the header", "1\n2\n3\n4\n5\n" + OwnerPrefix + "a/b\n", ""},
+	} {
+		if got := OwnerOf(c.in); got != c.want {
+			t.Errorf("%s: OwnerOf = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
