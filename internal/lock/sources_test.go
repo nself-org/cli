@@ -236,3 +236,27 @@ func TestMergeDetailedResetClearsEarlierImage(t *testing.T) {
 		t.Errorf("override: images=%v unverifiable=%v err=%v", m.Images, m.Unverifiable, err)
 	}
 }
+
+// TestLoadSourcesSkipsOverlayUnderAFile: D-1201. A listed overlay under a path
+// component that is a regular file (the legacy .nself/plugins list) cannot
+// exist, so it is skipped like a missing file; the base still loads.
+func TestLoadSourcesSkipsOverlayUnderAFile(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "docker-compose.yml"), []byte("base"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".nself"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".nself", "plugins"), []byte("nself-alpha\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	overlay := filepath.Join(dir, ".nself", "plugins", "nself-alpha", "docker-compose.plugin.yml")
+	files, err := LoadSources(dir, nil, []string{"docker-compose.yml", overlay}, "")
+	if err != nil {
+		t.Fatalf("LoadSources: %v", err)
+	}
+	if len(files) != 1 || files[0].Name != "docker-compose.yml" {
+		t.Fatalf("files = %+v, want only the base", files)
+	}
+}
