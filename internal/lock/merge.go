@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 )
 
 // SourceFile is one compose file's bytes. Name is shown in messages.
@@ -118,7 +119,9 @@ func MergeDetailed(files []SourceFile, owned func(service string) bool, forCompa
 // paths means workdir's docker-compose.yml alone. A non-empty paths that does
 // not list docker-compose.yml is an error: start would run a stack without the
 // base file. base replaces the bytes of docker-compose.yml when non-nil. A
-// listed file that does not exist is skipped, except the base. mirror is the
+// listed file that does not exist is skipped, except the base; so is one under
+// a path component that is a regular file (ENOTDIR: the legacy .nself/plugins
+// list file, D-1201), which cannot exist either. mirror is the
 // project-relative path of the registry-mirror override file; its SourceFile
 // has Mirror set.
 func LoadSources(workdir string, base []byte, paths []string, mirror string) ([]SourceFile, error) {
@@ -146,7 +149,7 @@ func LoadSources(workdir string, base []byte, paths []string, mirror string) ([]
 		if !samePath(p, basePath) || base == nil {
 			var err error
 			if data, err = os.ReadFile(p); err != nil {
-				if !samePath(p, basePath) && os.IsNotExist(err) {
+				if !samePath(p, basePath) && (os.IsNotExist(err) || errors.Is(err, syscall.ENOTDIR)) {
 					continue
 				}
 				return nil, fmt.Errorf("reading %s: %w", filepath.Base(p), err)

@@ -223,7 +223,7 @@ func artifactSets(ov overlay, pb *nbuild.PlannedBuild) (before, after ArtifactSe
 	for _, k := range keys {
 		name := ov.display(k)
 		disk := ov.diskPath(k)
-		info, statErr := os.Stat(disk)
+		info, statErr := statFile(disk)
 		switch pending, isEnv := ov.env[k]; {
 		case isEnv: // the env file as `config set` leaves it (P7-LIVE-05)
 			before[name] = File{Data: pending, Perm: pendingEnvPerm}
@@ -233,7 +233,7 @@ func artifactSets(ov overlay, pb *nbuild.PlannedBuild) (before, after ArtifactSe
 				return nil, nil, fmt.Errorf("reading %s for the plan: %w", name, rerr)
 			}
 			before[name] = File{Data: data, Perm: info.Mode().Perm()}
-		case statErr != nil && !os.IsNotExist(statErr):
+		case statErr != nil && !os.IsNotExist(statErr) && !legacyPluginsFile(ov.dir, disk, statErr): // D-1201
 			return nil, nil, fmt.Errorf("reading %s for the plan: %w", name, statErr)
 		}
 		if f, ok := pb.Files[k]; ok {
