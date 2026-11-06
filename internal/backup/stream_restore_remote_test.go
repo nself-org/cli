@@ -90,19 +90,40 @@ func TestRestoreFromRemoteSwapsScratchDatabase(t *testing.T) {
 	}
 }
 
+// TestRestoreFromRemoteFailureLeavesLiveUntouched pins the strict rule in both
+// compat modes: success swaps the scratch database in and drops the previous
+// one, so a pg_restore that exits non-zero (with the COPY error line v1.4 used
+// to accept, or with no output at all) must fail before the swap.
 func TestRestoreFromRemoteFailureLeavesLiveUntouched(t *testing.T) {
-	compattest.Set(t, true) // v1.5: a pg_restore error line fails the restore
-	from, target, log := remoteRestoreFixture(t)
-	t.Setenv("FAKE_FAIL_STAGE", "restore")
-	err := RestoreFromRemote(t.Context(), remoteRestoreConfig(), from, "")
-	if err == nil || !errors.Is(err, errs.ErrBackupRestoreFailed) {
-		t.Fatalf("a failed scratch restore must fail, got %v", err)
-	}
-	if got, _ := os.ReadFile(target); string(got) != "original\n" {
-		t.Fatalf("failed restore changed the live database: %q", got)
-	}
-	calls, _ := os.ReadFile(log)
-	if text := string(calls); strings.Contains(text, "RENAME TO") || !strings.Contains(text, "DROP DATABASE \"nself_restore_") {
-		t.Fatalf("want no swap and the scratch database dropped, calls:\n%s", text)
+	for _, tc := range []struct {
+		name  string
+		v15   bool
+		stage string
+	}{
+		{"v1.4 COPY error line", false, "restore"},
+		{"v1.5 COPY error line", true, "restore"},
+		{"v1.4 silent non-zero exit", false, "restore_quiet"},
+		{"v1.5 silent non-zero exit", true, "restore_quiet"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			compattest.Set(t, tc.v15)
+			from, target, log := remoteRestoreFixture(t)
+			t.Setenv("FAKE_FAIL_STAGE", tc.stage)
+			err := RestoreFromRemote(t.Context(), remoteRestoreConfig(), from, "")
+			if err == nil || !errors.Is(err, errs.ErrBackupRestoreFailed) {
+				t.Fatalf("a failed scratch restore must fail, got %v", err)
+			}
+			if got, _ := os.ReadFile(target); string(got) != "original\n" {
+				t.Fatalf("failed restore changed the live database: %q", got)
+			}
+			calls, _ := os.ReadFile(log)
+			text := string(calls)
+			if strings.Contains(text, "RENAME TO") || strings.Contains(text, "DROP DATABASE \"nself_previous_") {
+				t.Fatalf("want no swap and no drop of the live database, calls:\n%s", text)
+			}
+			if !strings.Contains(text, "--exit-on-error") || !strings.Contains(text, "DROP DATABASE \"nself_restore_") {
+				t.Fatalf("want pg_restore --exit-on-error and the scratch database dropped, calls:\n%s", text)
+			}
+		})
 	}
 }

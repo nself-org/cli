@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -120,8 +121,16 @@ func runScratchPgRestore(ctx context.Context, container, user, scratch, backupFi
 		return fmt.Errorf("open backup file: %w", err)
 	}
 	defer func() { _ = f.Close() }()
+	return scratchPgRestore(ctx, container, user, scratch, f)
+}
+
+// scratchPgRestore is the one rule for loading a scratch database, shared by
+// restore and restore-remote: --exit-on-error, and any non-zero pg_restore
+// exit fails in every compat mode. Success means the swap drops the previous
+// database, so a partial or empty load must never pass (C2-03).
+func scratchPgRestore(ctx context.Context, container, user, scratch string, r io.Reader) error {
 	_, stderr, err := docker.ExecStdin(ctx, container,
-		[]string{"pg_restore", "-U", user, "-d", scratch, "--exit-on-error"}, f)
+		[]string{"pg_restore", "-U", user, "-d", scratch, "--exit-on-error"}, r)
 	if err != nil {
 		if ctx.Err() != nil {
 			return fmt.Errorf("%w: %v", errs.ErrBackupRestoreFailed, ctx.Err())
