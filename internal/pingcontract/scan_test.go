@@ -231,6 +231,9 @@ func methodsIn(fn ast.Node) []string {
 			if id, ok := x.X.(*ast.Ident); ok && id.Name == "http" && strings.HasPrefix(x.Sel.Name, "Method") {
 				set[strings.ToUpper(strings.TrimPrefix(x.Sel.Name, "Method"))] = true
 			}
+			if inner, ok := x.X.(*ast.SelectorExpr); ok && (inner.Sel.Name == "Header" || inner.Sel.Name == "Query") {
+				return true // resp.Header.Get(...) is not an HTTP request
+			}
 			switch x.Sel.Name {
 			case "Get", "Head":
 				set[strings.ToUpper(x.Sel.Name)] = true

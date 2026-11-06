@@ -234,14 +234,21 @@ type target struct {
 var targets = []target{
 	{Name: "license.ValidateResponse", Method: "POST", Path: "/license/validate", Schema: "ValidateResponse",
 		Value: func() any { return &license.ValidateResponse{} },
-		// Gap for P7-PLUG-27/web: the CLI reads fields the schema does not declare.
-		KnownDrift: nil},
+		// P7-PLUG-27/web gap: the CLI reads fields the ValidateResponse schema does
+		// not declare (the server sends "error" and "entitlements"; the CLI reads
+		// "reason" and "plugins"; signature/key_id/plugins_allowed are legacy or
+		// bundle-form fields).
+		KnownDrift: []string{"key_id", "plugins", "plugins_allowed", "reason", "signature"}},
 	{Name: "plugin.LicenseValidateResponse", Method: "POST", Path: "/license/validate", Schema: "ValidateResponse",
-		Value:      func() any { return &plugin.LicenseValidateResponse{} },
-		KnownDrift: nil},
+		Value: func() any { return &plugin.LicenseValidateResponse{} },
+		// P7-PLUG-27/web gap: same drift as above; "expires" is not "expires_at".
+		KnownDrift: []string{"expires", "plugins", "reason"}},
 	{Name: "license.RevocationList", Method: "GET", Path: "/license/revocation-list", Schema: "RevocationListResponse",
-		Value:      func() any { return &license.RevocationList{} },
-		KnownDrift: nil},
+		Value: func() any { return &license.RevocationList{} },
+		// P7-PLUG-27/web gap: the CLI parses a signed list (issued_at, valid_until,
+		// kid, revoked, signature); the schema documents {revocations, count,
+		// fetched_at, poll_interval_seconds}. The two shapes do not overlap.
+		KnownDrift: []string{"issued_at", "kid", "revoked", "signature", "valid_until"}},
 	{Name: "update pingVersionResponse", Method: "GET", Path: "/version", Schema: "VersionResponse",
 		SrcFile: "cmd/commands/update_release_api.go", SrcType: "pingVersionResponse"},
 }
