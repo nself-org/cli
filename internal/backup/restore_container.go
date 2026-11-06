@@ -230,6 +230,14 @@ func RestoreIntoContainer(ctx context.Context, c *Container, file string) error 
 	if string(magic[:n]) == pgDumpMagic {
 		args = []string{"pg_restore", "--no-owner", "--no-acl", "-U", c.User, "-d", c.DB}
 		tool = "pg_restore"
+		// --no-acl does not drop CREATE POLICY ... TO <role>: create those
+		// roles (NOLOGIN) first (restore_roles.go, P7-PROD-88).
+		if err := ensurePolicyRoles(ctx, c, f); err != nil {
+			return err
+		}
+		if _, err := f.Seek(0, io.SeekStart); err != nil {
+			return err
+		}
 	}
 	var stderr bytes.Buffer
 	cmd := c.cmd(ctx, f, args...)
