@@ -151,14 +151,11 @@ func runDeployRollback(cmd *cobra.Command, args []string) error {
 		return errs.New("E485", "no usable v1.5 rollback record; nothing was changed")
 	}
 
-	// PREVIEW: rollback is a PREVIEW feature. It restores the last promote snapshot
-	// created by nself promote. DNS failback and full cluster-level rollback are not
-	// yet automated — see cross-cutting.md §3 Lifecycle for the roadmap.
+	// PREVIEW: restores the last promote snapshot; no DNS failback (cross-cutting.md §3).
 	ui.Warn("nself deploy rollback is a PREVIEW feature. It restores the last pre-promote backup snapshot. No DNS changes are made automatically.")
 	ui.Info(fmt.Sprintf("Rolling back last deployment for target: %s", target))
 
-	// DEP-04: wire to last promote tag written by nself promote.
-	// An empty tag reads the latest promote record and restores its snapshot.
+	// An empty tag restores the latest promote record's snapshot.
 	if err := rollbackV14(cmd, workdir, target, ""); err != nil {
 		return fmt.Errorf("rollback failed: %w", err)
 	}

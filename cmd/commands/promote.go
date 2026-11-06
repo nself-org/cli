@@ -6,7 +6,9 @@ import (
 	"os"
 	"strings"
 
+	"github.com/nself-org/cli/internal/backup/rollbackv14"
 	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/promote"
 	"github.com/nself-org/cli/internal/ui"
@@ -103,6 +105,13 @@ Examples:
 	},
 }
 
+// rollbackV14 restores a v1.4 rollback by id; production (or an unknown target "") needs a typed --confirm-project.
+func rollbackV14(cmd *cobra.Command, workdir, target, tag string) error {
+	typed, _ := cmd.Flags().GetString("confirm-project")
+	inv, _ := controlplane.Load(workdir)
+	return rollbackv14.Run(cmd.Context(), workdir, typed, target, target == "" || prodClassFn(inv, target), tag)
+}
+
 var promoteRollbackCmd = &cobra.Command{
 	Use:   "rollback",
 	Short: "Rollback to pre-promotion backup",
@@ -118,7 +127,7 @@ var promoteRollbackCmd = &cobra.Command{
 		tag, _ := cmd.Flags().GetString("tag")
 		cwd, _ := os.Getwd()
 
-		if err := rollbackV14(cmd, cwd, v14PromoteTarget(cwd), tag); err != nil {
+		if err := rollbackV14(cmd, cwd, "", tag); err != nil {
 			return err
 		}
 

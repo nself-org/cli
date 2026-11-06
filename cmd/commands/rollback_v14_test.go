@@ -6,14 +6,16 @@ package commands
 // Inputs: a fake `nself` on PATH that records its argv; stubbed backup entries.
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/nself-org/cli/internal/backup"
+	"github.com/nself-org/cli/internal/backup/rollbackv14"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/promote"
 	"github.com/spf13/cobra"
 )
 
@@ -32,20 +34,21 @@ func fakeNself(t *testing.T) string {
 
 func v14Cmd(project string) *cobra.Command {
 	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
 	cmd.Flags().String("confirm-project", project, "")
 	return cmd
 }
 
-func stubV14Backups(t *testing.T, entries ...backup.BackupEntry) {
+func stubV14Backups(t *testing.T, entries ...promote.BackupRef) {
 	t.Helper()
-	old := v14ListBackups
-	v14ListBackups = func(string) ([]backup.BackupEntry, error) { return entries, nil }
-	t.Cleanup(func() { v14ListBackups = old })
+	old := rollbackv14.ListBackups
+	rollbackv14.ListBackups = func(string) ([]promote.BackupRef, error) { return entries, nil }
+	t.Cleanup(func() { rollbackv14.ListBackups = old })
 }
 
 func TestV14DeployRollbackNeedsTypedProjectOnProd(t *testing.T) {
 	argv := fakeNself(t)
-	stubV14Backups(t, backup.BackupEntry{ID: "demo_full_1", Tag: "pre-promote-x", Date: time.Now()})
+	stubV14Backups(t, promote.BackupRef{ID: "demo_full_1", Tag: "pre-promote-x", Date: time.Now()})
 	err := rollbackV14(v14Cmd(""), t.TempDir(), "prod", "pre-promote-x")
 	if err == nil || !strings.Contains(err.Error(), "E403") || errs.ExitCodeFor(err) != 4 {
 		t.Fatalf("production without --confirm-project: err=%v", err)
@@ -59,9 +62,9 @@ func TestV14PromoteRollbackPassesTagAndProject(t *testing.T) {
 	argv := fakeNself(t)
 	now := time.Now()
 	stubV14Backups(t,
-		backup.BackupEntry{ID: "old_id", Tag: "pre-promote-x", Date: now.Add(-time.Hour)},
-		backup.BackupEntry{ID: "new_id", Tag: "pre-promote-x", Date: now},
-		backup.BackupEntry{ID: "other_id", Tag: "other", Date: now.Add(time.Hour)},
+		promote.BackupRef{ID: "old_id", Tag: "pre-promote-x", Date: now.Add(-time.Hour)},
+		promote.BackupRef{ID: "new_id", Tag: "pre-promote-x", Date: now},
+		promote.BackupRef{ID: "other_id", Tag: "other", Date: now.Add(time.Hour)},
 	)
 	if err := rollbackV14(v14Cmd("demo"), t.TempDir(), "prod", "pre-promote-x"); err != nil {
 		t.Fatal(err)
