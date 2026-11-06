@@ -23,7 +23,7 @@ commands:
   backup prune: {side_effect: destructive, json: legacy, confirm: {flags: [yes]}}
   # --confirm-project is consent by name for an ssh run with no stdin (C2-01); cli_only keeps it off MCP/HTTP, where the confirm nonce is the consent
   backup restore: {side_effect: destructive, confirm: {flags: [yes]}, flags: {confirm-project: {cli_only: true}}}
-  # cmd/commands/backup_restore.go downloads a backup from a remote and restores it through a scratch database (C2-03)
+  # cmd/commands/backup_restore.go:107 downloads a backup from a remote and restores it through a scratch database (C2-03)
   backup restore-remote: {side_effect: destructive, confirm: {flags: [yes]}, flags: {confirm-project: {cli_only: true}}}
   backup resume: {side_effect: write}
   backup schedule: {side_effect: write}

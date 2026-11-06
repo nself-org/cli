@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/nself-org/cli/internal/backup/consent"
 	"github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/controlplane"
 	cpromote "github.com/nself-org/cli/internal/controlplane/promote"
@@ -57,7 +58,7 @@ func preparePromoteEngine(cmd *cobra.Command, workdir, source, target string, dr
 	}
 	source, target = sourceName, targetName
 	sourceEnv, targetEnv := inv.Environments[source], inv.Environments[target]
-	st := &cpromote.State{Project: restoreProjectName(workdir), Source: source, Target: target, SourceTier: sourceEnv.Tier, TargetTier: targetEnv.Tier, DryRun: dryRun, Values: map[string]any{}}
+	st := &cpromote.State{Project: consent.ProjectName(workdir), Source: source, Target: target, SourceTier: sourceEnv.Tier, TargetTier: targetEnv.Tier, DryRun: dryRun, Values: map[string]any{}}
 	if err := cpromote.ValidateTiers(source, target, st.SourceTier, st.TargetTier); err != nil {
 		return cpromote.Engine{}, nil, err
 	}

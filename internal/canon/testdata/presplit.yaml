@@ -60,9 +60,9 @@ commands:
   backup pitr restore: {side_effect: destructive, surface: cli-only}
   backup pitr status: {side_effect: read}
   backup prune: {side_effect: destructive, json: legacy, confirm: {flags: []}}
-  backup restore: {side_effect: destructive, confirm: {flags: [yes]}}
+  backup restore: {side_effect: destructive, confirm: {flags: [yes]}, flags: {confirm-project: {cli_only: true}}}
   # cmd/commands/backup_restore.go:85 downloads a backup from a remote and restores it over the database
-  backup restore-remote: {side_effect: destructive, confirm: {flags: [yes]}}
+  backup restore-remote: {side_effect: destructive, confirm: {flags: [yes]}, flags: {confirm-project: {cli_only: true}}}
   backup resume: {side_effect: write}
   backup schedule: {side_effect: write}
   backup status: {side_effect: read, json: legacy}

@@ -6,9 +6,7 @@ package commands
 //          fronting stack's nginx/sites from the recorded front tar (D-0425), and
 //          the database backup on backup_host only.
 // Constraints: unchanged behaviour for a record without front fields. A database
-//          restore needs --yes or a terminal confirmation first, then runs on the
-//          host with --confirm-project <PROJECT_NAME> (C2-01): the ssh run has no
-//          stdin, so the remote cannot prompt.
+//          restore needs --yes or a prompt, then passes --confirm-project (C2-01).
 
 import (
 	"fmt"
@@ -17,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nself-org/cli/internal/backup/consent"
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/deploy"
 	"github.com/nself-org/cli/internal/errs"
@@ -62,10 +61,10 @@ func rollbackRemoteV15(cmd *cobra.Command, workdir, target string) (bool, error)
 			return true, fmt.Errorf("deploy rollback: the recorded tar %q for %s is not a pre-deploy tar; nothing was changed", tars[host], host)
 		}
 	}
-	project := restoreProjectName(workdir)
+	project := consent.ProjectName(workdir)
 	manualDB := st.BackupID != "" && tars[st.BackupHost] == ""
 	if manualDB {
-		fmt.Printf("  [warn] database backup %s was not restored: %s kept no changes of this deploy. If the database must go back, run on %s: %s\n", st.BackupID, st.BackupHost, st.BackupHost, deploy.BackupRestoreHint(st.BackupID, project))
+		fmt.Printf("  [warn] database backup %s was not restored: %s kept no changes of this deploy. If the database must go back, run on %s: %s\n", st.BackupID, st.BackupHost, st.BackupHost, consent.Hint(st.BackupID, project))
 	}
 	yes, _ := cmd.Flags().GetBool("yes") // the flag of deploy rollback; tests carry it in ctx
 	if st.BackupID != "" && !manualDB && st.DBRestoredAt == "" && !yes && !deployYes(ctx) &&

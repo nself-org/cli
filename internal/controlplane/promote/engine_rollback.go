@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/nself-org/cli/internal/deploy"
+	"github.com/nself-org/cli/internal/backup/consent"
 	"github.com/nself-org/cli/internal/errs"
 )
 
@@ -43,7 +43,7 @@ func rollbackFailed(result Result, st *State, step string, cause error) (Result,
 	result.Status = "rollback_failed"
 	result = finishResult(result, st)
 	what := fmt.Sprintf("promote rollback failed at %s for snapshot %s backup %s; needs operator", step, st.SnapshotTag, st.BackupID)
-	return result, errs.Wrap("E489", what, cause).WithFix(fmt.Sprintf("Snapshot %s, backup %s: run %s on the target, then run nself doctor.", st.SnapshotTag, st.BackupID, deploy.BackupRestoreHint(st.BackupID, st.Project)))
+	return result, errs.Wrap("E489", what, cause).WithFix(fmt.Sprintf("Snapshot %s, backup %s: run %s on the target, then run nself doctor.", st.SnapshotTag, st.BackupID, consent.Hint(st.BackupID, st.Project)))
 }
 
 func resultFrom(st *State) Result {

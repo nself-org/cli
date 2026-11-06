@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/nself-org/cli/internal/backup/consent"
 	"github.com/nself-org/cli/internal/deploy"
 	"github.com/nself-org/cli/internal/errs"
 	remotesdk "github.com/nself-org/cli/sdk/go/v2/remote"
@@ -40,7 +41,7 @@ func RestoreDatabase(ctx context.Context, r deploy.Remote, remotePath, project, 
 	if *phase == "db_restore_started" {
 		return uncertainDBRestore(tag, backup)
 	}
-	restoreCmd, err := deploy.BackupRestoreCommand(backup, project)
+	restoreCmd, err := consent.Command(backup, project)
 	if err != nil {
 		return err
 	}

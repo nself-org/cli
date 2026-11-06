@@ -1,17 +1,11 @@
 package backup
 
-// stream_restore_remote.go — RestoreFromRemote pipeline.
+// stream_restore_remote.go — RestoreFromRemote.
 //
-// Purpose: restore a backup streamed from a remote destination through a
-// scratch database that is swapped in only after pg_restore succeeds (the
-// D-0663 engine, restoreViaScratch), never into the live database (C2-03).
+// Purpose: restore a backup streamed from a remote destination through a scratch database swapped in only after pg_restore passes restoreVerdict (restoreViaScratch, D-0663), never in place (C2-03).
 // Inputs: the remote backup location, an optional age identity and cfg.
-// Outputs: a restored database, or an error naming the failed stage; on any
-// failure before the swap the live database is untouched. A non-zero
-// pg_restore exit is judged by restoreVerdict, as before the scratch change.
-// Constraints: pg_restore runs inside the postgres container, so the host
-// needs docker (plus rclone for rclone remotes and age for .age objects) but
-// not pg_restore. Confirmation is the caller's job (cmd/commands).
+// Outputs: a restored database, or an error naming the failed stage; the live database is untouched on failure.
+// Constraints: the pipe (internal/backup/pgstream) runs pg_restore in the postgres container: the host needs docker, rclone for rclone remotes, age for .age objects, no pg_restore.
 
 import (
 	"context"
@@ -24,9 +18,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/nself-org/cli/internal/backup/destinations"
+	"github.com/nself-org/cli/internal/backup/pgstream"
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/controlplane"
@@ -93,7 +87,7 @@ func RestoreFromRemote(ctx context.Context, cfg *config.Config, from, keyPath st
 	consumed := false
 	err := restoreViaScratch(ctx, container, user, db, func(ctx context.Context, scratch string) error {
 		consumed = true
-		return streamRemoteRestore(ctx, from, keyPath, encrypted, native, container, user, scratch)
+		return pgstream.Restore(ctx, pgstream.Source{From: from, Native: native, AgeKey: keyPath, Encrypted: encrypted}, container, user, scratch, restoreVerdict)
 	})
 	if native != nil && !consumed {
 		_ = native.Close()
@@ -102,148 +96,6 @@ func RestoreFromRemote(ctx context.Context, cfg *config.Config, from, keyPath st
 		return err
 	}
 	slog.Info("remote restore complete", "from", from)
-	return nil
-}
-
-// streamRemoteRestore runs the three-stage pipeline into the scratch database.
-func streamRemoteRestore(ctx context.Context, from, keyPath string, encrypted bool, native io.ReadCloser, container, user, scratch string) error {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	var downloadReader io.ReadCloser
-	var restoreReader io.ReadCloser
-
-	// Stage 1 output.
-	dlR, dlW := io.Pipe()
-
-	var wg sync.WaitGroup
-	errc := make(chan error, 3)
-
-	// ── Stage 1: rclone cat <remote> (or the native reader) ─────────────────────────────────
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer func() { _ = dlW.Close() }()
-		if native != nil {
-			if err := copyNative(dlW, native); err != nil {
-				cancel()
-				errc <- fmt.Errorf("%w: %v", errs.ErrBackupRemoteFailed, err)
-			}
-			return
-		}
-		cmd := exec.CommandContext(ctx, "rclone", "cat", from)
-		cmd.Stdout = dlW
-		stderr, err := cmd.StderrPipe()
-		if err != nil {
-			cancel()
-			errc <- fmt.Errorf("rclone stderr pipe: %w", err)
-			return
-		}
-		if err := cmd.Start(); err != nil {
-			cancel()
-			errc <- fmt.Errorf("start rclone: %w", err)
-			return
-		}
-		errOut, _ := io.ReadAll(stderr)
-		if err := cmd.Wait(); err != nil {
-			cancel()
-			msg := strings.TrimSpace(string(errOut))
-			if msg != "" {
-				errc <- fmt.Errorf("%w: %s", errs.ErrBackupRemoteFailed, msg)
-			} else {
-				errc <- fmt.Errorf("%w: %v", errs.ErrBackupRemoteFailed, err)
-			}
-		}
-	}()
-
-	downloadReader = dlR
-
-	// ── Stage 2: age -d (optional) ───────────────────────────────────
-	var decR *io.PipeReader
-	var decW *io.PipeWriter
-	if encrypted {
-		decR, decW = io.Pipe()
-		restoreReader = decR
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			defer func() { _ = decW.Close() }()
-			cmd := exec.CommandContext(ctx, "age", "--decrypt", "-i", keyPath)
-			cmd.Stdin = downloadReader
-			cmd.Stdout = decW
-			stderr, err := cmd.StderrPipe()
-			if err != nil {
-				cancel()
-				dlR.CloseWithError(err)
-				errc <- fmt.Errorf("age stderr pipe: %w", err)
-				return
-			}
-			if err := cmd.Start(); err != nil {
-				cancel()
-				dlR.CloseWithError(err)
-				errc <- fmt.Errorf("start age: %w", err)
-				return
-			}
-			errOut, _ := io.ReadAll(stderr)
-			if err := cmd.Wait(); err != nil {
-				cancel()
-				msg := strings.TrimSpace(string(errOut))
-				if msg != "" {
-					errc <- fmt.Errorf("%w: %s", errs.ErrBackupDecryptFailed, msg)
-				} else {
-					errc <- fmt.Errorf("%w: %v", errs.ErrBackupDecryptFailed, err)
-				}
-			}
-		}()
-	} else {
-		restoreReader = downloadReader
-	}
-
-	// ── Stage 3: pg_restore into the scratch database ─────────────────
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer func() { _ = restoreReader.Close() }()
-		args := []string{
-			"exec", "-i", container,
-			"pg_restore",
-			"-U", user,
-			"-d", scratch,
-		}
-		cmd := exec.CommandContext(ctx, "docker", args...)
-		cmd.Stdin = restoreReader
-		stderr, err := cmd.StderrPipe()
-		if err != nil {
-			cancel()
-			errc <- fmt.Errorf("pg_restore stderr pipe: %w", err)
-			return
-		}
-		if err := cmd.Start(); err != nil {
-			cancel()
-			errc <- fmt.Errorf("start pg_restore: %w", err)
-			return
-		}
-		errOut, _ := io.ReadAll(stderr)
-		// restoreVerdict judges a non-zero exit (v1.5: any unlisted error line
-		// fails; v1.4: only FATAL or "could not"). A failing verdict stops
-		// before the swap, so the live database is never touched.
-		if err := cmd.Wait(); err != nil {
-			if verr := restoreVerdict(string(errOut)); verr != nil {
-				cancel()
-				errc <- verr
-			}
-		}
-	}()
-
-	wg.Wait()
-	close(errc)
-
-	for e := range errc {
-		if e != nil {
-			return e
-		}
-	}
-
 	return nil
 }
 
@@ -272,14 +124,4 @@ func openNative(ctx context.Context, from string) (io.ReadCloser, error) {
 		return nil, fmt.Errorf("%w: %v", errs.ErrBackupRemoteFailed, err)
 	}
 	return rc, nil
-}
-
-// copyNative copies the native reader into w and closes it, so a failed
-// remote read (reported by Close) becomes the stage error.
-func copyNative(w io.Writer, rc io.ReadCloser) error {
-	_, err := io.Copy(w, rc)
-	if cerr := rc.Close(); err == nil {
-		err = cerr
-	}
-	return err
 }
