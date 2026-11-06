@@ -16,6 +16,7 @@ func TestPluginNginxRouteMarkerAndPrune(t *testing.T) {
 	if err := os.WriteFile(conf, []byte("server { listen 80; server_name fixture.test; }\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	markNginxPublic(t, plugins, "fixture")
 	if count, err := InjectPluginNginxRoutes(project, plugins, minimalTestConfig("test")); err != nil || count != 1 {
 		t.Fatalf("inject: count=%d err=%v", count, err)
 	}

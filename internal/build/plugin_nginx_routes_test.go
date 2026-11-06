@@ -47,6 +47,7 @@ func snippetModel(t *testing.T, workdir, pluginDir string) (*buildState, *routem
 func TestPluginSnippetRoutes(t *testing.T) {
 	workdir, plugins := t.TempDir(), t.TempDir()
 	writeFixtureFile(t, filepath.Join(plugins, "idme", "nginx", "idme.conf"), unitSnippet, 0o644)
+	markNginxPublic(t, plugins, "idme")
 	st, m := snippetModel(t, workdir, plugins)
 	out := st.withSnippetRoutes(m)
 	byID := map[string]routemodel.Route{}
@@ -260,6 +261,7 @@ func TestParseServerBlocksMatchesLegacy(t *testing.T) {
 func TestPluginUpstreamAcrossFiles(t *testing.T) {
 	workdir, plugins := t.TempDir(), t.TempDir()
 	writeFixtureFile(t, filepath.Join(plugins, "p", "nginx", "p.conf"), "server { listen 80; server_name p.example.test; location / { proxy_pass http://api.internal; } }\n", 0o644)
+	markNginxPublic(t, plugins, "p")
 	writeFixtureFile(t, filepath.Join(workdir, "nginx", "conf.d", "up.conf"), "upstream api.internal { server 10.1.1.1:9000; keepalive 8; }\n", 0o644)
 	st, m := snippetModel(t, workdir, plugins)
 	out := st.withSnippetRoutes(m)

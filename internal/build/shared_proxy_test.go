@@ -104,11 +104,11 @@ func (x *sharedFx) frontedEnv(project, domain string, extra ...string) string {
 }
 
 // plugin installs a plugin with a compose fragment and an nginx snippet whose
-// upstream is the bare host name.
+// upstream is the bare host name; its manifest declares the conf public.
 func (x *sharedFx) plugin(t *testing.T, name string, port int) {
 	t.Helper()
 	dir := filepath.Join(x.plugins, name)
-	writeFixtureFile(t, filepath.Join(dir, "plugin.json"), fmt.Sprintf(`{"name":%q,"port":%d,"language":"go"}`, name, port), 0o644)
+	writeFixtureFile(t, filepath.Join(dir, "plugin.json"), fmt.Sprintf(`{"name":%q,"port":%d,"language":"go","nginx":{"public":true}}`, name, port), 0o644)
 	writeFixtureFile(t, filepath.Join(dir, pluginComposeFilename), fmt.Sprintf("services:\n  %s:\n    image: nself/%s:latest\n    ports:\n      - \"%d:%d\"\n", name, name, port, port), 0o644)
 	writeFixtureFile(t, filepath.Join(dir, "Dockerfile"), "FROM scratch\n", 0o644)
 	writeFixtureFile(t, filepath.Join(dir, "nginx", "route.conf"),

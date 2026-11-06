@@ -13,6 +13,7 @@ import (
 
 	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/nginx/plugincheck"
 	"github.com/nself-org/cli/internal/nginx/routemodel"
 	"github.com/nself-org/cli/internal/nginxtopo"
 )
@@ -103,6 +104,7 @@ func TestInjectPluginNginxRoutes_DefaultDirRendersSSLDir(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(confDir, "backup.conf"), []byte(backupSnippet), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	markNginxPublic(t, filepath.Dir(filepath.Dir(confDir)), "backup")
 	cfg, err := config.ApplyDefaults(&config.Config{ProjectName: "d0478", BaseDomain: "local.nself.org"})
 	if err != nil {
 		t.Fatalf("ApplyDefaults: %v", err)
@@ -158,6 +160,7 @@ func TestInjectPluginNginxRoutes_SkipsSnippetWithoutServedCert(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(d, name+".conf"), []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
+		markNginxPublic(t, pluginDir, name)
 	}
 	cfg, err := config.ApplyDefaults(&config.Config{ProjectName: "d0478", BaseDomain: "example.com", SSLMode: "none"})
 	if err != nil {
@@ -207,9 +210,9 @@ func TestPluginSnippetSkip(t *testing.T) {
 		{"base cert, no TLS served", "server {\n    listen 443 ssl;\n" + cert + "}\n", false, "TLS certificate"},
 	}
 	for _, c := range cases {
-		got := pluginSnippetSkip(c.text, vars, c.hasSSL)
+		got := plugincheck.Skip(c.text, vars, c.hasSSL)
 		if (c.want == "") != (got == "") || !strings.Contains(got, c.want) {
-			t.Errorf("%s: pluginSnippetSkip = %q, want reason containing %q", c.name, got, c.want)
+			t.Errorf("%s: plugincheck.Skip = %q, want reason containing %q", c.name, got, c.want)
 		}
 	}
 }

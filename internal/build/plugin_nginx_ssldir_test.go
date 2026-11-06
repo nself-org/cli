@@ -79,6 +79,7 @@ func TestPluginSnippetNginxConfigTest(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(pluginDir, "backup", "nginx", "backup.conf"), []byte(backupSnippet), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	markNginxPublic(t, pluginDir, "backup")
 	cfg, err := config.ApplyDefaults(&config.Config{ProjectName: "d0478", BaseDomain: "local.nself.org", SSLMode: "local"})
 	if err != nil {
 		t.Fatalf("ApplyDefaults: %v", err)

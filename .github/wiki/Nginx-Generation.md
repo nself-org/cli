@@ -102,7 +102,7 @@ If the remove is interrupted (a crash, `kill -9`), the generated files are alrea
 
 Two plugins whose `<plugin>-<file>` names resolve to the same `nginx/sites` file (compared case-insensitively, for example plugin `a-b` with `c.conf` and plugin `a` with `b-c.conf`) are refused as E055 with `NSELF_V15=1`. In v1.4 mode it is a warning and the later file replaces the earlier one.
 
-`<k>` is the 1-based index of the server block in the file. A usual snippet has two blocks for one name (port 80 redirect, port 443 proxy), so one name can appear in two routes. nginx behaviour does not change: plugin files are still copied byte for byte and hand-managed files are never touched.
+`<k>` is the 1-based index of the server block in the file. A usual snippet has two blocks for one name (port 80 redirect, port 443 proxy), so one name can appear in two routes. nginx behaviour does not change: plugin files that are injected are copied byte for byte (a conf without an access gate or a public declaration is held back, see [Closed by default](#closed-by-default)) and hand-managed files are never touched.
 
 Each directive is read with a closed vocabulary. It is mapped to a model field, judged to have no observable effect, or copied word for word into the route's `unmodelled` list. Nothing is evaluated: no `include`, `map` or `if`, and a variable is substituted only for `set $v <url>;` followed by `proxy_pass $v;` in the same location or server. `deny all` and `limit_except` map only in a closed scope: the location has no `allow` of its own (also inside `if` or `limit_except`), no `satisfy` other than `all` is in effect (from the location, the server or the top of the file), and neither the location nor its server holds an `if`, `rewrite`, `break`, `return`, `include` or `error_page`. An `error_page` at the top of the file counts too, because nginx inherits it into every location. Any of these can let a request past the access rule or answer it first.
 
@@ -288,6 +288,15 @@ A file nginx would refuse to load would stop nginx, and with it every route, so 
 - it loads the `${SSL_DIR}` certificate while the build serves no TLS (`SSL_MODE=none`, or `letsencrypt`/`custom` before the certificate exists).
 
 A skipped file is also listed in `routes.json` under `unmodelled_global`. Run `nself build` again after updating the plugin or issuing the certificate.
+
+### Closed by default
+
+`nginx/sites` is served on the public listeners, and the caller picks the Host header and SNI, so DNS does not keep a plugin server block private. A plugin conf is therefore held back unless one of these holds (D-0777):
+
+- every server block in it refuses all callers but the nginx container's loopback: `allow 127.0.0.1; allow ::1; deny all;` at server level, no `allow` or `deny` in a nested block, and no `return`, `rewrite`, `if`, `break`, `error_page`, `include`, `satisfy any`, `access_by_lua*` or `real_ip` directive anywhere in the file;
+- the plugin's `plugin.json` declares `"nginx": {"public": true}`, its statement that it authenticates every request the conf routes or verifies a webhook signature on it (see [[Plugin-Manifest]]).
+
+A held-back file is not written, a copy an earlier build of this project wrote is removed, and the build warns with the plugin, the file, the reason and the fix. The file is listed in `routes.json` under `unmodelled_global` as `skipped plugin <plugin>/<file>: ...`. Reach a held-back plugin on the project network (`http://<service>:<port>`), or add your own server block with authentication in `nginx/conf.d/`.
 
 A plugin file whose `server_name` is already claimed on the same port by another file in `nginx/sites` fails the build, naming both files, because nginx would silently serve only one of them.
 

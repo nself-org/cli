@@ -92,6 +92,7 @@ func TestPluginRoutesInRoutesJSON(t *testing.T) {
 	_, _, plain := routesOf(t, f.workdir)
 
 	writeFixtureFile(t, filepath.Join(f.plugins, "idme", "nginx", "idme.conf"), idmeSnippet, 0o644)
+	markNginxPublic(t, f.plugins, "idme")
 	if _, err := Build(f.workdir, BuildOptions{Force: true}); err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +159,7 @@ func TestInstalledPluginRoutesInRoutesJSON(t *testing.T) {
 			t.Fatalf("unexpected install: %s in %s", name, dir)
 		}
 		installed = true
-		writeFixtureFile(t, filepath.Join(dir, name, "plugin.json"), `{"name":"idme","version":"1.0.0"}`, 0o644)
+		writeFixtureFile(t, filepath.Join(dir, name, "plugin.json"), `{"name":"idme","version":"1.0.0","nginx":{"public":true}}`, 0o644)
 		writeFixtureFile(t, filepath.Join(dir, name, "nginx", "idme.conf"), idmeSnippet, 0o644)
 		return nil
 	}
@@ -183,6 +184,7 @@ func TestInstalledPluginRoutesInRoutesJSON(t *testing.T) {
 func TestPluginRoutesConfirmedRender(t *testing.T) {
 	f := newPlanFixture(t, "dev-minimal")
 	writeFixtureFile(t, filepath.Join(f.plugins, "idme", "nginx", "idme.conf"), idmeSnippet, 0o644)
+	markNginxPublic(t, f.plugins, "idme")
 	writeFixtureFile(t, filepath.Join(f.workdir, "nginx", "conf.d", "custom.conf"), "server { listen 80; server_name h.example.test; }\n", 0o644)
 	plan, err := Build(f.workdir, BuildOptions{Mode: ModePlan, Rand: newSeedStream("seed")})
 	if err != nil || plan.Planned == nil {

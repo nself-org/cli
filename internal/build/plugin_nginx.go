@@ -100,15 +100,16 @@ func checkServerNameConflict(sink Sink, sitesDir, destName, content string) erro
 // project's nginx/sites/ directory after templating config variables.
 //
 // Returns the number of config files injected.
-// Plugins without a nginx/ directory are silently skipped. It renders as if
+// Plugins without a nginx/ directory are silently skipped, and a conf without
+// an access gate is left out unless the plugin declares it public. It renders as if
 // the base domain's certificate pair is served; the build passes its own
 // TLS decision to injectPluginNginxRoutesVia.
 func InjectPluginNginxRoutes(workdir, pluginDir string, cfg *config.Config) (int, error) {
 	return injectPluginNginxRoutesVia(newDiskSink(workdir), workdir, pluginDir, cfg, true)
 }
 
-func pluginSnippetSkip(rendered string, vars map[string]string, hasSSL bool) string {
-	return plugincheck.Skip(rendered, vars, hasSSL)
+func pluginSnippetSkip(pluginDir, name, rendered string, vars map[string]string, hasSSL bool) (string, string) {
+	return plugincheck.Leave(pluginDir, name, rendered, vars, hasSSL)
 }
 
 // resolvePluginNginxDir returns the plugin directory the nginx snippets are
@@ -207,22 +208,22 @@ func injectPluginNginxRoutesVia(sink Sink, workdir, pluginDir string, cfg *confi
 
 			// Template the config content with project values.
 			rendered := renderPluginSnippet(string(content), vars)
-			if why := pluginSnippetSkip(rendered, vars, hasSSL); why != "" {
-				slog.Warn("plugin nginx route skipped: nginx would refuse to start with it",
-					"plugin", pluginName, "file", filepath.Base(match), "reason", why,
-					"fix", "update the plugin (nself plugin update "+pluginName+") or report it to the plugin, then run nself build again")
-				continue
-			}
-
 			// Write to nginx/sites/{pluginname}-{filename} to avoid conflicts.
 			filename := filepath.Base(match)
 			destName := pluginName + "-" + filename
 			destPath := filepath.Join(sitesDir, destName)
-
+			owner := cfg.ProjectName + "/" + pluginName
+			// Left out: nginx would refuse it, or it has no access gate and is not declared public (D-0777).
+			if why, fix := pluginSnippetSkip(pluginDir, pluginName, rendered, vars, hasSSL); why != "" {
+				slog.Warn("plugin nginx route left out of nginx/sites", "plugin", pluginName, "file", filename, "reason", why, "fix", fix)
+				if err := plugincheck.DropOwn(sink, destPath, owner); err != nil {
+					return count, err
+				}
+				continue
+			}
 			if err := checkNginxDestCollision(destOwner, destName, pluginName, match); err != nil {
 				return count, err
 			}
-			owner := cfg.ProjectName + "/" + pluginName
 			if err := checkNginxSiteOwner(sink, sitesDir, destName, owner); err != nil {
 				return count, err
 			}

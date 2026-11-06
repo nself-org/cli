@@ -24,6 +24,7 @@ func writeNginxConf(t *testing.T, plugins, plugin, file, host string) {
 	if err := os.WriteFile(conf, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	markNginxPublic(t, plugins, plugin)
 }
 
 // TestPluginNginxDestCollision (D-0287): plugin "a-b" with c.conf and plugin
