@@ -52,11 +52,13 @@ func ensurePolicyRoles(ctx context.Context, c *Container, archive io.Reader) err
 	if text := fatalRestoreText("pg_restore", stderr.String()); text != "" {
 		return fmt.Errorf("%w: pg_restore --schema-only: %s", errs.ErrBackupRestoreFailed, text)
 	}
+	// Any unsuccessful extraction is fatal, whatever stderr says (an OOM kill
+	// exits 137 with none): the role list may be partial.
 	if werr != nil {
 		if ctx.Err() != nil {
-			return fmt.Errorf("%w: pg_restore --schema-only: %v", errs.ErrBackupRestoreFailed, ctx.Err())
+			werr = ctx.Err()
 		}
-		slog.Warn("pg_restore --schema-only completed with warnings", "output", strings.TrimSpace(stderr.String()))
+		return fmt.Errorf("%w: pg_restore --schema-only: %v: %s", errs.ErrBackupRestoreFailed, werr, strings.TrimSpace(stderr.String()))
 	}
 	return createMissingRoles(ctx, c, roles)
 }

@@ -33,3 +33,32 @@ func TestCollectRefusesNamesOutsidePattern(t *testing.T) {
 		}
 	}
 }
+
+// Unquoted names are validated before folding, and only ASCII A-Z folds: the
+// Kelvin sign (U+212A) lowercases to "k" in Go but is refused here.
+func TestCollectRefusesNonASCIIBeforeFolding(t *testing.T) {
+	for _, role := range []string{"\u212A", "Mux_\u212Aser", "caf\u00e9"} {
+		_, err := Collect(strings.NewReader("CREATE POLICY p ON t TO " + role + ";\n"))
+		if !errors.Is(err, ErrInvalidName) {
+			t.Errorf("%q: err = %v, want ErrInvalidName", role, err)
+		}
+	}
+}
+
+// Comments inside a statement are not tokenized, nested ones included.
+func TestCollectIgnoresCommentsInsideStatement(t *testing.T) {
+	for schema, want := range map[string][]string{
+		"CREATE POLICY p ON t /* TO ghost */ TO real;\n":                 {"real"},
+		"CREATE POLICY p ON t /* a /* TO ghost */ TO ghost2 */ TO real;": {"real"},
+		"CREATE POLICY p ON t -- TO ghost\n TO real, /* x */ other;":     {"other", "real"},
+	} {
+		got, err := Collect(strings.NewReader(schema))
+		if err != nil {
+			t.Errorf("%q: %v", schema, err)
+			continue
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%q: got %q, want %q", schema, got, want)
+		}
+	}
+}

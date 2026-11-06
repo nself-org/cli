@@ -29,6 +29,7 @@ const NamePattern = `^[a-z_][a-z0-9_]{0,62}$`
 
 var (
 	policyRoleRe   = regexp.MustCompile(NamePattern)
+	unquotedRoleRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,62}$`) // NamePattern before A-Z folding
 	createPolicyRe = regexp.MustCompile(`(?i)^CREATE\s+POLICY\s`)
 )
 
@@ -90,14 +91,20 @@ func policyToRoles(stmt string) ([]string, error) {
 		tok := toks[i]
 		name := tok.text
 		if !tok.quoted {
-			name = strings.ToLower(name)
+			// Validate before folding, and fold ASCII A-Z only (as Postgres
+			// does): a non-ASCII name such as the Kelvin sign must never
+			// lowercase into a valid one.
+			if !unquotedRoleRe.MatchString(name) {
+				return nil, invalidName(name)
+			}
+			name = asciiLower(name)
 			if policyRoleKeywords[name] {
 				name = ""
 			}
 		}
 		if name != "" {
 			if !policyRoleRe.MatchString(name) {
-				return nil, fmt.Errorf("%w: %q does not match %s; create it by hand and restore again", ErrInvalidName, name, NamePattern)
+				return nil, invalidName(name)
 			}
 			roles = append(roles, name)
 		}
@@ -108,12 +115,29 @@ func policyToRoles(stmt string) ([]string, error) {
 	return roles, nil
 }
 
-// sqlStatements splits SQL on top-level semicolons, skipping comments, '...'
-// and E'...' literals, "..." identifiers, $tag$ bodies and psql meta-command
-// lines (\restrict); leading whitespace and comments are trimmed.
+func invalidName(name string) error {
+	return fmt.Errorf("%w: %q does not match %s; create it by hand and restore again", ErrInvalidName, name, NamePattern)
+}
+
+// asciiLower folds A-Z only, the case folding of an unquoted identifier.
+func asciiLower(s string) string {
+	b := []byte(s)
+	for i, c := range b {
+		if c >= 'A' && c <= 'Z' {
+			b[i] = c + 'a' - 'A'
+		}
+	}
+	return string(b)
+}
+
+// sqlStatements splits SQL on top-level semicolons, skipping '...' and E'...'
+// literals, "..." identifiers, $tag$ bodies and psql meta-command lines
+// (\restrict). Comments (-- and nested /* */) are removed from the returned
+// text, each replaced by a space; leading whitespace and comments are trimmed.
 func sqlStatements(s string) []string {
 	var out []string
-	start, atStart := 0, true
+	var cur strings.Builder
+	seg, atStart := 0, true
 	for i := 0; i < len(s); {
 		c := s[i]
 		switch {
@@ -121,12 +145,19 @@ func sqlStatements(s string) []string {
 			i++
 		case atStart && c == '\\':
 			i = skipPast(s, i, "\n")
-		case strings.HasPrefix(s[i:], "--"):
-			i = skipPast(s, i, "\n")
-		case strings.HasPrefix(s[i:], "/*"):
-			i = skipPast(s, i+2, "*/") // pg_dump never nests these
+		case strings.HasPrefix(s[i:], "--") || strings.HasPrefix(s[i:], "/*"):
+			cur.WriteString(s[seg:i])
+			cur.WriteByte(' ')
+			if c == '-' {
+				i = skipPast(s, i, "\n")
+			} else {
+				i = skipBlockComment(s, i)
+			}
+			seg = i
 		case c == ';':
-			out = append(out, s[start:i])
+			cur.WriteString(s[seg:i])
+			out = append(out, strings.TrimSpace(cur.String()))
+			cur.Reset()
 			i, atStart = i+1, true
 		default:
 			switch tag, ok := dollarTag(s, i); {
@@ -142,10 +173,31 @@ func sqlStatements(s string) []string {
 			atStart = false
 		}
 		if atStart {
-			start = i
+			seg = i
+			cur.Reset()
 		}
 	}
 	return out
+}
+
+// skipBlockComment returns the index just after the /* comment at i; Postgres
+// nests these.
+func skipBlockComment(s string, i int) int {
+	depth := 0
+	for i < len(s) {
+		switch {
+		case strings.HasPrefix(s[i:], "/*"):
+			depth, i = depth+1, i+2
+		case strings.HasPrefix(s[i:], "*/"):
+			depth, i = depth-1, i+2
+			if depth == 0 {
+				return i
+			}
+		default:
+			i++
+		}
+	}
+	return len(s)
 }
 
 // skipPast returns the index just after the first delim at or after from.

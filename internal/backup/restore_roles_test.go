@@ -26,7 +26,11 @@ shift 3
 case "$1" in
   pg_restore)
     cat > /dev/null
-    case " $* " in *" --schema-only "*) cat "$FAKE_SCHEMA";; esac
+    case " $* " in *" --schema-only "*)
+      cat "$FAKE_SCHEMA"
+      [ -n "$FAKE_SCHEMA_STDERR" ] && printf '%s\n' "$FAKE_SCHEMA_STDERR" >&2
+      [ -n "$FAKE_SCHEMA_EXIT" ] && exit "$FAKE_SCHEMA_EXIT";;
+    esac
     exit 0;;
   psql)
     stdin=$(cat)
@@ -154,6 +158,28 @@ func TestRestoreRejectsInvalidRoleName(t *testing.T) {
 		calls := readFake(t, dir, "calls.log")
 		if strings.Contains(calls, "SQL:") || strings.Contains(calls, "--no-owner") {
 			t.Errorf("%s: SQL ran before the name was refused:\n%s", role, calls)
+		}
+	}
+}
+
+// A schema extraction that exits non-zero stops the restore before any role is
+// created, whatever its stderr says (an OOM kill exits 137 with none).
+func TestRestoreFailsOnUnsuccessfulSchemaExtraction(t *testing.T) {
+	c := &Container{Name: "nself-drill-0123456789abcdef", User: "postgres", DB: "drill"}
+	for _, tc := range []struct{ exit, stderr string }{
+		{"137", ""},
+		{"1", "pg_restore: warning: something odd"},
+	} {
+		dir, archive := rolesDocker(t, readFixture(t))
+		t.Setenv("FAKE_SCHEMA_EXIT", tc.exit)
+		t.Setenv("FAKE_SCHEMA_STDERR", tc.stderr)
+		err := RestoreIntoContainer(context.Background(), c, archive)
+		if !errors.Is(err, errs.ErrBackupRestoreFailed) {
+			t.Errorf("exit %s %q: err = %v, want ErrBackupRestoreFailed", tc.exit, tc.stderr, err)
+		}
+		calls := readFake(t, dir, "calls.log")
+		if strings.Contains(calls, "SQL:") || strings.Contains(calls, "--no-owner") {
+			t.Errorf("exit %s %q: roles or the restore ran after a failed extraction:\n%s", tc.exit, tc.stderr, calls)
 		}
 	}
 }
