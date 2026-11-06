@@ -5,7 +5,7 @@ package backup
 // Purpose: restore a backup streamed from a remote destination through a scratch database swapped in only after pg_restore passes restoreVerdict (restoreViaScratch, D-0663), never in place (C2-03).
 // Inputs: the remote backup location, an optional age identity and cfg.
 // Outputs: a restored database, or an error naming the failed stage; the live database is untouched on failure.
-// Constraints: the pipe (internal/backup/pgstream) runs pg_restore in the postgres container: the host needs docker, rclone for rclone remotes, age for .age objects, no pg_restore.
+// Constraints: pg_restore runs in the postgres container (internal/docker): the host needs docker, rclone for rclone remotes, age for .age objects, no pg_restore.
 
 import (
 	"context"
@@ -24,6 +24,7 @@ import (
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/controlplane"
+	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/errs"
 )
 
@@ -87,7 +88,14 @@ func RestoreFromRemote(ctx context.Context, cfg *config.Config, from, keyPath st
 	consumed := false
 	err := restoreViaScratch(ctx, container, user, db, func(ctx context.Context, scratch string) error {
 		consumed = true
-		return pgstream.Restore(ctx, pgstream.Source{From: from, Native: native, AgeKey: keyPath, Encrypted: encrypted}, container, user, scratch, restoreVerdict)
+		load := func(ctx context.Context, r io.Reader) error {
+			if _, stderr, err := docker.ExecStdin(ctx, container, []string{"pg_restore", "-U", user, "-d", scratch}, r); err != nil {
+				return restoreVerdict(stderr) // a nil verdict accepts the exit
+			}
+			return nil
+		}
+		return pgstream.Stream(ctx, pgstream.Source{From: from, Native: native, AgeKey: keyPath, Encrypted: encrypted,
+			Load: load, RemoteErr: errs.ErrBackupRemoteFailed, DecryptErr: errs.ErrBackupDecryptFailed})
 	})
 	if native != nil && !consumed {
 		_ = native.Close()

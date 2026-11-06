@@ -15,10 +15,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nself-org/cli/internal/backup/consent"
+	"github.com/nself-org/cli/internal/backup"
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/deploy"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/restoreconsent"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 
 	"github.com/spf13/cobra"
@@ -61,10 +62,10 @@ func rollbackRemoteV15(cmd *cobra.Command, workdir, target string) (bool, error)
 			return true, fmt.Errorf("deploy rollback: the recorded tar %q for %s is not a pre-deploy tar; nothing was changed", tars[host], host)
 		}
 	}
-	project := consent.ProjectName(workdir)
+	project := backup.RestoreProject(workdir)
 	manualDB := st.BackupID != "" && tars[st.BackupHost] == ""
 	if manualDB {
-		fmt.Printf("  [warn] database backup %s was not restored: %s kept no changes of this deploy. If the database must go back, run on %s: %s\n", st.BackupID, st.BackupHost, st.BackupHost, consent.Hint(st.BackupID, project))
+		fmt.Printf("  [warn] database backup %s was not restored: %s kept no changes of this deploy. If the database must go back, run on %s: %s\n", st.BackupID, st.BackupHost, st.BackupHost, restoreconsent.Hint(st.BackupID, project))
 	}
 	yes, _ := cmd.Flags().GetBool("yes") // the flag of deploy rollback; tests carry it in ctx
 	if st.BackupID != "" && !manualDB && st.DBRestoredAt == "" && !yes && !deployYes(ctx) &&

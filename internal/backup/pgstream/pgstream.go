@@ -1,14 +1,12 @@
-// Package pgstream is the three-stage restore pipe behind
-// `nself backup restore-remote`: download | decrypt | pg_restore.
+// Package pgstream is the three-stage pipe behind `nself backup
+// restore-remote`: download | decrypt | load, with no local temp file.
 //
-// Purpose: stream a backup object into an existing (scratch) database with no
-// local temp file. Split out of internal/backup (package-size ratchet).
-// Inputs: the source object, the postgres container, user and target
-// database, and the caller's verdict on pg_restore's stderr.
-// Outputs: nil, or the first stage error (errs.ErrBackupRemoteFailed,
-// ErrBackupDecryptFailed, or whatever verdict returns).
-// Constraints: pg_restore runs via docker exec inside the container. The
-// caller owns database creation, the swap and confirmation.
+// Purpose: split out of internal/backup (package-size ratchet).
+// Inputs: the source object, an age identity and the caller's load (pg_restore
+// into a scratch database through internal/docker).
+// Outputs: nil, or the first stage error wrapped in the caller's sentinels.
+// Constraints: stdlib only (no errs or docker import: fan-in and docker funnel
+// ratchets). The caller owns the database, the swap and confirmation.
 package pgstream
 
 import (
@@ -18,23 +16,25 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
-
-	"github.com/nself-org/cli/internal/errs"
 )
 
-// Source names the backup object: From is the rclone remote path, used when
-// Native is nil; AgeKey decrypts it when Encrypted.
+// Source names the backup object and its consumer. From is the rclone remote
+// path, used when Native is nil; AgeKey decrypts it when Encrypted. Load
+// consumes the plaintext stream. RemoteErr and DecryptErr wrap download and
+// decrypt failures (the caller's sentinels).
 type Source struct {
-	From      string
-	Native    io.ReadCloser
-	AgeKey    string
-	Encrypted bool
+	From       string
+	Native     io.ReadCloser
+	AgeKey     string
+	Encrypted  bool
+	Load       func(ctx context.Context, r io.Reader) error
+	RemoteErr  error
+	DecryptErr error
 }
 
-// Restore runs rclone cat (or src.Native) | age --decrypt | pg_restore into
-// database scratch inside container. verdict judges pg_restore's stderr after
-// a non-zero exit; nil from it accepts the restore.
-func Restore(ctx context.Context, src Source, container, user, scratch string, verdict func(stderr string) error) error {
+// Stream runs rclone cat (or src.Native) | age --decrypt | src.Load and
+// returns the first stage error.
+func Stream(ctx context.Context, src Source) error {
 	from, native, keyPath, encrypted := src.From, src.Native, src.AgeKey, src.Encrypted
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -56,7 +56,7 @@ func Restore(ctx context.Context, src Source, container, user, scratch string, v
 		if native != nil {
 			if err := copyNative(dlW, native); err != nil {
 				cancel()
-				errc <- fmt.Errorf("%w: %v", errs.ErrBackupRemoteFailed, err)
+				errc <- fmt.Errorf("%w: %v", src.RemoteErr, err)
 			}
 			return
 		}
@@ -78,9 +78,9 @@ func Restore(ctx context.Context, src Source, container, user, scratch string, v
 			cancel()
 			msg := strings.TrimSpace(string(errOut))
 			if msg != "" {
-				errc <- fmt.Errorf("%w: %s", errs.ErrBackupRemoteFailed, msg)
+				errc <- fmt.Errorf("%w: %s", src.RemoteErr, msg)
 			} else {
-				errc <- fmt.Errorf("%w: %v", errs.ErrBackupRemoteFailed, err)
+				errc <- fmt.Errorf("%w: %v", src.RemoteErr, err)
 			}
 		}
 	}()
@@ -118,9 +118,9 @@ func Restore(ctx context.Context, src Source, container, user, scratch string, v
 				cancel()
 				msg := strings.TrimSpace(string(errOut))
 				if msg != "" {
-					errc <- fmt.Errorf("%w: %s", errs.ErrBackupDecryptFailed, msg)
+					errc <- fmt.Errorf("%w: %s", src.DecryptErr, msg)
 				} else {
-					errc <- fmt.Errorf("%w: %v", errs.ErrBackupDecryptFailed, err)
+					errc <- fmt.Errorf("%w: %v", src.DecryptErr, err)
 				}
 			}
 		}()
@@ -128,36 +128,14 @@ func Restore(ctx context.Context, src Source, container, user, scratch string, v
 		restoreReader = downloadReader
 	}
 
-	// ── Stage 3: pg_restore into the scratch database ─────────────────
+	// ── Stage 3: the caller's load (pg_restore into the scratch database) ──
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		defer func() { _ = restoreReader.Close() }()
-		args := []string{
-			"exec", "-i", container,
-			"pg_restore",
-			"-U", user,
-			"-d", scratch,
-		}
-		cmd := exec.CommandContext(ctx, "docker", args...)
-		cmd.Stdin = restoreReader
-		stderr, err := cmd.StderrPipe()
-		if err != nil {
+		if err := src.Load(ctx, restoreReader); err != nil {
 			cancel()
-			errc <- fmt.Errorf("pg_restore stderr pipe: %w", err)
-			return
-		}
-		if err := cmd.Start(); err != nil {
-			cancel()
-			errc <- fmt.Errorf("start pg_restore: %w", err)
-			return
-		}
-		errOut, _ := io.ReadAll(stderr)
-		if err := cmd.Wait(); err != nil {
-			if verr := verdict(string(errOut)); verr != nil {
-				cancel()
-				errc <- verr
-			}
+			errc <- err
 		}
 	}()
 

@@ -20,8 +20,8 @@ import (
 	"path"
 	"strings"
 
-	"github.com/nself-org/cli/internal/backup/consent"
 	"github.com/nself-org/cli/internal/docker"
+	"github.com/nself-org/cli/internal/restoreconsent"
 )
 
 // RollbackOptions configures RollbackRemote.
@@ -56,7 +56,7 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 		o.Out = io.Discard
 	}
 	r, rp := o.Remote, o.RemotePath
-	if err := consent.Precheck(o.BackupID, o.ProjectName, o.DBRestored); err != nil {
+	if err := restoreconsent.Precheck(o.BackupID, o.ProjectName, o.DBRestored); err != nil {
 		return err
 	}
 	if _, err := ResolveDirs(ctx, r, rp, layoutDirs(o.Changed)); err != nil {
@@ -101,7 +101,7 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 	case o.BackupID != "" && o.DBRestored:
 		emit(o.Out, "  [skip] database backup %s was already restored by an earlier rollback; not restoring it again", o.BackupID)
 	case o.BackupID != "":
-		if err := consent.RunRestore(ctx, r, rp, o.BackupID, o.ProjectName, o.Out, o.OnDBRestored); err != nil {
+		if err := restoreconsent.RunRestore(ctx, r, rp, o.BackupID, o.ProjectName, o.Out, o.OnDBRestored); err != nil {
 			return err
 		}
 	}

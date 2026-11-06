@@ -1,4 +1,4 @@
-package consent
+package restoreconsent
 
 // Purpose: pin the restore consent rule (C2-01, C2-03) and the remote restore
 // command line deploy and promote rollback run.
@@ -30,7 +30,8 @@ func TestConfirm(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer
-			err := Confirm(strings.NewReader(tc.input), &out, &config.Config{Env: tc.env, ProjectName: tc.project}, tc.yes, tc.proof)
+			cfg := &config.Config{Env: tc.env, ProjectName: tc.project}
+			err := Confirm(strings.NewReader(tc.input), &out, cfg.ProjectName, cfg.IsProduction(), tc.yes, tc.proof)
 			if (err == nil) != tc.wantOK {
 				t.Fatalf("error=%v, want success=%v", err, tc.wantOK)
 			}

@@ -17,7 +17,6 @@ cmd/commands/update.go 1
 internal/backup/create_targets.go 3
 internal/backup/pitr/restore.go 2
 internal/backup/restore_container.go 1
-internal/backup/stream_restore_remote.go 1
 internal/builtin/admin/cmd_logs.go 1
 internal/builtin/admin/cmd_start.go 1
 internal/builtin/admin/cmd_stop.go 1

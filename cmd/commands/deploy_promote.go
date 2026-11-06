@@ -15,13 +15,14 @@ import (
 	"os/exec"
 	"sync"
 
-	"github.com/nself-org/cli/internal/backup/consent"
+	"github.com/nself-org/cli/internal/backup"
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/controlplane"
 	cpromote "github.com/nself-org/cli/internal/controlplane/promote"
 	"github.com/nself-org/cli/internal/deploy"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/output"
+	"github.com/nself-org/cli/internal/restoreconsent"
 	"github.com/spf13/cobra"
 )
 
@@ -155,14 +156,14 @@ func rollbackPromoteRecord(ctx context.Context, workdir string, rec *cpromote.Re
 		}
 		remotes[r.Label()], paths[r.Label()] = r, promotePath(target.Server, workdir)
 	}
-	project := consent.ProjectName(workdir)
+	project := backup.RestoreProject(workdir)
 	if err := cpromote.RollbackRecord(ctx, workdir, project, rec, remotes, paths); err != nil {
 		var coded *errs.CLIError
 		if errors.As(err, &coded) && (coded.Code == "E485" || coded.Code == "E489") {
 			return err
 		}
 		return errs.Newf("E489", "promote rollback failed for snapshot %s backup %s; needs operator: %v", rec.SnapshotTag, rec.BackupID, err).
-			WithFix(fmt.Sprintf("On %s run: %s", rec.BackupHost, consent.Hint(rec.BackupID, project)))
+			WithFix(fmt.Sprintf("On %s run: %s", rec.BackupHost, restoreconsent.Hint(rec.BackupID, project)))
 	}
 	return nil
 }
@@ -231,7 +232,7 @@ func runPromoteEnvironments(cmd *cobra.Command, source, target string) error {
 				if wiring, ok := st.Values["wiring"].(*promoteWiring); ok {
 					if saveErr := savePromoteRecord(wiring, st, result.Status); saveErr != nil {
 						return errs.Wrap("E489", fmt.Sprintf("promote rollback evidence for snapshot %s backup %s could not be recorded", st.SnapshotTag, st.BackupID), errors.Join(err, saveErr)).
-							WithFix(fmt.Sprintf("On %s run: %s", st.BackupHost, consent.Hint(st.BackupID, st.Project)))
+							WithFix(fmt.Sprintf("On %s run: %s", st.BackupHost, restoreconsent.Hint(st.BackupID, st.Project)))
 					}
 				}
 			}

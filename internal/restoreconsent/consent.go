@@ -1,17 +1,18 @@
-// Package consent holds the operator-consent rule for replacing a project
+// Package restoreconsent holds the operator-consent rule for replacing a project
 // database with a backup, and the one `nself backup restore` command line that
 // deploy rollback and promote rollback run over ssh (C2-01).
 //
-// Inputs: the project config, the --yes and --confirm-project values, a
-// prompt reader and writer; for the remote form a runner, path and backup id.
+// Inputs: the project name and production flag, the --yes and
+// --confirm-project values, a prompt reader and writer; for the remote form a runner, path and backup id.
 // Outputs: nil when consent is given, else an error; the command line or the
 // hint an operator runs by hand.
 // Constraints: bare --yes never authorizes a production restore. An ssh run
 // has no stdin, so remote callers confirm with the operator first and then
 // pass --confirm-project, which the host checks against its own PROJECT_NAME.
 // --yes stays on the remote command so an older CLI fails on the unknown flag
-// instead of prompting.
-package consent
+// instead of prompting. Stdlib and the sdk shell quoting only, so deploy and
+// promote can import it from below (layering, config fan-in ratchets).
+package restoreconsent
 
 import (
 	"bufio"
@@ -20,7 +21,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
@@ -28,24 +28,24 @@ import (
 // (or yes) off production, the typed project name on production, or proof
 // equal to the project name anywhere, which reads no prompt. A wrong proof is
 // refused everywhere.
-func Confirm(in io.Reader, out io.Writer, cfg *config.Config, yes bool, proof string) error {
+func Confirm(in io.Reader, out io.Writer, project string, production, yes bool, proof string) error {
 	if proof != "" {
-		if cfg.ProjectName == "" || proof != cfg.ProjectName {
-			return fmt.Errorf("restore confirmation failed: --confirm-project %q does not match project %q", proof, cfg.ProjectName)
+		if project == "" || proof != project {
+			return fmt.Errorf("restore confirmation failed: --confirm-project %q does not match project %q", proof, project)
 		}
 		return nil
 	}
-	if !cfg.IsProduction() && yes {
+	if !production && yes {
 		return nil
 	}
 	expected, warning := "yes", "WARNING"
-	if cfg.IsProduction() {
-		expected, warning = cfg.ProjectName, "WARNING: PRODUCTION"
+	if production {
+		expected, warning = project, "WARNING: PRODUCTION"
 		if expected == "" {
 			return fmt.Errorf("restore confirmation requires a non-empty production project name")
 		}
 	}
-	if _, err := fmt.Fprintf(out, "%s: This will replace the database for project %q.\n", warning, cfg.ProjectName); err != nil {
+	if _, err := fmt.Fprintf(out, "%s: This will replace the database for project %q.\n", warning, project); err != nil {
 		return fmt.Errorf("write restore confirmation warning: %w", err)
 	}
 	if _, err := fmt.Fprintf(out, "Type %q to confirm: ", expected); err != nil {
@@ -56,16 +56,6 @@ func Confirm(in io.Reader, out io.Writer, cfg *config.Config, yes bool, proof st
 		return fmt.Errorf("restore confirmation failed: expected %q", expected)
 	}
 	return nil
-}
-
-// ProjectName reads PROJECT_NAME from the project at workdir, "" when the
-// config cannot be read (the restore then refuses before any host change).
-func ProjectName(workdir string) string {
-	cfg, err := config.LoadWithOptions(workdir, config.LoadOptions{})
-	if err != nil {
-		return ""
-	}
-	return cfg.ProjectName
 }
 
 // Command returns `nself backup restore <id> --yes --confirm-project <project>`

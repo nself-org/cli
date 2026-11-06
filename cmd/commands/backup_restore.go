@@ -3,7 +3,7 @@ package commands
 // Purpose: the "nself backup restore" and "nself backup restore-remote"
 // subcommands and their RunE. Inputs are the cobra command/args; outputs are
 // a restored database or an error.
-// Constraints: both replace the database and share consent.Confirm (C2-01).
+// Constraints: both replace the database and share restoreconsent.Confirm (C2-01).
 
 import (
 	"fmt"
@@ -13,8 +13,8 @@ import (
 	"syscall"
 
 	"github.com/nself-org/cli/internal/backup"
-	"github.com/nself-org/cli/internal/backup/consent"
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/restoreconsent"
 	"github.com/spf13/cobra"
 )
 
@@ -72,14 +72,13 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// confirmBackupRestore and confirmBackupRestoreWith apply consent.Confirm, the
-// rule both subcommands share, to the command's stdin and stderr.
+// confirmBackupRestore(With) apply restoreconsent.Confirm to stdin and stderr.
 func confirmBackupRestore(cmd *cobra.Command, cfg *config.Config, yes bool) error {
 	return confirmBackupRestoreWith(cmd, cfg, yes, "")
 }
 
 func confirmBackupRestoreWith(cmd *cobra.Command, cfg *config.Config, yes bool, proof string) error {
-	return consent.Confirm(cmd.InOrStdin(), cmd.ErrOrStderr(), cfg, yes, proof)
+	return restoreconsent.Confirm(cmd.InOrStdin(), cmd.ErrOrStderr(), cfg.ProjectName, cfg.IsProduction(), yes, proof)
 }
 
 // ── backup verify ──────────────────────────────────────────────────
