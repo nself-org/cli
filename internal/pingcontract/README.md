@@ -1,0 +1,64 @@
+# internal/pingcontract
+
+Test-only package. It checks that every `ping.nself.org` endpoint the CLI
+calls exists in a pinned copy of ping_api's generated OpenAPI, and that the
+CLI's response types decode fixtures built from that spec. Ticket P7-PLUG-28
+(D-0081, CLI side). The default run makes no network calls.
+
+## What runs
+
+| Test | Checks |
+|---|---|
+| `TestPinnedSpecChecksum` | `testdata/ping_api.openapi.yaml` matches `testdata/SHA256SUMS` |
+| `TestScanFindsTheDocumentedEndpoints` | the scanner still finds the eight documented endpoints |
+| `TestEveryScannedEndpointIsInTheSpec` | each scanned (method, path) is in the spec or on `knownGaps` |
+| `TestNewCallSiteWithAbsentPathFails` | a new call site with an absent path is reported |
+| `TestResponseFixturesDecodeIntoCLITypes` | schema fixtures decode; CLI fields exist in the schema or are on `KnownDrift` |
+
+The scan (`scan_test.go`) parses every non-test `.go` file outside `vendor/`
+with `go/ast`. It collects full `https://ping.nself.org/...` literals and
+`<ping base> + "/path"` joins (an operand whose name contains "ping"). The
+method comes from the enclosing function (`http.MethodX`, `.Get`, `.Post`);
+no method means GET.
+
+## Pinned spec
+
+- Source: `backend/services/ping_api/ping_api.openapi.yaml` in nself-org/web
+- Web commit: `31dd6940d62d95b13b6c6e8fecf508ca3995d85e` (origin/main, 2026-11-06)
+- sha256: see `testdata/SHA256SUMS`
+
+## Refresh the pin
+
+```sh
+WEB=~/Sites/nself/web
+git -C "$WEB" fetch -q origin
+git -C "$WEB" show origin/main:backend/services/ping_api/ping_api.openapi.yaml \
+  > internal/pingcontract/testdata/ping_api.openapi.yaml
+(cd internal/pingcontract/testdata && shasum -a 256 ping_api.openapi.yaml > SHA256SUMS)
+git -C "$WEB" rev-parse origin/main    # record this sha above
+go test -mod=vendor -count=1 ./internal/pingcontract/...
+```
+
+Never edit the web repo from here. When the refresh changes a result: a path
+that is now in the spec makes its `knownGaps` entry stale (the test says
+remove it); a field the spec now declares makes its `KnownDrift` entry stale.
+
+## Gaps are explicit
+
+`knownGaps` (openapi_test.go) lists CLI-called endpoints the spec lacks, and
+`KnownDrift` (per target) lists response fields the CLI reads that the schema
+does not declare. Both are commented and routed to P7-PLUG-27. Anything not
+listed fails the test.
+
+## Production variant (owner-run)
+
+`prod_test.go` has the `pingprod` build tag and calls production:
+
+```sh
+go test -mod=vendor -count=1 -tags pingprod ./internal/pingcontract/...
+```
+
+It makes GET `/health`, `/version`, `/license/revocation-list` and one
+anonymous POST `/license/validate` with an invalid fake key. A request-log
+transport refuses any other method or path and fails the test. CI and agents
+only compile it: `go vet -tags pingprod ./internal/pingcontract/...`.
