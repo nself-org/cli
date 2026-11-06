@@ -7,18 +7,22 @@
 // Collect returns, NOLOGIN, before the restore.
 // Inputs: schema-only SQL text. Outputs: validated role names.
 // Constraints: nothing is executed here. Only names matching NamePattern are
-// returned; any other name is an error wrapping ErrBackupRestoreFailed.
+// returned; any other name is an error wrapping ErrInvalidName.
 package policyroles
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
 	"sort"
 	"strings"
-
-	"github.com/nself-org/cli/internal/errs"
 )
+
+// ErrInvalidName marks a TO-list name outside NamePattern; the caller refuses
+// the restore (internal/backup wraps every Collect error in
+// ErrBackupRestoreFailed).
+var ErrInvalidName = errors.New("policy role is not a plain role name")
 
 // NamePattern is the only role-name form Collect accepts.
 const NamePattern = `^[a-z_][a-z0-9_]{0,62}$`
@@ -36,16 +40,16 @@ const maxSchemaBytes = 256 << 20 // bound on the schema text read from the archi
 // Collect reads schema-only SQL (pg_dump text) and returns the
 // sorted, de-duplicated role names of every CREATE POLICY ... TO list, minus
 // PUBLIC, CURRENT_USER, SESSION_USER and CURRENT_ROLE. A name outside
-// policyRoleRe is an error wrapping ErrBackupRestoreFailed. Statements are
+// policyRoleRe is an error wrapping ErrInvalidName. Statements are
 // split on top-level semicolons, so text inside comments, string literals and
 // dollar-quoted bodies is never read as a policy.
 func Collect(r io.Reader) ([]string, error) {
 	b, err := io.ReadAll(io.LimitReader(r, maxSchemaBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("%w: read schema: %v", errs.ErrBackupRestoreFailed, err)
+		return nil, fmt.Errorf("read schema: %w", err)
 	}
 	if len(b) > maxSchemaBytes {
-		return nil, fmt.Errorf("%w: schema text over %d bytes", errs.ErrBackupRestoreFailed, maxSchemaBytes)
+		return nil, fmt.Errorf("schema text over %d bytes", maxSchemaBytes)
 	}
 	seen := map[string]bool{}
 	for _, stmt := range sqlStatements(string(b)) {
@@ -93,7 +97,7 @@ func policyToRoles(stmt string) ([]string, error) {
 		}
 		if name != "" {
 			if !policyRoleRe.MatchString(name) {
-				return nil, fmt.Errorf("%w: policy role %q is not a plain role name (^[a-z_][a-z0-9_]{0,62}$); create it by hand and restore again", errs.ErrBackupRestoreFailed, name)
+				return nil, fmt.Errorf("%w: %q does not match %s; create it by hand and restore again", ErrInvalidName, name, NamePattern)
 			}
 			roles = append(roles, name)
 		}

@@ -143,8 +143,8 @@ func TestRestoreRejectsInvalidRoleName(t *testing.T) {
 		`"9lives"`,
 	} {
 		schema := "CREATE POLICY p ON public.t FOR SELECT TO mux_user, " + role + " USING (true);\n"
-		if _, err := policyroles.Collect(strings.NewReader(schema)); !errors.Is(err, errs.ErrBackupRestoreFailed) {
-			t.Errorf("%s: collect err = %v, want ErrBackupRestoreFailed", role, err)
+		if _, err := policyroles.Collect(strings.NewReader(schema)); !errors.Is(err, policyroles.ErrInvalidName) {
+			t.Errorf("%s: collect err = %v, want ErrInvalidName", role, err)
 		}
 		dir, archive := rolesDocker(t, schema)
 		err := RestoreIntoContainer(context.Background(), c, archive)

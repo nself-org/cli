@@ -47,7 +47,7 @@ func ensurePolicyRoles(ctx context.Context, c *Container, archive io.Reader) err
 	_, _ = io.Copy(io.Discard, stdout)
 	werr := cmd.Wait()
 	if perr != nil {
-		return perr
+		return fmt.Errorf("%w: %v", errs.ErrBackupRestoreFailed, perr)
 	}
 	if text := fatalRestoreText("pg_restore", stderr.String()); text != "" {
 		return fmt.Errorf("%w: pg_restore --schema-only: %s", errs.ErrBackupRestoreFailed, text)

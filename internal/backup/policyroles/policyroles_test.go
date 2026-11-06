@@ -5,8 +5,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-
-	"github.com/nself-org/cli/internal/errs"
 )
 
 // Purpose: unit tests for Collect. The restore-path tests and the fixture live
@@ -30,8 +28,8 @@ func TestCollectSkipsQuotedAndCommentedText(t *testing.T) {
 func TestCollectRefusesNamesOutsidePattern(t *testing.T) {
 	for _, role := range []string{`"Mux-User"`, `"a""b"`, `"pg admin"`, `"` + strings.Repeat("x", 64) + `"`} {
 		_, err := Collect(strings.NewReader("CREATE POLICY p ON t TO " + role + ";\n"))
-		if !errors.Is(err, errs.ErrBackupRestoreFailed) {
-			t.Errorf("%s: err = %v, want ErrBackupRestoreFailed", role, err)
+		if !errors.Is(err, ErrInvalidName) {
+			t.Errorf("%s: err = %v, want ErrInvalidName", role, err)
 		}
 	}
 }
