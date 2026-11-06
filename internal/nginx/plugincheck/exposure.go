@@ -84,10 +84,17 @@ type Sites interface {
 // DropOwn removes path when its owner line names owner: a conf left out of
 // this build must not keep serving from an earlier one (a fronting stack's
 // sites dir is not swept by this project's prune). Another owner's file, or a
-// missing one, is left alone.
+// missing one, is left alone. Any other read error fails the build: an unread
+// file may be a stale ungated conf that would keep serving.
 func DropOwn(s Sites, path, owner string) error {
 	data, err := s.ReadFile(path)
-	if err != nil || OwnerOf(string(data)) != owner {
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("reading %s to check its owner: %w", path, err)
+	}
+	if OwnerOf(string(data)) != owner {
 		return nil
 	}
 	if err := s.Remove(path); err != nil && !os.IsNotExist(err) {

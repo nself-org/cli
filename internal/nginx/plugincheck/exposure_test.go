@@ -85,3 +85,15 @@ func TestDropOwn(t *testing.T) {
 		t.Error("an unstamped file removed")
 	}
 }
+
+// unreadableSites fails every read with an error other than "not found".
+type unreadableSites struct{}
+
+func (unreadableSites) ReadFile(string) ([]byte, error) { return nil, os.ErrPermission }
+func (unreadableSites) Remove(string) error             { return nil }
+
+func TestDropOwnFailsOnUnreadableFile(t *testing.T) {
+	if err := DropOwn(unreadableSites{}, "own", "proj/backup"); err == nil {
+		t.Fatal("an unreadable file passed as cleaned; a stale ungated conf could keep serving")
+	}
+}
