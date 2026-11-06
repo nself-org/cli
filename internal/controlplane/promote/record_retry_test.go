@@ -64,21 +64,21 @@ func TestPromoteRecordRetryAfterFilesRestored(t *testing.T) {
 			}
 			persistRollbackFixture(t, root, rec)
 			remotes, paths := map[string]deploy.Remote{"primary": r}, map[string]string{"primary": "/srv/app"}
-			if err := RollbackRecord(context.Background(), root, rec, remotes, paths); err == nil || !strings.Contains(err.Error(), "transient restore failure") {
+			if err := RollbackRecord(context.Background(), root, "demo", rec, remotes, paths); err == nil || !strings.Contains(err.Error(), "transient restore failure") {
 				t.Fatalf("first rollback: %v files=%d", err, r.files)
 			}
 			saved, err := LoadRecord(root)
 			if err != nil || saved == nil || saved.RecoveryPhase != "db_restore_started" || !saved.FilesRestored["primary"] {
 				t.Fatalf("files phase not durable: %#v %v", saved, err)
 			}
-			if err := RollbackRecord(context.Background(), root, rec, remotes, paths); err == nil || !strings.Contains(err.Error(), "E489") {
+			if err := RollbackRecord(context.Background(), root, "demo", rec, remotes, paths); err == nil || !strings.Contains(err.Error(), "E489") {
 				t.Fatalf("uncertain retry must refuse: %v", err)
 			}
 			// The operator restored by hand and verified the database on the host.
 			if err := MarkDBRestoreDone(root, rec); err != nil {
 				t.Fatal(err)
 			}
-			if err := RollbackRecord(context.Background(), root, rec, remotes, paths); err != nil {
+			if err := RollbackRecord(context.Background(), root, "demo", rec, remotes, paths); err != nil {
 				t.Fatalf("verified completion must recover: %v", err)
 			}
 			if rec.RecoveryPhase != "db_restored" {

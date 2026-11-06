@@ -881,13 +881,13 @@ func TestInventoryEnvNameAmbiguous(t *testing.T) {
 		}
 		return inv
 	}
-	if got, ok := inventoryEnvName(mk("qa", "QA"), "qa"); ok {
+	if got, ok := controlplane.EnvName(mk("qa", "QA"), "qa"); ok {
 		t.Errorf("colliding keys resolved to %q", got)
 	}
-	if got, ok := inventoryEnvName(mk("QA", "prod"), "qa"); !ok || got != "QA" {
-		t.Errorf("inventoryEnvName(QA) = %q, %v", got, ok)
+	if got, ok := controlplane.EnvName(mk("QA", "prod"), "qa"); !ok || got != "QA" {
+		t.Errorf("controlplane.EnvName(QA) = %q, %v", got, ok)
 	}
-	if _, ok := inventoryEnvName(nil, "qa"); ok {
+	if _, ok := controlplane.EnvName(nil, "qa"); ok {
 		t.Error("nil inventory must not resolve")
 	}
 }

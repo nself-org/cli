@@ -199,6 +199,7 @@ func TestDeployApplyV15Pipeline(t *testing.T) {
 	}}
 	cmd := &cobra.Command{}
 	cmd.SetContext(context.WithValue(context.Background(), deployYesKey{}, true))
+	cmd.Flags().String("confirm-project", "demo", "")
 	res, err := runDeployPipeline(cmd, proj, inv, "prod", okProber{}, filepath.Join(proj, "docker-compose.yml"), "", "", true)
 	if err != nil {
 		t.Fatal(err)
@@ -373,9 +374,12 @@ func prodServers(t *testing.T) []controlplane.Server {
 	}
 }
 
+// yesCmd is an approved rollback: --yes in ctx and the operator-typed
+// --confirm-project a production database restore needs (seedProject's name).
 func yesCmd() *cobra.Command {
 	cmd := &cobra.Command{}
 	cmd.SetContext(context.WithValue(context.Background(), deployYesKey{}, true))
+	cmd.Flags().String("confirm-project", "demo", "")
 	return cmd
 }
 

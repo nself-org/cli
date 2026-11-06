@@ -37,6 +37,7 @@ func TestPromoteDeployRollbackInProgress(t *testing.T) {
 			cmd := &cobra.Command{}
 			cmd.SetContext(context.Background())
 			cmd.Flags().Bool("yes", true, "")
+			cmd.Flags().String("confirm-project", "fixture", "") // a production restore needs the typed name
 			if err := runDeployRollback(cmd, []string{"prodsim"}); err != nil {
 				t.Fatal(err)
 			}

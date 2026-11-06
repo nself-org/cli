@@ -93,7 +93,7 @@ func TestEveryRemoteRunIsShWrapped(t *testing.T) {
 			t.Fatal(err)
 		}
 		rec := &shRecorder{Remote: f}
-		err = RollbackRemote(context.Background(), RollbackOptions{Remote: rec, RemotePath: rp, Tar: res.PreDeployTar, BackupID: "backup-1", Changed: res.Changed, Absent: res.Absent, StrictHasura: true, Clock: &fakeClock{now: time.Unix(0, 0)}})
+		err = RollbackRemote(context.Background(), RollbackOptions{Remote: rec, RemotePath: rp, Tar: res.PreDeployTar, BackupID: "backup-1", ProjectName: "demo", Changed: res.Changed, Absent: res.Absent, StrictHasura: true, Clock: &fakeClock{now: time.Unix(0, 0)}})
 		if err != nil {
 			t.Fatal(err)
 		}

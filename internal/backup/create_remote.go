@@ -1,8 +1,9 @@
 // Package backup — create_remote.go: post-create encryption and remote
-// (rclone) upload helpers used by createFullBackup. Split out of
-// create_targets.go (file-size ratchet, internal/repoqa) as a pure move —
-// no behavior change beyond what is documented on requireCompleteS3Credentials
-// and uploadToRemote below.
+// upload for createFullBackup (finalizeFullBackup), plus the rclone/S3
+// credential checks. Split out of create_targets.go (file-size ratchet,
+// internal/repoqa). A configured upload that cannot run or fails is an error
+// that names the kept local file (C2-02): a backup that only exists on the
+// box it protects is not the backup the operator asked for.
 package backup
 
 import (
@@ -18,24 +19,58 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 )
 
-// encryptFile encrypts a file in-place using age with the given recipient public key.
-func encryptFile(path, recipient string) error {
+// encryptFile encrypts path with age for recipient, removes the plaintext
+// and returns the path of the encrypted file (path + ".age"). Callers must use
+// the returned path: the original no longer exists.
+func encryptFile(path, recipient string) (string, error) {
 	encPath := path + ".age"
-	args := []string{"-r", recipient, "-o", encPath, path}
-	cmd := exec.Command("age", args...)
+	cmd := exec.Command("age", "-r", recipient, "-o", encPath, path)
 	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("%w: %s", errs.ErrBackupEncryptFailed, string(output))
+		_ = os.Remove(encPath)
+		return "", fmt.Errorf("%w: %s", errs.ErrBackupEncryptFailed, string(output))
 	}
-
-	// Replace original with encrypted version.
 	if err := os.Remove(path); err != nil {
-		return fmt.Errorf("remove unencrypted file: %w", err)
+		return "", fmt.Errorf("remove unencrypted file: %w", err)
 	}
-	if err := os.Rename(encPath, path+".age"); err != nil {
-		return fmt.Errorf("rename encrypted file: %w", err)
-	}
+	return encPath, nil
+}
 
-	return nil
+// finalizeFullBackup encrypts the finished dump when asked and uploads the
+// resulting file to the configured remote. It returns the final local path.
+// An upload that is configured but skipped (half-set S3 keys) or fails is an
+// error naming the local file, so `nself backup create` exits non-zero and the
+// backup metric records a failure instead of a success.
+func finalizeFullBackup(ctx context.Context, cfg *config.Config, outputPath string, opts CreateOptions) (string, error) {
+	encrypt := (cfg.Backup.Encryption || opts.Encrypt) && !opts.NoEncrypt
+	// Asking for encryption and getting plaintext is worse than not asking:
+	// refuse when no recipient is configured.
+	if encrypt && cfg.Backup.AgeRecipients == "" {
+		return outputPath, fmt.Errorf(
+			"encryption requested but no recipient configured: set NSELF_BACKUP_AGE_RECIPIENTS, or pass --no-encrypt to write the backup in the clear")
+	}
+	if encrypt {
+		encPath, err := encryptFile(outputPath, cfg.Backup.AgeRecipients)
+		if err != nil {
+			return outputPath, fmt.Errorf("encrypt backup: %w", err)
+		}
+		outputPath = encPath
+	}
+	remote := cfg.Backup.Remote
+	if opts.Remote != "" {
+		remote = opts.Remote
+	}
+	if remote == "" {
+		return outputPath, nil
+	}
+	// Half-configured S3 keys look configured but upload nothing or fail
+	// opaquely inside rclone: refuse loudly before attempting the upload.
+	if err := requireCompleteS3CredentialsFor(remote, cfg); err != nil {
+		return outputPath, fmt.Errorf("%w: backup kept locally at %s but not uploaded to %s: %v", errs.ErrBackupRemoteFailed, outputPath, remote, err)
+	}
+	if err := uploadToRemote(ctx, outputPath, remote, cfg); err != nil {
+		return outputPath, fmt.Errorf("backup kept locally at %s but the upload to %s failed: %w", outputPath, remote, err)
+	}
+	return outputPath, nil
 }
 
 // requireCompleteS3Credentials refuses a half-configured S3 credential pair.

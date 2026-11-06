@@ -2,17 +2,21 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/nself-org/cli/internal/backup"
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/controlplane"
 	cpromote "github.com/nself-org/cli/internal/controlplane/promote"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/restoreconsent"
 	"github.com/spf13/cobra"
 )
 
 type promoteRollbackYesKey struct{}
 type promoteRollbackDBDoneKey struct{}
+type rollbackConfirmProjectKey struct{}
 
 // Purpose: Carry rollback's explicit approval through the record-lock context.
 // Inputs: Command flags and context. Outputs: Context with --yes approval.
@@ -23,7 +27,18 @@ func withPromoteRollbackConfirmation(ctx context.Context, cmd *cobra.Command) co
 	if done, _ := cmd.Flags().GetBool("db-restore-done"); compat.V15() && done {
 		ctx = context.WithValue(ctx, promoteRollbackDBDoneKey{}, true)
 	}
+	project, _ := cmd.Flags().GetString("confirm-project")
+	ctx = context.WithValue(ctx, rollbackConfirmProjectKey{}, project)
 	return context.WithValue(ctx, promoteRollbackYesKey{}, yes)
+}
+
+// rollbackProject applies restoreconsent.RollbackProject; a missing typed name is E403.
+func rollbackProject(typed, workdir, target string, restore, prod bool) (string, error) {
+	p, err := restoreconsent.RollbackProject(typed, target, restore, prod, func() (string, error) { return backup.RestoreProject(workdir) })
+	if errors.Is(err, restoreconsent.ErrNeedsTypedProject) {
+		err = errs.New("E403", err.Error())
+	}
+	return p, err
 }
 
 // Purpose: Confirm a production database restore before opening target remotes.

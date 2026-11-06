@@ -4,6 +4,8 @@ package promote
 // Inputs: Durable recovery phase, backup identity, runner, and checkpoint writer.
 // Outputs: Started and completed checkpoints or an operator recovery error.
 // Constraints: Completion save failure retains the started phase in memory too.
+// The remote restore carries --confirm-project (C2-01): the ssh run has no
+// stdin, and `backup restore` refuses bare --yes on production.
 
 import (
 	"context"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/nself-org/cli/internal/deploy"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/restoreconsent"
 	remotesdk "github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
@@ -29,18 +32,24 @@ func CheckDBRestoreCompletion(rec *Record) error {
 }
 
 // RestoreDatabase checkpoints intent before running the remote restore.
-func RestoreDatabase(ctx context.Context, r deploy.Remote, remotePath, tag, backup string, phase, restored *string, checkpoint func() error) error {
+// project is the name the operator confirmed; it is passed as
+// --confirm-project, and an empty one is refused before the checkpoint.
+func RestoreDatabase(ctx context.Context, r deploy.Remote, remotePath, project, tag, backup string, phase, restored *string, checkpoint func() error) error {
 	if *restored != "" {
 		return nil
 	}
 	if *phase == "db_restore_started" {
 		return uncertainDBRestore(tag, backup)
 	}
+	restoreCmd, err := restoreconsent.Command(backup, project)
+	if err != nil {
+		return err
+	}
 	*phase = "db_restore_started"
 	if err := checkpoint(); err != nil {
 		return fmt.Errorf("saving database restore intent: %w", err)
 	}
-	if _, err := r.Run(ctx, "cd "+remotesdk.ShellQuote(remotePath)+" && nself backup restore "+remotesdk.ShellQuote(backup)+" --yes"); err != nil {
+	if _, err := r.Run(ctx, "cd "+remotesdk.ShellQuote(remotePath)+" && "+restoreCmd); err != nil {
 		return fmt.Errorf("restoring promotion backup %s: %w", backup, err)
 	}
 	*restored, *phase = time.Now().UTC().Format(time.RFC3339Nano), "db_restored"

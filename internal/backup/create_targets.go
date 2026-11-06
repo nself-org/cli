@@ -3,7 +3,7 @@ package backup
 // Purpose: full pg_dump, Hasura metadata and WAL checkpoint backup implementations plus encryption and remote-upload helpers used by create.go's createSingle dispatcher.
 // Inputs: a *config.Config, backup directory, timestamp, and CreateOptions.
 // Outputs: backup artifact files on disk, optionally encrypted and/or uploaded to a remote target.
-// Constraints: split out of create.go as a pure move (CLI-R12); no behavior change.
+// Constraints: encryption and the remote upload live in finalizeFullBackup (create_remote.go); a failed configured upload fails the backup (C2-02).
 
 import (
 	"context"
@@ -92,46 +92,9 @@ func createFullBackup(ctx context.Context, cfg *config.Config, backupDir, ts, ta
 		return fmt.Errorf("enforce permissions on %s: %w", outputPath, err)
 	}
 
-	// Encrypt if configured.
-	encrypt := cfg.Backup.Encryption
-	if opts.Encrypt {
-		encrypt = true
-	}
-	if opts.NoEncrypt {
-		encrypt = false
-	}
-	// Asking for encryption and getting plaintext is worse than not asking.
-	// This was `encrypt && AgeRecipients != ""`, so a caller who passed
-	// --encrypt (or set NSELF_BACKUP_ENCRYPTION) with no recipient configured
-	// silently got an unencrypted backup: the condition was false and nothing
-	// reported it. Refuse instead.
-	if encrypt && cfg.Backup.AgeRecipients == "" {
-		return fmt.Errorf(
-			"encryption requested but no recipient configured: set NSELF_BACKUP_AGE_RECIPIENTS, or pass --no-encrypt to write the backup in the clear")
-	}
-	if encrypt {
-		if err := encryptFile(outputPath, cfg.Backup.AgeRecipients); err != nil {
-			return fmt.Errorf("encrypt backup: %w", err)
-		}
-	}
-
-	// Upload to remote if configured.
-	remote := cfg.Backup.Remote
-	if opts.Remote != "" {
-		remote = opts.Remote
-	}
-	if remote != "" {
-		if err := requireCompleteS3CredentialsFor(remote, cfg); err != nil {
-			// Half-configured S3 creds (one of access/secret set, not both)
-			// is worse than none: it looks configured, uploads nothing or
-			// fails opaquely inside rclone, and nobody notices until a
-			// restore is needed. Refuse loudly instead of attempting the
-			// upload with partial credentials.
-			slog.Error("remote upload skipped: incomplete S3 credentials", "error", err, "path", outputPath)
-		} else if err := uploadToRemote(ctx, outputPath, remote, cfg); err != nil {
-			slog.Error("remote upload failed", "error", err, "path", outputPath)
-			// Non-fatal: local backup succeeded.
-		}
+	outputPath, err = finalizeFullBackup(ctx, cfg, outputPath, opts)
+	if err != nil {
+		return err
 	}
 
 	slog.Info("full backup created", "path", outputPath)

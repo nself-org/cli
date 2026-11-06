@@ -21,6 +21,7 @@ import (
 	"github.com/nself-org/cli/internal/deploy"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/output"
+	"github.com/nself-org/cli/internal/restoreconsent"
 	"github.com/spf13/cobra"
 )
 
@@ -133,6 +134,12 @@ func rollbackPromoteRecord(ctx context.Context, workdir string, rec *cpromote.Re
 	if err != nil {
 		return err
 	}
+	typed, _ := ctx.Value(rollbackConfirmProjectKey{}).(string)
+	restore := rec.MigrateStarted && rec.DBRestoredAt == ""
+	project, err := rollbackProject(typed, workdir, rec.Target, restore, prodClassFn(inv, rec.Target))
+	if err != nil {
+		return err
+	}
 	if err := confirmPromoteRecordRollback(ctx, inv, rec); err != nil {
 		return err
 	}
@@ -154,19 +161,20 @@ func rollbackPromoteRecord(ctx context.Context, workdir string, rec *cpromote.Re
 		}
 		remotes[r.Label()], paths[r.Label()] = r, promotePath(target.Server, workdir)
 	}
-	if err := cpromote.RollbackRecord(ctx, workdir, rec, remotes, paths); err != nil {
+	if err := cpromote.RollbackRecord(ctx, workdir, project, rec, remotes, paths); err != nil {
 		var coded *errs.CLIError
 		if errors.As(err, &coded) && (coded.Code == "E485" || coded.Code == "E489") {
 			return err
 		}
 		return errs.Newf("E489", "promote rollback failed for snapshot %s backup %s; needs operator: %v", rec.SnapshotTag, rec.BackupID, err).
-			WithFix(fmt.Sprintf("On %s run: nself backup restore %s --yes", rec.BackupHost, rec.BackupID))
+			WithFix(fmt.Sprintf("On %s run: %s", rec.BackupHost, restoreconsent.Hint(rec.BackupID, project)))
 	}
 	return nil
 }
 
 func init() {
 	deployRollbackCmd.Flags().Bool("db-restore-done", false, "Record operator verification that an uncertain database restore completed")
+	deployRollbackCmd.Flags().String("confirm-project", "", "Project name passed to backup restore (required to restore a production database)")
 	deployPromoteCmd.Flags().Bool("dry-run", false, "Print the promotion plan without remote writes")
 	deployPromoteCmd.Flags().Bool("yes", false, "Confirm promotion to a production-class target")
 	deployPromoteCmd.Flags().Bool("json", false, "Emit JSON output")
@@ -229,7 +237,7 @@ func runPromoteEnvironments(cmd *cobra.Command, source, target string) error {
 				if wiring, ok := st.Values["wiring"].(*promoteWiring); ok {
 					if saveErr := savePromoteRecord(wiring, st, result.Status); saveErr != nil {
 						return errs.Wrap("E489", fmt.Sprintf("promote rollback evidence for snapshot %s backup %s could not be recorded", st.SnapshotTag, st.BackupID), errors.Join(err, saveErr)).
-							WithFix(fmt.Sprintf("On %s run: nself backup restore %s --yes", st.BackupHost, st.BackupID))
+							WithFix(fmt.Sprintf("On %s run: %s", st.BackupHost, restoreconsent.Hint(st.BackupID, st.Project)))
 					}
 				}
 			}

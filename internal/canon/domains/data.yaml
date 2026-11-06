@@ -21,9 +21,10 @@ commands:
   backup pitr status: {side_effect: read}
   # cmd/commands/backup_verify_prune.go:53 deletes old backups; --yes is the consent flag, --dry-run previews (D-0285)
   backup prune: {side_effect: destructive, json: legacy, confirm: {flags: [yes]}}
-  backup restore: {side_effect: destructive, confirm: {flags: [yes]}}
-  # cmd/commands/backup_restore.go:85 downloads a backup from a remote and restores it over the database
-  backup restore-remote: {side_effect: destructive, confirm: {flags: [yes]}}
+  # --confirm-project is consent by name for an ssh run with no stdin (C2-01); cli_only keeps it off MCP/HTTP, where the confirm nonce is the consent
+  backup restore: {side_effect: destructive, confirm: {flags: [yes]}, flags: {confirm-project: {cli_only: true}}}
+  # cmd/commands/backup_restore.go:107 downloads a backup from a remote and restores it through a scratch database (C2-03)
+  backup restore-remote: {side_effect: destructive, confirm: {flags: [yes]}, flags: {confirm-project: {cli_only: true}}}
   backup resume: {side_effect: write}
   backup schedule: {side_effect: write}
   backup status: {side_effect: read, json: legacy}

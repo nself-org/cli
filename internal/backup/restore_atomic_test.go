@@ -41,6 +41,7 @@ case "$*" in
       echo 'pg_restore: error: COPY failed for table users' >&2
       exit 1
     fi
+    [ "$FAKE_FAIL_STAGE" = restore_quiet ] && exit 1
     exit 0
     ;;
   *"CREATE DATABASE "*)

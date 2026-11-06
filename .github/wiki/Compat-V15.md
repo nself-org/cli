@@ -199,7 +199,6 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-PLUG-78 | plugin install does not track manifest tables | tracks them in Hasura after readiness (E140) | `cmd/commands/plugin_install_readiness.go` |
 | P7-PROD-08 | age-key.txt only | shared identity search, E223 when none | `internal/backup/restore.go` |
 | P7-PROD-08 | age-key.txt only | shared identity search, E223 when none | `internal/backup/stream_restore_remote.go` |
-| P7-PROD-08 | only FATAL or "could not" fails | any unlisted pg_restore error: line fails | `internal/backup/drill_support.go` |
 | P7-PROD-08 | refuse | auto identity | `internal/backup/autokey.go` |
 | P7-REG-02 | bare pre-contract JSON | v1 envelope (NSELF_JSON_LEGACY=1 or true keeps bare JSON for one minor) | `internal/output/legacy.go` |
 | P7-REG-05 | --json accepted and ignored on a command whose own json flag predates P7-REG | refused with E402 | `cmd/commands/invocation.go` |

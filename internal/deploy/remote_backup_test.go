@@ -178,7 +178,7 @@ func TestRollbackRemoteOrder(t *testing.T) {
 	f.log = nil
 	f.mu.Unlock()
 	writeFile(t, rp+"/.nself/compose-files.txt", "# broken by the second deploy\n", 0o644)
-	err = RollbackRemote(context.Background(), RollbackOptions{Remote: f, RemotePath: rp, Tar: res.PreDeployTar, BackupID: "backup-1", Changed: res.Changed, Absent: res.Absent, Clock: &fakeClock{now: time.Unix(0, 0)}})
+	err = RollbackRemote(context.Background(), RollbackOptions{Remote: f, RemotePath: rp, Tar: res.PreDeployTar, BackupID: "backup-1", ProjectName: "demo", Changed: res.Changed, Absent: res.Absent, Clock: &fakeClock{now: time.Unix(0, 0)}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -23,8 +23,9 @@ commands:
   deploy promote: {side_effect: remote, flags: {stream: {output: stream}}, confirm: {flags: [yes]}}
   # cmd/commands/promote.go:23 promotes environment state to the selected target
   deploy promote-env: {side_effect: remote, json: legacy, confirm: {flags: [yes]}}
-  deploy promote-env rollback: {side_effect: destructive, confirm: {flags: [yes]}}
-  deploy rollback: {side_effect: destructive, confirm: {flags: [yes]}}
+  # --confirm-project is the operator's consent by name for a production database restore (C2-01 review); --yes alone is refused there. cli_only keeps it off MCP/HTTP
+  deploy promote-env rollback: {side_effect: destructive, confirm: {flags: [yes]}, flags: {confirm-project: {cli_only: true}}}
+  deploy rollback: {side_effect: destructive, confirm: {flags: [yes]}, flags: {confirm-project: {cli_only: true}}}
   # cmd/commands/security.go:44 prints a dry-run plan unless --apply is passed
   deploy security setup: {side_effect: read, flags: {apply: {side_effect: destructive}}, confirm: {flags: [apply]}}
   deploy status: {side_effect: read, json: legacy}

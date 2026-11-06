@@ -344,7 +344,7 @@ func TestSimRemoteApplyAndRollback(t *testing.T) {
 
 	// 4. Rollback restores in place: files, foreign conf, conf.d, the bind-mounted dir's inode.
 	rb := h.remote()
-	if err := deploy.RollbackRemote(ctx, deploy.RollbackOptions{Remote: rb, RemotePath: h.rp, Tar: res.PreDeployTar, BackupID: res.BackupID, Changed: res.Changed, Absent: res.Absent, StrictHasura: true}); err != nil {
+	if err := deploy.RollbackRemote(ctx, deploy.RollbackOptions{Remote: rb, RemotePath: h.rp, Tar: res.PreDeployTar, BackupID: res.BackupID, ProjectName: "demo", Changed: res.Changed, Absent: res.Absent, StrictHasura: true}); err != nil {
 		t.Fatal(err)
 	}
 	if got := h.sh("cat " + h.rp + "/docker-compose.yml"); got != "# v0" {
@@ -550,7 +550,7 @@ func TestSimRemoteSymlinkedNginx(t *testing.T) {
 	}
 
 	rb := h.remote()
-	if err := deploy.RollbackRemote(ctx, deploy.RollbackOptions{Remote: rb, RemotePath: h.rp, Tar: res.PreDeployTar, BackupID: res.BackupID, Changed: res.Changed, Absent: res.Absent, StrictHasura: true}); err != nil {
+	if err := deploy.RollbackRemote(ctx, deploy.RollbackOptions{Remote: rb, RemotePath: h.rp, Tar: res.PreDeployTar, BackupID: res.BackupID, ProjectName: "demo", Changed: res.Changed, Absent: res.Absent, StrictHasura: true}); err != nil {
 		t.Fatal(err)
 	}
 	isLink("rollback")

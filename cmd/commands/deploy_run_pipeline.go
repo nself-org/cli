@@ -48,25 +48,6 @@ func remoteHasuraStrict(workdir, target string) bool {
 	return target == "staging" || prodClassFn(inv, target)
 }
 
-// inventoryEnvName finds env in inv by case-insensitive name. It reports false
-// for a nil inventory, no match, or when two inventory keys differ only by
-// case (even if one matches exactly): the caller refuses rather than guesses.
-func inventoryEnvName(inv *controlplane.Inventory, env string) (string, bool) {
-	if inv == nil {
-		return "", false
-	}
-	found := ""
-	for k := range inv.Environments {
-		if strings.EqualFold(k, env) {
-			if found != "" {
-				return "", false
-			}
-			found = k
-		}
-	}
-	return found, found != ""
-}
-
 // knownDeployEnvs lists the environments a deploy target may name, sorted:
 // local, the legacy staging and prod names, and every inventory environment.
 func knownDeployEnvs(inv *controlplane.Inventory) []string {

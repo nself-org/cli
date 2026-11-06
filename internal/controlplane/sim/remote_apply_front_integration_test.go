@@ -133,7 +133,7 @@ func TestSimRemoteApplyFrontRoot(t *testing.T) {
 	// 3. Rollback restores the front files in place from the recorded front tar and reloads.
 	h.sh("rm -f /tmp/sim-front.log")
 	if err := deploy.RollbackRemote(ctx, deploy.RollbackOptions{
-		Remote: h.remote(), RemotePath: h.rp, Tar: res.PreDeployTar, BackupID: res.BackupID, Changed: res.Changed, Absent: res.Absent,
+		Remote: h.remote(), RemotePath: h.rp, Tar: res.PreDeployTar, BackupID: res.BackupID, ProjectName: "demo", Changed: res.Changed, Absent: res.Absent,
 		FrontTar: res.FrontTar, FrontChanged: res.FrontChanged, FrontAbsent: res.FrontAbsent, StrictHasura: true,
 	}); err != nil {
 		t.Fatal(err)

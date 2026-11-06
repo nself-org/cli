@@ -48,6 +48,7 @@ func init() {
 	backupRestoreCmd.Flags().String("point-in-time", "", "ISO8601 timestamp for PITR")
 	backupRestoreCmd.Flags().String("decrypt-key", "", "Path to age identity file")
 	backupRestoreCmd.Flags().Bool("yes", false, "Skip local confirmation; production requires the project name")
+	backupRestoreCmd.Flags().String("confirm-project", "", "Confirm without a prompt by naming the project (required for a non-interactive production restore)")
 
 	// backup verify flags
 	backupVerifyCmd.Flags().Bool("restore-test", false, "Spin up test container and restore")
@@ -95,7 +96,8 @@ func init() {
 	// backup restore-remote flags
 	backupRestoreRemoteCmd.Flags().String("from", "", "Source URL (rclone remote path)")
 	backupRestoreRemoteCmd.Flags().String("key", "", "Path to age identity file for decryption")
-	backupRestoreRemoteCmd.Flags().Bool("yes", false, "Skip confirmation on production")
+	backupRestoreRemoteCmd.Flags().Bool("yes", false, "Skip local confirmation; production requires the project name")
+	backupRestoreRemoteCmd.Flags().String("confirm-project", "", "Confirm without a prompt by naming the project (required for a non-interactive production restore)")
 
 	// Wire subcommands
 	backupCmd.AddCommand(backupCreateCmd)

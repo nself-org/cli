@@ -17,8 +17,10 @@ func quoteShellWord(s string) string { return "'" + strings.ReplaceAll(s, "'", "
 // RestoreCommand quotes an exact retained backup id for an operator shell command.
 // Inputs: backup id. Outputs: executable restore guidance.
 // Constraints: shell metacharacters in backup identifiers cannot execute commands.
+// The operator types the project name: a production restore with no stdin
+// refuses without --confirm-project (restoreconsent).
 func RestoreCommand(backupID string) string {
-	return "nself backup restore " + quoteShellWord(backupID)
+	return "nself backup restore " + quoteShellWord(backupID) + " --confirm-project <project>"
 }
 
 // VerifyCommand quotes the command that re-checks a retained backup.

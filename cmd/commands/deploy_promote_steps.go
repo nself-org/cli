@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/nself-org/cli/internal/backup"
 	"github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/controlplane"
 	cpromote "github.com/nself-org/cli/internal/controlplane/promote"
@@ -47,29 +48,33 @@ func preparePromoteEngine(cmd *cobra.Command, workdir, source, target string, dr
 	if err != nil {
 		return cpromote.Engine{}, nil, err
 	}
-	sourceName, ok := inventoryEnvName(inv, source)
+	sourceName, ok := controlplane.EnvName(inv, source)
 	if !ok {
 		return cpromote.Engine{}, nil, errs.Newf("E483", "unknown promotion source %q", source)
 	}
-	targetName, ok := inventoryEnvName(inv, target)
+	targetName, ok := controlplane.EnvName(inv, target)
 	if !ok {
 		return cpromote.Engine{}, nil, errs.Newf("E483", "unknown promotion target %q", target)
 	}
 	source, target = sourceName, targetName
 	sourceEnv, targetEnv := inv.Environments[source], inv.Environments[target]
-	st := &cpromote.State{Source: source, Target: target, SourceTier: sourceEnv.Tier, TargetTier: targetEnv.Tier, DryRun: dryRun, Values: map[string]any{}}
+	project, err := backup.RestoreProject(workdir)
+	if err != nil {
+		return cpromote.Engine{}, nil, fmt.Errorf("deploy promote: read PROJECT_NAME for the rollback restore: %w; nothing was changed", err)
+	}
+	st := &cpromote.State{Project: project, Source: source, Target: target, SourceTier: sourceEnv.Tier, TargetTier: targetEnv.Tier, DryRun: dryRun, Values: map[string]any{}}
 	if err := cpromote.ValidateTiers(source, target, st.SourceTier, st.TargetTier); err != nil {
 		return cpromote.Engine{}, nil, err
 	}
 	w := &promoteWiring{workdir: workdir, source: source, target: target, inv: inv, started: time.Now().UTC()}
 	st.Values["wiring"] = w
-	w.sourceServer, ok = primaryServer(inv, source)
+	w.sourceServer, ok = controlplane.PrimaryServer(inv, source)
 	if !ok && sourceEnv.Kind == "local" {
 		w.sourceServer = controlplane.Server{Name: "local", RemotePath: workdir, Primary: true}
 	} else if !ok {
 		return cpromote.Engine{}, nil, errs.Newf("E486", "promotion source %q has no server", source)
 	}
-	w.targetServer, ok = primaryServer(inv, target)
+	w.targetServer, ok = controlplane.PrimaryServer(inv, target)
 	if !ok {
 		return cpromote.Engine{}, nil, errs.Newf("E486", "promotion target %q has no server", target)
 	}

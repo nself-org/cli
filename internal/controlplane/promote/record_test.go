@@ -135,7 +135,7 @@ func TestPromoteRecordRollbackConcurrent(t *testing.T) {
 	remotes, paths := map[string]deploy.Remote{"primary": r}, map[string]string{"primary": "/srv/app"}
 	first, second := rec, rec
 	one, two := make(chan error, 1), make(chan error, 1)
-	go func() { one <- RollbackRecord(context.Background(), root, &first, remotes, paths) }()
+	go func() { one <- RollbackRecord(context.Background(), root, "demo", &first, remotes, paths) }()
 	select {
 	case <-r.entered:
 	case err := <-one:
@@ -143,7 +143,7 @@ func TestPromoteRecordRollbackConcurrent(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("first rollback never reached restore")
 	}
-	go func() { two <- RollbackRecord(context.Background(), root, &second, remotes, paths) }()
+	go func() { two <- RollbackRecord(context.Background(), root, "demo", &second, remotes, paths) }()
 	var secondErr error
 	secondDone := false
 	select {
@@ -168,7 +168,7 @@ func TestPromoteRecordRollbackConcurrent(t *testing.T) {
 		t.Fatalf("second rollback = %v", secondErr)
 	}
 	// A stale caller must reload the completed record before deciding to restore.
-	if err := RollbackRecord(context.Background(), root, &rec, remotes, paths); err != nil {
+	if err := RollbackRecord(context.Background(), root, "demo", &rec, remotes, paths); err != nil {
 		t.Fatal(err)
 	}
 	if got := r.restores.Load(); got != 1 {
@@ -188,7 +188,7 @@ func TestPromoteRecordRollbackOnce(t *testing.T) {
 	remotes := map[string]deploy.Remote{"primary": r}
 	paths := map[string]string{"primary": "/srv/app"}
 	persistRollbackFixture(t, root, rec)
-	if err := RollbackRecord(context.Background(), root, rec, remotes, paths); err != nil {
+	if err := RollbackRecord(context.Background(), root, "demo", rec, remotes, paths); err != nil {
 		t.Fatal(err)
 	}
 	if rec.DBRestoredAt == "" || rec.Status != "rolled_back" {
@@ -198,7 +198,7 @@ func TestPromoteRecordRollbackOnce(t *testing.T) {
 	if err != nil || saved == nil || !saved.MigrateStarted || saved.DBRestoredAt != rec.DBRestoredAt {
 		t.Fatalf("migration/restore evidence was not persisted: %#v, %v", saved, err)
 	}
-	if err := RollbackRecord(context.Background(), root, rec, remotes, paths); err != nil {
+	if err := RollbackRecord(context.Background(), root, "demo", rec, remotes, paths); err != nil {
 		t.Fatal(err)
 	}
 	joined := strings.Join(r.calls, "\n")
@@ -215,7 +215,7 @@ func TestPromoteRecordMigrationEvidence(t *testing.T) {
 				PreDeployTar: map[string]string{"primary": "/srv/app/.nself/backups/pre-deploy-1.tar.gz"}}
 			root := t.TempDir()
 			persistRollbackFixture(t, root, rec)
-			if err := RollbackRecord(context.Background(), root, rec, map[string]deploy.Remote{"primary": r}, map[string]string{"primary": "/srv/app"}); err != nil {
+			if err := RollbackRecord(context.Background(), root, "demo", rec, map[string]deploy.Remote{"primary": r}, map[string]string{"primary": "/srv/app"}); err != nil {
 				t.Fatal(err)
 			}
 			for _, call := range r.calls {
@@ -238,7 +238,7 @@ func TestPromoteRecordRestoreOrder(t *testing.T) {
 	}
 	root := t.TempDir()
 	persistRollbackFixture(t, root, rec)
-	if err := RollbackRecord(context.Background(), root, rec, map[string]deploy.Remote{"primary": r}, map[string]string{"primary": "/srv/app"}); err != nil {
+	if err := RollbackRecord(context.Background(), root, "demo", rec, map[string]deploy.Remote{"primary": r}, map[string]string{"primary": "/srv/app"}); err != nil {
 		t.Fatal(err)
 	}
 	joined := strings.Join(r.calls, "\n")
@@ -256,7 +256,7 @@ func TestPromoteRecordValidatesBeforeChange(t *testing.T) {
 	rec := &Record{PreDeployTar: map[string]string{"one": "/tmp/one.tar.gz", "two": "/tmp/two.tar.gz"}}
 	root := t.TempDir()
 	persistRollbackFixture(t, root, rec)
-	err := RollbackRecord(context.Background(), root, rec,
+	err := RollbackRecord(context.Background(), root, "demo", rec,
 		map[string]deploy.Remote{"one": good}, map[string]string{"one": "/srv/one", "two": "/srv/two"})
 	if err == nil || len(good.calls) != 0 {
 		t.Fatalf("validation error = %v, calls = %v", err, good.calls)
@@ -286,7 +286,7 @@ func TestPromoteRecordRollbackReloadAuthority(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			err := RollbackRecord(context.Background(), root, rec, map[string]deploy.Remote{"primary": r}, map[string]string{"primary": "/srv/app"})
+			err := RollbackRecord(context.Background(), root, "demo", rec, map[string]deploy.Remote{"primary": r}, map[string]string{"primary": "/srv/app"})
 			if err == nil || !strings.Contains(err.Error(), "E485") || len(r.calls) != 0 {
 				t.Fatalf("stale authority err=%v remote=%v", err, r.calls)
 			}

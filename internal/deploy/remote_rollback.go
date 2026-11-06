@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/docker"
+	"github.com/nself-org/cli/internal/restoreconsent"
 )
 
 // RollbackOptions configures RollbackRemote.
@@ -29,6 +30,8 @@ type RollbackOptions struct {
 	RemotePath string
 	Tar        string // PreDeployTar of the record
 	BackupID   string // BackupID of the record; empty off prod-class
+	// ProjectName goes to backup restore --confirm-project (C2-01); required with BackupID.
+	ProjectName string
 	// Changed and Absent come from the local deploy.json record of this host.
 	Changed []string
 	Absent  []string
@@ -53,6 +56,9 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 		o.Out = io.Discard
 	}
 	r, rp := o.Remote, o.RemotePath
+	if err := restoreconsent.Precheck(o.BackupID, o.ProjectName, o.DBRestored); err != nil {
+		return err
+	}
 	if _, err := ResolveDirs(ctx, r, rp, layoutDirs(o.Changed)); err != nil {
 		return err
 	}
@@ -95,14 +101,8 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 	case o.BackupID != "" && o.DBRestored:
 		emit(o.Out, "  [skip] database backup %s was already restored by an earlier rollback; not restoring it again", o.BackupID)
 	case o.BackupID != "":
-		emit(o.Out, "  [running] restore database backup %s", o.BackupID)
-		if _, err := r.Run(ctx, shScript(fmt.Sprintf("cd %s && nself backup restore %s --yes", q(rp), q(o.BackupID)))); err != nil {
-			return fmt.Errorf("restoring backup %s on %s: %w; the files are restored, the stack was not restarted", o.BackupID, r.Label(), err)
-		}
-		if o.OnDBRestored != nil {
-			if err := o.OnDBRestored(); err != nil {
-				return fmt.Errorf("the database backup was restored but the record could not be saved (do NOT run the rollback again): %w", err)
-			}
+		if err := restoreconsent.RunRestore(ctx, r, rp, o.BackupID, o.ProjectName, o.Out, o.OnDBRestored); err != nil {
+			return err
 		}
 	}
 	// The front files are back: the live fronting nginx is tested and reloaded even

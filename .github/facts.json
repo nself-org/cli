@@ -10,7 +10,7 @@
   "schema_version": "1",
   "sources": {
     "openapi_sha256": "11122bde68b446a20556664dbfe3d99d3b2b73b1af41fb1034c5ac3575c987a8",
-    "registry_sha256": "b414f963a519135e3f2fae1831d32921c470e07a4d51cc6319e8ba838e4b80b9"
+    "registry_sha256": "099cfe89a763c267a2419633b72fb03834ade140ac5a08f829991250f3c8c949"
   },
   "verbs": [
     "init",
