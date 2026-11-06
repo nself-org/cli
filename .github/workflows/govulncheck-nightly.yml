@@ -14,6 +14,9 @@ on:
   pull_request:
     paths:
       - ".github/workflows/govulncheck-nightly.yml"
+      - ".github/scripts/govuln-symbol-filter.jq"
+      - ".github/scripts/govuln-filter-check.sh"
+      - ".github/scripts/testdata/govuln-symbol-hit.json"
 
 permissions:
   contents: read
@@ -40,6 +43,9 @@ jobs:
       - name: Install govulncheck
         run: bash .github/scripts/go-install-retry.sh golang.org/x/vuln/cmd/govulncheck@v1.7.0
 
+      - name: Check symbol-level jq filter (positive control)
+        run: bash .github/scripts/govuln-filter-check.sh
+
       - name: Run govulncheck (JSON)
         id: scan
         env:
@@ -56,13 +62,9 @@ jobs:
             exit "$STATUS"
           fi
 
-          # Distinct OSV vulnerability IDs that resolve to actual call-graph hits.
-          jq -r '
-            select(.finding != null)
-            | .finding
-            | select(.trace != null and (.trace | length) > 0)
-            | .osv
-          ' govuln.json 2>/dev/null | sort -u > "${RUNNER_TEMP}/all-osv.txt"
+          # Distinct OSV IDs with symbol-level findings (trace[0] has a function),
+          # matching text mode. Module-level findings are not call-graph hits.
+          jq -r -f .github/scripts/govuln-symbol-filter.jq govuln.json 2>/dev/null | sort -u > "${RUNNER_TEMP}/all-osv.txt"
 
           # Accepted advisories: same source of truth as govuln.yml.
           sed 's/#.*//' .github/govulncheck-allow.txt \
