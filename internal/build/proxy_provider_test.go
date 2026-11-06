@@ -526,6 +526,7 @@ func TestProxyRefusalUnmodelled(t *testing.T) {
 		f := freshProxyFixture(t)
 		installProxy(t, f.plugins)
 		writeFixtureFile(t, filepath.Join(f.plugins, "idme", "nginx", "idme.conf"), idmeSnippet, 0644)
+		markNginxPublic(t, f.plugins, "idme")
 		if _, err := os.Stat(filepath.Join(f.workdir, ".env.secrets")); !os.IsNotExist(err) {
 			t.Fatalf("fresh project already has secrets file: %v", err)
 		}
@@ -580,6 +581,7 @@ func TestProxyRefusalUnmodelled(t *testing.T) {
 	}
 	installProxy(t, f.plugins)
 	writeFixtureFile(t, filepath.Join(f.plugins, "idme", "nginx", "idme.conf"), idmeSnippet, 0644)
+	markNginxPublic(t, f.plugins, "idme")
 	writeFixtureFile(t, filepath.Join(f.workdir, "nginx", "conf.d", "shadow.conf"), "server { listen 80; server_name api.example.test; location / { proxy_pass http://hasura:8080; } }", 0644)
 	proxyRefusedBuild(t, f, "E481", "plugin:idme/idme.conf#2", "weird_thing", "core:hasura", "shadow.conf", "global:")
 	// Exhaustive aggregation and deterministic ordering also cover upstream loss.

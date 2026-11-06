@@ -590,7 +590,7 @@ func TestUnknownContainersNeverEmpty(t *testing.T) {
 func fakePlugin(t *testing.T, pluginDir, name string) {
 	t.Helper()
 	dir := filepath.Join(pluginDir, name)
-	writeFile(t, filepath.Join(dir, "plugin.json"), fmt.Sprintf(`{"name":%q,"port":3911,"language":"go"}`, name), 0o644)
+	writeFile(t, filepath.Join(dir, "plugin.json"), fmt.Sprintf(`{"name":%q,"port":3911,"language":"go","nginx":{"public":true}}`, name), 0o644)
 	writeFile(t, filepath.Join(dir, "docker-compose.plugin.yml"), fmt.Sprintf("services:\n  %s:\n    image: nself/%s:latest\n    ports:\n      - \"3911:3911\"\n", name, name), 0o644)
 	writeFile(t, filepath.Join(dir, "Dockerfile"), "FROM scratch\n", 0o644)
 	writeFile(t, filepath.Join(dir, "nginx", "route.conf"), "server {\n  listen 80;\n  server_name ${PLUGIN_NAME}.example.test;\n}\n", 0o644)

@@ -33,6 +33,7 @@ func defaultPluginProject(t *testing.T) (string, *config.Config) {
 	if err := os.WriteFile(filepath.Join(confDir, "backup.conf"), []byte(backupSnippet), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	markNginxPublic(t, filepath.Dir(filepath.Dir(confDir)), "backup")
 	cfg, err := config.ApplyDefaults(&config.Config{ProjectName: "d0634", BaseDomain: "local.nself.org"})
 	if err != nil {
 		t.Fatalf("ApplyDefaults: %v", err)

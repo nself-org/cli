@@ -19,6 +19,7 @@ import (
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/nginx/plugincheck"
 )
 
 // nginxDestOwner is the plugin and source file that produced a sites file.
@@ -50,7 +51,7 @@ func checkNginxDestCollision(owners map[string]nginxDestOwner, destName, pluginN
 }
 
 // nginxOwnerPrefix starts the owner line stamped after the generated marker.
-const nginxOwnerPrefix = "# nself-owner: "
+const nginxOwnerPrefix = plugincheck.OwnerPrefix
 
 // coreSiteFiles are core route files a plugin's <plugin>-<file> name can
 // equal (storage + console.conf, api + docs.conf). The core writers do not
@@ -72,17 +73,7 @@ func stampNginxOwner(rendered, owner string) string {
 }
 
 // nginxOwnerOf returns the owner named in content's first lines, or "".
-func nginxOwnerOf(content string) string {
-	for i, line := range strings.SplitN(content, "\n", 6) {
-		if i == 5 {
-			break
-		}
-		if rest, ok := strings.CutPrefix(strings.TrimSpace(line), nginxOwnerPrefix); ok {
-			return strings.TrimSpace(rest)
-		}
-	}
-	return ""
-}
+func nginxOwnerOf(content string) string { return plugincheck.OwnerOf(content) }
 
 // checkNginxSiteOwner refuses to replace an existing sites file owned by
 // someone else: a different project/plugin stamp (two projects sharing a

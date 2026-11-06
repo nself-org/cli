@@ -62,6 +62,7 @@ func writePluginNginxRoute(t *testing.T, pluginDir, pluginName, fileName, server
 	if err := os.WriteFile(filepath.Join(nginxDir, fileName), []byte(content), 0644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
+	markNginxPublic(t, pluginDir, pluginName)
 }
 
 // TestInjectPluginNginxRoutes_RejectsDuplicateServerName reproduces the

@@ -378,6 +378,9 @@ func TestSSLInstallFronted(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(pluginDir, "ai", "nginx", "ai.conf"), []byte("# route\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
+		if err := os.WriteFile(filepath.Join(pluginDir, "ai", "plugin.json"), []byte(`{"name":"ai","nginx":{"public":true}}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
 		cfg := &config.Config{}
 		cfg.Nginx.FrontedBy = "nself-web"
 		n, err := build.InjectPluginNginxRoutes(project, pluginDir, cfg)

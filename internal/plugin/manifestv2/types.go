@@ -110,6 +110,9 @@ type Manifest struct {
 	Seed       *Seed       `json:"seed,omitempty"`
 	Env        *Env        `json:"env,omitempty"`
 	Routes     []Route     `json:"routes,omitempty"`
+	// Nginx says how `nself build` serves the plugin's nginx/*.conf files.
+	// Absent means closed: a conf without a loopback gate is held back.
+	Nginx *Nginx `json:"nginx,omitempty"`
 	// Capabilities lists what the plugin offers (a v1 key some plugins carry,
 	// read from the installed plugin.json by the MCP plugin). Optional, same
 	// name and type as v1.
@@ -160,6 +163,14 @@ type Env struct {
 type Route struct {
 	Path         string `json:"path"`
 	UpstreamPort int    `json:"upstream_port"`
+}
+
+// Nginx is the plugin's nginx exposure declaration (D-0777).
+type Nginx struct {
+	// Public publishes the plugin's nginx/*.conf server blocks on the public
+	// nginx as shipped. Set it only when the plugin authenticates every request
+	// those blocks route, or verifies a webhook signature on it. Default false.
+	Public bool `json:"public,omitempty"`
 }
 
 // PostgresExtensions returns requires.postgres_extensions, empty when absent

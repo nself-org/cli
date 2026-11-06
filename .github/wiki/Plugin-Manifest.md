@@ -36,7 +36,7 @@ comes from readable installed manifests; upgrades may replace their own binaries
 
 Three groups share one flat object:
 
-- **Canonical v2 keys**: `manifest_version`, `license`, `maturity`, `installable`, `requires`, `service`, `commands`, `schema`, `migrations`, `seed`, `env`, `routes`, `docs_url`.
+- **Canonical v2 keys**: `manifest_version`, `license`, `maturity`, `installable`, `requires`, `service`, `commands`, `schema`, `migrations`, `seed`, `env`, `routes`, `nginx`, `docs_url`.
 - **Shared v1 keys**: authored with the v1 name and JSON type and read natively (for example `port`, `dependencies`, `optionalDependencies`, `visibility`, `tables`, `permissions`, `envVars`, `deprecation`, `requiredEntitlements`). The list is the set of keys a v1.4.12 reader decodes, committed as `tools/manifestv2migrate/testdata/v1412-readers.txt`. Polymorphic v1 shapes (grouped `dependencies`, object-form `webhooks`) are written in their one canonical shape.
 - **Compatibility keys**: generated, never authored (below).
 
@@ -82,6 +82,7 @@ Bundle membership is not a manifest field: `bundles.json` is the membership sour
 | `minNselfVersion` | string | no |  |
 | `multiApp` | object or null | no |  |
 | `name` | string | yes | Plugin slug, unique per tier.; pattern `^[a-z][a-z0-9-]*$` |
+| `nginx` | object or null | no | How nself build serves the plugin's nginx/*.conf files. Absent means closed: a conf without a loopback gate (allow 127.0.0.1; allow ::1; deny all;) is held back from nginx/sites (D-0777). |
 | `optionalDependencies` | array or null | no |  |
 | `packageManager` | string | no |  |
 | `permissions` | array or object | no | Same key and shape as v1: canonical permission strings, or categories mapped to actions. |
@@ -120,6 +121,21 @@ Bundle membership is not a manifest field: `bundles.json` is the membership sour
 - `flags: [...]` on the root declares the flags of `nself <command>` itself (for example the ci plugin `detach` flag), in the same shape as a subcommand's flags. The MCP tool and HTTP route of the root then take a `flags` member instead of free-form `argv`. A root with no `flags` keeps the free-form `argv` member. Older manifests need no change.
 - `surface: all | cli-only` (default `all`).
 - An arg takes `secret: bool`; a flag takes `secret: bool` and `cli_only: bool`.
+
+## Nginx exposure
+
+`nself build` copies a plugin's `nginx/*.conf` into `nginx/sites/`, which the public nginx serves. Host and SNI are chosen by the caller, so a server block is reachable from outside whatever DNS says. The default is closed (D-0777):
+
+- a conf whose every server block refuses all callers but loopback (`allow 127.0.0.1; allow ::1; deny all;` at server level, no allow or deny in a nested block, no `return`, `rewrite`, `if`, `error_page`, `include`, `satisfy any` or `real_ip` directive) is injected as shipped;
+- any other conf is held back. The build prints a warning naming the plugin, the file and the opt-in, and lists the file in `routes.json` under `unmodelled_global`.
+
+A plugin that authenticates every request its conf routes, or verifies a webhook signature on it, declares that in its manifest:
+
+```json
+"nginx": { "public": true }
+```
+
+The conf is then injected as shipped. `public` is the only key and defaults to `false`. Declare it only for routes the plugin itself protects: the build cannot check the plugin's code. The build reads the key from v1 and v2 manifests alike.
 
 ## Maturity and status
 

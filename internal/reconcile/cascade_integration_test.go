@@ -599,7 +599,7 @@ const (
 func cascadePluginTarball(t *testing.T) []byte {
 	t.Helper()
 	files := []struct{ name, body string }{
-		{"plugin.json", `{"name":"` + cascadePluginName + `","version":"1.0.0","description":"Cascade integration fixture plugin (synthetic)","category":"utility","license":"MIT","port":3961,"language":"go"}`},
+		{"plugin.json", `{"name":"` + cascadePluginName + `","version":"1.0.0","description":"Cascade integration fixture plugin (synthetic)","category":"utility","license":"MIT","port":3961,"language":"go","nginx":{"public":true}}`},
 		{"docker-compose.plugin.yml", "services:\n  " + cascadePluginName + ":\n    image: nself/" + cascadePluginName + ":latest\n    ports:\n      - \"3961:3961\"\n"},
 		{"Dockerfile", "FROM scratch\n"},
 		{"nginx/route.conf", "server {\n    listen 80;\n    server_name cascade.${BASE_DOMAIN};\n    location / {\n        proxy_pass http://" + cascadePluginName + ":3961;\n    }\n}\n"},

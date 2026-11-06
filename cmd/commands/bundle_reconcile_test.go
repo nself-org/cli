@@ -55,7 +55,7 @@ func extensionFixture(t *testing.T, env string) *l03Project {
 func localPluginRegistry(t *testing.T) {
 	t.Helper()
 	files := map[string]string{
-		"plugin.json":      `{"name":"zzfixture","version":"1.0.0","description":"fixture","category":"utility","license":"MIT"}`,
+		"plugin.json":      `{"name":"zzfixture","version":"1.0.0","description":"fixture","category":"utility","license":"MIT","nginx":{"public":true}}`,
 		"nginx/route.conf": "server { listen 80; server_name fixture.invalid; }\n",
 	}
 	var archive bytes.Buffer
@@ -124,7 +124,7 @@ func assertEmptyBuildPlan(t *testing.T, project string) {
 func TestBundleInstallReconcileGolden(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
 		p := extensionFixture(t, "")
-		l03Write(t, filepath.Join(p.plugins, "fixture", "plugin.json"), `{"name":"fixture","version":"1.0.0"}`, 0o644)
+		l03Write(t, filepath.Join(p.plugins, "fixture", "plugin.json"), `{"name":"fixture","version":"1.0.0","nginx":{"public":true}}`, 0o644)
 		l03Write(t, filepath.Join(p.plugins, "fixture", "nginx", "route.conf"), "server { listen 80; server_name fixture.invalid; }\n", 0o644)
 		old := bundleInstall
 		bundleInstall = func(_ context.Context, slug string, opts bundle.InstallOpts) (*bundle.InstallResult, error) {

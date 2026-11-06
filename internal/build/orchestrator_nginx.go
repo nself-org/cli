@@ -165,7 +165,7 @@ func (s *snippetSet) parse() {
 }
 
 // plugins parses the snippets injectPluginNginxRoutesVia copies, rendered and
-// skipped (pluginSnippetSkip, hasSSL = the model's TLS) the same way; a
+// left out (pluginSnippetSkip, hasSSL = the model's TLS) the same way; a
 // skipped snippet is recorded in global, not dropped. Read errors are left to the injection step, which reports them.
 func (s *snippetSet) plugins(workdir string, cfg *config.Config, hasSSL bool) {
 	pluginDir := resolvePluginNginxDir("", cfg)
@@ -182,7 +182,7 @@ func (s *snippetSet) plugins(workdir string, cfg *config.Config, hasSSL bool) {
 		for _, match := range matches {
 			if data, err := os.ReadFile(match); err == nil {
 				text := renderPluginSnippet(string(data), vars)
-				if why := pluginSnippetSkip(text, vars, hasSSL); why != "" {
+				if why, _ := pluginSnippetSkip(pluginDir, e.Name(), text, vars, hasSSL); why != "" {
 					s.global = append(s.global, fmt.Sprintf("skipped plugin %s/%s: %s", e.Name(), filepath.Base(match), why))
 					continue
 				}
