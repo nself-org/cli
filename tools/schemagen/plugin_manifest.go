@@ -30,6 +30,8 @@ func init() {
 		set("/properties/capabilities", map[string]any{"description": "What the plugin offers, as a list of names. Same key and type as v1; read from the installed plugin.json by the MCP plugin."}),
 		set("/properties/rest_routes/items/properties/auth", map[string]any{"description": "Auth scheme of the route (bearer, none, hmac, ...). Carried from a v1 routes entry."}),
 		set("/properties/rest_routes/items/properties/hmac", map[string]any{"description": "Name of the env var holding the webhook secret. Carried from a v1 routes entry."}),
+		set("/properties/nginx", map[string]any{"description": "How nself build serves the plugin's nginx/*.conf files. Absent means closed: a conf without a loopback gate (allow 127.0.0.1; allow ::1; deny all;) is held back from nginx/sites (D-0777)."}),
+		set("/properties/nginx/properties/public", map[string]any{"description": "Publish the conf's server blocks on the public nginx as shipped. Only for a plugin that authenticates every request they route or verifies a webhook signature. Default false."}),
 		set("/properties/maturity", map[string]any{"enum": anyList(manifestv2.Maturities), "description": "Lifecycle. deferred requires deprecation.state."}),
 		set("/properties/installable", map[string]any{"description": "Defaults to true when absent."}),
 		set("/properties/service", map[string]any{"type": "object", "description": "How the plugin runs. kind compose requires compose and healthcheck."}),

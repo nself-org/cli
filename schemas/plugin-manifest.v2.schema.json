@@ -716,6 +716,20 @@
       "pattern": "^[a-z][a-z0-9-]*$",
       "type": "string"
     },
+    "nginx": {
+      "additionalProperties": false,
+      "description": "How nself build serves the plugin's nginx/*.conf files. Absent means closed: a conf without a loopback gate (allow 127.0.0.1; allow ::1; deny all;) is held back from nginx/sites (D-0777).",
+      "properties": {
+        "public": {
+          "description": "Publish the conf's server blocks on the public nginx as shipped. Only for a plugin that authenticates every request they route or verifies a webhook signature. Default false.",
+          "type": "boolean"
+        }
+      },
+      "type": [
+        "null",
+        "object"
+      ]
+    },
     "optionalDependencies": {
       "items": {
         "type": "string"
