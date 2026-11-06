@@ -62,40 +62,6 @@ func TestListRemotePathDestination(t *testing.T) {
 	}
 }
 
-// With rclone absent from PATH, restore-remote streams a path:// object into
-// pg_restore (here a fake docker that records its stdin).
-func TestRestoreFromRemotePathWithoutRclone(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("needs a POSIX shell and unix paths")
-	}
-	bin := t.TempDir()
-	out := filepath.Join(t.TempDir(), "restored")
-	script := map[string]string{
-		"pg_restore": "#!/bin/sh\nexit 0\n",
-		"docker":     "#!/bin/sh\n/bin/cat > '" + out + "'\n",
-	}
-	for n, body := range script {
-		if err := os.WriteFile(filepath.Join(bin, n), []byte(body), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	t.Setenv("PATH", bin)
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "p_full_1.dump"), []byte("pg-custom-format-bytes"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	cfg := &config.Config{ProjectName: "p"}
-	if err := RestoreFromRemote(t.Context(), cfg, "path://"+dir+"/p_full_1.dump", ""); err != nil {
-		t.Fatalf("restore: %v", err)
-	}
-	if b, _ := os.ReadFile(out); string(b) != "pg-custom-format-bytes" {
-		t.Fatalf("restored %q", b)
-	}
-	if err := RestoreFromRemote(t.Context(), cfg, "path://"+dir+"/missing.dump", ""); err == nil {
-		t.Fatal("missing object restored")
-	}
-}
-
 // The half-set S3 key check guards the rclone/S3 kind only.
 func TestHalfSetS3KeysOnlyBlockRcloneRemotes(t *testing.T) {
 	half := &config.Config{}

@@ -2,10 +2,15 @@ package backup
 
 // stream_restore_remote.go — RestoreFromRemote pipeline.
 //
-// Purpose: drive the end-to-end restore of a streamed backup from a remote destination, using the recipient/URL helpers in stream_restore.go, split out for file size.
-// Inputs: the remote backup location and the target database connection info.
-// Outputs: a restored database, or an error identifying which stage of the restore failed.
-// Constraints: pure move from stream_restore.go (CLI-R12 Batch E); no behaviour change.
+// Purpose: restore a backup streamed from a remote destination through a
+// scratch database that is swapped in only after pg_restore succeeds (the
+// D-0663 engine, restoreViaScratch), never into the live database (C2-03).
+// Inputs: the remote backup location, an optional age identity and cfg.
+// Outputs: a restored database, or an error naming the failed stage; on any
+// failure before the swap the live database is untouched.
+// Constraints: pg_restore runs inside the postgres container, so the host
+// needs docker (plus rclone for rclone remotes and age for .age objects) but
+// not pg_restore. Confirmation is the caller's job (cmd/commands).
 
 import (
 	"context"
@@ -28,7 +33,8 @@ import (
 )
 
 // RestoreFromRemote decrypts and restores a backup directly from a remote URL.
-// It streams: rclone cat | age -d | pg_restore. No local temp file.
+// It streams: rclone cat (or the native reader) | age -d | pg_restore into a
+// scratch database, then swaps the scratch database in. No local temp file.
 func RestoreFromRemote(ctx context.Context, cfg *config.Config, from, keyPath string) error {
 	if from == "" {
 		return fmt.Errorf("--from destination required")
@@ -57,10 +63,10 @@ func RestoreFromRemote(ctx context.Context, cfg *config.Config, from, keyPath st
 		}
 	}
 
-	// Check binaries.
-	binaries := []string{"rclone", "pg_restore"}
+	// Check binaries. pg_restore runs inside the postgres container.
+	binaries := []string{"docker", "rclone"}
 	if native != nil {
-		binaries = []string{"pg_restore"}
+		binaries = []string{"docker"}
 	}
 	if encrypted {
 		binaries = append(binaries, "age")
@@ -74,6 +80,32 @@ func RestoreFromRemote(ctx context.Context, cfg *config.Config, from, keyPath st
 		}
 	}
 
+	container := cfg.ProjectName + "_postgres"
+	user := cfg.Postgres.User
+	if user == "" {
+		user = "postgres"
+	}
+	db := cfg.Postgres.DB
+	if db == "" {
+		db = "nself"
+	}
+	consumed := false
+	err := restoreViaScratch(ctx, container, user, db, func(ctx context.Context, scratch string) error {
+		consumed = true
+		return streamRemoteRestore(ctx, from, keyPath, encrypted, native, container, user, scratch)
+	})
+	if native != nil && !consumed {
+		_ = native.Close()
+	}
+	if err != nil {
+		return err
+	}
+	slog.Info("remote restore complete", "from", from)
+	return nil
+}
+
+// streamRemoteRestore runs the three-stage pipeline into the scratch database.
+func streamRemoteRestore(ctx context.Context, from, keyPath string, encrypted bool, native io.ReadCloser, container, user, scratch string) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -166,17 +198,7 @@ func RestoreFromRemote(ctx context.Context, cfg *config.Config, from, keyPath st
 		restoreReader = downloadReader
 	}
 
-	// ── Stage 3: pg_restore ───────────────────────────────────────────
-	container := cfg.ProjectName + "_postgres"
-	user := cfg.Postgres.User
-	if user == "" {
-		user = "postgres"
-	}
-	db := cfg.Postgres.DB
-	if db == "" {
-		db = "nself"
-	}
-
+	// ── Stage 3: pg_restore into the scratch database ─────────────────
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -185,9 +207,8 @@ func RestoreFromRemote(ctx context.Context, cfg *config.Config, from, keyPath st
 			"exec", "-i", container,
 			"pg_restore",
 			"-U", user,
-			"-d", db,
-			"--clean",
-			"--if-exists",
+			"-d", scratch,
+			"--exit-on-error",
 		}
 		cmd := exec.CommandContext(ctx, "docker", args...)
 		cmd.Stdin = restoreReader
@@ -204,10 +225,12 @@ func RestoreFromRemote(ctx context.Context, cfg *config.Config, from, keyPath st
 		}
 		errOut, _ := io.ReadAll(stderr)
 		if err := cmd.Wait(); err != nil {
-			if verr := restoreVerdict(string(errOut)); verr != nil {
-				cancel()
-				errc <- verr
+			cancel()
+			detail := strings.TrimSpace(string(errOut))
+			if detail == "" {
+				detail = err.Error()
 			}
+			errc <- fmt.Errorf("%w: pg_restore: %s", errs.ErrBackupRestoreFailed, detail)
 		}
 	}()
 
@@ -220,7 +243,6 @@ func RestoreFromRemote(ctx context.Context, cfg *config.Config, from, keyPath st
 		}
 	}
 
-	slog.Info("remote restore complete", "from", from)
 	return nil
 }
 

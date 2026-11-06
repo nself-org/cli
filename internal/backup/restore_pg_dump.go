@@ -18,7 +18,16 @@ const restoreCleanupTimeout = 30 * time.Second
 // restorePgDump restores into an isolated database and swaps it into place
 // only after pg_restore succeeds. strict remains for API compatibility; local
 // restores are always strict because accepting an archive error is unsafe.
-func restorePgDump(ctx context.Context, container, user, db, backupFile string, _ bool) (retErr error) {
+func restorePgDump(ctx context.Context, container, user, db, backupFile string, _ bool) error {
+	return restoreViaScratch(ctx, container, user, db, func(ctx context.Context, scratch string) error {
+		return runScratchPgRestore(ctx, container, user, scratch, backupFile)
+	})
+}
+
+// restoreViaScratch is the D-0663 engine: create an empty scratch database,
+// let load fill it, then swap it in for db and drop the previous database.
+// A load failure leaves db untouched and drops the scratch database.
+func restoreViaScratch(ctx context.Context, container, user, db string, load func(ctx context.Context, scratch string) error) (retErr error) {
 	maintenance, err := restoreMaintenanceDatabase(db, user)
 	if err != nil {
 		return err
@@ -45,7 +54,7 @@ func restorePgDump(ctx context.Context, container, user, db, backupFile string, 
 	}
 	created = true
 
-	if err := runScratchPgRestore(ctx, container, user, scratch, backupFile); err != nil {
+	if err := load(ctx, scratch); err != nil {
 		return err
 	}
 	if err := swapRestoredDatabase(ctx, container, user, maintenance, db, scratch, previous); err != nil {
