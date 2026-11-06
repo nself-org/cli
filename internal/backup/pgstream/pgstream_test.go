@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 var (
@@ -117,5 +118,30 @@ func TestStreamMissingBinaries(t *testing.T) {
 	// closed pipe), only that the stream fails.
 	if _, err := run(t, Source{Native: io.NopCloser(strings.NewReader("x")), Encrypted: true, AgeKey: "k"}); err == nil {
 		t.Fatal("missing age: stream succeeded")
+	}
+}
+
+// endless never runs out, so stage 1 keeps writing until its pipe is closed.
+type endless struct{}
+
+func (endless) Read(p []byte) (int, error) { return len(p), nil }
+func (endless) Close() error               { return nil }
+
+// TestStreamDecryptEarlyExitDoesNotHang: age reads a few bytes and exits 1.
+// The stream must report the decrypt error, not block stage 1 forever.
+func TestStreamDecryptEarlyExitDoesNotHang(t *testing.T) {
+	stubs(t, map[string]string{"age": "head -c 16 >/dev/null\necho 'header is invalid' >&2\nexit 1\n"})
+	done := make(chan error, 1)
+	go func() {
+		_, err := run(t, Source{Native: endless{}, Encrypted: true, AgeKey: "k"})
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, errDecrypt) {
+			t.Fatalf("early age exit: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("stream hung after age exited early")
 	}
 }

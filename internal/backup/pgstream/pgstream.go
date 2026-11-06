@@ -122,6 +122,10 @@ func Stream(ctx context.Context, src Source) error {
 				} else {
 					errc <- fmt.Errorf("%w: %v", src.DecryptErr, err)
 				}
+				// Nothing reads dlR once age has exited: close it so stage 1
+				// stops writing instead of blocking forever (the decrypt error
+				// is queued first, so it is the one Stream reports).
+				dlR.CloseWithError(err)
 			}
 		}()
 	} else {
