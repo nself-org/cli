@@ -58,7 +58,11 @@ func preparePromoteEngine(cmd *cobra.Command, workdir, source, target string, dr
 	}
 	source, target = sourceName, targetName
 	sourceEnv, targetEnv := inv.Environments[source], inv.Environments[target]
-	st := &cpromote.State{Project: backup.RestoreProject(workdir), Source: source, Target: target, SourceTier: sourceEnv.Tier, TargetTier: targetEnv.Tier, DryRun: dryRun, Values: map[string]any{}}
+	project, err := backup.RestoreProject(workdir)
+	if err != nil {
+		return cpromote.Engine{}, nil, fmt.Errorf("deploy promote: read PROJECT_NAME for the rollback restore: %w; nothing was changed", err)
+	}
+	st := &cpromote.State{Project: project, Source: source, Target: target, SourceTier: sourceEnv.Tier, TargetTier: targetEnv.Tier, DryRun: dryRun, Values: map[string]any{}}
 	if err := cpromote.ValidateTiers(source, target, st.SourceTier, st.TargetTier); err != nil {
 		return cpromote.Engine{}, nil, err
 	}

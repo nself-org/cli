@@ -120,7 +120,7 @@ func TestStackDryRunLeavesProjectUnchanged(t *testing.T) {
 }
 
 func TestRestoreCommandQuotesBackupID(t *testing.T) {
-	if got := RestoreCommand("backup'$(touch injected)"); got != "nself backup restore 'backup'\"'\"'$(touch injected)'" {
+	if got := RestoreCommand("backup'$(touch injected)"); got != "nself backup restore 'backup'\"'\"'$(touch injected)' --confirm-project <project>" {
 		t.Fatalf("backup id was not shell-quoted: %s", got)
 	}
 }

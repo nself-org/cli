@@ -745,6 +745,7 @@
         "short": "Roll back the last deployment for a target",
         "hidden": false,
         "flags": [
+          "--confirm-project",
           "--db-restore-done",
           "--yes"
         ]

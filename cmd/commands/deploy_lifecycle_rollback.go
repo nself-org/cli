@@ -6,7 +6,8 @@ package commands
 //          fronting stack's nginx/sites from the recorded front tar (D-0425), and
 //          the database backup on backup_host only.
 // Constraints: unchanged behaviour for a record without front fields. A database
-//          restore needs --yes or a prompt, then passes --confirm-project (C2-01).
+//          restore needs --yes or a prompt, then passes --confirm-project (C2-01);
+//          on a production target the operator types it (--confirm-project).
 
 import (
 	"fmt"
@@ -15,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nself-org/cli/internal/backup"
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/deploy"
 	"github.com/nself-org/cli/internal/errs"
@@ -62,8 +62,12 @@ func rollbackRemoteV15(cmd *cobra.Command, workdir, target string) (bool, error)
 			return true, fmt.Errorf("deploy rollback: the recorded tar %q for %s is not a pre-deploy tar; nothing was changed", tars[host], host)
 		}
 	}
-	project := backup.RestoreProject(workdir)
 	manualDB := st.BackupID != "" && tars[st.BackupHost] == ""
+	typed, _ := cmd.Flags().GetString("confirm-project")
+	project, err := rollbackProject(typed, workdir, target, st.BackupID != "" && !manualDB && st.DBRestoredAt == "", prodClassFn(inv, target))
+	if err != nil {
+		return true, err
+	}
 	if manualDB {
 		fmt.Printf("  [warn] database backup %s was not restored: %s kept no changes of this deploy. If the database must go back, run on %s: %s\n", st.BackupID, st.BackupHost, st.BackupHost, restoreconsent.Hint(st.BackupID, project))
 	}

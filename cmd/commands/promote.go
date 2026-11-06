@@ -136,6 +136,7 @@ func init() {
 
 	promoteRollbackCmd.Flags().String("tag", "", "Specific backup tag to restore (default: latest pre-promote)")
 	promoteRollbackCmd.Flags().Bool("yes", false, "Confirm restoring a production-class database")
+	promoteRollbackCmd.Flags().String("confirm-project", "", "Project name passed to backup restore (required to restore a production database)")
 
 	// Add rollback as a sibling, not subcommand of promote
 	RootCmd.AddCommand(promoteCmd)

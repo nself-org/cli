@@ -15,7 +15,6 @@ import (
 	"os/exec"
 	"sync"
 
-	"github.com/nself-org/cli/internal/backup"
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/controlplane"
 	cpromote "github.com/nself-org/cli/internal/controlplane/promote"
@@ -135,6 +134,12 @@ func rollbackPromoteRecord(ctx context.Context, workdir string, rec *cpromote.Re
 	if err != nil {
 		return err
 	}
+	typed, _ := ctx.Value(rollbackConfirmProjectKey{}).(string)
+	restore := rec.MigrateStarted && rec.DBRestoredAt == ""
+	project, err := rollbackProject(typed, workdir, rec.Target, restore, prodClassFn(inv, rec.Target))
+	if err != nil {
+		return err
+	}
 	if err := confirmPromoteRecordRollback(ctx, inv, rec); err != nil {
 		return err
 	}
@@ -156,7 +161,6 @@ func rollbackPromoteRecord(ctx context.Context, workdir string, rec *cpromote.Re
 		}
 		remotes[r.Label()], paths[r.Label()] = r, promotePath(target.Server, workdir)
 	}
-	project := backup.RestoreProject(workdir)
 	if err := cpromote.RollbackRecord(ctx, workdir, project, rec, remotes, paths); err != nil {
 		var coded *errs.CLIError
 		if errors.As(err, &coded) && (coded.Code == "E485" || coded.Code == "E489") {
@@ -170,6 +174,7 @@ func rollbackPromoteRecord(ctx context.Context, workdir string, rec *cpromote.Re
 
 func init() {
 	deployRollbackCmd.Flags().Bool("db-restore-done", false, "Record operator verification that an uncertain database restore completed")
+	deployRollbackCmd.Flags().String("confirm-project", "", "Project name passed to backup restore (required to restore a production database)")
 	deployPromoteCmd.Flags().Bool("dry-run", false, "Print the promotion plan without remote writes")
 	deployPromoteCmd.Flags().Bool("yes", false, "Confirm promotion to a production-class target")
 	deployPromoteCmd.Flags().Bool("json", false, "Emit JSON output")

@@ -373,9 +373,12 @@ func prodServers(t *testing.T) []controlplane.Server {
 	}
 }
 
+// yesCmd is an approved rollback: --yes in ctx and the operator-typed
+// --confirm-project a production database restore needs (seedProject's name).
 func yesCmd() *cobra.Command {
 	cmd := &cobra.Command{}
 	cmd.SetContext(context.WithValue(context.Background(), deployYesKey{}, true))
+	cmd.Flags().String("confirm-project", "demo", "")
 	return cmd
 }
 

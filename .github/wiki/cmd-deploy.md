@@ -886,8 +886,13 @@ while the new containers ran, are lost.
 A database restore needs `deploy rollback <target> --yes` or a terminal confirmation first;
 without either, non-interactive use returns `E403` and nothing is changed. The ssh session that runs
 the restore has no stdin, and `backup restore` refuses bare `--yes` on production, so the rollback
-passes `--confirm-project` with the local `PROJECT_NAME`. The host checks it against its own
-`PROJECT_NAME` and refuses a mismatch. Promotion rollback restores the same way.
+passes `--confirm-project`. On a production-class target the operator types it:
+`nself deploy rollback <target> --yes --confirm-project <PROJECT_NAME>`. Without the flag the
+rollback returns `E403` before any host is opened; the name is never taken from the local config
+there. On other targets an empty flag falls back to the local `PROJECT_NAME`. The host checks the
+name against its own `PROJECT_NAME` and refuses a mismatch. A manual promotion rollback
+(`deploy rollback` or `deploy promote-env rollback`) follows the same rule; the automatic rollback
+after a failed promote still passes the local `PROJECT_NAME`.
 
 Rollback resolves SSH keys and server names only from the target environment's inventory;
 the remote path comes from the recorded tar.

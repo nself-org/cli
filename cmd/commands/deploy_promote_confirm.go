@@ -3,7 +3,9 @@ package commands
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	"github.com/nself-org/cli/internal/backup"
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/controlplane"
 	cpromote "github.com/nself-org/cli/internal/controlplane/promote"
@@ -13,6 +15,7 @@ import (
 
 type promoteRollbackYesKey struct{}
 type promoteRollbackDBDoneKey struct{}
+type rollbackConfirmProjectKey struct{}
 
 // Purpose: Carry rollback's explicit approval through the record-lock context.
 // Inputs: Command flags and context. Outputs: Context with --yes approval.
@@ -23,7 +26,31 @@ func withPromoteRollbackConfirmation(ctx context.Context, cmd *cobra.Command) co
 	if done, _ := cmd.Flags().GetBool("db-restore-done"); compat.V15() && done {
 		ctx = context.WithValue(ctx, promoteRollbackDBDoneKey{}, true)
 	}
+	project, _ := cmd.Flags().GetString("confirm-project")
+	ctx = context.WithValue(ctx, rollbackConfirmProjectKey{}, project)
 	return context.WithValue(ctx, promoteRollbackYesKey{}, yes)
+}
+
+// rollbackProject is the name a manual rollback passes to `backup restore
+// --confirm-project` (C2-01 review). typed is the operator's --confirm-project.
+// A production database restore needs it: --yes skips only the yes/no prompt,
+// and the name is never read from the local config there (the CLI matching its
+// own config against the host is not consent). Elsewhere an empty flag falls
+// back to the local PROJECT_NAME; an unreadable config fails a restore with
+// its real error. Promote's automatic rollback does not come through here.
+func rollbackProject(typed, workdir, target string, restore, prod bool) (string, error) {
+	if typed = strings.TrimSpace(typed); typed != "" {
+		return typed, nil
+	}
+	if restore && prod {
+		return "", errs.Newf("E403", "deploy rollback restoring the production database of %s requires --confirm-project <project>; --yes alone is not enough and nothing was changed", target).
+			WithFix(fmt.Sprintf("Run: nself deploy rollback %s --yes --confirm-project <project> (PROJECT_NAME on the target host)", target))
+	}
+	project, err := backup.RestoreProject(workdir)
+	if err != nil && restore {
+		return "", fmt.Errorf("deploy rollback: read PROJECT_NAME for the database restore: %w; nothing was changed", err)
+	}
+	return project, nil
 }
 
 // Purpose: Confirm a production database restore before opening target remotes.
