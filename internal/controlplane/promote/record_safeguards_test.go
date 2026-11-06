@@ -34,7 +34,7 @@ func TestPromoteRecordRecoverySafeguards(t *testing.T) {
 				t.Fatal(err)
 			}
 			persistRollbackFixture(t, root, rec)
-			err := RollbackRecord(context.Background(), root, rec, map[string]deploy.Remote{"primary": r}, map[string]string{"primary": path})
+			err := RollbackRecord(context.Background(), root, "demo", rec, map[string]deploy.Remote{"primary": r}, map[string]string{"primary": path})
 			if err == nil || !strings.Contains(err.Error(), "E485") {
 				t.Fatalf("%s refusal: %v calls=%v", refusal, err, r.calls)
 			}
@@ -59,7 +59,7 @@ func TestPromoteRecordInProgressRecovery(t *testing.T) {
 			if err := SaveRecord(root, *rec); err != nil {
 				t.Fatal(err)
 			}
-			err := RollbackRecord(context.Background(), root, rec, map[string]deploy.Remote{"primary": r}, map[string]string{"primary": "/srv/app"})
+			err := RollbackRecord(context.Background(), root, "demo", rec, map[string]deploy.Remote{"primary": r}, map[string]string{"primary": "/srv/app"})
 			if err == nil || !strings.Contains(err.Error(), "E485") || !strings.Contains(err.Error(), "backup-1") || len(r.calls) != 0 {
 				t.Fatalf("uncertain apply must refuse with backup id: err=%v calls=%v", err, r.calls)
 			}
@@ -74,7 +74,7 @@ func TestPromoteRecordChecksEveryHostBeforeRestore(t *testing.T) {
 		"one": "/srv/app/.nself/backups/pre-deploy-1.tar.gz", "two": "/srv/app/.nself/backups/pre-deploy-2.tar.gz"},
 		AppliedManifestHash: map[string]string{"one": ManifestHash(nil), "two": ManifestHash([]byte("changed"))}}
 	persistRollbackFixture(t, root, rec)
-	err := RollbackRecord(context.Background(), root, rec,
+	err := RollbackRecord(context.Background(), root, "demo", rec,
 		map[string]deploy.Remote{"one": one, "two": two}, map[string]string{"one": "/srv/app", "two": "/srv/app"})
 	if err == nil || !strings.Contains(err.Error(), "E485") {
 		t.Fatalf("identity mismatch: %v", err)
@@ -96,7 +96,7 @@ func TestPromoteRecordInProgressAppliedRecovery(t *testing.T) {
 			rec := &Record{Status: "in_progress", BackupID: "backup-1", BackupHost: "primary", MigrateStarted: migrated,
 				PreDeployTar: map[string]string{"primary": "/srv/app/.nself/backups/pre-deploy-1.tar.gz"}}
 			persistRollbackFixture(t, root, rec)
-			if err := RollbackRecord(context.Background(), root, rec, map[string]deploy.Remote{"primary": r}, map[string]string{"primary": "/srv/app"}); err != nil {
+			if err := RollbackRecord(context.Background(), root, "demo", rec, map[string]deploy.Remote{"primary": r}, map[string]string{"primary": "/srv/app"}); err != nil {
 				t.Fatal(err)
 			}
 			if restored := strings.Contains(strings.Join(r.calls, "\n"), "backup restore"); restored != migrated {

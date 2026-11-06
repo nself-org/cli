@@ -57,7 +57,7 @@ func preparePromoteEngine(cmd *cobra.Command, workdir, source, target string, dr
 	}
 	source, target = sourceName, targetName
 	sourceEnv, targetEnv := inv.Environments[source], inv.Environments[target]
-	st := &cpromote.State{Source: source, Target: target, SourceTier: sourceEnv.Tier, TargetTier: targetEnv.Tier, DryRun: dryRun, Values: map[string]any{}}
+	st := &cpromote.State{Project: restoreProjectName(workdir), Source: source, Target: target, SourceTier: sourceEnv.Tier, TargetTier: targetEnv.Tier, DryRun: dryRun, Values: map[string]any{}}
 	if err := cpromote.ValidateTiers(source, target, st.SourceTier, st.TargetTier); err != nil {
 		return cpromote.Engine{}, nil, err
 	}

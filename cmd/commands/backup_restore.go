@@ -3,7 +3,10 @@ package commands
 // Purpose: the "nself backup restore" and "nself backup restore-remote"
 // subcommands and their RunE. Inputs are the cobra command/args; outputs are
 // a restored database or an error.
-// Constraints: local database restores require confirmation before replacement.
+// Constraints: both subcommands replace the database and share one consent rule
+// (confirmBackupRestoreWith): a typed "yes" (or --yes) off production, the typed
+// project name on production, or --confirm-project <name> anywhere. Bare --yes
+// never authorizes a production restore.
 
 import (
 	"bufio"
@@ -36,6 +39,7 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 	pitr, _ := cmd.Flags().GetString("point-in-time")
 	decryptKey, _ := cmd.Flags().GetString("decrypt-key")
 	yes, _ := cmd.Flags().GetBool("yes")
+	confirmProject, _ := cmd.Flags().GetString("confirm-project")
 
 	var only []string
 	if onlyStr != "" {
@@ -47,7 +51,7 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 	if pitr != "" {
 		return fmt.Errorf("point-in-time restore is not available in this version; upgrade to v1.1.0 when released")
 	}
-	if err := confirmBackupRestore(cmd, cfg, yes); err != nil {
+	if err := confirmBackupRestoreWith(cmd, cfg, yes, confirmProject); err != nil {
 		return err
 	}
 
@@ -74,6 +78,20 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 // confirmBackupRestore reads operator consent before any database changes.
 // Production always requires the project name; --yes only skips the local prompt.
 func confirmBackupRestore(cmd *cobra.Command, cfg *config.Config, yes bool) error {
+	return confirmBackupRestoreWith(cmd, cfg, yes, "")
+}
+
+// confirmBackupRestoreWith adds the non-interactive proof: --confirm-project
+// must equal the project name, and then no prompt is read. It is how deploy
+// rollback and promote rollback restore over ssh, where stdin is empty, after
+// their own operator confirmation. A wrong name is refused everywhere.
+func confirmBackupRestoreWith(cmd *cobra.Command, cfg *config.Config, yes bool, confirmProject string) error {
+	if confirmProject != "" {
+		if cfg.ProjectName == "" || confirmProject != cfg.ProjectName {
+			return fmt.Errorf("restore confirmation failed: --confirm-project %q does not match project %q", confirmProject, cfg.ProjectName)
+		}
+		return nil
+	}
 	if !cfg.IsProduction() && yes {
 		return nil
 	}
@@ -110,6 +128,12 @@ The pipeline runs three concurrent stages:
 
   rclone cat <from> | age --decrypt | pg_restore
 
+pg_restore runs inside the postgres container and loads a scratch database,
+which replaces the live database only after the restore succeeds; a failed
+restore leaves the live database untouched. Confirmation follows the same rule
+as "nself backup restore": a typed "yes" (or --yes) off production, the typed
+project name on production, or --confirm-project <name>.
+
 Examples:
 
   nself backup restore-remote --from s3:bucket/backup.sql.age --key ~/.age/key.txt
@@ -126,11 +150,9 @@ func runBackupRestoreRemote(cmd *cobra.Command, _ []string) error {
 	from, _ := cmd.Flags().GetString("from")
 	keyPath, _ := cmd.Flags().GetString("key")
 	yes, _ := cmd.Flags().GetBool("yes")
-
-	if cfg.IsProduction() && !yes {
-		if err := requireProductionConfirmation(cfg.ProjectName); err != nil {
-			return err
-		}
+	confirmProject, _ := cmd.Flags().GetString("confirm-project")
+	if err := confirmBackupRestoreWith(cmd, cfg, yes, confirmProject); err != nil {
+		return err
 	}
 
 	if err := backup.RestoreFromRemote(cmd.Context(), cfg, from, keyPath); err != nil {

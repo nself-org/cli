@@ -10,6 +10,9 @@ import "github.com/nself-org/cli/internal/controlplane"
 // Outputs: Engine.Run copies public outcome fields into Result.
 // Constraints: Values is opaque wiring state; this package does not interpret it.
 type State struct {
+	// Project is the nSelf project name a database undo passes to
+	// `backup restore --confirm-project`; command wiring sets it.
+	Project               string
 	Source                string
 	Target                string
 	SourceTier            controlplane.Tier

@@ -5,7 +5,10 @@ package commands
 //          It restores the pre-deploy tar of every host the record names, the
 //          fronting stack's nginx/sites from the recorded front tar (D-0425), and
 //          the database backup on backup_host only.
-// Constraints: unchanged behaviour for a record without front fields.
+// Constraints: unchanged behaviour for a record without front fields. A database
+//          restore needs --yes or a terminal confirmation first, then runs on the
+//          host with --confirm-project <PROJECT_NAME> (C2-01): the ssh run has no
+//          stdin, so the remote cannot prompt.
 
 import (
 	"fmt"
@@ -16,6 +19,7 @@ import (
 
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/deploy"
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 
 	"github.com/spf13/cobra"
@@ -58,9 +62,15 @@ func rollbackRemoteV15(cmd *cobra.Command, workdir, target string) (bool, error)
 			return true, fmt.Errorf("deploy rollback: the recorded tar %q for %s is not a pre-deploy tar; nothing was changed", tars[host], host)
 		}
 	}
+	project := restoreProjectName(workdir)
 	manualDB := st.BackupID != "" && tars[st.BackupHost] == ""
 	if manualDB {
-		fmt.Printf("  [warn] database backup %s was not restored: %s kept no changes of this deploy. If the database must go back, run on %s: nself backup restore %s --yes\n", st.BackupID, st.BackupHost, st.BackupHost, st.BackupID)
+		fmt.Printf("  [warn] database backup %s was not restored: %s kept no changes of this deploy. If the database must go back, run on %s: %s\n", st.BackupID, st.BackupHost, st.BackupHost, deploy.BackupRestoreHint(st.BackupID, project))
+	}
+	yes, _ := cmd.Flags().GetBool("yes") // the flag of deploy rollback; tests carry it in ctx
+	if st.BackupID != "" && !manualDB && st.DBRestoredAt == "" && !yes && !deployYes(ctx) &&
+		!deployConfirmPrompt(ctx, fmt.Sprintf("Restore database backup %s for production target %s", st.BackupID, target)) {
+		return true, errs.New("E403", "deploy rollback restoring a production-class database requires --yes or terminal confirmation; nothing was changed")
 	}
 	var failed []string
 	for _, host := range hosts {
@@ -84,7 +94,7 @@ func rollbackRemoteV15(cmd *cobra.Command, workdir, target string) (bool, error)
 				backupID = st.BackupID
 			}
 			err = deploy.RollbackRemote(ctx, deploy.RollbackOptions{
-				Remote: r, RemotePath: srv.RemotePath, Tar: tar, BackupID: backupID,
+				Remote: r, RemotePath: srv.RemotePath, Tar: tar, BackupID: backupID, ProjectName: project,
 				Changed: st.PreDeployChanged[host], Absent: st.PreDeployAbsent[host],
 				FrontTar: st.FrontTars[host], FrontChanged: st.FrontChanged[host], FrontAbsent: st.FrontAbsent[host],
 				DBRestored: st.DBRestoredAt != "", StrictHasura: hasuraStrictFor(workdir, target),

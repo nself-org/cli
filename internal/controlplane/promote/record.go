@@ -144,7 +144,8 @@ func recordHasRestoreLists(rec *Record) bool {
 }
 
 // RollbackRecord re-applies every saved stack before restoring the migrated DB.
-func RollbackRecord(ctx context.Context, projectRoot string, rec *Record, remotes map[string]deploy.Remote, remotePaths map[string]string) error {
+// project is passed to `backup restore --confirm-project` for that restore.
+func RollbackRecord(ctx context.Context, projectRoot, project string, rec *Record, remotes map[string]deploy.Remote, remotePaths map[string]string) error {
 	if rec == nil {
 		return fmt.Errorf("no promotion record")
 	}
@@ -233,7 +234,7 @@ func RollbackRecord(ctx context.Context, projectRoot string, rec *Record, remote
 		}
 	}
 	if restoreDB {
-		if err := RestoreDatabase(recoveryCtx, remotes[backupKey], rec.RemotePaths[backupKey], rec.SnapshotTag, rec.BackupID, &rec.RecoveryPhase, &rec.DBRestoredAt, func() error { return SaveRecord(projectRoot, *rec) }); err != nil {
+		if err := RestoreDatabase(recoveryCtx, remotes[backupKey], rec.RemotePaths[backupKey], project, rec.SnapshotTag, rec.BackupID, &rec.RecoveryPhase, &rec.DBRestoredAt, func() error { return SaveRecord(projectRoot, *rec) }); err != nil {
 			return err
 		}
 	}

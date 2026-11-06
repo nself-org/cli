@@ -114,7 +114,7 @@ func TestSimPromoteReleaseVerify(t *testing.T) {
 	// and the digest check at the compare step; later steps touch the host.
 	run := func(f *relFixture, comparedDigest string) error {
 		var manifest *verify.Manifest
-		state := &promote.State{Source: "ls", Target: "prodsim", TargetTier: controlplane.TierProd, Values: map[string]any{}}
+		state := &promote.State{Project: "demo", Source: "ls", Target: "prodsim", TargetTier: controlplane.TierProd, Values: map[string]any{}}
 		steps := make([]promote.Step, 0, len(promote.StepNames))
 		for _, name := range promote.StepNames {
 			steps = append(steps, promote.Step{Name: name})

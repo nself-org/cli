@@ -49,7 +49,7 @@ func TestPromoteRecordDeployIdentity(t *testing.T) {
 				t.Fatal(err)
 			}
 			r := &recordRemote{label: "primary"}
-			if err := RollbackRecord(context.Background(), root, got, map[string]deploy.Remote{"primary": r}, map[string]string{"primary": "/srv/app"}); err != nil {
+			if err := RollbackRecord(context.Background(), root, "demo", got, map[string]deploy.Remote{"primary": r}, map[string]string{"primary": "/srv/app"}); err != nil {
 				t.Fatal(err)
 			}
 			if !strings.Contains(strings.Join(r.calls, "\n"), "backup restore 'backup-1'") {
