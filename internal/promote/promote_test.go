@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/nself-org/cli/internal/backup"
 )
 
 // writePromotionRecord creates a promotion record JSON file in <dir>/.nself/promotions/.
@@ -53,7 +55,8 @@ func TestRollback_WithPriorPromoteTag(t *testing.T) {
 	// but the error must not be "no promotion records found" or
 	// "no promotion backup tags found" — those are tag-lookup errors, not
 	// restore errors.
-	err := Rollback(context.Background(), tmp, "")
+	withBackups(t, nil, nil)
+	err := RollbackProject(context.Background(), tmp, "demo", "")
 	if err == nil {
 		// If somehow it passed (e.g., nself binary is in PATH and stub works),
 		// that is also acceptable.
@@ -77,7 +80,7 @@ func TestRollback_NoHistory(t *testing.T) {
 	tmp := t.TempDir()
 	// No .nself/promotions directory or records written.
 
-	err := Rollback(context.Background(), tmp, "")
+	err := RollbackProject(context.Background(), tmp, "demo", "")
 	if err == nil {
 		t.Fatal("expected error for no promotion history, got nil")
 	}
@@ -130,5 +133,65 @@ func TestFindLatestPromoteBackup_EmptyDirectory(t *testing.T) {
 	_, err := findLatestPromoteBackup(tmp)
 	if err == nil {
 		t.Fatal("expected error for empty promotions directory, got nil")
+	}
+}
+
+// withBackups swaps the seams: entries are the backup list, calls records argv.
+func withBackups(t *testing.T, entries []backup.BackupEntry, calls *[][]string) {
+	t.Helper()
+	oldList, oldRun := listBackups, runNself
+	t.Cleanup(func() { listBackups, runNself = oldList, oldRun })
+	listBackups = func(string) ([]backup.BackupEntry, error) { return entries, nil }
+	runNself = func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		if calls != nil {
+			*calls = append(*calls, args)
+		}
+		return nil, nil
+	}
+}
+
+func TestRollbackResolvesTagToBackupID(t *testing.T) {
+	now := time.Now()
+	var calls [][]string
+	withBackups(t, []backup.BackupEntry{
+		{ID: "demo_full_20261106_120000", Date: now},
+		{ID: "demo_full_20261105_120000_pre-promote-prod-1", Tag: "pre-promote-prod-1", Date: now.Add(-24 * time.Hour)},
+	}, &calls)
+	if err := RollbackProject(context.Background(), t.TempDir(), "demo", "pre-promote-prod-1"); err != nil {
+		t.Fatalf("rollback: %v", err)
+	}
+	want := []string{"backup", "restore", "demo_full_20261105_120000_pre-promote-prod-1", "--yes", "--confirm-project", "demo"}
+	if len(calls) != 1 || strings.Join(calls[0], " ") != strings.Join(want, " ") {
+		t.Fatalf("argv = %v, want [%v]", calls, want)
+	}
+}
+
+func TestRollbackUnknownTagRestoresNothing(t *testing.T) {
+	var calls [][]string
+	withBackups(t, []backup.BackupEntry{{ID: "demo_full_20261106_120000", Date: time.Now()}}, &calls)
+	err := RollbackProject(context.Background(), t.TempDir(), "demo", "pre-promote-prod-9")
+	if err == nil || !strings.Contains(err.Error(), "pre-promote-prod-9") {
+		t.Fatalf("want error naming the tag, got %v", err)
+	}
+	if len(calls) != 0 {
+		t.Fatalf("runNself called: %v", calls)
+	}
+}
+
+func TestRollbackNeverPassesTagFlag(t *testing.T) {
+	var calls [][]string
+	withBackups(t, []backup.BackupEntry{{ID: "demo_full_20261105_120000_t", Tag: "t", Date: time.Now()}}, &calls)
+	if err := RollbackProject(context.Background(), t.TempDir(), "demo", "t"); err != nil {
+		t.Fatalf("rollback: %v", err)
+	}
+	for _, c := range calls {
+		for _, a := range c {
+			if a == "--tag" || strings.HasPrefix(a, "--tag=") {
+				t.Fatalf("argv contains --tag: %v", c)
+			}
+		}
+	}
+	if len(calls) == 0 {
+		t.Fatal("restore never ran")
 	}
 }

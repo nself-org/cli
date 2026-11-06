@@ -7,6 +7,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
+
+	"github.com/nself-org/cli/internal/backup"
+	"github.com/nself-org/cli/internal/config"
 )
 
 // DiffResult holds the comparison between two environments.
@@ -148,8 +151,37 @@ func Execute(ctx context.Context, projectDir, source, target, approveID string) 
 	return record, nil
 }
 
-// Rollback restores to the pre-promotion backup tag.
+// runNself runs the nself binary in dir; tests replace it to assert the argv.
+var runNself = func(ctx context.Context, dir string, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "nself", args...)
+	cmd.Dir = dir
+	return cmd.CombinedOutput()
+}
+
+// listBackups lists the project's backups, newest first; tests replace it.
+var listBackups = func(projectDir string) ([]backup.BackupEntry, error) {
+	cfg, err := config.Load(projectDir)
+	if err != nil {
+		return nil, err
+	}
+	return backup.List(cfg, backup.ListOptions{})
+}
+
+// Rollback keeps the v1.4 signature for callers that cannot name the project.
+// It always errors: a restore needs the project name, and it is never read from
+// the local config on production (cli#1083). Callers use RollbackProject.
 func Rollback(ctx context.Context, projectDir, backupTag string) error {
+	return RollbackProject(ctx, projectDir, "", backupTag)
+}
+
+// RollbackProject restores the newest backup whose tag equals backupTag (the
+// latest promote record's tag when empty) by running
+// `nself backup restore <id> --yes --confirm-project <project>`.
+// No backup carrying the tag is an error naming the tag; nothing is restored.
+func RollbackProject(ctx context.Context, projectDir, project, backupTag string) error {
+	if project == "" {
+		return fmt.Errorf("rollback needs the project name: pass it explicitly, it is not read from the local config")
+	}
 	if backupTag == "" {
 		// Find latest pre-promote backup
 		tag, err := findLatestPromoteBackup(projectDir)
@@ -158,11 +190,31 @@ func Rollback(ctx context.Context, projectDir, backupTag string) error {
 		}
 		backupTag = tag
 	}
-
-	cmd := exec.CommandContext(ctx, "nself", "backup", "restore", "--tag", backupTag)
-	out, err := cmd.CombinedOutput()
+	id, err := backupIDForTag(projectDir, backupTag)
+	if err != nil {
+		return err
+	}
+	out, err := runNself(ctx, projectDir, "backup", "restore", id, "--yes", "--confirm-project", project)
 	if err != nil {
 		return fmt.Errorf("restore failed: %s: %w", string(out), err)
 	}
 	return nil
+}
+
+// backupIDForTag returns the ID of the newest backup whose parsed tag is tag.
+func backupIDForTag(projectDir, tag string) (string, error) {
+	entries, err := listBackups(projectDir)
+	if err != nil {
+		return "", fmt.Errorf("list backups: %w", err)
+	}
+	var best *backup.BackupEntry
+	for i := range entries {
+		if entries[i].Tag == tag && (best == nil || entries[i].Date.After(best.Date)) {
+			best = &entries[i]
+		}
+	}
+	if best == nil {
+		return "", fmt.Errorf("no backup carries tag %q; nothing was restored", tag)
+	}
+	return best.ID, nil
 }
