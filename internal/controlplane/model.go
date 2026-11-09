@@ -63,6 +63,30 @@ type Server struct {
 	Upstreams []string `yaml:"upstreams,omitempty" json:"upstreams,omitempty"`
 }
 
+// MaskRule describes a column-level masking operation applied during data
+// seeding or refresh. Rule must be one of: null, hash, fake_email, fixed.
+type MaskRule struct {
+	// Table is the database table containing the column to mask.
+	Table string `yaml:"table" json:"table"`
+
+	// Column is the name of the column to mask.
+	Column string `yaml:"column" json:"column"`
+
+	// Rule is the masking strategy: null, hash, fake_email, or fixed.
+	Rule string `yaml:"rule" json:"rule"`
+}
+
+// DataPolicy controls how seed data is accepted and masked for an environment.
+// It is optional; when absent the defaults are derived from the tier.
+type DataPolicy struct {
+	// Accept specifies which data classes are permitted. Valid values are
+	// "seed" and "masked". Production environments must leave this empty.
+	Accept []string `yaml:"accept,omitempty" json:"accept,omitempty"`
+
+	// Mask lists the column-level masking rules to apply.
+	Mask []MaskRule `yaml:"mask,omitempty" json:"mask,omitempty"`
+}
+
 // Environment groups the servers that form a single deployment target.
 // Kind distinguishes local environments (no SSH needed) from remote ones.
 type Environment struct {
@@ -75,6 +99,9 @@ type Environment struct {
 	Kind                   string `yaml:"kind" json:"kind"`
 	Tier                   Tier   `yaml:"tier,omitempty" json:"tier,omitempty"`
 	RequireVerifiedRelease *bool  `yaml:"require_verified_release,omitempty" json:"require_verified_release,omitempty"`
+
+	// DataPolicy optionally restricts seed acceptance and defines mask rules.
+	DataPolicy *DataPolicy `yaml:"data_policy,omitempty" json:"data_policy,omitempty"`
 
 	// Servers is the ordered list of hosts in this environment.
 	Servers []Server `yaml:"servers" json:"servers"`
