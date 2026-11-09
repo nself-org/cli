@@ -8,6 +8,50 @@
       "additionalProperties": {
         "additionalProperties": false,
         "properties": {
+          "data_policy": {
+            "additionalProperties": false,
+            "properties": {
+              "accept": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "mask": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "column": {
+                      "type": "string"
+                    },
+                    "rule": {
+                      "type": "string"
+                    },
+                    "table": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "table",
+                    "column",
+                    "rule"
+                  ],
+                  "type": "object"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              }
+            },
+            "type": [
+              "null",
+              "object"
+            ]
+          },
           "kind": {
             "type": "string"
           },
