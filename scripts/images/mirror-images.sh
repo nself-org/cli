@@ -79,7 +79,13 @@ command -v docker >/dev/null 2>&1 || die "docker is required"
 
 # ---- auth (credentials only via stdin into a temp DOCKER_CONFIG) ------------
 # shellcheck disable=SC2329
-cleanup() { [ -n "$AUTH_DIR" ] && rm -rf "$AUTH_DIR" || true; [ -z "${AUTH_VOL:-}" ] || docker volume rm -f "$AUTH_VOL" >/dev/null 2>&1 || true; }
+# The helper container is removed first: while it exists it holds the auth
+# volume, and `docker volume rm` would fail and leave the credentials behind.
+cleanup() {
+  [ -n "$AUTH_DIR" ] && rm -rf "$AUTH_DIR" || true
+  [ -z "${_cid:-}" ] || docker rm -f "$_cid" >/dev/null 2>&1 || true
+  [ -z "${AUTH_VOL:-}" ] || docker volume rm -f "$AUTH_VOL" >/dev/null 2>&1 || true
+}
 trap 'cleanup' EXIT
 if [ -n "$OPT_AUTH_REGISTRY" ]; then
   [ -n "$OPT_AUTH_USER" ] || die "--auth-token-stdin needs --auth-user"
@@ -100,6 +106,7 @@ if [ -n "$OPT_AUTH_REGISTRY" ]; then
   _cid="$(docker create -v "$AUTH_VOL":/crane-auth "$CRANE_IMAGE")"
   docker cp "$AUTH_DIR/config.json" "$_cid":/crane-auth/config.json
   docker rm "$_cid" >/dev/null
+  _cid=""
   note "auth: using stdin token for $OPT_AUTH_REGISTRY (temp DOCKER_CONFIG, removed on exit)"
 fi
 
