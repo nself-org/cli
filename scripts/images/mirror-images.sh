@@ -79,7 +79,13 @@ command -v docker >/dev/null 2>&1 || die "docker is required"
 
 # ---- auth (credentials only via stdin into a temp DOCKER_CONFIG) ------------
 # shellcheck disable=SC2329
-cleanup() { [ -n "$AUTH_DIR" ] && rm -rf "$AUTH_DIR" || true; }
+# The helper container is removed first: while it exists it holds the auth
+# volume, and `docker volume rm` would fail and leave the credentials behind.
+cleanup() {
+  [ -n "$AUTH_DIR" ] && rm -rf "$AUTH_DIR" || true
+  [ -z "${_cid:-}" ] || docker rm -f "$_cid" >/dev/null 2>&1 || true
+  [ -z "${AUTH_VOL:-}" ] || docker volume rm -f "$AUTH_VOL" >/dev/null 2>&1 || true
+}
 trap 'cleanup' EXIT
 if [ -n "$OPT_AUTH_REGISTRY" ]; then
   [ -n "$OPT_AUTH_USER" ] || die "--auth-token-stdin needs --auth-user"
@@ -92,6 +98,15 @@ if [ -n "$OPT_AUTH_REGISTRY" ]; then
     "$(printf '%s:%s' "$OPT_AUTH_USER" "$token" | base64 | tr -d '\n')" \
     > "$AUTH_DIR/config.json"
   unset token
+  # P7-PROD-69: bind mounts are unavailable on remote or mount-less daemons (Colima
+  # without mounts); ship the config into a named volume through the docker API.
+  chmod 644 "$AUTH_DIR/config.json"
+  AUTH_VOL="mirror-auth-$$"
+  docker volume create "$AUTH_VOL" >/dev/null
+  _cid="$(docker create -v "$AUTH_VOL":/crane-auth "$CRANE_IMAGE")"
+  docker cp "$AUTH_DIR/config.json" "$_cid":/crane-auth/config.json
+  docker rm "$_cid" >/dev/null
+  _cid=""
   note "auth: using stdin token for $OPT_AUTH_REGISTRY (temp DOCKER_CONFIG, removed on exit)"
 fi
 
@@ -102,7 +117,7 @@ crane_run() {
   local -a args=(run --rm --entrypoint "$CRANE_ENTRYPOINT")
   [ -n "$OPT_NETWORK" ] && args+=(--network "$OPT_NETWORK")
   if [ -n "$AUTH_DIR" ]; then
-    args+=(-v "$AUTH_DIR":/crane-auth:ro -e DOCKER_CONFIG=/crane-auth)
+    args+=(-v "$AUTH_VOL":/crane-auth:ro -e DOCKER_CONFIG=/crane-auth)
   fi
   args+=("$CRANE_IMAGE" "$@")
   [ "$OPT_INSECURE" = 1 ] && args+=(--insecure)
