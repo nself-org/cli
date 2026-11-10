@@ -1,0 +1,15 @@
+# Captured from scripts/release-create.sh at origin/main 72e2f6939 with a stub gh
+# on PATH: tag v1.0.0 one commit behind HEAD, empty dist/, license-audit success, milestone closed.
+# args: v9.9.9 --draft
+== exit
+1
+== stdout
+[release-create] evaluating denylist for tag: v9.9.9
+== stderr
+[release-create] FAIL: denylist: 2 rule(s) triggered
+  - DENY-001 signature-check
+  - DENY-002 missing-sbom
+[release-create] FAIL: release blocked. Re-run with --skip-denylist + justification to override.
+== gh
+gh run list --workflow license-audit.yml --branch main --limit 1 --json conclusion -q .[0].conclusion
+gh api repos/{owner}/{repo}/milestones?state=closed --jq .[] | select(.title=="v9.9.9") | .state

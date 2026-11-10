@@ -6,7 +6,7 @@
   "last_updated": "2026-05-13",
   "enforcement": {
     "tag_guard_workflow": ".github/workflows/pre-release-gate.yml",
-    "wrapper_script": "scripts/release-create.sh",
+    "wrapper_script": "tools/releasectl (go run ./tools/releasectl create)",
     "retract_script": "scripts/release-retract.sh",
     "audit_log": "audit/release-overrides.log"
   },

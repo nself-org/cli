@@ -1,0 +1,61 @@
+# Captured from scripts/release/release.sh at origin/main 72e2f6939 through the
+# scripts/release/fixtures harness (mk_env 0; run_plain). @TMP@ is $TMPDIR.
+# args: --plan --version 9.9.9
+== exit
+0
+== stdout
+S1 preflight cli gh auth status
+S1 preflight cli gh repo clone nself-org/cli @TMP@/nself-release-9.9.9/cli
+S1 preflight admin gh repo clone nself-org/admin @TMP@/nself-release-9.9.9/admin
+S1 preflight homebrew-nself gh repo clone nself-org/homebrew-nself @TMP@/nself-release-9.9.9/homebrew-nself
+S2 admin-lockstep admin scripts/bump-version.sh 9.9.9 (cwd @TMP@/nself-release-9.9.9/cli; edits admin package.json, src/lib/cli-version.ts, Dockerfile)
+S2 admin-lockstep admin git -C @TMP@/nself-release-9.9.9/admin checkout -b release/v9.9.9-lockstep; git commit; git push origin release/v9.9.9-lockstep
+S2 admin-lockstep admin gh pr create -R nself-org/admin --base main --head release/v9.9.9-lockstep
+S2 admin-lockstep admin gh pr checks N -R nself-org/admin --required (polled, 45 min budget)
+S2 admin-lockstep admin scripts/admin-merge.sh --repo nself-org/admin --pr N
+S3 cli-version cli scripts/bump-version.sh 9.9.9 (cwd @TMP@/nself-release-9.9.9/cli; also regenerates the 4 version-hash goldens: UPDATE_GOLDEN=1 go test ./internal/build ./cmd/commands, then re-runs them plain)
+S3 cli-version cli go run -mod=vendor ./tools/facts && go run -mod=vendor ./tools/facts -readme README.md (facts regeneration, only when tools/facts exists)
+S3 cli-version cli git -C @TMP@/nself-release-9.9.9/cli checkout -b release/v9.9.9; git commit; git push origin release/v9.9.9; gh pr create -R nself-org/cli --base main --head release/v9.9.9
+S3 cli-version cli gh pr checks N -R nself-org/cli --required (polled, 45 min budget)
+S3 cli-version cli scripts/admin-merge.sh --repo nself-org/cli --pr N
+S4 tag cli gh pr list -R nself-org/cli --head release/v9.9.9 --state merged --json mergeCommit (the S3 merge commit)
+S4 tag cli git -C @TMP@/nself-release-9.9.9/cli fetch --tags origin main; tag origin/main, or the merge commit when main has moved on but still contains it; its .github/VERSION must be 9.9.9
+S4 tag cli git -C @TMP@/nself-release-9.9.9/cli rev-list --count PRIOR_TAG..SHA (DENY-003: more than 0 commits since the prior tag)
+S4 tag cli gh run list -R nself-org/cli --workflow license-audit.yml --branch main --limit 1 (DENY-004: waits up to 30 min while running; success required)
+S4 tag cli gh run list -R nself-org/cli --workflow license-audit.yml --limit 1 (DENY-004 as pre-release-gate.yml reads it: any branch)
+S4 tag cli gh api repos/nself-org/cli/milestones?state=all&per_page=100 --paginate (DENY-005: exactly one milestone titled v9.9.9, and it is closed)
+S4 tag cli git -C @TMP@/nself-release-9.9.9/cli tag -a v9.9.9 -m v9.9.9 SHA && git -C @TMP@/nself-release-9.9.9/cli push origin refs/tags/v9.9.9
+S5 build-wait cli gh run list -R nself-org/cli --workflow release.yml --branch v9.9.9 (the run whose headSha is the tag commit)
+S5 build-wait cli gh run view RUN_ID -R nself-org/cli --json jobs (wait for the build job)
+S5 build-wait cli gh run download RUN_ID -R nself-org/cli -n release-checksums -D @TMP@/nself-release-9.9.9/checksums
+S6 homebrew-formula cli gh run view RUN_ID -R nself-org/cli --json jobs (wait until every job except Homebrew lockstep and Sign and publish succeeded)
+S6 homebrew-formula homebrew-nself bash .github/scripts/update-formula.sh --version v9.9.9 --checksums-file @TMP@/nself-release-9.9.9/checksums/checksums.txt (cwd @TMP@/nself-release-9.9.9/homebrew-nself; writes on_arm and on_intel; the published checksums win once the release exists)
+S6 homebrew-formula homebrew-nself git checkout -B release/nself-v9.9.9-ARM8; git commit; git push origin release/nself-v9.9.9-ARM8; gh pr create -R nself-org/homebrew-nself --base main --head release/nself-v9.9.9-ARM8
+S6 homebrew-formula homebrew-nself gh pr checks N -R nself-org/homebrew-nself --required (polled, 45 min budget)
+S6 homebrew-formula homebrew-nself scripts/admin-merge.sh --repo nself-org/homebrew-nself --pr N
+S6 homebrew-formula cli gh run rerun RUN_ID -R nself-org/cli --failed (the verify-homebrew-lockstep job)
+S7 release-wait cli gh run view RUN_ID -R nself-org/cli --json status,conclusion (wait for success); gh release view v9.9.9 -R nself-org/cli --json assets
+S7 release-wait cli gh release download v9.9.9 -R nself-org/cli -p checksums.txt; compare its darwin lines with on_arm/on_intel of Formula/nself.rb on homebrew-nself main
+S7 release-wait web node org/scripts/sources/update-lock.mjs cli v9.9.9 (fresh web clone); gh pr create -R nself-org/web --head release/cli-v9.9.9 (owner merges; no deploy)
+S8 docker-verify cli curl -fsS https://hub.docker.com/v2/repositories/nself/nself/tags/9.9.9 (need linux/amd64 and linux/arm64)
+S8 docker-verify cli gh run list -R nself-org/cli --workflow docker-publish.yml (wait about 3 min for the run the Release starts, then for it to finish)
+S8 docker-verify cli gh workflow run docker-publish.yml -R nself-org/cli -f version=9.9.9 (once, only if no run publishes the tag), then wait and re-check
+S9 admin-image admin gh pr list -R nself-org/admin --head release/v9.9.9-lockstep --state merged --json mergeCommit (the S2 merge commit)
+S9 admin-image admin git -C @TMP@/nself-release-9.9.9/admin tag -a v9.9.9 -m v9.9.9 SHA && git -C @TMP@/nself-release-9.9.9/admin push origin refs/tags/v9.9.9 (admin's docker-publish.yml starts on a v* tag; hygiene's release-tag-drift check needs the tag)
+S9 admin-image admin gh run list -R nself-org/admin --workflow docker-publish.yml (wait about 3 min for the tag-push run, then for it to finish)
+S9 admin-image admin gh workflow run docker-publish.yml -R nself-org/admin -f version=9.9.9 (only if no run publishes the tag)
+S9 admin-image admin curl -fsS https://hub.docker.com/v2/repositories/nself/nself-admin/tags/9.9.9 (need linux/amd64 and linux/arm64)
+S10 sdk-publish cli manual: sdk-manual-publish.yml has no workflow_dispatch; publish it by hand
+S10 sdk-publish cli gh workflow run sdk-publish-go.yml -R nself-org/cli --ref v9.9.9 -f version=9.9.9 (skipped when a run on v9.9.9 already succeeded)
+S10 sdk-publish cli gh workflow run sdk-py-publish.yml -R nself-org/cli --ref v9.9.9 (skipped when a run on v9.9.9 already succeeded)
+S10 sdk-publish cli gh workflow run sdk-ts-publish.yml -R nself-org/cli --ref v9.9.9 (skipped when a run on v9.9.9 already succeeded)
+== stderr
+release: plan for v9.9.9 from S1 (read-only: gh api GETs only)
+== gh
+gh api repos/nself-org/cli/releases/latest --jq .tag_name
+gh api repos/nself-org/cli/git/ref/tags/v9.9.9
+gh api repos/nself-org/cli/contents/.github/workflows?ref=main --jq .[].name
+gh api -H Accept: application/vnd.github.raw repos/nself-org/cli/contents/.github/workflows/sdk-manual-publish.yml?ref=main
+gh api -H Accept: application/vnd.github.raw repos/nself-org/cli/contents/.github/workflows/sdk-publish-go.yml?ref=main
+gh api -H Accept: application/vnd.github.raw repos/nself-org/cli/contents/.github/workflows/sdk-py-publish.yml?ref=main
+gh api -H Accept: application/vnd.github.raw repos/nself-org/cli/contents/.github/workflows/sdk-ts-publish.yml?ref=main
