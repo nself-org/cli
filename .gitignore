@@ -112,3 +112,6 @@ backend/docker-compose.yml
 backend/docker-compose.override.yml
 *.generated.env
 **/*.gen.yml
+
+# tools/regen build artifact (scripts/sport/generate-f02.sh builds it; never commit)
+/bin/cmdinventory
