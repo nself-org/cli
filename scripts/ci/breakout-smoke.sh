@@ -11,7 +11,8 @@
 # Outputs: one "ok" line per assertion on stdout; failures on stderr.
 #          Exit 0 only when every assertion held; 1 on a failed assertion; 2 on a
 #          usage error or a missing tool; also 1 when the fixture server never answers.
-# Constraints: bash 3.2 compatible; needs jq, python3 and curl; touches no network beyond
+# Constraints: bash 3.2 compatible; needs jq, python3 and curl; go is optional and only
+#          reads each binary's pflag version for step 1; touches no network beyond
 #          127.0.0.1 (the fixture catalogue server) and never a production key;
 #          every process gets a clean HOME and project directory under $TMPDIR,
 #          removed on exit. Each E404 case also asserts its cause text, so a dead
@@ -22,7 +23,9 @@
 #          pinned key id is refused with E121.
 #          Step 1 compares help byte for byte, except when the two binaries carry
 #          different spf13/pflag versions (go version -m): then pflag's bool-flag
-#          rendering is normalised on both sides (see norm_help).
+#          rendering is normalised on both sides (see norm_help). Without go, or
+#          when a binary has no Go build info, step 1 stays byte for byte and says so
+#          on stderr.
 set -euo pipefail
 
 die() { echo "breakout-smoke: $*" >&2; exit 2; }
@@ -73,8 +76,13 @@ installed_home() {
   echo "$h"
 }
 
-# pflag_version BIN: the spf13/pflag version recorded in the binary's build info (empty if unknown).
-pflag_version() { go version -m "$1" 2>/dev/null | awk '$1 == "dep" && $2 == "github.com/spf13/pflag" { print $3; exit }'; }
+# pflag_version BIN: the spf13/pflag version recorded in the binary's build info. Prints
+# nothing and still succeeds when go is missing, BIN is not a Go binary (a wrapper script,
+# say) or it carries no pflag, so set -e never aborts the run here.
+pflag_version() {
+  command -v go >/dev/null 2>&1 || return 0
+  go version -m "$1" 2>/dev/null | awk '$1 == "dep" && $2 == "github.com/spf13/pflag" { print $3; exit }' || true
+}
 
 # A pflag bump re-renders every bool flag in --help ("--json" becomes "--json[=true|false]"
 # since pflag 1.1.0) and re-aligns the flag column. That is a library formatting change,
@@ -83,8 +91,12 @@ pflag_version() { go version -m "$1" 2>/dev/null | awk '$1 == "dep" && $2 == "gi
 # equal or unknown versions the comparison stays byte-for-byte.
 PFLAG_HEAD="$(pflag_version "$HEAD_BIN")"; PFLAG_BASE="$(pflag_version "$BASE_BIN")"
 NORM_HELP=0
-if [ -n "$PFLAG_HEAD" ] && [ -n "$PFLAG_BASE" ] && [ "$PFLAG_HEAD" != "$PFLAG_BASE" ]; then
+SAME_AS="byte-identical to"
+if [ -z "$PFLAG_HEAD" ] || [ -z "$PFLAG_BASE" ]; then
+  echo "breakout-smoke: note: pflag version unknown (base '${PFLAG_BASE:-?}', head '${PFLAG_HEAD:-?}'; go missing or no Go build info): step 1 compares help byte for byte" >&2
+elif [ "$PFLAG_HEAD" != "$PFLAG_BASE" ]; then
   NORM_HELP=1
+  SAME_AS="identical after pflag normalisation to"
   echo "note pflag $PFLAG_BASE -> $PFLAG_HEAD: step 1 ignores pflag's bool-flag help rendering"
 fi
 norm_help() { # <text>: prints it as is, or without pflag's bool bracket and column padding
@@ -97,7 +109,7 @@ for c in "ci --help" "runner --help" "functions --help" "server --help" "plugin 
   home="$(fresh_home)"; run "$BASE_BIN" "$home" 0 $c; b_rc=$RC; b_out="$(norm_help "$OUT")"; b_err="$(norm_help "$ERR")"
   home="$(fresh_home)"; run "$HEAD_BIN" "$home" 0 $c
   if [ "$RC" = "$b_rc" ] && [ "$(norm_help "$OUT")" = "$b_out" ] && [ "$(norm_help "$ERR")" = "$b_err" ]; then
-    ok "v1.4 'nself $c' is byte-identical to the base binary (exit $RC)"
+    ok "v1.4 'nself $c' is $SAME_AS the base binary (exit $RC)"
   else
     fail "v1.4 'nself $c' differs from the base binary (exit $b_rc -> $RC)"
   fi
