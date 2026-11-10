@@ -196,7 +196,9 @@ run_nself gate 1 build --json
 [ "$(tree gate)" = "$G0" ] || fail "the refused build wrote"
 ok "NSELF_V15=0 in env files cannot switch the gate off"
 
-# A first build generates secrets: --plan-id is refused (E451), --yes applies.
+# A first build generates secrets. P7-SHIP-02 binds that render to a fixed-seed
+# plan id, so --plan-id applies (rc=0, .env.secrets persisted); E451 stays for a
+# generating render whose shape the seed cannot reproduce. A wrong id is E450.
 mkproj fresh prod-ssl
 python3 - "$WORK/fresh/project/.env" <<'PY'
 import sys
@@ -207,13 +209,16 @@ PY
 run_nself fresh 1 build --plan --json
 [ "$(jget '".env.secrets" in [a["path"] for a in d["artifacts"]]')" = True ] || fail ".env.secrets is not a planned artifact"
 FID="$(jget 'd["plan_id"]')"
+run_nself fresh 1 build --plan --json
+[ "$(jget 'd["plan_id"]')" = "$FID" ] || fail "the plan id of a secrets-generating render is not stable across two plans"
 F0="$(tree fresh)"
-run_nself fresh 1 build --yes --plan-id "$FID" --json
-[ "$RC" = 1 ] && [ "$(errcode)" = E451 ] || fail "generated secrets with --plan-id: rc=$RC code=$(errcode)"
-[ "$(tree fresh)" = "$F0" ] || fail "the E451 build wrote"
-run_nself fresh 1 build --yes
-[ "$RC" = 0 ] && [ -f "$WORK/fresh/project/.env.secrets" ] || fail "the first build did not persist secrets"
-ok "first build: planned .env.secrets, --plan-id refused (E451), --yes applies"
+run_nself fresh 1 build --yes --plan-id "0000000000000000000000000000000000000000000000000000000000000000" --json
+[ "$RC" = 1 ] && [ "$(errcode)" = E450 ] || fail "generated secrets with a wrong --plan-id: rc=$RC code=$(errcode)"
+[ "$(tree fresh)" = "$F0" ] || fail "the E450 build wrote"
+run_nself fresh 1 build --yes --plan-id "$FID"
+[ "$RC" = 0 ] || fail "generated secrets with the bound --plan-id: rc=$RC: $(cat "$WORK/err")"
+[ -f "$WORK/fresh/project/.env.secrets" ] || fail "the bound --plan-id build did not persist secrets"
+ok "first build: planned .env.secrets, plan id stable, wrong id refused (E450), bound --plan-id applies"
 
 # A plugin compose fragment edited after the plan is E450. The build writes the
 # rewritten fragment to the project overlay (.nself/plugins/<name>/, D-0318), so
