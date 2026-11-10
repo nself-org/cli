@@ -47,7 +47,7 @@ func Validate(m *Manifest) error {
 	if !in(Maturities, m.Maturity) {
 		return invalidf("maturity", "must be one of %s, got %q", strings.Join(Maturities, ", "), m.Maturity)
 	}
-	for _, check := range []func(*Manifest) error{validateService, validateShared, validateBlocks, validateDeprecation, validateCommands} {
+	for _, check := range []func(*Manifest) error{validateService, validateShared, validateBlocks, validateDeprecation, validateCommands, validateBundle} {
 		if err := check(m); err != nil {
 			return err
 		}
