@@ -105,8 +105,7 @@ commands:
   # cmd/commands/db_pgbouncer.go:23 RunE path changes no persistent state (prints/reads only)
   db pgbouncer: {side_effect: read}
   # cmd/commands/db_pgbouncer.go:108 RunE path changes no persistent state (prints/reads only)
-  # surface cli-only: prints a connection URL that carries the database password; secret output stays on the terminal
-  db pgbouncer connection-url: {side_effect: read, surface: cli-only}
+  db pgbouncer connection-url: {side_effect: read, surface: cli-only, exempt_reason: "prints a connection URL that carries the database password; secret output stays on the terminal"}
   db pgbouncer generate: {side_effect: write}
   db pgbouncer status: {side_effect: read}
   # cmd/commands/db_pitr.go:19 RunE path changes no persistent state (prints/reads only)

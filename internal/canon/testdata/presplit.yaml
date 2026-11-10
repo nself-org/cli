@@ -57,7 +57,7 @@ commands:
   backup pitr base-backup: {side_effect: write}
   backup pitr disable: {side_effect: write}
   backup pitr enable: {side_effect: write}
-  backup pitr restore: {side_effect: destructive, surface: cli-only}
+  backup pitr restore: {side_effect: destructive}
   backup pitr status: {side_effect: read}
   backup prune: {side_effect: destructive, json: legacy, confirm: {flags: []}}
   backup restore: {side_effect: destructive, confirm: {flags: [yes]}, flags: {confirm-project: {cli_only: true}}}
@@ -94,7 +94,7 @@ commands:
   # cmd/commands/config.go:22 RunE path changes no persistent state (prints/reads only)
   config: {canon: core, side_effect: read, flags: {reveal: {cli_only: true}}}
   # cmd/commands/config_export_import.go:22 writes to stdout by default; --output escalates to write
-  config export: {side_effect: read, surface: cli-only, flags: {output: {side_effect: write}}}
+  config export: {side_effect: read, surface: cli-only, flags: {output: {side_effect: write}}, exempt_reason: "prints exported config including secrets; output stays on the terminal"}
   # cmd/commands/feature.go:48 RunE path changes no persistent state (prints/reads only)
   config features: {side_effect: read}
   config features disable: {side_effect: write}
@@ -158,7 +158,7 @@ commands:
   db migrate baseline: {side_effect: write}
   db migrate create: {side_effect: write}
   # cmd/commands/db_migrate.go:87 rolls a migration back; dropped objects and data are not restorable by a command
-  db migrate down: {side_effect: destructive, surface: cli-only}
+  db migrate down: {side_effect: destructive}
   db migrate idempotent: {side_effect: write}
   # cmd/commands/db_migrate_lint.go:45 RunE path changes no persistent state (prints/reads only)
   db migrate lint: {side_effect: read}
@@ -169,13 +169,13 @@ commands:
   # cmd/commands/db_pgbouncer.go:23 RunE path changes no persistent state (prints/reads only)
   db pgbouncer: {side_effect: read}
   # cmd/commands/db_pgbouncer.go:108 RunE path changes no persistent state (prints/reads only)
-  db pgbouncer connection-url: {side_effect: read, surface: cli-only}
+  db pgbouncer connection-url: {side_effect: read, surface: cli-only, exempt_reason: "prints a connection URL that carries the database password; secret output stays on the terminal"}
   db pgbouncer generate: {side_effect: write}
   db pgbouncer status: {side_effect: read}
   # cmd/commands/db_pitr.go:19 RunE path changes no persistent state (prints/reads only)
   db pitr: {side_effect: read}
   db pitr enable: {side_effect: write}
-  db pitr restore: {side_effect: destructive, surface: cli-only}
+  db pitr restore: {side_effect: destructive}
   db pitr status: {side_effect: read}
   db pitr test: {side_effect: write}
   # cmd/commands/db_reconcile.go:40 dry-run by default (prints the plan); --apply escalates to write
@@ -331,7 +331,7 @@ commands:
   migrate from-bash: {side_effect: write}
   migrate from-v099: {side_effect: write}
   migrate generate: {side_effect: write}
-  migrate rollback: {side_effect: destructive, surface: cli-only}
+  migrate rollback: {side_effect: destructive}
   migrate run: {side_effect: write}
   migrate supabase: {side_effect: write}
   migrate watch: {side_effect: write, output: stream}
@@ -397,9 +397,9 @@ commands:
   # cmd/commands/secrets_audit.go:86 RunE path changes no persistent state (prints/reads only)
   secrets audit: {side_effect: read}
   # cmd/commands/secrets_decrypt.go:47 RunE path changes no persistent state (prints/reads only)
-  secrets decrypt-on-deploy: {side_effect: read, surface: cli-only, flags: {reveal: {cli_only: true, json: none}}}
+  secrets decrypt-on-deploy: {side_effect: read, surface: cli-only, flags: {reveal: {cli_only: true, json: none}}, exempt_reason: "prints every decrypted secret as KEY=VALUE; no useful machine answer without the values"}
   secrets edit: {side_effect: write, output: interactive}
-  secrets get: {side_effect: read, surface: cli-only}
+  secrets get: {side_effect: read, surface: cli-only, exempt_reason: "prints the decrypted value; no useful machine answer without it (escalate_if ruling)"}
   secrets init: {side_effect: write}
   # cmd/commands/secrets_audit.go:112 RunE path changes no persistent state (prints/reads only)
   secrets lint: {side_effect: read}
@@ -465,8 +465,8 @@ commands:
   template publish: {side_effect: remote, confirm: {flags: []}}
   # cmd/commands/template_publish_update.go:89 applies pending template migrations; --force allows DROP/TRUNCATE ones
   template update: {side_effect: write, flags: {force: {side_effect: destructive}}}
-  trust: {canon: pending, side_effect: write, surface: cli-only}
-  trust dns: {side_effect: write, surface: cli-only}
+  trust: {canon: pending, side_effect: write, surface: cli-only, exempt_reason: "OS administrator prompts cannot be answered by a machine child"}
+  trust dns: {side_effect: write, surface: cli-only, exempt_reason: "OS administrator prompts cannot be answered by a machine child"}
   # cmd/commands/ssl.go:38 RunE path changes no persistent state (prints/reads only)
   trust ssl: {side_effect: read}
   trust ssl add: {side_effect: remote, confirm: {flags: [agree-tos]}}
