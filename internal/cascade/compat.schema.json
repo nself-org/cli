@@ -1,0 +1,101 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:nself:cli:schema:cascade-compat:v1",
+  "title": "cascade.compat.v1",
+  "description": "Compatibility matrix between nSelf and the Cascade engines (Cascade and Cascade.app) for the claw/v1 contract. Late-binding: entries are added as each engine ships, so an engine capability may be pending. Frozen: a breaking change ships as cascade.compat.v2.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "claw_contract", "entries"],
+  "properties": {
+    "schema": {
+      "description": "Contract identifier; always cascade.compat.v1.",
+      "const": "cascade.compat.v1"
+    },
+    "claw_contract": {
+      "description": "The nSelf-side contract the matrix was checked against, for example claw/v1.",
+      "$ref": "#/definitions/clawContract"
+    },
+    "nself_version": {
+      "description": "nSelf CLI version the matrix was generated with (semantic version, no leading v).",
+      "$ref": "#/definitions/semver"
+    },
+    "generated_at": {
+      "description": "UTC time the matrix was generated (RFC 3339).",
+      "type": "string",
+      "format": "date-time"
+    },
+    "entries": {
+      "description": "One entry per engine and engine version, ordered by engine then version.",
+      "type": "array",
+      "items": { "$ref": "#/definitions/MatrixEntry" }
+    }
+  },
+  "definitions": {
+    "semver": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
+    },
+    "clawContract": {
+      "type": "string",
+      "pattern": "^claw/v[0-9]+$"
+    },
+    "Capability": {
+      "description": "One late-binding engine capability and its state.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "status"],
+      "properties": {
+        "name": {
+          "description": "Capability name, lower-case dotted, for example tools.invoke.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
+        },
+        "status": {
+          "description": "supported: works against the engine. partial: works with the limits in notes. unsupported: the engine does not provide it. pending: the engine has not shipped it yet.",
+          "type": "string",
+          "enum": ["supported", "partial", "unsupported", "pending"]
+        },
+        "notes": {
+          "description": "Plain-language limits or the engine release that is expected to provide it.",
+          "type": "string"
+        }
+      }
+    },
+    "MatrixEntry": {
+      "description": "Compatibility of one engine version with the claw contract.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["engine", "engine_version", "status", "capabilities"],
+      "properties": {
+        "engine": {
+          "description": "cascade is the engine; cascade.app is the desktop application.",
+          "type": "string",
+          "enum": ["cascade", "cascade.app"]
+        },
+        "engine_version": {
+          "description": "Engine version the entry was checked against (semantic version, no leading v).",
+          "$ref": "#/definitions/semver"
+        },
+        "status": {
+          "description": "Overall result. verified: every required capability supported. partial: some capabilities are partial or pending. unsupported: the engine cannot drive the Bundle. unknown: not yet checked.",
+          "type": "string",
+          "enum": ["verified", "partial", "unsupported", "unknown"]
+        },
+        "capabilities": {
+          "description": "Per-capability results, unique by name.",
+          "type": "array",
+          "items": { "$ref": "#/definitions/Capability" }
+        },
+        "verified_at": {
+          "description": "UTC time the entry was last checked (RFC 3339); absent while status is unknown.",
+          "type": "string",
+          "format": "date-time"
+        },
+        "notes": {
+          "description": "Free-text remarks for people reading the matrix.",
+          "type": "string"
+        }
+      }
+    }
+  }
+}
