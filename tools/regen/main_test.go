@@ -2,7 +2,9 @@ package main
 
 import (
 	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -74,5 +76,23 @@ func TestFailingStepReturnsNamedError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "bad-step") {
 		t.Errorf("error should name the failing step 'bad-step', got: %v", err)
+	}
+}
+
+func TestRepoRootFindsGoMod(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deep := filepath.Join(root, "a", "b")
+	if err := os.MkdirAll(deep, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := repoRoot(deep)
+	if err != nil || got != root {
+		t.Fatalf("repoRoot(%q) = %q, %v; want %q", deep, got, err, root)
+	}
+	if _, err := repoRoot(t.TempDir()); err == nil {
+		t.Fatal("repoRoot without a go.mod above: want an error")
 	}
 }

@@ -114,7 +114,31 @@ func Run(steps []Step) error {
 	return nil
 }
 
+// repoRoot walks up from dir to the first folder holding go.mod: the cli module root, where
+// every generator and script expects to run (land-regen happens to start there; a hand run may not).
+func repoRoot(dir string) (string, error) {
+	for d := dir; ; d = filepath.Dir(d) {
+		if _, err := os.Stat(filepath.Join(d, "go.mod")); err == nil {
+			return d, nil
+		}
+		if filepath.Dir(d) == d {
+			return "", fmt.Errorf("no go.mod above %s", dir)
+		}
+	}
+}
+
 func main() {
+	wd, err := os.Getwd()
+	if err == nil {
+		var root string
+		if root, err = repoRoot(wd); err == nil {
+			err = os.Chdir(root) // children inherit it: ./tools/<x> builds and script paths resolve at the root
+		}
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "regen: %v\n", err)
+		os.Exit(1)
+	}
 	if err := Run(defaultSteps()); err != nil {
 		fmt.Fprintf(os.Stderr, "regen: %v\n", err)
 		os.Exit(1)
