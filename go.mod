@@ -75,7 +75,7 @@ require (
 require (
 	github.com/nself-org/cli/sdk/go/v2 v2.0.0-00010101000000-000000000000
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
-	golang.org/x/sys v0.49.0
+	golang.org/x/sys v0.50.0
 )
 
 replace github.com/nself-org/cli/sdk/go/v2 => ./sdk/go
