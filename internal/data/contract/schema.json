@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nself:cli:schema:data-lifecycle:v1",
+  "title": "contract:data.lifecycle.v1",
+  "description": "Backup catalog, retention policy, purge status and pressure telemetry for one nSelf stack. The version lives in $id only; documents carry no version field.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "backup_catalog": {"$ref": "#/$defs/backup_catalog"},
+    "retention": {"$ref": "#/$defs/retention_policy"},
+    "purges": {"type": "array", "items": {"$ref": "#/$defs/purge_status"}},
+    "pressure": {"$ref": "#/$defs/pressure_telemetry"}
+  },
+  "$defs": {
+    "timestamp": {"type": "string", "format": "date-time"},
+    "count": {"type": "integer", "minimum": 0},
+    "stack_ref": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$", "maxLength": 128},
+    "backup_catalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stack", "generated_at", "backups"],
+      "properties": {
+        "stack": {"$ref": "#/$defs/stack_ref"},
+        "generated_at": {"$ref": "#/$defs/timestamp"},
+        "backups": {"type": "array", "items": {"$ref": "#/$defs/backup_entry"}}
+      }
+    },
+    "backup_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "created_at", "size_bytes", "checksum_sha256", "encryption", "location", "verification"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "kind": {"enum": ["full", "database", "storage", "config", "pitr_base"]},
+        "created_at": {"$ref": "#/$defs/timestamp"},
+        "expires_at": {"$ref": "#/$defs/timestamp"},
+        "size_bytes": {"$ref": "#/$defs/count"},
+        "checksum_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "encryption": {"$ref": "#/$defs/encryption"},
+        "location": {"$ref": "#/$defs/location"},
+        "verification": {"$ref": "#/$defs/verification"},
+        "tags": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "encryption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["encrypted"],
+      "properties": {
+        "encrypted": {"type": "boolean"},
+        "algorithm": {"enum": ["age"]},
+        "key_ref": {"type": "string", "minLength": 1, "description": "A credential reference (keychain, vault file or secrets-store entry). Never key material."}
+      }
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["destination", "ref"],
+      "properties": {
+        "destination": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+        "ref": {"type": "string", "minLength": 1}
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": {"enum": ["unverified", "passed", "failed"]},
+        "method": {"enum": ["checksum", "restore"]},
+        "verified_at": {"$ref": "#/$defs/timestamp"},
+        "detail": {"type": "string"}
+      }
+    },
+    "retention_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["keep_daily", "keep_weekly", "keep_monthly"],
+      "properties": {
+        "keep_last": {"$ref": "#/$defs/count"},
+        "keep_daily": {"$ref": "#/$defs/count"},
+        "keep_weekly": {"$ref": "#/$defs/count"},
+        "keep_monthly": {"$ref": "#/$defs/count"},
+        "max_age_days": {"$ref": "#/$defs/count"},
+        "keep_tagged": {"type": "boolean"}
+      }
+    },
+    "purge_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject", "requested_at", "archived", "deleted_in_primary", "deleted_in_indexes", "pending_backup_expiry"],
+      "properties": {
+        "subject": {"$ref": "#/$defs/purge_subject"},
+        "requested_at": {"$ref": "#/$defs/timestamp"},
+        "tombstone_id": {"type": "string", "minLength": 1},
+        "archived": {"type": "boolean"},
+        "deleted_in_primary": {"type": "boolean"},
+        "deleted_in_indexes": {"type": "boolean"},
+        "pending_backup_expiry": {"oneOf": [{"$ref": "#/$defs/timestamp"}, {"type": "null"}], "description": "Latest expiry of a backup that still holds the subject; null when no backup holds it."}
+      }
+    },
+    "purge_subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "ref"],
+      "properties": {
+        "kind": {"enum": ["row", "object", "index_document", "workspace"]},
+        "ref": {"type": "string", "minLength": 1}
+      }
+    },
+    "pressure_telemetry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stack", "engine", "observed_at", "write_lock_wait_ms", "queue_age_seconds", "query_latency_ms", "connections", "storage", "backup_health"],
+      "properties": {
+        "stack": {"$ref": "#/$defs/stack_ref"},
+        "engine": {"enum": ["postgres", "sqlite"]},
+        "observed_at": {"$ref": "#/$defs/timestamp"},
+        "write_lock_wait_ms": {"type": "number", "minimum": 0},
+        "queue_age_seconds": {"type": "number", "minimum": 0},
+        "query_latency_ms": {"$ref": "#/$defs/latency"},
+        "connections": {"$ref": "#/$defs/connections"},
+        "storage": {"$ref": "#/$defs/storage_usage"},
+        "backup_health": {"$ref": "#/$defs/backup_health"}
+      }
+    },
+    "latency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["p50", "p95", "p99"],
+      "properties": {
+        "p50": {"type": "number", "minimum": 0},
+        "p95": {"type": "number", "minimum": 0},
+        "p99": {"type": "number", "minimum": 0}
+      }
+    },
+    "connections": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["in_use", "max"],
+      "properties": {
+        "in_use": {"$ref": "#/$defs/count"},
+        "max": {"$ref": "#/$defs/count"}
+      }
+    },
+    "storage_usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["used_bytes"],
+      "properties": {
+        "used_bytes": {"$ref": "#/$defs/count"},
+        "capacity_bytes": {"$ref": "#/$defs/count"}
+      }
+    },
+    "backup_health": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": {"enum": ["ok", "stale", "failing", "none"]},
+        "last_success_at": {"$ref": "#/$defs/timestamp"}
+      }
+    }
+  }
+}
