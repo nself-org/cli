@@ -94,6 +94,11 @@ schemas: $(TOOLS_BIN)/schemagen
 schemas-check: $(TOOLS_BIN)/schemagen
 	@$(TOOLS_BIN)/schemagen -check
 
+## regen — Run every generator in order to regenerate all generated surfaces
+## before verifying a unit. Invoked by .github/land-regen.
+regen:
+	go run -mod=vendor ./tools/regen
+
 ## contract-check — P7-REG-10. The one gate for every machine contract the CLI
 ## publishes: the committed schemas/, the registry and inventory, the compat
 ## marker table (cheap, so a drift fails in seconds), then the P7-REG Epic's go
