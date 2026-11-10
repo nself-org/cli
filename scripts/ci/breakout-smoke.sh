@@ -20,6 +20,9 @@
 #          download: the fixture server serves a stand-in tarball, a wrong checksum
 #          is refused with E124, and a right checksum with a bad signature by the
 #          pinned key id is refused with E121.
+#          Step 1 compares help byte for byte, except when the two binaries carry
+#          different spf13/pflag versions (go version -m): then pflag's bool-flag
+#          rendering is normalised on both sides (see norm_help).
 set -euo pipefail
 
 die() { echo "breakout-smoke: $*" >&2; exit 2; }
@@ -70,12 +73,30 @@ installed_home() {
   echo "$h"
 }
 
+# pflag_version BIN: the spf13/pflag version recorded in the binary's build info (empty if unknown).
+pflag_version() { go version -m "$1" 2>/dev/null | awk '$1 == "dep" && $2 == "github.com/spf13/pflag" { print $3; exit }'; }
+
+# A pflag bump re-renders every bool flag in --help ("--json" becomes "--json[=true|false]"
+# since pflag 1.1.0) and re-aligns the flag column. That is a library formatting change,
+# not a relocation change, so when the two binaries carry different pflag versions the
+# byte comparison of step 1 first drops that bracket and collapses runs of spaces. With
+# equal or unknown versions the comparison stays byte-for-byte.
+PFLAG_HEAD="$(pflag_version "$HEAD_BIN")"; PFLAG_BASE="$(pflag_version "$BASE_BIN")"
+NORM_HELP=0
+if [ -n "$PFLAG_HEAD" ] && [ -n "$PFLAG_BASE" ] && [ "$PFLAG_HEAD" != "$PFLAG_BASE" ]; then
+  NORM_HELP=1
+  echo "note pflag $PFLAG_BASE -> $PFLAG_HEAD: step 1 ignores pflag's bool-flag help rendering"
+fi
+norm_help() { # <text>: prints it as is, or without pflag's bool bracket and column padding
+  if [ "$NORM_HELP" = 1 ]; then printf '%s' "$1" | sed -E 's/\[=true\|false\]//g; s/  +/ /g'; else printf '%s' "$1"; fi
+}
+
 # 1. v1.4, clean HOME: the break-out commands answer exactly like the base binary.
 for c in "ci --help" "runner --help" "functions --help" "server --help" "plugin init --help" "plugin marketplace --help"; do
   # shellcheck disable=SC2086 # the command words are split on purpose
-  home="$(fresh_home)"; run "$BASE_BIN" "$home" 0 $c; b_rc=$RC; b_out="$OUT"; b_err="$ERR"
+  home="$(fresh_home)"; run "$BASE_BIN" "$home" 0 $c; b_rc=$RC; b_out="$(norm_help "$OUT")"; b_err="$(norm_help "$ERR")"
   home="$(fresh_home)"; run "$HEAD_BIN" "$home" 0 $c
-  if [ "$RC" = "$b_rc" ] && [ "$OUT" = "$b_out" ] && [ "$ERR" = "$b_err" ]; then
+  if [ "$RC" = "$b_rc" ] && [ "$(norm_help "$OUT")" = "$b_out" ] && [ "$(norm_help "$ERR")" = "$b_err" ]; then
     ok "v1.4 'nself $c' is byte-identical to the base binary (exit $RC)"
   else
     fail "v1.4 'nself $c' differs from the base binary (exit $b_rc -> $RC)"
