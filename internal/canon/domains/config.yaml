@@ -25,8 +25,7 @@ commands:
   # cmd/commands/config_explain.go reads the env cascade files and prints where a key comes from; --reveal prints values, so it stays CLI-only
   config explain: {side_effect: read, flags: {reveal: {cli_only: true}}}
   # cmd/commands/config_export_import.go:22 writes to stdout by default; --output escalates to write
-  # surface cli-only: prints the exported key/value pairs, secret values included with --reveal; secret output stays on the terminal
-  config export: {side_effect: read, surface: cli-only, flags: {output: {side_effect: write}}}
+  config export: {side_effect: read, surface: cli-only, flags: {output: {side_effect: write}}, exempt_reason: "prints exported config including secrets; output stays on the terminal"}
   # cmd/commands/feature.go:48 RunE path changes no persistent state (prints/reads only)
   config features: {side_effect: read}
   config features disable: {side_effect: write}
@@ -46,12 +45,10 @@ commands:
   # cmd/commands/secrets_audit.go:86 RunE path changes no persistent state (prints/reads only)
   config secrets audit: {side_effect: read}
   # cmd/commands/secrets_decrypt.go:47 RunE path changes no persistent state (prints/reads only)
-  # surface cli-only: prints every decrypted secret as KEY=VALUE; no useful machine answer without the values
   # D-0216: --reveal is the explicit opt-in for plaintext on a non-terminal stdout (v1.5) and never combines with --json, which carries names only.
-  config secrets decrypt-on-deploy: {side_effect: read, surface: cli-only, flags: {reveal: {cli_only: true, json: none}}}
+  config secrets decrypt-on-deploy: {side_effect: read, surface: cli-only, flags: {reveal: {cli_only: true, json: none}}, exempt_reason: "prints every decrypted secret as KEY=VALUE; no useful machine answer without the values"}
   config secrets edit: {side_effect: write, output: interactive} # opens $EDITOR on the decrypted store and needs a TTY
-  # surface cli-only: prints the decrypted value; no useful machine answer without it (escalate_if ruling)
-  config secrets get: {side_effect: read, surface: cli-only}
+  config secrets get: {side_effect: read, surface: cli-only, exempt_reason: "prints the decrypted value; no useful machine answer without it (escalate_if ruling)"}
   config secrets init: {side_effect: write}
   # cmd/commands/secrets_audit.go:112 RunE path changes no persistent state (prints/reads only)
   config secrets lint: {side_effect: read}
@@ -60,15 +57,15 @@ commands:
   config secrets list-schedules: {side_effect: read}
   # cmd/commands/secrets_recipients.go:25 RunE prints help or public recipient metadata
   config secrets recipients: {side_effect: read}
-  config secrets recipients add: {side_effect: write, surface: cli-only}
+  config secrets recipients add: {side_effect: write, surface: cli-only, exempt_reason: "manages public recipients in the encrypted store"}
   # cmd/commands/secrets_recipients.go RunE reads public recipients from the encrypted store
-  config secrets recipients list: {side_effect: read, surface: cli-only}
+  config secrets recipients list: {side_effect: read, surface: cli-only, exempt_reason: "reads public recipients from the encrypted store"}
   # cmd/commands/secrets_recipients.go RunE re-encrypts without the removed recipient
-  config secrets recipients remove: {side_effect: destructive, surface: cli-only, confirm: {flags: []}}
+  config secrets recipients remove: {side_effect: destructive, surface: cli-only, confirm: {flags: []}, exempt_reason: "re-encrypts without the removed recipient"}
   # cmd/commands/secrets_audit.go:133 re-encrypts the store; --remove can lock the caller out of it and the old ciphertext is not restorable without another key holder
   config secrets rekey: {side_effect: destructive, confirm: {flags: []}}
   # cmd/commands/secrets_resolve.go:91 RunE reads encrypted stores; values delivered only to FIFO stdout
-  config secrets resolve: {side_effect: read, surface: cli-only}
+  config secrets resolve: {side_effect: read, surface: cli-only, exempt_reason: "reads encrypted stores; values delivered only to FIFO stdout"}
   # cmd/commands/secrets_edit_rotate.go:124 deletes the _PREVIOUS variant of a dual-window rotated secret
   config secrets retire: {side_effect: destructive, confirm: {flags: []}}
   # cmd/commands/secrets_edit_rotate.go:94 replaces a secret with a new random value; the old value is not restorable without --dual-window
@@ -87,10 +84,8 @@ commands:
   config telemetry off: {side_effect: write}
   config telemetry on: {side_effect: write}
   config telemetry status: {side_effect: read}
-  # surface cli-only: OS administrator prompts cannot be answered by a machine child.
-  config trust: {side_effect: write, surface: cli-only}
-  # surface cli-only: OS administrator prompts cannot be answered by a machine child.
-  config trust dns: {side_effect: write, surface: cli-only}
+  config trust: {side_effect: write, surface: cli-only, exempt_reason: "OS administrator prompts cannot be answered by a machine child"}
+  config trust dns: {side_effect: write, surface: cli-only, exempt_reason: "OS administrator prompts cannot be answered by a machine child"}
   # cmd/commands/ssl.go:38 RunE path changes no persistent state (prints/reads only)
   config trust ssl: {side_effect: read}
   # cmd/commands/ssl_renewal.go:38 v1.5 makes the ACME engine the default (P7-LIVE-22): add, renew and setup reach the CA; accepting its terms is the invoker-owned consent flag

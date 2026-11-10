@@ -3,6 +3,6 @@ verbs: [reset, config, logs]
 commands:
   reset: {canon: core, side_effect: destructive, confirm: {flags: [yes]}}
   config: {canon: core, side_effect: read}
-  config export: {side_effect: read, surface: cli-only}
+  config export: {side_effect: read, surface: cli-only, exempt_reason: "prints exported config including secrets; output stays on the terminal"}
   config set: {side_effect: write, secret_args: [value]}
   logs: {canon: core, side_effect: read, flags: {follow: {output: stream}, reveal: {cli_only: true}}}

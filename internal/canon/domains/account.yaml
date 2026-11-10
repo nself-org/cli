@@ -21,8 +21,7 @@ commands:
   license account transfer: {side_effect: destructive, output: interactive} # prompts for the transfer on the terminal; the licence cannot be taken back
   license add: {side_effect: write, secret_args: [key]}
   license clear: {side_effect: destructive, confirm: {flags: []}}
-  # surface cli-only: the signed cache holds the licence JWT; --json prints a summary, the blob stays a terminal output
-  license export: {side_effect: write, surface: cli-only}
+  license export: {side_effect: write, surface: cli-only, exempt_reason: "the signed cache holds the licence JWT; --json prints a summary, the blob stays a terminal output"}
   # cmd/commands/license_validate.go:112 RunE path changes no persistent state (prints/reads only)
   license health: {side_effect: read, json: legacy, exit_codes: {"1": "any check fails (exits 0 when all checks pass)"}}
   license import: {side_effect: write, flags: {force: {cli_only: true}}}
