@@ -12,6 +12,7 @@ package compose
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/nself-org/cli/internal/compat"
@@ -35,8 +36,11 @@ func TestHasuraImageByMode(t *testing.T) {
 	if !ok1 || !ok2 {
 		t.Fatal("the image lock lacks hasura or hasura-v14")
 	}
-	if v14.Version != "v2.44.1" || cur.Version != "v2.51.2" || v14.Repository != cur.Repository || v14.IndexDigest == cur.IndexDigest {
-		t.Fatalf("lock entries hasura-v14 = %s, hasura = %s: want v2.44.1 and v2.51.2 of one repository with distinct digests", v14.String(), cur.String())
+	// The weekly bump moves patch releases only (.github/image-bump-policy.yaml,
+	// track: patch), so the test pins each entry's minor line and follows the lock
+	// for the patch number instead of hard-coding it.
+	if !strings.HasPrefix(v14.Version, "v2.44.") || !strings.HasPrefix(cur.Version, "v2.51.") || v14.Repository != cur.Repository || v14.IndexDigest == cur.IndexDigest {
+		t.Fatalf("lock entries hasura-v14 = %s, hasura = %s: want a v2.44.x and a v2.51.x of one repository with distinct digests", v14.String(), cur.String())
 	}
 	restore := SetProjectPins(nil)
 	defer restore()
@@ -52,7 +56,7 @@ func TestHasuraImageByMode(t *testing.T) {
 		{"v1.5 explicit v1.4 release", "v2.44.1", true, PinningLock, v14.String()},
 		{"v1.5 lock blank version", "", true, PinningLock, cur.String()},
 		{"v1.5 explicit v1.4 legacy release", "v2.44.0", true, PinningLegacy, "hasura/graphql-engine:v2.44.0"},
-		{"explicit current release in v1.4", "v2.51.2", false, PinningLock, cur.String()},
+		{"explicit current release in v1.4", cur.Version, false, PinningLock, cur.String()},
 		{"explicit current release in v1.4 legacy", "v2.51.0", false, PinningLegacy, "hasura/graphql-engine:v2.51.0"},
 		{"explicit older release in v1.4", "v2.43.0", false, PinningLock, "hasura/graphql-engine:v2.43.0"},
 		{"explicit older release in v1.5", "v2.43.0", true, PinningLock, "hasura/graphql-engine:v2.43.0"},
