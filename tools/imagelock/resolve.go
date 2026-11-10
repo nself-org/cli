@@ -21,15 +21,26 @@ import (
 	"github.com/nself-org/cli/internal/docker"
 )
 
-// Indexer returns the raw index JSON of an image reference.
+// Indexer returns the raw index JSON of an image reference together with the
+// registry's canonical digest for it. The digest is taken from the registry's
+// own output (not by hashing the bytes), so it stays stable even when the
+// CLI re-serializes or appends whitespace to the index bytes.
 type Indexer interface {
-	Index(ctx context.Context, ref string) ([]byte, error)
+	Index(ctx context.Context, ref string) (raw []byte, registryDigest string, err error)
 }
 
 type dockerIndexer struct{}
 
-func (dockerIndexer) Index(ctx context.Context, ref string) ([]byte, error) {
-	return docker.ImageIndexRaw(ctx, ref)
+func (dockerIndexer) Index(ctx context.Context, ref string) ([]byte, string, error) {
+	raw, err := docker.ImageIndexRaw(ctx, ref)
+	if err != nil {
+		return nil, "", err
+	}
+	dig, err := docker.ImageRegistryDigest(ctx, ref)
+	if err != nil {
+		return nil, "", err
+	}
+	return raw, dig, nil
 }
 
 // Resolve builds the lock for sources.
@@ -73,7 +84,7 @@ func Resolve(ctx context.Context, sources []Source, ix Indexer) (*compose.LockFi
 }
 
 func indexOf(ctx context.Context, ix Indexer, ref string) (docker.IndexInfo, error) {
-	raw, err := ix.Index(ctx, ref)
+	raw, regDigest, err := ix.Index(ctx, ref)
 	if err != nil {
 		return docker.IndexInfo{}, err
 	}
@@ -81,7 +92,14 @@ func indexOf(ctx context.Context, ix Indexer, ref string) (docker.IndexInfo, err
 	if errors.Is(err, docker.ErrNotIndex) {
 		return info, fmt.Errorf("publishes no digest-addressable index: %w", err)
 	}
-	return info, err
+	if err != nil {
+		return info, err
+	}
+	// Override the locally-hashed digest with the registry's canonical one.
+	if regDigest != "" {
+		info.Digest = regDigest
+	}
+	return info, nil
 }
 
 func platformNames(m map[string]string) []string {

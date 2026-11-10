@@ -63,23 +63,36 @@ func TestPreviouslyFloatingImagesUseReleaseTags(t *testing.T) {
 }
 
 // fakeIndexer serves one canned index per repository, for any tag or digest.
+// The registry digest it reports is digestOf(raw) unless digest overrides it
+// for that repository. rawSuffix is appended to the served bytes (as buildx
+// does with a trailing newline). failBack makes digest-addressed reads fail.
 type fakeIndexer struct {
-	raw  map[string]string
-	fail map[string]bool
+	raw       map[string]string
+	fail      map[string]bool
+	digest    map[string]string
+	rawSuffix string
+	failBack  bool
 }
 
-func (f fakeIndexer) Index(_ context.Context, ref string) ([]byte, error) {
+func (f fakeIndexer) Index(_ context.Context, ref string) ([]byte, string, error) {
 	repo := ref
 	if i := strings.Index(repo, "@"); i >= 0 {
 		repo = repo[:i]
+		if f.failBack {
+			return nil, "", fmt.Errorf("registry says no such manifest")
+		}
 	}
 	if i := strings.LastIndex(repo, ":"); i > strings.LastIndex(repo, "/") {
 		repo = repo[:i]
 	}
 	if f.fail[repo] {
-		return nil, fmt.Errorf("registry says no such manifest")
+		return nil, "", fmt.Errorf("registry says no such manifest")
 	}
-	return []byte(f.raw[repo]), nil
+	dig := f.digest[repo]
+	if dig == "" {
+		dig = digestOf(f.raw[repo])
+	}
+	return []byte(f.raw[repo] + f.rawSuffix), dig, nil
 }
 
 func indexJSON(archs ...string) string {
@@ -116,6 +129,35 @@ func TestResolveBuildsSortedLock(t *testing.T) {
 		if r.Mirror == nil || *r.Mirror != "docker.io/nself/"+r.Name {
 			t.Errorf("%s mirror = %v", r.Name, r.Mirror)
 		}
+	}
+}
+
+// buildx prints the raw index with a trailing newline and the registry digest
+// is not always the hash of those bytes: the lock must record the registry's.
+func TestResolveRecordsRegistryDigest(t *testing.T) {
+	const repo = "docker.io/lib/x"
+	s := Source{Name: "x", Role: "core", Repository: repo, Version: "1", LegacyRef: "x:1"}
+	raw := indexJSON("amd64")
+	registry := "sha256:" + strings.Repeat("4b", 32)
+	lf, err := Resolve(context.Background(), []Source{s}, fakeIndexer{
+		raw: map[string]string{repo: raw}, digest: map[string]string{repo: registry}, rawSuffix: "\n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := lf.Images[0].IndexDigest; got != registry {
+		t.Errorf("IndexDigest = %s, want the registry digest %s", got, registry)
+	}
+	if lf.Images[0].IndexDigest == digestOf(raw) {
+		t.Error("the lock must not record a hash of the printed bytes")
+	}
+}
+
+func TestResolveFailsWhenDigestReadBackFails(t *testing.T) {
+	const repo = "docker.io/lib/x"
+	s := Source{Name: "x", Role: "core", Repository: repo, Version: "1", LegacyRef: "x:1"}
+	_, err := Resolve(context.Background(), []Source{s}, fakeIndexer{raw: map[string]string{repo: indexJSON("amd64")}, failBack: true})
+	if err == nil || !strings.Contains(err.Error(), "does not address the index") {
+		t.Errorf("a digest that cannot be read back must fail, got %v", err)
 	}
 }
 

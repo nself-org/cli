@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"regexp"
 )
 
 // IndexInfo is the parsed form of an image index.
@@ -43,6 +44,30 @@ var ErrNotIndex = errors.New("reference is not an image index")
 // `docker buildx imagetools inspect --raw`.
 func ImageIndexRaw(ctx context.Context, ref string) ([]byte, error) {
 	return runCapture(ctx, "buildx", "imagetools", "inspect", "--raw", ref)
+}
+
+var digestLineRe = regexp.MustCompile(`(?m)^Digest:\s*(sha256:[0-9a-fA-F]{64})\s*$`)
+
+// ImageRegistryDigest runs `docker buildx imagetools inspect <ref>` (no --raw)
+// and parses the "Digest:" line from its human-readable output to obtain the
+// registry's canonical digest for the reference.
+func ImageRegistryDigest(ctx context.Context, ref string) (string, error) {
+	out, err := runCapture(ctx, "buildx", "imagetools", "inspect", ref)
+	if err != nil {
+		return "", err
+	}
+	return ParseDigestLine(out)
+}
+
+// ParseDigestLine extracts the sha256 digest from the human-readable output
+// of `docker buildx imagetools inspect`. It looks for a line matching
+// "Digest:    sha256:<64 hex>".
+func ParseDigestLine(out []byte) (string, error) {
+	m := digestLineRe.FindSubmatch(out)
+	if m == nil {
+		return "", fmt.Errorf("no Digest line found in imagetools output")
+	}
+	return string(m[1]), nil
 }
 
 // ManifestInspect runs `docker manifest inspect [--verbose] ref` and returns
