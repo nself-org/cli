@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 )
 
 // GeneratorOrder lists the generators in the required execution order:
@@ -72,8 +71,11 @@ func execBashScript(scriptPath string) func(string) error {
 		cmd := exec.Command("/bin/bash", absScript)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
-		// The scripts call go: keep the running toolchain (GOROOT/bin) on the narrowed PATH.
-		safePath := filepath.Join(runtime.GOROOT(), "bin") + ":/usr/bin:/bin:" + tmpDir
+		// The scripts call go: keep the folder of the go binary in use on the narrowed PATH.
+		safePath := "/usr/bin:/bin:" + tmpDir
+		if goBin, err := exec.LookPath("go"); err == nil {
+			safePath = filepath.Dir(goBin) + ":" + safePath
+		}
 		env := os.Environ()
 		for i, e := range env {
 			if len(e) > 5 && e[:5] == "PATH=" {
@@ -94,7 +96,7 @@ func Run(steps []Step) error {
 	if err != nil {
 		return fmt.Errorf("create temp dir: %w", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	for _, s := range steps {
 		if err := s.Run(tmpDir); err != nil {
