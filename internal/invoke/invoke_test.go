@@ -72,7 +72,7 @@ commands:
       reveal: {cli_only: true}
       follow: {output: stream}
   fx secretset: {side_effect: write, secret_args: [value]}
-  fx clionly: {side_effect: read, surface: cli-only}
+  fx clionly: {side_effect: read, surface: cli-only, exempt_reason: "test fixture: a command kept off the machine surface"}
   fx hid: {side_effect: read}
   fx legacy: {side_effect: read, json: legacy}
   fx interactive: {side_effect: read, output: interactive}

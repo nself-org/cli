@@ -92,7 +92,7 @@ commands:
   logs: {canon: core, side_effect: read, flags: {follow: {output: stream}}}
   stream: {canon: core, side_effect: read, output: stream}
   hidden: {canon: core, side_effect: read}
-  cli-only: {canon: core, side_effect: read, surface: cli-only}
+  cli-only: {canon: core, side_effect: read, surface: cli-only, exempt_reason: "test fixture: a command kept off the machine surface"}
   destroy: {canon: core, side_effect: destructive, confirm: {flags: [yes]}}
   interactive: {canon: core, side_effect: read, output: interactive}
 `))

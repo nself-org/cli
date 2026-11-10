@@ -211,7 +211,7 @@ func TestEffectivePresplitEquivalence(t *testing.T) {
 					// lacks (confirm blocks, secret args and flags, cli_only member
 					// flags, surface cli-only on export), and the two logout rows are
 					// interactive. Compare everything else unchanged.
-					got.Confirm, got.Surface, got.SecretArgs = nil, "", nil
+					got.Confirm, got.Surface, got.ExemptReason, got.SecretArgs = nil, "", "", nil
 					got.Flags = stripSurfaceFlagFields(got.Flags)
 					want.Flags = stripSurfaceFlagFields(want.Flags)
 					if k == "account logout" || k == "logout" {
