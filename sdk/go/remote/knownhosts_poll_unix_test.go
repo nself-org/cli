@@ -5,19 +5,21 @@ package remote
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
 
 func TestWaitLockPollDelays(t *testing.T) {
 	for _, tc := range []struct {
-		name          string
-		wait, minimum time.Duration
+		name   string
+		wait   time.Duration
+		delays []time.Duration
 	}{
 		// A deadline shorter than the first poll must still sleep 5ms.
-		{"initial", time.Millisecond, 5 * time.Millisecond},
-		// 5+10+20+40+80+160+200ms. A zero cap busy-spins until 350ms.
-		{"cap", 350 * time.Millisecond, 515 * time.Millisecond},
+		{"initial", time.Millisecond, []time.Duration{5 * time.Millisecond}},
+		// Cross the cap twice to check that subsequent delays stay capped.
+		{"cap", 550 * time.Millisecond, []time.Duration{5 * time.Millisecond, 10 * time.Millisecond, 20 * time.Millisecond, 40 * time.Millisecond, 80 * time.Millisecond, 160 * time.Millisecond, 200 * time.Millisecond, 200 * time.Millisecond}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "poll.lock")
@@ -38,14 +40,20 @@ func TestWaitLockPollDelays(t *testing.T) {
 			old := pinLockWait
 			pinLockWait = tc.wait
 			defer func() { pinLockWait = old }()
-			start := time.Now()
-			err = waitLock(waiter, true, path)
-			elapsed := time.Since(start)
+			now := time.Unix(0, 0)
+			var delays []time.Duration
+			err = waitLockWithClock(waiter, true, path, func() time.Time { return now }, func(delay time.Duration) {
+				if len(delays) >= len(tc.delays) {
+					t.Fatalf("too many polls: %v, next delay %s", delays, delay)
+				}
+				delays = append(delays, delay)
+				now = now.Add(delay)
+			})
 			if err == nil {
 				t.Fatal("held lock unexpectedly acquired")
 			}
-			if elapsed < tc.minimum {
-				t.Fatalf("polling took %s, want at least %s", elapsed, tc.minimum)
+			if !reflect.DeepEqual(delays, tc.delays) {
+				t.Fatalf("poll delays = %v, want %v", delays, tc.delays)
 			}
 		})
 	}
