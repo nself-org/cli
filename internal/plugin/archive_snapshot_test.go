@@ -9,21 +9,16 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
 // TestArchiveSnapshotSurvivesPathReplacement pins the D-0844 / D-1326 contract:
-// openArchive hashes the downloaded file once, unlinks the path, and returns
-// a handle rewound to the start. Checksum verification and extraction both
-// read that handle, so replacing the path after the open cannot change what
-// gets verified or extracted.
+// openArchive hashes the downloaded file once and returns a rewound handle.
+// POSIX unlinks the path, allowing a replacement; Windows retains the name
+// because the handle denies deletion. Windows checks handle identity; both
+// variants extract the independently hashed original bytes (D-1500).
 func TestArchiveSnapshotSurvivesPathReplacement(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		// Go opens files without FILE_SHARE_DELETE, so the path of an open
-		// archive cannot be unlinked there and the replacement below would
-		// rewrite the very file the handle reads. The contract is POSIX-only.
-		t.Skip("an open file cannot be unlinked on Windows")
-	}
 	var archive bytes.Buffer
 	gz := gzip.NewWriter(&archive)
 	tw := tar.NewWriter(gz)
@@ -45,10 +40,30 @@ func TestArchiveSnapshotSurvivesPathReplacement(t *testing.T) {
 	}
 	defer func() { _ = f.Close() }()
 
-	// The path is unlinked by openArchive; replacing it now must not affect
-	// what we verify or extract.
-	if err := os.WriteFile(path, []byte("replaced after verification"), 0600); err != nil {
-		t.Fatal(err)
+	if runtime.GOOS == "windows" {
+		// Go opens without FILE_SHARE_DELETE. Check that the returned handle
+		// pins the named file and prevents its removal instead of truncating
+		// that same file with WriteFile. Same-inode writes are outside the
+		// snapshot contract; checksum and extraction below still run here.
+		held, err := f.Stat()
+		if err != nil {
+			t.Fatal(err)
+		}
+		named, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !os.SameFile(held, named) {
+			t.Fatal("archive handle does not refer to the downloaded file")
+		}
+		if err := os.Remove(path); err == nil {
+			t.Fatal("archive handle unexpectedly allowed path removal")
+		}
+	} else {
+		// The path is unlinked; replacing it must not affect the handle.
+		if err := os.WriteFile(path, []byte("replaced after verification"), 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// want is hashed from the original archive bytes, so this is not a
@@ -64,5 +79,15 @@ func TestArchiveSnapshotSurvivesPathReplacement(t *testing.T) {
 	got, _ := os.ReadFile(filepath.Join(dest, "payload"))
 	if string(got) != "trusted" {
 		t.Fatalf("extracted %q", got)
+	}
+}
+
+// Keep the archive snapshot contract covered on every supported platform.
+func TestArchiveSnapshotHasNoPlatformSkip(t *testing.T) {
+	source := readFile(t, "archive_snapshot_test.go")
+	body := source[strings.Index(source, "func TestArchiveSnapshotSurvivesPathReplacement("):]
+	body = body[:strings.Index(body, "\n// Keep the archive snapshot")]
+	if strings.Contains(body, "t.Skip(") {
+		t.Fatal("archive snapshot coverage must run on every supported platform (D-1500)")
 	}
 }
