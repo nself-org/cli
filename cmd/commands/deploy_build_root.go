@@ -130,9 +130,7 @@ func verifyDeployComposeFreshness(workdir string, buildStart time.Time) error {
 	return nil
 }
 
-// deployCLISelfFn spawns the nself subprocess for the build step. A variable so
-// a test can see the argv without running docker.
-var deployCLISelfFn = runCLISelf
+var deployCLISelfFn = runCLISelf // the build subprocess; a variable so a test sees the argv
 
 // runDeployBuildStep runs the "nself build" subprocess for a deploy (with
 // deployBuildArgs' --no-monorepo guard) and then verifies the compose file
@@ -143,7 +141,7 @@ func runDeployBuildStep(ctx context.Context, workdir string, remote bool, steps 
 	buildStart := time.Now()
 	profile, _ := ctx.Value(deployProfileContextKey{}).(string)
 	args := deployBuildArgsForProfile(workdir, remote, profile)
-	if deployYes(ctx) { // the caller's --yes, so a staging/prod build never prompts (E403 off a terminal)
+	if deployYes(ctx) { // the caller's --yes: no E403 prompt off a terminal
 		args = append(args, "--yes")
 	}
 	if err := deployCLISelfFn(ctx, workdir, args...); err != nil {
