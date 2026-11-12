@@ -183,3 +183,80 @@ func TestRestoreFailsOnUnsuccessfulSchemaExtraction(t *testing.T) {
 		}
 	}
 }
+
+// remoteRolesDockerScript is the restore-remote double: it logs every call and
+// every psql stdin, prints $FAKE_SCHEMA for the schema read and saves the main
+// pg_restore's stdin to loaded.bin so the test can check no byte was lost.
+const remoteRolesDockerScript = `#!/bin/sh
+d="$FAKE_DOCKER_DIR"
+printf '%s\n' "$*" >> "$d/calls.log"
+case "$*" in
+  *"pg_restore --schema-only"*) cat > /dev/null; cat "$FAKE_SCHEMA"; exit 0;;
+  *pg_restore*) cat > "$d/loaded.bin"; exit 0;;
+  *"psql"*" -f -"*)
+    stdin=$(cat)
+    printf 'SQL: %s\n' "$stdin" >> "$d/calls.log"
+    exit 0;;
+esac
+exit 0
+`
+
+// remoteRolesFixture serves object through a path:// URI to the remote double.
+func remoteRolesFixture(t *testing.T, schema string, object []byte) (dir, from string) {
+	t.Helper()
+	dir, _ = rolesDocker(t, schema)
+	if err := os.WriteFile(filepath.Join(dir, "bin", "docker"), []byte(remoteRolesDockerScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	objects := t.TempDir()
+	if err := os.WriteFile(filepath.Join(objects, "p_full_1.dump"), object, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return dir, "path://" + objects + "/p_full_1.dump"
+}
+
+// RestoreFromRemote creates the policy roles in one pass over the stream: the
+// schema is read from a buffered prefix and the loader still gets every byte.
+func TestRestoreFromRemoteCreatesPolicyRoles(t *testing.T) {
+	prev := policyTOCLimit
+	policyTOCLimit = 64 // smaller than the object: the loader gets prefix + rest
+	t.Cleanup(func() { policyTOCLimit = prev })
+	object := []byte("PGDMP\x01\x0e" + strings.Repeat("archive-bytes-", 40))
+	dir, from := remoteRolesFixture(t, readFixture(t), object)
+	if err := RestoreFromRemote(t.Context(), remoteRestoreConfig(), from, ""); err != nil {
+		t.Fatal(err)
+	}
+	calls := readFake(t, dir, "calls.log")
+	rest := calls
+	for _, want := range []string{
+		`CREATE DATABASE "nself_restore_`,
+		"pg_restore --schema-only -f -",
+		`SQL: CREATE ROLE "mux_user" NOLOGIN;`,
+		"pg_restore -U postgres -d nself_restore_",
+		`RENAME TO "nself_previous_`,
+	} {
+		i := strings.Index(rest, want)
+		if i < 0 {
+			t.Fatalf("missing %q in order, calls:\n%s", want, calls)
+		}
+		rest = rest[i+len(want):]
+	}
+	if got := readFake(t, dir, "loaded.bin"); got != string(object) {
+		t.Fatalf("loader got %d bytes, want the whole %d-byte object", len(got), len(object))
+	}
+}
+
+func TestRestoreFromRemoteRejectsInvalidRoleName(t *testing.T) {
+	dir, from := remoteRolesFixture(t, `CREATE POLICY p ON t TO mux_user, "Bad-Role";`+"\n", []byte("PGDMP\x01\x0e-archive"))
+	err := RestoreFromRemote(t.Context(), remoteRestoreConfig(), from, "")
+	if !errors.Is(err, errs.ErrBackupRestoreFailed) {
+		t.Fatalf("err = %v, want ErrBackupRestoreFailed", err)
+	}
+	calls := readFake(t, dir, "calls.log")
+	if strings.Contains(calls, "CREATE ROLE") || strings.Contains(calls, "pg_restore -U postgres -d nself_restore_") || strings.Contains(calls, "RENAME TO") {
+		t.Fatalf("a refused name must stop before any role, load or swap:\n%s", calls)
+	}
+	if !strings.Contains(calls, `DROP DATABASE "nself_restore_`) {
+		t.Fatalf("the scratch database must be dropped:\n%s", calls)
+	}
+}

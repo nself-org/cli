@@ -25,6 +25,10 @@ printf '%s\n' "$*" >> "$FAKE_DOCKER_LOG"
 case "$*" in
   *pg_restore*)
     case "$*" in
+      *--schema-only*)
+        cat >/dev/null
+        exit 0
+        ;;
       *--clean*|*" -d live "*)
         cat >/dev/null
         printf 'half-applied\n' > "$FAKE_TARGET_STATE"

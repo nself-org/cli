@@ -88,6 +88,11 @@ func RestoreFromRemote(ctx context.Context, cfg *config.Config, from, keyPath st
 	err := restoreViaScratch(ctx, container, user, db, func(ctx context.Context, scratch string) error {
 		consumed = true
 		load := func(ctx context.Context, r io.Reader) error {
+			// Create the archive's policy roles (NOLOGIN) from a buffered prefix (P7-PROD-88).
+			r, err := ensurePolicyRolesStream(ctx, &Container{Name: container, User: user, DB: scratch}, r)
+			if err != nil {
+				return err
+			}
 			return scratchPgRestore(ctx, container, user, scratch, r) // strict: any non-zero exit fails before the swap
 		}
 		return pgstream.Stream(ctx, pgstream.Source{From: from, Native: native, AgeKey: keyPath, Encrypted: encrypted,
