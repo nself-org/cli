@@ -1008,15 +1008,63 @@ paths:
   "/license/revocation-list":
     get:
       operationId: "getLicenseRevocationList"
-      summary: "Hashed revoked license keys (CLI polls hourly)"
-      description: "Returns SHA-256 hashes of all revoked license keys.\nThe CLI compares its cached key hash against this list and renders\npaid plugins dormant on match. Always returns 200 (empty list when\nnothing is revoked). Cache-Control: public, max-age=60 for fast\nsecurity propagation.\n"
+      summary: "Signed revocation list (CLI polls hourly)"
+      description: "Returns the signed revocation list. The body is canonical JSON (sorted keys, `revoked` sorted by type then id);\n`signature` is a base64 Ed25519 signature over the canonical JSON of the payload minus the `signature` field.\nEntries cover revoked activations/JWT ids (`jti`), revoked users (`user_id`) and revoked signing keys (`kid`).\nETag is the sha256 of the signed body; send If-None-Match to get 304. Cache-Control: public, max-age=3600.\nOn a database error the route answers 503 with the last-known-good signed body and X-Cache-Stale: 1\n(the CLI keeps trusting its disk cache); with no cached body it answers 503 {error}.\n"
       responses:
         "200":
-          description: "Revocation list (may be empty)"
+          description: "Signed revocation list (revoked may be empty)"
+          headers:
+            ETag:
+              description: "Strong ETag: quoted sha256 hex of the signed body"
+              schema:
+                type: "string"
+            Cache-Control:
+              schema:
+                type: "string"
+              description: "public, max-age=3600 (stale case: public, max-age=60, stale-if-error=86400)"
           content:
             "application/json":
               schema:
                 $ref: "#/components/schemas/RevocationListResponse"
+        "304":
+          description: "Not modified: If-None-Match matched the current ETag"
+          headers:
+            ETag:
+              description: "Strong ETag: quoted sha256 hex of the signed body"
+              schema:
+                type: "string"
+            Cache-Control:
+              schema:
+                type: "string"
+              description: "public, max-age=3600 (stale case: public, max-age=60, stale-if-error=86400)"
+        "503":
+          description: "Database unavailable or signing key missing. With a last-known-good snapshot the body is that signed list and X-Cache-Stale: 1 is set; otherwise the body is {error}."
+          headers:
+            ETag:
+              description: "Strong ETag: quoted sha256 hex of the signed body"
+              schema:
+                type: "string"
+            Cache-Control:
+              schema:
+                type: "string"
+              description: "public, max-age=3600 (stale case: public, max-age=60, stale-if-error=86400)"
+            X-Cache-Stale:
+              description: "1 when the body is the last-known-good snapshot"
+              schema:
+                type: "string"
+          content:
+            "application/json":
+              schema:
+                oneOf:
+                - $ref: "#/components/schemas/RevocationListResponse"
+                - $ref: "#/components/schemas/ErrorResponse"
+      parameters:
+      - name: "If-None-Match"
+        in: "header"
+        required: false
+        description: "ETag from a previous response; a match returns 304"
+        schema:
+          type: "string"
       tags:
       - "license"
       x-auth: "none"
@@ -2263,42 +2311,52 @@ components:
     RevocationEntry:
       type: "object"
       required:
-      - "key_hash"
-      - "revoked_at"
+      - "type"
+      - "id"
       - "reason"
+      - "revoked_at"
       properties:
-        key_hash:
+        type:
           type: "string"
-          description: "SHA-256 hash of the license key (hex-encoded)"
-        revoked_at:
+          enum:
+          - "jti"
+          - "user_id"
+          - "kid"
+          description: "What the id identifies"
+        id:
           type: "string"
-          nullable: true
-          description: "ISO 8601 revocation timestamp"
+          description: "JWT id or activation id (jti), user id (user_id) or signing key id (kid)"
         reason:
           type: "string"
-          description: "Revocation reason string (defaults to \"unspecified\")"
+          description: "Revocation reason (e.g. deactivated, user revoked, rotated)"
+        revoked_at:
+          type: "string"
+          description: "ISO 8601 revocation timestamp"
     RevocationListResponse:
       type: "object"
       required:
-      - "revocations"
-      - "count"
-      - "fetched_at"
-      - "poll_interval_seconds"
+      - "issued_at"
+      - "valid_until"
+      - "kid"
+      - "revoked"
+      - "signature"
       properties:
-        revocations:
+        issued_at:
+          type: "string"
+          description: "ISO 8601 time the list was signed"
+        valid_until:
+          type: "string"
+          description: "ISO 8601 time after which clients must refetch (issued_at + 1 h)"
+        kid:
+          type: "string"
+          description: "Id of the Ed25519 key that signed the list"
+        revoked:
           type: "array"
           items:
             $ref: "#/components/schemas/RevocationEntry"
-        count:
-          type: "integer"
-          description: "Number of revoked keys in the response"
-        fetched_at:
+        signature:
           type: "string"
-          description: "ISO 8601 server timestamp"
-        poll_interval_seconds:
-          type: "integer"
-          description: "Recommended client poll interval in seconds"
-          example: 3600
+          description: "Base64 Ed25519 signature over the canonical JSON of the payload minus this field"
     RevokeRequest:
       type: "object"
       required:
