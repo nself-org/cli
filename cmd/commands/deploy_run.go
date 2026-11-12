@@ -13,7 +13,6 @@ import (
 
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/errs"
-	"github.com/nself-org/cli/internal/maintenance"
 	"github.com/nself-org/cli/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -225,22 +224,13 @@ func runDeployBody(cmd *cobra.Command, args []string) error {
 			}
 			steps = addStep(cmd.Context(), steps, deployStep{Name: "Health checks", Status: "skipped"})
 		} else if !dryRun {
-			healthStep, healthErr := runDeployHealthCheck(cmd.Context(), workdir, jsonOut)
+			healthStep, healthErr := runRemoteDeployHealthCheck(cmd.Context(), workdir, host, deployCascadeEnv(workdir, target), jsonOut)
 			steps = addStep(cmd.Context(), steps, healthStep)
 			if healthErr != nil {
 				return finalizeFor(cmd.Context(), jsonOut, target, strategy, start, steps, healthErr)
 			}
 		} else {
 			steps = addStep(cmd.Context(), steps, deployStep{Name: "Health checks", Status: "pending"})
-		}
-	}
-
-	// Auto-install daily disk-cleanup timer after successful staging/prod deploy (P98 T10.T07).
-	// Non-fatal: a failure here warns but does not roll back the deploy.
-	if !dryRun && target != "local" {
-		if timerErr := maintenance.InstallDailyTimer(); timerErr != nil {
-			ui.Warn(fmt.Sprintf("daily maintenance timer install failed (non-fatal): %v", timerErr))
-			ui.Warn("Run `nself maintenance schedule --daily` manually to enable disk-cleanup cron")
 		}
 	}
 

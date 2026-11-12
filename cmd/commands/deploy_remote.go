@@ -12,9 +12,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/deploy"
+	"github.com/nself-org/cli/internal/health"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
@@ -101,11 +103,7 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 	}
 	// The merged .env is shipped below: the host key is checked with the shipping policy
 	// (strict in v1.4 too, E487) before the preflight architecture read and before any rsync.
-	tier := controlplane.DeriveTier(target, "remote")
-	if e, ok := loadedInv.Environments[target]; ok {
-		tier = e.Tier
-	}
-	policy, err := controlplane.HostKeyOptions(ctx, target, target+"-app", tier, spec.String(), true)
+	policy, err := legacyHostKeyPolicy(ctx, loadedInv, target, spec)
 	if err != nil {
 		return err
 	}
@@ -119,34 +117,18 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 			sshTarget = strings.TrimSuffix(sshTarget, ":"+fmt.Sprint(spec.Port))
 		}
 	}
-	remotePath := spec.LegacyPath
-	if remotePath == "" {
-		remotePath = os.Getenv("NSELF_REMOTE_PATH_" + strings.ToUpper(target))
-	}
-	if remotePath == "" {
-		remotePath = "/opt/nself"
-	}
-	if !remotePathRe.MatchString(remotePath) {
-		return fmt.Errorf("NSELF_DEPLOY_HOST_%s remote path contains unsafe characters (got %q): only [a-zA-Z0-9/_.-] allowed", strings.ToUpper(target), remotePath)
+	remotePath, err := legacyRemotePath(spec.LegacyPath, target)
+	if err != nil {
+		return err
 	}
 	tr, err := newPushRunner(workdir, spec, sshKey, policy)
 	if err != nil {
 		return err
 	}
 
-	// Gap #13 fix: the file that used to be rsynced here (.env.<target> alone,
-	// e.g. .env.staging) is only ONE layer of the cascade that config.Load
-	// actually merged to produce the docker-compose.yml being pushed
-	// alongside it (CLI-R18 canonical order: .env -> .env.<target> ->
-	// .env.secrets -> .env.local). Pushing just one layer left the remote's
-	// env file mismatched with values baked into the compose file (wrong
-	// POSTGRES_DB, wrong ports, etc.) whenever an earlier/later layer set them.
-	//
-	// Write a merged snapshot containing every value config.Load resolved
-	// for this deploy, and push that as .env.<target> instead of the raw
-	// single-layer file. This keeps the remote filename convention the
-	// on-box CLI already expects, while guaranteeing its contents match
-	// docker-compose.yml byte-for-byte in provenance.
+	// Gap #13: push one merged snapshot of every value config.Load resolved
+	// (CLI-R18 order .env -> .env.<target> -> .env.secrets -> .env.local) as
+	// .env.<target>, so the host env matches the pushed compose file's provenance.
 	resolvedEnvPath, cleanupResolvedEnv, err := writeResolvedDeployEnv(workdir, target)
 	if err != nil {
 		return fmt.Errorf("preparing resolved .env for %s: %w", target, err)
@@ -225,13 +207,8 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 		}
 	}
 
-	// FIX-CLI-3: apply Hasura metadata on the remote once hasura is back up.
-	// Re-invokes the remote box's own 'nself db hasura metadata apply' (which
-	// cleanly no-ops when hasura/ isn't present) rather than speaking the
-	// Hasura HTTP API over the tunnel — same "SSH in, run the same
-	// subcommand" pattern as runRemoteNselfCommand (db_remote.go). A short
-	// retry loop absorbs the gap between "container up" (no health gate on
-	// this remote path, unlike the local rolling restart) and "API ready".
+	// FIX-CLI-3: apply Hasura metadata through the host's own nself (a no-op
+	// without hasura/), retried briefly: this path has no per-service health gate.
 	if !jsonOut {
 		fmt.Printf("  [running] hasura metadata apply on %s\n", sshTarget)
 	}
@@ -251,6 +228,71 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 	}
 
 	return nil
+}
+
+// legacyHostKeyPolicy: the single-host path's strict (E487) host-key policy for the env's tier.
+func legacyHostKeyPolicy(ctx context.Context, inv *controlplane.Inventory, target string, spec remote.HostSpec) ([]string, error) {
+	tier := controlplane.DeriveTier(target, "remote")
+	if e, ok := inv.Environments[target]; ok {
+		tier = e.Tier
+	}
+	return controlplane.HostKeyOptions(ctx, target, target+"-app", tier, spec.String(), true)
+}
+
+// legacyRemotePath: the host spec's path, else NSELF_REMOTE_PATH_<ENV>, else /opt/nself.
+func legacyRemotePath(rp, target string) (string, error) {
+	if rp == "" {
+		rp = os.Getenv("NSELF_REMOTE_PATH_" + strings.ToUpper(target))
+	}
+	if rp == "" {
+		rp = "/opt/nself"
+	}
+	if !remotePathRe.MatchString(rp) {
+		return "", fmt.Errorf("NSELF_DEPLOY_HOST_%s remote path contains unsafe characters (got %q): only [a-zA-Z0-9/_.-] allowed", strings.ToUpper(target), rp)
+	}
+	return rp, nil
+}
+
+// runRemoteDeployHealthCheck gates a single-host deploy on the host, never this machine:
+// the v1.5 apply already gated each service (E250/E251); v1.4 runs nself doctor over the transport.
+func runRemoteDeployHealthCheck(ctx context.Context, workdir, host, target string, jsonOut bool) (deployStep, error) {
+	if compat.V15() {
+		announce(ctx, jsonOut, "Health checks", "  [done] Health checks (gated per service on the host by the apply)")
+		return deployStep{Name: "Health checks", Status: "done"}, nil
+	}
+	announce(ctx, jsonOut, "Health checks", fmt.Sprintf("  [running] Health checks on %s (nself doctor)", host))
+	failed := deployStep{Name: "Health checks", Status: "failed"}
+	key := sshKeyPath()
+	if err := deploy.CheckKeyPath(key); err != nil {
+		return failed, err
+	}
+	spec, err := remote.ParseHostSpec(host)
+	if err != nil {
+		return failed, fmt.Errorf("NSELF_DEPLOY_HOST_%s: %w", strings.ToUpper(target), err)
+	}
+	inv, err := controlplane.Load(workdir)
+	if err != nil {
+		return failed, err
+	}
+	rp, err := legacyRemotePath(spec.LegacyPath, target)
+	if err != nil {
+		return failed, err
+	}
+	policy, err := legacyHostKeyPolicy(ctx, inv, target, spec)
+	if err != nil {
+		return failed, err
+	}
+	tr, err := newPushRunner(workdir, spec, key, policy)
+	if err != nil {
+		return failed, err
+	}
+	if out, err := tr.ssh(ctx, fmt.Sprintf("cd %s && nself doctor", remote.ShellQuote(rp))); err != nil {
+		return failed, fmt.Errorf("health check on %s failed (service: %s): %w. Run 'nself doctor --verbose' on the host for details", spec.Dest(), health.DoctorFailedService(string(out)), err)
+	}
+	if !jsonOut {
+		fmt.Printf("  [done] Health checks passed on %s\n", spec.Dest())
+	}
+	return deployStep{Name: "Health checks", Status: "done"}, nil
 }
 
 // ── subcommands ──────────────────────────────────────────────────────────────
