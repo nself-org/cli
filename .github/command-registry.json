@@ -19513,6 +19513,23 @@
       "args": [],
       "flags": [
         {
+          "name": "allow-degraded",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Exit 0 with a warning when the health gate fails or a core service is unhealthy (v1.4 behaviour)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        },
+        {
           "name": "allow-legacy",
           "shorthand": null,
           "type": "bool",

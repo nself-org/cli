@@ -1203,6 +1203,7 @@
       "up"
     ],
     "flags": [
+      "--allow-degraded",
       "--allow-legacy",
       "--clean-start",
       "--debug",
