@@ -98,3 +98,27 @@ func createMissingRoles(ctx context.Context, c *Container, roles []string) error
 	slog.Info("created NOLOGIN roles named by the archive's policies", "roles", created)
 	return nil
 }
+
+// policyTOCLimit bounds the stream prefix restore-remote buffers for the schema
+// read. A custom-format archive carries its whole table of contents (every
+// CREATE POLICY) before the first data block, and pg_restore --schema-only
+// never reads data, so the prefix is enough and the stream is read once.
+var policyTOCLimit int64 = 64 << 20
+
+// ensurePolicyRolesStream reads up to policyTOCLimit bytes of r, creates the
+// policy roles from that prefix and returns a reader that yields the whole
+// stream (prefix, then the rest) for the load.
+func ensurePolicyRolesStream(ctx context.Context, c *Container, r io.Reader) (io.Reader, error) {
+	var prefix bytes.Buffer
+	n, err := io.Copy(&prefix, io.LimitReader(r, policyTOCLimit))
+	if err != nil {
+		return nil, fmt.Errorf("%w: read archive: %v", errs.ErrBackupRestoreFailed, err)
+	}
+	if err := ensurePolicyRoles(ctx, c, bytes.NewReader(prefix.Bytes())); err != nil {
+		if n == policyTOCLimit {
+			return nil, fmt.Errorf("%w (the archive's table of contents must fit in its first %d MiB)", err, policyTOCLimit>>20)
+		}
+		return nil, err
+	}
+	return io.MultiReader(&prefix, r), nil
+}

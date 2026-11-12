@@ -326,7 +326,7 @@ func TestAutoKeyStreamRoundTrip(t *testing.T) {
 	stubs := map[string]string{
 		"pg_dump":    "#!/bin/sh\nprintf 'PGDMP-fixture-bytes'\n",
 		"pg_restore": "#!/bin/sh\nexit 0\n",
-		"docker":     "#!/bin/sh\n/bin/cat > '" + out + "'\n",
+		"docker":     "#!/bin/sh\ncase \"$*\" in *--exit-on-error*) /bin/cat > '" + out + "';; *) /bin/cat >/dev/null;; esac\n",
 	}
 	for n, body := range stubs {
 		if err := os.WriteFile(filepath.Join(bin, n), []byte(body), 0o755); err != nil {
