@@ -13,9 +13,10 @@ import (
 
 // Step is one promotion action and its compensating action.
 type Step struct {
-	Name string
-	Run  func(context.Context, *State) error
-	Undo func(context.Context, *State) error
+	Name    string
+	Run     func(context.Context, *State) error
+	Undo    func(context.Context, *State) error
+	Restart func(context.Context, *State) error
 }
 
 // Observer receives synchronous promotion lifecycle events.

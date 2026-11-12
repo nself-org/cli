@@ -79,3 +79,7 @@ func TestRequireBackupContainerConfig_SetVarsPass(t *testing.T) {
 		t.Errorf("want nil once PROJECT_NAME/POSTGRES_DB are set, got %v", err)
 	}
 }
+
+func TestWire19EncryptedCreateUploads(t *testing.T) { TestEncryptedCreateUploadsToRemote(t) }
+
+func TestWire19FailedUploadExitsNonZero(t *testing.T) { TestCreateFailsWhenConfiguredUploadFails(t) }

@@ -17,8 +17,7 @@ import (
 
 // provePromoteApplied inspects every changed host using its applied compose manifest.
 func provePromoteApplied(ctx context.Context, w *promoteWiring, st *cpromote.State) error {
-	remotes, _ := st.Values["apply_remotes"].(map[string]deploy.Remote)
-	paths, _ := st.Values["apply_paths"].(map[string]string)
+	remotes, paths := cpromote.AppliedHosts(st)
 	if len(remotes) == 0 {
 		remotes = map[string]deploy.Remote{w.targetRemote.Label(): w.targetRemote}
 		paths = map[string]string{w.targetRemote.Label(): promotePath(w.targetServer, w.workdir)}

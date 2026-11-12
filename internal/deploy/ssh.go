@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/nself-org/cli/internal/deploy/pathmap"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
@@ -103,11 +104,11 @@ func DeployViaSsh(ctx context.Context, cfg SSHConfig, composePath string) error 
 
 	// Local operands are checked before the host-key scan and any copy, so a bad
 	// compose path cannot be found only after the env file was already sent.
-	if _, err := localOperand(composePath); err != nil {
+	if _, err := pathmap.LocalOperand(composePath); err != nil {
 		return err
 	}
 	if cfg.EnvFile != "" {
-		if _, err := localOperand(cfg.EnvFile); err != nil {
+		if _, err := pathmap.LocalOperand(cfg.EnvFile); err != nil {
 			return err
 		}
 	}
