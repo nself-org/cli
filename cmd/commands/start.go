@@ -219,15 +219,9 @@ func runStartFlow(cmd *cobra.Command, _ []string, out *startOutcome) error {
 	} else if opts.skipHealthChecks {
 		ui.Warn("Health checks skipped (--skip-health-checks)")
 	} else {
-		requiredPct := 80
-		if opts.quick {
-			requiredPct = 60
+		if out.report, startErr = startHealthStep(ctx, cmd, cfg, projectDir, &opts); startErr != nil {
+			return startErr
 		}
-		if cfg.HealthCheckRequired > 0 && !opts.quick {
-			requiredPct = cfg.HealthCheckRequired
-		}
-
-		out.report = runHealthCheckLoop(ctx, cfg, projectDir, opts.timeout, requiredPct, opts.verbose)
 	}
 
 	// Shared host proxy (P7-ADOPT-21): attach the owner's nginx once healthy.

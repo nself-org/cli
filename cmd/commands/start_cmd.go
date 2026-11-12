@@ -74,6 +74,7 @@ func init() {
 	f.Bool("watch", false, "Enable health auto-restart: poll services and restart unhealthy containers")
 	f.Bool("quiet", false, "Suppress progress output (for CI; preserves --json output)")
 	f.Bool("allow-legacy", false, "Bypass v0.9 artifact check and proceed with WARNING (not recommended)")
+	f.Bool("allow-degraded", false, "Exit 0 with a warning when the health gate fails or a core service is unhealthy (v1.4 behaviour)")
 	f.Bool("embedded-pg", false, "Boot PostgreSQL via embedded pglite/wasmtime — no Docker postgres container required; pgvector included")
 	f.Bool("frozen", false, "Fail with E455 unless the CLI-owned service images (not CS_N or plugin-fragment services), plugin versions and checksums, and CLI minor match nself.lock.yaml")
 	f.Bool("skip-db-init", false, "Skip database migrations and seed; bring up Postgres+Hasura+hasura-auth only. Intended for CI/E2E environments.")
