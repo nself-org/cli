@@ -6404,6 +6404,8 @@ export interface StartData {
 }
 
 export type StartFlags = {
+  /** Exit 0 with a warning when the health gate fails or a core service is unhealthy (v1.4 behaviour) */
+  "allow-degraded"?: boolean;
   /** Bypass v0.9 artifact check and proceed with WARNING (not recommended) */
   "allow-legacy"?: boolean;
   /** Remove all containers before starting */
