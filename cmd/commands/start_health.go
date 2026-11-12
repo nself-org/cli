@@ -21,12 +21,14 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/health"
 	"github.com/nself-org/cli/internal/license"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/ui"
+	"github.com/spf13/cobra"
 )
 
 // runHealthCheckLoop polls service health until the required percentage is met
@@ -76,13 +78,6 @@ func runHealthCheckLoop(ctx context.Context, cfg *config.Config, workdir string,
 			return report
 		}
 
-		// All services healthy (edge case where total is 0 or rounding).
-		if report.Healthy == report.Total && report.Total > 0 {
-			hcSp.Success(fmt.Sprintf("All %d services healthy", report.Total))
-			printServiceDetails(report, verbose)
-			return report
-		}
-
 		// Not yet healthy: stop current spinner, print progress, start fresh spinner.
 		hcSp.Stop()
 		ui.Info(fmt.Sprintf("Waiting for services... %d/%d healthy (%d%%, need %d%%)",
@@ -95,17 +90,26 @@ func runHealthCheckLoop(ctx context.Context, cfg *config.Config, workdir string,
 		case <-healthCtx.Done():
 			hcSp.Fail(fmt.Sprintf("Health checks below threshold after %ds: %d/%d healthy (%d%%, required %d%%): %s",
 				timeoutSec, report.Healthy, report.Total, actualPct, requiredPct, errs.ErrHealthTimeout))
-			// Show which services are still unhealthy.
-			for _, r := range report.Results {
-				if !r.OK() {
-					ui.Warn(fmt.Sprintf("  %s %s: %s (%s)", "\u2717", r.Service, r.Status, r.Details))
-				}
-			}
+			printServiceDetails(report, false) // the services still unhealthy
 			return report
 		case <-time.After(pollInterval):
 			// Continue polling.
 		}
 	}
+}
+
+// startHealthStep runs the loop, then the verdict (p7-wire-20): a failed gate
+// is an error unless --allow-degraded is set or v1.4 behaviour is still on.
+func startHealthStep(ctx context.Context, cmd *cobra.Command, cfg *config.Config, dir string, o *startOpts) (*health.HealthReport, error) {
+	pct := health.RequiredPct(o.quick, cfg.HealthCheckRequired)
+	report := runHealthCheckLoop(ctx, cfg, dir, o.timeout, pct, o.verbose)
+	verdict := health.Verdict(report, pct)
+	// compat.V15(p7-wire-20): a failed health gate exits 0 -> exits non-zero (--allow-degraded keeps 0)
+	if allow, _ := cmd.Flags().GetBool("allow-degraded"); verdict != nil && (allow || !compat.V15()) {
+		ui.Warn(fmt.Sprintf("Stack is degraded: %v", verdict))
+		return report, nil
+	}
+	return report, verdict
 }
 
 // printServiceDetails prints per-service health results. In normal mode it only
