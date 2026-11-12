@@ -11,7 +11,7 @@ One row per top-level command (CLI-R17), scored against the four surfaces a comm
 | Command | Group | Wiki Page | MCP Tools | Env Vars | HTTP Routes |
 |---|---|---|---|---|---|
 | `nself add` | — | yes | 1 | n/a | 1 |
-| `nself backup` | data | yes | 19 | documented | 19 |
+| `nself backup` | data | yes | 19 | undocumented: NSELF_TEST_WIRE18_ARGV | 19 |
 | `nself build` | core | yes | 1 | undocumented: NSELF_L03_REF_BIN, NSELF_PROFILE, UPDATE_GOLDEN | 1 |
 | `nself clean` | core | yes | 1 | n/a | 1 |
 | `nself config` | config | yes | 85 | undocumented: NSELF_REQUIRE_AGE | 85 |
@@ -32,5 +32,5 @@ One row per top-level command (CLI-R17), scored against the four surfaces a comm
 | `nself update` | account | yes | 10 | documented | 10 |
 
 <!-- BEGIN GENERATED:surface-parity -->
-Total: 20 commands. Missing wiki page: 0. No MCP tool: 1. No HTTP route: 1. Env vars found but undocumented: 7.
+Total: 20 commands. Missing wiki page: 0. No MCP tool: 1. No HTTP route: 1. Env vars found but undocumented: 8.
 <!-- END GENERATED:surface-parity -->

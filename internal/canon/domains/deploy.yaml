@@ -42,7 +42,9 @@ commands:
   security: {canon: pending, side_effect: read, mode: v1.4}
   update: {canon: core, side_effect: write, confirm: {flags: [yes]}}
   update images: {side_effect: write}
-  update upgrade: {side_effect: write}
+  # cmd/commands/upgrade_cmd.go:28 replaces the running binary with downloaded code: gated like add. The URL, digest and
+  # signature flags are operator-only (a machine caller must not choose where the next binary comes from).
+  update upgrade: {side_effect: remote, confirm: {flags: [yes]}, flags: {binary-url: {cli_only: true}, binary-sha256: {cli_only: true}, binary-signature: {cli_only: true}}}
   # cmd/commands/verify_sbom.go:41 RunE path changes no persistent state (prints/reads only)
   update verify-sbom: {side_effect: read}
 hubs:

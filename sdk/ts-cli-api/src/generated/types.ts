@@ -886,14 +886,13 @@ export type ConfigBundlesInstallFlags = {
   force?: boolean;
   /** Fail if any plugin in the bundle is missing from the registry */
   strict?: boolean;
-  /** Confirm regeneration on a prod-class environment */
-  yes?: boolean;
 };
 
 /** Install every plugin in a bundle (license-gated, atomic rollback on failure) */
 export interface ConfigBundlesInstallRequest {
   args: ConfigBundlesInstallArgs;
   flags?: ConfigBundlesInstallFlags;
+  confirm?: string;
 }
 
 export type ConfigBundlesListArgs = [];
@@ -1794,6 +1793,7 @@ export type ConfigPluginsUpdateFlags = {
 export interface ConfigPluginsUpdateRequest {
   args?: ConfigPluginsUpdateArgs;
   flags?: ConfigPluginsUpdateFlags;
+  confirm?: string;
 }
 
 export type ConfigPluginsUpdatesArgs = [];
@@ -6966,10 +6966,6 @@ export interface UpdateUpgradeData {
 }
 
 export type UpdateUpgradeFlags = {
-  /** Operator-supplied SHA-256 digest for --binary-url (skips checksums.txt fetch) */
-  "binary-sha256"?: string;
-  /** Install from a specific binary URL (HTTPS only; .tar.gz/.tgz; operator use) */
-  "binary-url"?: string;
   /** Release channel: stable or canary */
   channel?: string;
   /** Check for updates without installing */
@@ -6984,6 +6980,7 @@ export type UpdateUpgradeFlags = {
 export interface UpdateUpgradeRequest {
   args?: UpdateUpgradeArgs;
   flags?: UpdateUpgradeFlags;
+  confirm?: string;
 }
 
 export type UpdateVerifySbomArgs = [];

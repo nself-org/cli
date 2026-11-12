@@ -1346,11 +1346,13 @@
         "hidden": false,
         "flags": [
           "--binary-sha256",
+          "--binary-signature",
           "--binary-url",
           "--channel",
           "--check",
           "--rollback",
-          "--version"
+          "--version",
+          "--yes"
         ]
       },
       {
