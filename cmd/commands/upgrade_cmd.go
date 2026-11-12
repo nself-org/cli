@@ -20,6 +20,7 @@ import (
 
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/ui"
+	"github.com/nself-org/cli/internal/upgrade/binsig"
 	"github.com/nself-org/cli/internal/version"
 
 	"github.com/spf13/cobra"
@@ -36,7 +37,7 @@ system package) and uses the appropriate upgrade strategy.
   nself upgrade --channel canary         # Switch to canary channel
   nself upgrade --version 1.2.3         # Pin to specific version
   nself upgrade --rollback               # Revert to previous version
-  nself upgrade --binary-url <url>       # Install from a specific URL (operators)`,
+  nself upgrade --binary-url <url>       # Install from a URL (needs --binary-sha256, --binary-signature)`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		check, _ := cmd.Flags().GetBool("check")
 		channel, _ := cmd.Flags().GetString("channel")
@@ -66,6 +67,9 @@ system package) and uses the appropriate upgrade strategy.
 				}
 			}
 
+			if err := binsig.Require(binarySHA, cmd.Flag("binary-signature").Value.String()); err != nil {
+				return err
+			}
 			method := detectInstallMethod()
 			if method == "homebrew" {
 				ui.Warn("This nSelf binary was installed via Homebrew.")
@@ -205,7 +209,8 @@ func init() {
 	upgradeCmd.Flags().Bool("rollback", false, "Revert to the previously installed version")
 	upgradeCmd.Flags().String("binary-url", "", "Install from a specific binary URL (HTTPS only; .tar.gz/.tgz; operator use)")
 	upgradeCmd.Flags().String("binary-sha256", "", "Operator-supplied SHA-256 digest for --binary-url (skips checksums.txt fetch)")
-	// CLI-R11 core list: `update` absorbs upgrade. The old top-level spelling
-	// keeps working through legacy_spellings.go.
+	upgradeCmd.Flags().Bool("yes", false, "Confirm the upgrade")
+	upgradeCmd.Flags().String("binary-signature", "", "Hex Ed25519 signature of --binary-sha256 (required with --binary-url)")
+	// CLI-R11: `update` absorbs upgrade; the old spelling lives in legacy_spellings.go.
 	updateCmd.AddCommand(upgradeCmd)
 }

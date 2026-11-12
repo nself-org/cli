@@ -209,7 +209,7 @@ One row per operation of the committed OpenAPI document. Side effect is the high
 | POST | `/v1/commands/config` | Manage project configuration | `read` | no |
 | POST | `/v1/commands/config/bundles` | Manage and inspect nSelf plugin bundles | `read` | no |
 | POST | `/v1/commands/config/bundles/info` | Show bundle details, plugins, and license status | `read` | no |
-| POST | `/v1/commands/config/bundles/install` | Install every plugin in a bundle (license-gated, atomic rollback on failure) | `write` | no |
+| POST | `/v1/commands/config/bundles/install` | Install every plugin in a bundle (license-gated, atomic rollback on failure) | `remote` | no |
 | POST | `/v1/commands/config/bundles/list` | List all available nSelf plugin bundles | `read` | no |
 | POST | `/v1/commands/config/env` | Multi-environment management: switch, list, diff, copy | `read` | no |
 | POST | `/v1/commands/config/env/copy` | Scaffold a new environment from an existing one | `write` | no |
@@ -249,7 +249,7 @@ One row per operation of the committed OpenAPI document. Side effect is the high
 | POST | `/v1/commands/config/plugins/start` | Start a plugin service | `write` | no |
 | POST | `/v1/commands/config/plugins/status` | Show plugin status | `read` | no |
 | POST | `/v1/commands/config/plugins/stop` | Stop a plugin service | `write` | no |
-| POST | `/v1/commands/config/plugins/update` | Update a specific plugin or all plugins | `write` | no |
+| POST | `/v1/commands/config/plugins/update` | Update a specific plugin or all plugins | `remote` | no |
 | POST | `/v1/commands/config/plugins/updates` | Check for available plugin updates | `read` | no |
 | POST | `/v1/commands/config/secrets` | Manage encrypted project secrets (age encryption) | `read` | no |
 | POST | `/v1/commands/config/secrets/audit` | Report secrets that haven't been rotated in >90 days | `read` | no |
@@ -455,7 +455,7 @@ One row per operation of the committed OpenAPI document. Side effect is the high
 | POST | `/v1/commands/update/project/rollback` | Restore a v1 backup created by migrate run | `destructive` | no |
 | POST | `/v1/commands/update/project/run` | Migrate v1 project to v2 | `write` | no |
 | POST | `/v1/commands/update/stack` | Upgrade the stack with a verified backup and resumable steps | `destructive` | no |
-| POST | `/v1/commands/update/upgrade` | Upgrade the nSelf CLI (detects install method) | `write` | no |
+| POST | `/v1/commands/update/upgrade` | Upgrade the nSelf CLI (detects install method) | `remote` | no |
 | POST | `/v1/commands/update/verify-sbom` | Verify the SBOM signature for a CLI release | `read` | no |
 
 **Plugin commands.** Installed plugins add routes by the same `RoutePath` rule. This page is generated from the builtin registry alone, so it never lists them; each plugin's wiki page lists its own in its machine-surface region, for example the [CI plugin page](https://github.com/nself-org/plugins/wiki/CI).

@@ -10,7 +10,8 @@ commands:
   # cmd/commands/bundle.go:39 RunE path changes no persistent state (prints/reads only)
   config bundles: {side_effect: read}
   config bundles info: {side_effect: read, json: legacy}
-  config bundles install: {side_effect: write}
+  # cmd/commands/bundle_install_remove.go:73 downloads and installs every plugin in the bundle: gated like add
+  config bundles install: {side_effect: remote, confirm: {flags: [yes]}}
   config bundles list: {side_effect: read, json: legacy}
   # cmd/commands/plugin.go:21 proxies arbitrary args to a plugin binary (plugin.ProxyCommand): effect unbounded, worst case
   # bare `config plugins` lists its subcommands (envelope); with arguments it proxies to a plugin binary: effect unbounded (worst case), refused with --json
@@ -33,7 +34,8 @@ commands:
   config plugins start: {side_effect: write}
   config plugins status: {side_effect: read}
   config plugins stop: {side_effect: write}
-  config plugins update: {side_effect: write}
+  # cmd/commands/plugin.go:70 downloads and installs the newer plugin build: gated like add
+  config plugins update: {side_effect: remote, confirm: {flags: [yes]}}
   # cmd/commands/plugin_lifecycle.go:101 only lists available updates
   config plugins updates: {side_effect: read}
   # cmd/commands/plugin_install.go:139 may register a free account and send install telemetry
