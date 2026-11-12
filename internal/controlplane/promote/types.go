@@ -8,7 +8,8 @@ import "github.com/nself-org/cli/internal/controlplane"
 // Purpose: carry resolved promotion inputs and rollback evidence between steps.
 // Inputs: command wiring initializes environment and tier fields; steps fill evidence.
 // Outputs: Engine.Run copies public outcome fields into Result.
-// Constraints: Values is opaque wiring state; this package does not interpret it.
+// Constraints: Values is opaque wiring state; this package reads only the
+// apply_remotes and apply_paths keys the CLI apply step sets (AppliedHosts).
 type State struct {
 	// Project is the nSelf project name a database undo passes to
 	// `backup restore --confirm-project`; command wiring sets it.

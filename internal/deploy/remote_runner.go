@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/nself-org/cli/internal/deploy/pathmap"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
@@ -69,7 +70,7 @@ func NewSSHRemote(ctx context.Context, host, keyPath, env, server string) (*SSHR
 func sshOpts(keyPath string, policy []string) []string {
 	var opts []string
 	if keyPath != "" {
-		opts = append(opts, "-i", sshKeyPath(keyPath))
+		opts = append(opts, "-i", pathmap.SSHKeyPath(keyPath))
 	}
 	opts = append(opts, policy...)
 	return append(opts, "-o", "ForwardAgent=no", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10")
@@ -139,11 +140,11 @@ func rsyncArgv(spec remote.HostSpec, sshOpts, flags []string, filesFrom, srcDir,
 			return nil, fmt.Errorf("rsync flag %q is not allowed (no delete, no transport override)", f)
 		}
 	}
-	filesFrom, err = rsyncLocalOperand(filesFrom)
+	filesFrom, err = pathmap.RsyncLocalOperand(filesFrom)
 	if err != nil {
 		return nil, err
 	}
-	srcDir, err = rsyncLocalOperand(srcDir)
+	srcDir, err = pathmap.RsyncLocalOperand(srcDir)
 	if err != nil {
 		return nil, err
 	}

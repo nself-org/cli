@@ -27,6 +27,17 @@ func (e Engine) rollback(ctx context.Context, st *State, result Result, failed i
 		}
 		markRolledBack(&result, step.Name)
 	}
+	for i := indexOf("compare") + 1; i <= failed; i++ {
+		s := e.Steps[i]
+		if s.Restart == nil {
+			continue
+		}
+		err := s.Restart(ctx, st)
+		e.rollbackEvent(s.Name+"-up", err)
+		if err != nil {
+			return rollbackFailed(result, st, s.Name, err)
+		}
+	}
 	health := e.Steps[indexOf("health")]
 	if health.Run != nil {
 		if err := health.Run(ctx, st); err != nil {

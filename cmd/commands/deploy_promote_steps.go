@@ -137,9 +137,9 @@ func promoteSteps(w *promoteWiring, jsonOut bool) []cpromote.Step {
 	tag := fmt.Sprintf("pre-promote-%d-%s", time.Now().Unix(), hex.EncodeToString(suffix[:]))
 	steps = append(steps, checkpointPromoteStep(w, cpromote.SnapshotStep(w.targetRemote, promotePath(w.targetServer, w.workdir), tag), false))
 	steps = append(steps, cpromote.SaveStep(w.targetRemote, promotePath(w.targetServer, w.workdir)))
-	apply := step("apply", runPromoteApply(w))
-	apply.Undo = func(ctx context.Context, st *cpromote.State) error { return rollbackPromoteApply(ctx, w, st) }
-	steps = append(steps, apply, checkpointPromoteStep(w, cpromote.MigrateStep(w.targetRemote, promotePath(w.targetServer, w.workdir)), true), cpromote.HealthStep(w.targetRemote, promotePath(w.targetServer, w.workdir)))
+	apply := cpromote.DeferredApplyStep(runPromoteApply(w))
+	health := cpromote.GatedHealthStep(w.targetRemote, promotePath(w.targetServer, w.workdir), func() *controlplane.RemoteApply { return w.apply })
+	steps = append(steps, apply, checkpointPromoteStep(w, cpromote.MigrateStep(w.targetRemote, promotePath(w.targetServer, w.workdir)), true), health)
 	steps = append(steps, step("record", runPromoteRecord(w)))
 	return steps
 }
@@ -187,6 +187,7 @@ func runPromoteApply(w *promoteWiring) func(context.Context, *cpromote.State) er
 			return err
 		}
 		w.apply.Yes = w.yes
+		w.apply.DeferHealth = true
 		w.apply.ProdClass, w.apply.BackupID, w.apply.BackupHost = prodClassFn(w.inv, w.target), st.BackupID, st.BackupHost
 		w.apply.Open = func(c context.Context, srv controlplane.Server, key, env string) (deploy.Remote, error) {
 			r, err := openDeployRemote(c, srv, key, env)
@@ -229,12 +230,6 @@ func runPromoteApply(w *promoteWiring) func(context.Context, *cpromote.State) er
 		recordErr, _ := st.Values["apply_record_error"].(error)
 		return errors.Join(err, recordErr, savePromoteRecord(w, st, "in_progress"))
 	}
-}
-
-func rollbackPromoteApply(ctx context.Context, w *promoteWiring, st *cpromote.State) error {
-	remotes, _ := st.Values["apply_remotes"].(map[string]deploy.Remote)
-	paths, _ := st.Values["apply_paths"].(map[string]string)
-	return cpromote.UndoApplied(ctx, st, remotes, paths)
 }
 
 func runPromoteCapture(w *promoteWiring) func(context.Context, *cpromote.State) error {
