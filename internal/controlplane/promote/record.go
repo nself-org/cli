@@ -143,7 +143,8 @@ func recordHasRestoreLists(rec *Record) bool {
 	return true
 }
 
-// RollbackRecord re-applies every saved stack before restoring the migrated DB.
+// RollbackRecord restores files, then the migrated DB, then re-applies the
+// stack with StrictHasura and checks health.
 // project is passed to `backup restore --confirm-project` for that restore.
 func RollbackRecord(ctx context.Context, projectRoot, project string, rec *Record, remotes map[string]deploy.Remote, remotePaths map[string]string) error {
 	if rec == nil {
@@ -219,7 +220,7 @@ func RollbackRecord(ctx context.Context, projectRoot, project string, rec *Recor
 		rp := rec.RemotePaths[key]
 		err := deploy.RollbackRemote(recoveryCtx, deploy.RollbackOptions{
 			Remote: r, RemotePath: rp, Tar: rec.PreDeployTar[key], BackupID: "",
-			Changed: rec.Changed[key], Absent: rec.Absent[key], StrictHasura: true,
+			Changed: rec.Changed[key], Absent: rec.Absent[key], FilesOnly: true,
 		})
 		if err != nil {
 			return fmt.Errorf("rolling back promotion on %s: %w", key, err)
@@ -236,6 +237,15 @@ func RollbackRecord(ctx context.Context, projectRoot, project string, rec *Recor
 	if restoreDB {
 		if err := RestoreDatabase(recoveryCtx, remotes[backupKey], rec.RemotePaths[backupKey], project, rec.SnapshotTag, rec.BackupID, &rec.RecoveryPhase, &rec.DBRestoredAt, func() error { return SaveRecord(projectRoot, *rec) }); err != nil {
 			return err
+		}
+	}
+	for _, key := range keys {
+		if err := deploy.RollbackRemote(recoveryCtx, deploy.RollbackOptions{
+			Remote: remotes[key], RemotePath: rec.RemotePaths[key], Tar: rec.PreDeployTar[key],
+			Changed: rec.Changed[key], Absent: rec.Absent[key],
+			StrictHasura: true, ReapplyOnly: true,
+		}); err != nil {
+			return fmt.Errorf("bringing up the restored stack on %s: %w", key, err)
 		}
 	}
 	for _, key := range keys {

@@ -70,6 +70,10 @@ type ApplyOptions struct {
 	// KeepImages is set by a rollback (ReapplyRemote only): refs to point back at
 	// the image ids the previous deploy ran, and not to pull again.
 	KeepImages []imageTag
+	// DeferHealth skips the per-service health gate and the final regression
+	// rechecks, running only the `up` commands. Used by promote, which runs the
+	// health gate separately after all servers have applied.
+	DeferHealth bool
 }
 
 // ApplyResult records what ApplyRemote did, even when it stopped early.
@@ -241,6 +245,16 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 		return res, err
 	}
 	touched, res.Touched = true, true
+	if o.DeferHealth {
+		if err = upServices(ctx, o, model); err != nil {
+			return res, err
+		}
+		if err = fa.reload(ctx, o.Out, r); err != nil {
+			return res, err
+		}
+		pruneOldTars(ctx, o, bk.Tar)
+		return res, nil
+	}
 	if err = applyServices(ctx, o, model); err != nil {
 		return res, err
 	}

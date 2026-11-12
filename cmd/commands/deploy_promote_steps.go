@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/nself-org/cli/internal/backup"
@@ -139,7 +140,16 @@ func promoteSteps(w *promoteWiring, jsonOut bool) []cpromote.Step {
 	steps = append(steps, cpromote.SaveStep(w.targetRemote, promotePath(w.targetServer, w.workdir)))
 	apply := step("apply", runPromoteApply(w))
 	apply.Undo = func(ctx context.Context, st *cpromote.State) error { return rollbackPromoteApply(ctx, w, st) }
-	steps = append(steps, apply, checkpointPromoteStep(w, cpromote.MigrateStep(w.targetRemote, promotePath(w.targetServer, w.workdir)), true), cpromote.HealthStep(w.targetRemote, promotePath(w.targetServer, w.workdir)))
+	apply.Restart = func(ctx context.Context, st *cpromote.State) error { return restartPromoteApply(ctx, st) }
+	health := cpromote.HealthStep(w.targetRemote, promotePath(w.targetServer, w.workdir))
+	doctor := health.Run
+	health.Run = func(ctx context.Context, st *cpromote.State) error {
+		if err := gatePromoteApplied(ctx, w, st); err != nil {
+			return err
+		}
+		return doctor(ctx, st)
+	}
+	steps = append(steps, apply, checkpointPromoteStep(w, cpromote.MigrateStep(w.targetRemote, promotePath(w.targetServer, w.workdir)), true), health)
 	steps = append(steps, step("record", runPromoteRecord(w)))
 	return steps
 }
@@ -187,6 +197,7 @@ func runPromoteApply(w *promoteWiring) func(context.Context, *cpromote.State) er
 			return err
 		}
 		w.apply.Yes = w.yes
+		w.apply.DeferHealth = true
 		w.apply.ProdClass, w.apply.BackupID, w.apply.BackupHost = prodClassFn(w.inv, w.target), st.BackupID, st.BackupHost
 		w.apply.Open = func(c context.Context, srv controlplane.Server, key, env string) (deploy.Remote, error) {
 			r, err := openDeployRemote(c, srv, key, env)
@@ -235,6 +246,37 @@ func rollbackPromoteApply(ctx context.Context, w *promoteWiring, st *cpromote.St
 	remotes, _ := st.Values["apply_remotes"].(map[string]deploy.Remote)
 	paths, _ := st.Values["apply_paths"].(map[string]string)
 	return cpromote.UndoApplied(ctx, st, remotes, paths)
+}
+
+// restartPromoteApply brings the restored stack up on every host whose files
+// were rolled back, after the database restore (D-0699).
+func restartPromoteApply(ctx context.Context, st *cpromote.State) error {
+	remotes, _ := st.Values["apply_remotes"].(map[string]deploy.Remote)
+	paths, _ := st.Values["apply_paths"].(map[string]string)
+	return cpromote.RestartApplied(ctx, st, remotes, paths)
+}
+
+// gatePromoteApplied is the health half of the deferred apply: after the
+// migration, every applied host's services are gated, nginx reloaded and the
+// hasura metadata applied (D-0698). Hosts are gated in label order.
+func gatePromoteApplied(ctx context.Context, w *promoteWiring, st *cpromote.State) error {
+	remotes, _ := st.Values["apply_remotes"].(map[string]deploy.Remote)
+	paths, _ := st.Values["apply_paths"].(map[string]string)
+	hosts := make([]string, 0, len(remotes))
+	for host := range remotes {
+		hosts = append(hosts, host)
+	}
+	sort.Strings(hosts)
+	for _, host := range hosts {
+		o := deploy.ApplyOptions{Remote: remotes[host], RemotePath: paths[host]}
+		if w.apply != nil {
+			o.StrictHasura, o.Clock, o.Out = w.apply.StrictHasura, w.apply.Clock, w.apply.Out
+		}
+		if err := deploy.GateRemote(ctx, o); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func runPromoteCapture(w *promoteWiring) func(context.Context, *cpromote.State) error {

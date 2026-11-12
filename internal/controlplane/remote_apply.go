@@ -36,6 +36,7 @@ type RemoteApply struct {
 	StrictHasura bool
 	Clock        docker.Clock
 	Out          io.Writer
+	DeferHealth  bool
 	// BackupID is the one verified database backup of the env, taken on its
 	// primary (BackupHost) before any server was touched; other servers never run
 	// `nself backup`. Empty off tier prod.
@@ -94,7 +95,7 @@ func ApplyServer(ctx context.Context, envName string, srv Server, keyPath string
 	res, err := deploy.ApplyRemote(ctx, deploy.ApplyOptions{
 		Remote: r, RemotePath: srv.RemotePath, Set: ra.Set, Expected: &expected, LocalPlugins: ra.LocalPlugins,
 		ProdClass: ra.ProdClass, Yes: ra.Yes, Confirm: ra.Confirm, StrictHasura: ra.StrictHasura, Clock: ra.Clock, Out: ra.Out,
-		BackupID: ra.BackupID, Env: envName, Previous: ra.Previous,
+		BackupID: ra.BackupID, Env: envName, Previous: ra.Previous, DeferHealth: ra.DeferHealth,
 	})
 	if ra.Record != nil {
 		ra.Record(srv, res, err)
