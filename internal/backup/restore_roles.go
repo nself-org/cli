@@ -1,17 +1,10 @@
 package backup
 
-// restore_roles.go — create the roles that an archive's RLS policies name.
-//
-// Purpose: `pg_restore --no-owner --no-acl` still runs CREATE POLICY ... TO
-// <role>, which fails when <role> is missing ("role mux_user does not exist",
-// P7-PROD-88). Before the restore, read the archive's schema-only SQL, collect
-// the TO role lists and create each missing role as NOLOGIN.
-// Inputs: the archive (stdin of `pg_restore --schema-only -f -` in the
-// container) and the target container.
-// Outputs: NOLOGIN roles created in the target cluster, or ErrBackupRestoreFailed.
+// restore_roles.go: create the roles an archive's RLS policies name (P7-PROD-88).
+// Purpose: CREATE POLICY ... TO <role> fails on a missing role even with
+// --no-owner; create each missing role NOLOGIN before the restore.
 // Constraints: nothing from the archive runs; only names matching
-// policyroles.NamePattern are taken (anything else refuses the restore before
-// any SQL runs), and a created role gets no LOGIN, password or privilege.
+// policyroles.NamePattern are taken; a created role gets no LOGIN or privilege.
 
 import (
 	"bytes"
@@ -25,8 +18,7 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 )
 
-// ensurePolicyRoles reads archive's schema in the container and creates the
-// policy roles that do not exist yet. It runs no SQL when a name is refused.
+// ensurePolicyRoles creates the archive's missing policy roles; no SQL runs when a name is refused.
 func ensurePolicyRoles(ctx context.Context, c *Container, archive io.Reader) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -63,8 +55,7 @@ func ensurePolicyRoles(ctx context.Context, c *Container, archive io.Reader) err
 	return createMissingRoles(ctx, c, roles)
 }
 
-// createMissingRoles creates each role that pg_roles does not list, NOLOGIN
-// and nothing else. roles are already validated against policyroles.NamePattern.
+// createMissingRoles creates each role pg_roles lacks, NOLOGIN only (names pre-validated).
 func createMissingRoles(ctx context.Context, c *Container, roles []string) error {
 	if len(roles) == 0 {
 		return nil
@@ -99,15 +90,12 @@ func createMissingRoles(ctx context.Context, c *Container, roles []string) error
 	return nil
 }
 
-// policyTOCLimit bounds the stream prefix restore-remote buffers for the schema
-// read. A custom-format archive carries its whole table of contents (every
-// CREATE POLICY) before the first data block, and pg_restore --schema-only
-// never reads data, so the prefix is enough and the stream is read once.
+// policyTOCLimit bounds the stream prefix buffered for the schema read: a
+// custom-format archive carries its whole table of contents before any data.
 var policyTOCLimit int64 = 64 << 20
 
-// ensurePolicyRolesStream reads up to policyTOCLimit bytes of r, creates the
-// policy roles from that prefix and returns a reader that yields the whole
-// stream (prefix, then the rest) for the load.
+// ensurePolicyRolesStream creates the policy roles from a buffered prefix of r
+// and returns a reader yielding the whole stream for the load.
 func ensurePolicyRolesStream(ctx context.Context, c *Container, r io.Reader) (io.Reader, error) {
 	var prefix bytes.Buffer
 	n, err := io.Copy(&prefix, io.LimitReader(r, policyTOCLimit))

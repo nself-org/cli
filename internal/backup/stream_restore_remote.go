@@ -88,8 +88,7 @@ func RestoreFromRemote(ctx context.Context, cfg *config.Config, from, keyPath st
 	err := restoreViaScratch(ctx, container, user, db, func(ctx context.Context, scratch string) error {
 		consumed = true
 		load := func(ctx context.Context, r io.Reader) error {
-			// Create the roles the archive's policies name (NOLOGIN) before the
-			// load, from a buffered prefix: one pass, no temp file (P7-PROD-88).
+			// Create the archive's policy roles (NOLOGIN) from a buffered prefix (P7-PROD-88).
 			r, err := ensurePolicyRolesStream(ctx, &Container{Name: container, User: user, DB: scratch}, r)
 			if err != nil {
 				return err
