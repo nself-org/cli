@@ -1,6 +1,6 @@
 package commands
 
-// Purpose: shared deploy-strategy tables and the rolling-restart and health-check
+// Purpose: shared deploy-strategy tables and the rolling-restart
 // helpers used by runDeploy. Inputs are the target workdir and strategy name;
 // outputs are per-step results consumed by the deploy command's summary.
 // Constraints: every docker call goes through internal/docker (docker funnel);
@@ -10,9 +10,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/nself-org/cli/internal/config"
@@ -222,43 +219,6 @@ func gateError(svc string, err error) error {
 		return errs.Wrap("E251", fmt.Sprintf("rolling restart: %v. %s", err, hint), err)
 	}
 	return fmt.Errorf("rolling restart: service %s: %w", svc, err)
-}
-
-// runDeployHealthCheck calls nself doctor and gates the deploy result.
-// Returns an error with the failed service name when any service is unhealthy.
-func runDeployHealthCheck(ctx context.Context, workdir string, jsonOut bool) (deployStep, error) {
-	announce(ctx, jsonOut, "Health checks", "  [running] Health checks (calling nself health)")
-	bin, err := os.Executable()
-	if err != nil || bin == "" {
-		bin, _ = exec.LookPath("nself")
-	}
-	if bin == "" {
-		return deployStep{Name: "Health checks", Status: "failed"}, fmt.Errorf("unable to locate nself binary for health check")
-	}
-	c := exec.CommandContext(ctx, bin, "doctor")
-	c.Dir = workdir
-	c.Env = os.Environ()
-	out, err := c.CombinedOutput()
-	if err != nil {
-		output := strings.TrimSpace(string(out))
-		// Try to extract the failing service from doctor output.
-		failedSvc := "unknown"
-		for _, line := range strings.Split(output, "\n") {
-			if strings.Contains(line, "unhealthy") || strings.Contains(line, "failed") {
-				parts := strings.Fields(line)
-				if len(parts) > 0 {
-					failedSvc = parts[0]
-					break
-				}
-			}
-		}
-		return deployStep{Name: "Health checks", Status: "failed"},
-			fmt.Errorf("health check failed (service: %s). Run 'nself doctor --verbose' for details", failedSvc)
-	}
-	if !jsonOut {
-		fmt.Println("  [done] Health checks passed")
-	}
-	return deployStep{Name: "Health checks", Status: "done"}, nil
 }
 
 // applyLocalHasuraMetadataAfterDeploy applies hasura/metadata/ (if present)

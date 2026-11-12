@@ -225,4 +225,5 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-SURF-25 | no token = open loopback with a warning | token required (generated on first start) | `cmd/commands/mcp_auth.go` |
 | P7-SURF-26 | --json ignored | envelope | `cmd/commands/registry_types_build.go` |
 | P7-SURF-27 | logs --json per-line legacy JSON | envelope / json-stream | `cmd/commands/logs_json.go` |
+| P7-WIRE-21 | single-host health ran nself doctor over the transport | gated per service on the host by the apply | `cmd/commands/deploy_remote.go` |
 <!-- END GENERATED:gated -->
