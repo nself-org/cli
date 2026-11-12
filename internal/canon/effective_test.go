@@ -217,6 +217,13 @@ func TestEffectivePresplitEquivalence(t *testing.T) {
 					if k == "account logout" || k == "logout" {
 						want.Output = OutputInteractive
 					}
+				case "bundle install", "plugin update", "update upgrade":
+					// P7-WIRE-22: these download and install fetched code, so they are
+					// remote with a confirm block (update upgrade also keeps its
+					// URL, digest and signature flags cli_only); the frozen
+					// pre-split table says write.
+					want.SideEffect = SideEffectRemote
+					got.Confirm, got.Flags = nil, nil
 				case "stop":
 					// P7-SURF-10: `stop` declares confirm {flags: []} (--volumes is
 					// destructive and stop has no --yes flag, so a machine surface

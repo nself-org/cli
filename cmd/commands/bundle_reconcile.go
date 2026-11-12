@@ -28,6 +28,7 @@ func init() {
 	bundleRemoveCmd.Flags().Bool("yes", false, "Confirm regeneration on a prod-class environment")
 	bundleRemoveCmd.Flags().Bool("force", false, "Allow overwriting hand-edited generated files")
 	pluginRemoveCmd.Flags().Bool("yes", false, "Confirm regeneration on a prod-class environment")
+	pluginUpdateCmd.Flags().Bool("yes", false, "Confirm the update (and regeneration on a prod-class environment)")
 }
 
 // reconcileAfterExtension applies generated state after extension membership
