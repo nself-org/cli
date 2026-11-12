@@ -18341,6 +18341,11 @@
                     ],
                     "type": "array"
                   },
+                  "confirm": {
+                    "description": "a plan id or a nonce the server issued",
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
                   "flags": {
                     "additionalProperties": false,
                     "properties": {
@@ -18362,11 +18367,6 @@
                       "strict": {
                         "default": false,
                         "description": "Fail if any plugin in the bundle is missing from the registry",
-                        "type": "boolean"
-                      },
-                      "yes": {
-                        "default": false,
-                        "description": "Confirm regeneration on a prod-class environment",
                         "type": "boolean"
                       }
                     },
@@ -23417,6 +23417,11 @@
                       }
                     ],
                     "type": "array"
+                  },
+                  "confirm": {
+                    "description": "a plan id or a nonce the server issued",
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
                   },
                   "flags": {
                     "additionalProperties": false,
@@ -50322,19 +50327,14 @@
                     "minItems": 0,
                     "type": "array"
                   },
+                  "confirm": {
+                    "description": "a plan id or a nonce the server issued",
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
                   "flags": {
                     "additionalProperties": false,
                     "properties": {
-                      "binary-sha256": {
-                        "default": "",
-                        "description": "Operator-supplied SHA-256 digest for --binary-url (skips checksums.txt fetch)",
-                        "type": "string"
-                      },
-                      "binary-url": {
-                        "default": "",
-                        "description": "Install from a specific binary URL (HTTPS only; .tar.gz/.tgz; operator use)",
-                        "type": "string"
-                      },
                       "channel": {
                         "default": "",
                         "description": "Release channel: stable or canary",
