@@ -1,21 +1,10 @@
 package deploy
 
-// Purpose: the artifact set a v1.5 remote deploy ships (D24): the rewritten
-//          manifests and merged compose files, plugin fragments, env files,
-//          nginx/ (only files this build generated or the operator allowlisted;
-//          conf.d only as nginx/conf.d/<name>.conf; D-0423, D-0424) and hasura/,
-//          laid out in a staging dir
-//          exactly as they will sit under <remote_path>.
-// Inputs:  the scratch build output, the path map, the local compose and env
-//          file lists (build.ReadComposeManifest / ReadComposeEnvManifest,
-//          read by the caller), the resolved env snapshot.
-// Outputs: ArtifactSet (relative file lists plus the remote manifests).
-// Constraints: the project .env is never shipped (see ArtifactSet.KeepHostEnv).
-//              Nothing under ssl/ is ever staged (the stub certs of the
-//              scratch build are never shipped). Every staged file is
-//              checked for a surviving local path; one survivor fails Stage.
-//              Env files are staged 0600 (they carry secrets); the staging
-//              dir is the only thing a sync reads.
+// Purpose: the artifact set a v1.5 remote deploy ships (D24): rewritten manifests, merged compose
+//          files, plugin fragments, env files, nginx/ (D-0423, D-0424), hasura/ and postgres/init/,
+//          staged exactly as they will sit under <remote_path>.
+// Constraints: the project .env is never shipped (ArtifactSet.KeepHostEnv); nothing under ssl/ is
+//              staged; a staged file naming a local path fails Stage; env files are staged 0600.
 
 import (
 	"fmt"
@@ -39,14 +28,11 @@ type ArtifactSet struct {
 	EnvFiles    []string // relative; shipped 0600
 	Compose     []string // remote absolute compose files, in -f order
 	EnvManifest []string // remote absolute env files, in --env-file order
-	// KeepHostEnv: the project .env is in EnvManifest but not shipped. It is the
-	// host's own file (the target snapshot reads PLUGIN_DIR from it, the host's
-	// nself reads it); the operator's copy would replace it with local values.
-	// A sync only creates it, empty and 0600, when the host has none.
+	// KeepHostEnv: the project .env is in EnvManifest but not shipped; it is the host's own
+	// file. A sync only creates it, empty and 0600, when the host has none.
 	KeepHostEnv bool
-	// NotShipped are the nginx/ files of the scratch tree that were left out
-	// (relative to RemotePath, sorted): not written by this build and not on the
-	// operator's NSELF_DEPLOY_NGINX_INCLUDE allowlist (D-0423).
+	// NotShipped: nginx/ scratch files left out (not written by this build, not on the
+	// NSELF_DEPLOY_NGINX_INCLUDE allowlist, D-0423); relative, sorted.
 	NotShipped []string
 	// Front is the fronting stack's second artifact root (D-0425); nil for a
 	// project that runs its own nginx.
@@ -64,9 +50,8 @@ type StageInput struct {
 	// Nginx decides which scratch nginx/ files ship; nil ships every non-conf.d
 	// file (and no conf.d file). See NginxPolicy.
 	Nginx *NginxPolicy
-	// FrontScratch is the local scratch root of the fronting stack (the parent
-	// of Map.ScratchRoot) and FrontedBy its NGINX_FRONTED_BY name; both empty
-	// for a project that runs its own nginx. See artifacts_front.go.
+	// FrontScratch (parent of Map.ScratchRoot) and FrontedBy (NGINX_FRONTED_BY): fronting
+	// stack, both empty for a project with its own nginx. See artifacts_front.go.
 	FrontScratch, FrontedBy string
 }
 
@@ -145,9 +130,13 @@ func Stage(in StageInput) (ArtifactSet, error) {
 		}
 		set.Files = append(set.Files, rel)
 	}
-	hasura, err := copyTree(filepath.Join(in.Map.ScratchRoot, "hasura"), in.StageDir, "hasura", in.Map, false)
-	if err != nil {
-		return set, err
+	var hasura []string // hasura/ and postgres/init/ (the auth schema a fresh host's postgres needs)
+	for _, d := range []string{"hasura", "postgres/init"} {
+		files, err := copyTree(filepath.Join(in.Map.ScratchRoot, filepath.FromSlash(d)), in.StageDir, d, in.Map, false)
+		if err != nil {
+			return set, err
+		}
+		hasura = append(hasura, files...)
 	}
 	nginxFiles, notShipped, err := stageNginx(in)
 	if err != nil {
