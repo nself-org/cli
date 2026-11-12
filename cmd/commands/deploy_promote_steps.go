@@ -126,6 +126,7 @@ func promoteSteps(w *promoteWiring, jsonOut bool) []cpromote.Step {
 		}),
 		step("capture", runPromoteCapture(w)),
 		step("build", func(ctx context.Context, _ *cpromote.State) error {
+			ctx = context.WithValue(ctx, deployYesKey{}, w.yes) // the scratch build inherits promote's --yes
 			ra, compose, err := prepareRemoteApply(ctx, v15Params{workdir: w.workdir, target: w.target, srv: w.targetServer, keyPath: os.Getenv(w.targetServer.SSHKeyRef), prodClass: false, yes: true, jsonOut: jsonOut})
 			w.apply, w.compose = ra, compose
 			return err
