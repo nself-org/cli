@@ -242,12 +242,15 @@ func TestPromoteRecordRestoreOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(r.calls, "\n")
-	// The restored artifact set is read by RollbackRemote before its re-apply.
-	manifest := strings.Index(joined, " pull")
+	// Files first, then the DB restore, then the re-apply (pull and strict
+	// hasura metadata) on the old schema, then health (D-0699).
+	files := strings.Index(joined, "tar -xzf")
 	restore := strings.Index(joined, "backup restore")
+	reapply := strings.Index(joined, " pull")
+	metadata := strings.Index(joined, "hasura metadata apply")
 	health := strings.LastIndex(joined, "nself doctor")
-	if manifest < 0 || restore <= manifest || health <= restore {
-		t.Fatalf("not files/reapply, DB, health: %s", joined)
+	if files < 0 || restore <= files || reapply <= restore || metadata <= reapply || health <= metadata {
+		t.Fatalf("not files, DB, reapply, health: %s", joined)
 	}
 }
 

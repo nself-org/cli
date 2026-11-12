@@ -8,8 +8,10 @@ package deploy
 // Inputs:  a Remote, the remote path, the tar path and backup id the deploy
 //          recorded in .nself/state/deploy.json.
 // Outputs: an error naming the step that failed.
-// Constraints: the host deploy lock is held; files first, so the database restore and the re-apply see the old
-//              configuration. Nothing is moved or deleted but generated files
+// Constraints: the host deploy lock is held; files first, then the database,
+//              then the re-apply, so hasura and the services see the old
+//              configuration on the old schema (FilesOnly and ReapplyOnly split
+//              the steps for a multi-host promotion). Nothing is moved or deleted but generated files
 //              the tar does not hold. A host whose tar held no compose set (a
 //              first deploy) is restored but not re-applied, and says so.
 
@@ -48,6 +50,13 @@ type RollbackOptions struct {
 	StrictHasura bool
 	Clock        docker.Clock
 	Out          io.Writer
+	// FilesOnly stops after the files (and a BackupID restore) are back: a
+	// promotion restores every host's files, then its database once, then brings
+	// each host up with ReapplyOnly (D-0699).
+	FilesOnly bool
+	// ReapplyOnly skips the file and database restore and re-applies the set the
+	// host's restored tree names: the pull, the gated up, nginx and hasura.
+	ReapplyOnly bool
 }
 
 // RollbackRemote undoes the last v1.5 remote apply on the host.
@@ -71,14 +80,16 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 		return err
 	}
 	defer release()
-	emit(o.Out, "  [running] restore %s in place on %s", path.Base(o.Tar), r.Label())
-	if err := RestorePreDeployTar(ctx, r, rp, o.Tar, RestoreSpec{Changed: o.Changed, Absent: o.Absent}); err != nil {
-		return err
+	if !o.ReapplyOnly {
+		emit(o.Out, "  [running] restore %s in place on %s", path.Base(o.Tar), r.Label())
+		if err := RestorePreDeployTar(ctx, r, rp, o.Tar, RestoreSpec{Changed: o.Changed, Absent: o.Absent}); err != nil {
+			return err
+		}
+		if err := fb.restore(ctx, o); err != nil {
+			return err
+		}
 	}
-	if err := fb.restore(ctx, o); err != nil {
-		return err
-	}
-	set, restored, err := restoredSet(ctx, o)
+	set, restored, err := HostComposeSet(ctx, o.Remote, o.RemotePath)
 	if err != nil {
 		return err
 	}
@@ -98,12 +109,17 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 		}
 	}
 	switch {
+	case o.ReapplyOnly:
 	case o.BackupID != "" && o.DBRestored:
 		emit(o.Out, "  [skip] database backup %s was already restored by an earlier rollback; not restoring it again", o.BackupID)
 	case o.BackupID != "":
 		if err := restoreconsent.RunRestore(ctx, r, rp, o.BackupID, o.ProjectName, o.Out, o.OnDBRestored); err != nil {
 			return err
 		}
+	}
+	if o.FilesOnly {
+		emit(o.Out, "  [done] files restored; the restored set is brought up after the database restore")
+		return nil
 	}
 	// The front files are back: the live fronting nginx is tested and reloaded even
 	// when the re-apply failed, else it keeps serving the rolled-back confs.
@@ -120,10 +136,10 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 	return ferr
 }
 
-// restoredSet reads the compose set the restored tree names. restored is false
-// for a host whose tar held no compose file (a first deploy): nothing to re-apply.
-func restoredSet(ctx context.Context, o RollbackOptions) (set ArtifactSet, restored bool, err error) {
-	r, rp := o.Remote, o.RemotePath
+// HostComposeSet reads the compose set the host's manifests under rp name;
+// found is false when the tree holds no compose file (a first deploy, nothing
+// to re-apply after a rollback).
+func HostComposeSet(ctx context.Context, r Remote, rp string) (set ArtifactSet, found bool, err error) {
 	compose, err := remoteLines(ctx, r, path.Join(rp, ".nself", "compose-files.txt"))
 	if err != nil {
 		return set, false, err
@@ -177,4 +193,31 @@ func remoteLines(ctx context.Context, r Remote, file string) ([]string, error) {
 		}
 	}
 	return lines, nil
+}
+
+// ReapplyRemote runs the pull and the service-by-service up with the health
+// gate over the manifests already on the host (rollback uses it after the files
+// are back in place), then validates the restored nginx config in a throwaway
+// container before reloading nginx, and applies the hasura metadata.
+func ReapplyRemote(ctx context.Context, o ApplyOptions) error {
+	if o.Out == nil {
+		o.Out = io.Discard
+	}
+	model, err := ReadComposeModel(ctx, o.Remote, o.RemotePath, o.Set.Compose, o.Set.EnvManifest)
+	if err != nil {
+		return err
+	}
+	if err = reapplyPull(ctx, o, model); err != nil {
+		return err
+	}
+	if err = applyServices(ctx, o, model); err != nil {
+		return err
+	}
+	if err = CheckNginx(ctx, o.Remote, o.RemotePath, model, o.Out); err != nil {
+		return fmt.Errorf("the restored nginx config does not pass nginx -t, nginx was not reloaded: %w", err)
+	}
+	if err = reloadNginx(ctx, o, model); err != nil {
+		return err
+	}
+	return applyHasuraMetadata(ctx, o)
 }

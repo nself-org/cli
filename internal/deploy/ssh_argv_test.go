@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/deploy/pathmap"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
@@ -149,16 +150,16 @@ func TestSSHTransportBuilder(t *testing.T) {
 		}
 	})
 	t.Run("local operand is absolute", func(t *testing.T) {
-		got, err := localOperand("host:x.env")
+		got, err := pathmap.LocalOperand("host:x.env")
 		if err != nil || !filepath.IsAbs(got) || !strings.HasSuffix(got, "host:x.env") {
 			t.Errorf("localOperand = %q, %v", got, err)
 		}
-		if got, err := localOperand("/work/e"); err != nil || got != "/work/e" {
+		if got, err := pathmap.LocalOperand("/work/e"); err != nil || got != "/work/e" {
 			t.Errorf("absolute path changed: %q, %v", got, err)
 		}
 		for _, bad := range []string{"", "a\nb", "a\x00b"} {
-			if _, err := localOperand(bad); err == nil {
-				t.Errorf("localOperand(%q) accepted", bad)
+			if _, err := pathmap.LocalOperand(bad); err == nil {
+				t.Errorf("pathmap.LocalOperand(%q) accepted", bad)
 			}
 		}
 	})
