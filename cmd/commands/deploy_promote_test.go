@@ -377,7 +377,7 @@ func TestPromoteRecordRollbackCommands(t *testing.T) {
 			}
 			log := r.commands()
 			prev := -1
-			for _, event := range []string{"tar -xzf", "up -d --no-deps -- 'web'", "nself backup restore 'fixture_backup' --yes", "nself doctor"} {
+			for _, event := range []string{"tar -xzf", "nself backup restore 'fixture_backup' --yes", "up -d --no-deps -- 'web'", "nself doctor"} {
 				at := firstIndex(log, event)
 				if at <= prev {
 					t.Fatalf("event %q at %d after %d: %v", event, at, prev, log)

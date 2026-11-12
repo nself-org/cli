@@ -70,6 +70,10 @@ type ApplyOptions struct {
 	// KeepImages is set by a rollback (ReapplyRemote only): refs to point back at
 	// the image ids the previous deploy ran, and not to pull again.
 	KeepImages []imageTag
+	// DeferHealth skips the per-service health gate and the final regression
+	// rechecks, running only the `up` commands. Used by promote, which runs the
+	// health gate separately after all servers have applied.
+	DeferHealth bool
 }
 
 // ApplyResult records what ApplyRemote did, even when it stopped early.
@@ -241,6 +245,16 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 		return res, err
 	}
 	touched, res.Touched = true, true
+	if o.DeferHealth {
+		if err = runServices(ctx, o, model, true, false); err != nil {
+			return res, err
+		}
+		if err = fa.reload(ctx, o.Out, r); err != nil {
+			return res, err
+		}
+		pruneOldTars(ctx, o, bk.Tar)
+		return res, nil
+	}
 	if err = applyServices(ctx, o, model); err != nil {
 		return res, err
 	}
@@ -256,33 +270,6 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 	// Fully successful: trim old pre-deploy tars, keeping this deploy's own (D-0421).
 	pruneOldTars(ctx, o, bk.Tar)
 	return res, nil
-}
-
-// ReapplyRemote runs the pull and the service-by-service up with the health
-// gate over the manifests already on the host (rollback uses it after the files
-// are back in place), then validates the restored nginx config in a throwaway
-// container before reloading nginx, and applies the hasura metadata.
-func ReapplyRemote(ctx context.Context, o ApplyOptions) error {
-	if o.Out == nil {
-		o.Out = io.Discard
-	}
-	model, err := ReadComposeModel(ctx, o.Remote, o.RemotePath, o.Set.Compose, o.Set.EnvManifest)
-	if err != nil {
-		return err
-	}
-	if err = reapplyPull(ctx, o, model); err != nil {
-		return err
-	}
-	if err = applyServices(ctx, o, model); err != nil {
-		return err
-	}
-	if err = CheckNginx(ctx, o.Remote, o.RemotePath, model, o.Out); err != nil {
-		return fmt.Errorf("the restored nginx config does not pass nginx -t, nginx was not reloaded: %w", err)
-	}
-	if err = reloadNginx(ctx, o, model); err != nil {
-		return err
-	}
-	return applyHasuraMetadata(ctx, o)
 }
 
 // shippedPaths are the set's relative paths plus the shipped list the sync writes.

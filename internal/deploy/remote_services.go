@@ -22,6 +22,27 @@ import (
 // applyServices brings each service up in compose order and gates it, then
 // re-reads every gated service once. Callers reload nginx afterwards.
 func applyServices(ctx context.Context, o ApplyOptions, model ComposeModel) error {
+	return runServices(ctx, o, model, true, true)
+}
+
+// GateServices is the health half of a deferred apply (ApplyOptions.DeferHealth):
+// it gates every service in compose order, re-reads them once, reloads a running
+// nginx and applies the hasura metadata. A promotion runs it after its migration
+// (D-0698); o.Set must be the host's compose set (HostComposeSet).
+func GateServices(ctx context.Context, o ApplyOptions, model ComposeModel) error {
+	if err := runServices(ctx, o, model, false, true); err != nil {
+		return err
+	}
+	if err := reloadNginx(ctx, o, model); err != nil {
+		return err
+	}
+	return applyHasuraMetadata(ctx, o)
+}
+
+// runServices runs `up` (when up) and the health gate (when gate) for every
+// service in compose order. Without up the gate reads the running containers
+// (no start marks); without gate nothing is re-read.
+func runServices(ctx context.Context, o ApplyOptions, model ComposeModel, up, gate bool) error {
 	r, rp, files, envs := o.Remote, o.RemotePath, o.Set.Compose, o.Set.EnvManifest
 	type gated struct {
 		name string
@@ -30,14 +51,23 @@ func applyServices(ctx context.Context, o ApplyOptions, model ComposeModel) erro
 	var done []gated
 	for _, svc := range model.Order {
 		spec, _ := model.Specs(svc)
-		marks, err := RemoteStartMarks(ctx, r, rp, files, envs, svc)
-		if err != nil {
-			return gateError(svc, fmt.Errorf("%w: %w", docker.ErrStateRead, err))
+		var marks map[string]string
+		if up && gate {
+			m, err := RemoteStartMarks(ctx, r, rp, files, envs, svc)
+			if err != nil {
+				return gateError(svc, fmt.Errorf("%w: %w", docker.ErrStateRead, err))
+			}
+			marks = m
 		}
-		emit(o.Out, "  [running] Restart %s (sequenced rolling)", svc)
-		up := fmt.Sprintf("cd %s && %s up -d --no-deps -- %s", q(rp), composeBase(files, envs), q(svc))
-		if _, err := r.Run(ctx, shScript(up)); err != nil {
-			return fmt.Errorf("remote restart of %s failed: %w\nRun 'nself logs %s' on the host for details", svc, err, svc)
+		if up {
+			emit(o.Out, "  [running] Restart %s (sequenced rolling)", svc)
+			cmd := fmt.Sprintf("cd %s && %s up -d --no-deps -- %s", q(rp), composeBase(files, envs), q(svc))
+			if _, err := r.Run(ctx, shScript(cmd)); err != nil {
+				return fmt.Errorf("remote restart of %s failed: %w\nRun 'nself logs %s' on the host for details", svc, err, svc)
+			}
+		}
+		if !gate {
+			continue
 		}
 		var seen []docker.ContainerState
 		states := func(c context.Context) ([]docker.ContainerState, error) {
