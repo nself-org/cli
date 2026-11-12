@@ -1,19 +1,10 @@
 package deploy
 
-// Purpose: `nself deploy rollback` for a v1.5 remote apply (D24): put the files
-//          of the pre-deploy tar back in place, restore the verified database
-//          backup when the deploy took one (production-class), then re-apply the
-//          restored artifact set with the same pull, service-by-service up and
-//          health gate.
-// Inputs:  a Remote, the remote path, the tar path and backup id the deploy
-//          recorded in .nself/state/deploy.json.
-// Outputs: an error naming the step that failed.
-// Constraints: the host deploy lock is held; files first, then the database,
-//              then the re-apply, so hasura and the services see the old
-//              configuration on the old schema (FilesOnly and ReapplyOnly split
-//              the steps for a multi-host promotion). Nothing is moved or deleted but generated files
-//              the tar does not hold. A host whose tar held no compose set (a
-//              first deploy) is restored but not re-applied, and says so.
+// Purpose: `nself deploy rollback` for a v1.5 remote apply (D24): restore the pre-deploy tar, restore
+//          the verified database backup (production-class), then re-apply the restored set.
+// Constraints: the host deploy lock is held; files, then database, then re-apply (FilesOnly and
+//              ReapplyOnly split the steps for a promotion). A tar with no compose set (a first
+//              deploy) is restored after its stack is stopped, and is not re-applied.
 
 import (
 	"context"
@@ -37,9 +28,8 @@ type RollbackOptions struct {
 	// Changed and Absent come from the local deploy.json record of this host.
 	Changed []string
 	Absent  []string
-	// DBRestored: the record says the database backup was already restored; it is
-	// not restored again. OnDBRestored runs right after a successful restore,
-	// before the re-apply, so the caller can persist it.
+	// DBRestored: the backup was already restored, not restored again. OnDBRestored
+	// runs after a successful restore, before the re-apply, so the caller can persist it.
 	DBRestored   bool
 	OnDBRestored func() error
 	// FrontTar, FrontChanged and FrontAbsent are the record of the fronting
@@ -50,9 +40,8 @@ type RollbackOptions struct {
 	StrictHasura bool
 	Clock        docker.Clock
 	Out          io.Writer
-	// FilesOnly stops after the files (and a BackupID restore) are back: a
-	// promotion restores every host's files, then its database once, then brings
-	// each host up with ReapplyOnly (D-0699).
+	// FilesOnly stops after the files (and a BackupID restore): a promotion restores every
+	// host's files, then its database once, then ReapplyOnly brings each host up (D-0699).
 	FilesOnly bool
 	// ReapplyOnly skips the file and database restore and re-applies the set the
 	// host's restored tree names: the pull, the gated up, nginx and hasura.
@@ -80,6 +69,10 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 		return err
 	}
 	defer release()
+	var downErr error
+	if !o.ReapplyOnly {
+		downErr = downFirstDeploy(ctx, o)
+	}
 	if !o.ReapplyOnly {
 		emit(o.Out, "  [running] restore %s in place on %s", path.Base(o.Tar), r.Label())
 		if err := RestorePreDeployTar(ctx, r, rp, o.Tar, RestoreSpec{Changed: o.Changed, Absent: o.Absent}); err != nil {
@@ -125,6 +118,9 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 	// when the re-apply failed, else it keeps serving the rolled-back confs.
 	aerr := reapplyRestored(ctx, o, set, restored, keep)
 	ferr := fb.reload(ctx, o)
+	if downErr != nil && aerr == nil {
+		aerr = downErr
+	}
 	switch {
 	case aerr != nil && ferr != nil:
 		return fmt.Errorf("%w; the fronting nginx reload also failed: %v", aerr, ferr)
@@ -165,10 +161,7 @@ func HostComposeSet(ctx context.Context, r Remote, rp string) (set ArtifactSet, 
 	return ArtifactSet{Compose: compose, EnvManifest: envs}, true, nil
 }
 
-// reapplyRestored re-applies the restored artifact set: the pull (skipped for
-// the images keep puts back), the services in compose order with the health
-// gate, nginx and hasura. A host whose tar held no compose set (a first deploy)
-// is restored but not re-applied.
+// reapplyRestored re-applies the restored artifact set; a first deploy (no compose set) is not.
 func reapplyRestored(ctx context.Context, o RollbackOptions, set ArtifactSet, restored bool, keep []imageTag) error {
 	if !restored {
 		emit(o.Out, "  [skip] the restored tree has no compose file (it was a first deploy): files restored, nothing re-applied")
@@ -195,10 +188,9 @@ func remoteLines(ctx context.Context, r Remote, file string) ([]string, error) {
 	return lines, nil
 }
 
-// ReapplyRemote runs the pull and the service-by-service up with the health
-// gate over the manifests already on the host (rollback uses it after the files
-// are back in place), then validates the restored nginx config in a throwaway
-// container before reloading nginx, and applies the hasura metadata.
+// ReapplyRemote runs the pull and the gated service-by-service up over the manifests on the
+// host, validates the restored nginx config in a throwaway container, reloads nginx and
+// applies the hasura metadata.
 func ReapplyRemote(ctx context.Context, o ApplyOptions) error {
 	if o.Out == nil {
 		o.Out = io.Discard

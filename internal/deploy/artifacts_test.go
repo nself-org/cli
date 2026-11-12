@@ -158,3 +158,30 @@ func TestArtifactsKeepHostEnv(t *testing.T) {
 		}
 	}
 }
+
+func TestStageShipsPostgresInit(t *testing.T) {
+	for name, files := range map[string][]string{"none": nil, "two": {"01-auth.sql", "sub/02-x.sql"}} {
+		t.Run(name, func(t *testing.T) {
+			m, compose, envs, snap := buildScratch(t)
+			for _, f := range files {
+				writeFile(t, filepath.Join(m.ScratchRoot, "postgres", "init", f), "CREATE SCHEMA auth;\n", 0o644)
+			}
+			set, err := Stage(stageIn(m, compose, envs, snap, t.TempDir()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := 0
+			for _, rel := range set.Files {
+				if strings.HasPrefix(rel, "postgres/init/") {
+					got++
+					if !exists(filepath.Join(set.StageDir, rel)) {
+						t.Errorf("%s listed but not staged", rel)
+					}
+				}
+			}
+			if got != len(files) {
+				t.Errorf("postgres/init files in the set = %d, want %d (%v)", got, len(files), set.Files)
+			}
+		})
+	}
+}

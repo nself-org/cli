@@ -38,7 +38,7 @@ func stackHandler(rp string, crash string) func(string) (string, bool) {
 			return " Container proj-web-1 Recreate\n Container proj-db-1 Running\n", true
 		case strings.Contains(s, "docker run --rm"):
 			return "nginx: the configuration file syntax is ok\n", true
-		case strings.Contains(s, "up -d --no-deps"), strings.Contains(s, " pull"), strings.Contains(s, "nginx -s reload"), strings.Contains(s, "nself db hasura metadata apply"), strings.Contains(s, "nself backup"):
+		case strings.Contains(s, "up -d --no-deps"), strings.Contains(s, " pull"), strings.Contains(s, " down --remove-orphans"), strings.Contains(s, "nginx -s reload"), strings.Contains(s, "nself db hasura metadata apply"), strings.Contains(s, "nself backup"):
 			return "", true
 		case strings.Contains(s, "docker inspect -f"):
 			return strings.Repeat("2026-10-10T20:00:00Z\n", strings.Count(s, "'id-")), true
