@@ -14,11 +14,11 @@ package deploy
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/nself-org/cli/internal/deploy/pathmap"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
@@ -69,7 +69,7 @@ func homeWhitespaceHint(p string) string {
 	if err != nil || home == "" || !strings.ContainsAny(home, " \t") {
 		return ""
 	}
-	if strings.HasPrefix(sshKeyPath(p), sshKeyPath(home)) {
+	if strings.HasPrefix(pathmap.SSHKeyPath(p), pathmap.SSHKeyPath(home)) {
 		return fmt.Sprintf(" because the home directory %s does", home)
 	}
 	return ""
@@ -107,7 +107,7 @@ func newSSHTransport(spec remote.HostSpec, keyPath string, policy []string) (ssh
 	}
 	var opts []string
 	if keyPath != "" {
-		opts = append(opts, "-i", sshKeyPath(keyPath))
+		opts = append(opts, "-i", pathmap.SSHKeyPath(keyPath))
 	}
 	opts = append(opts, policy...)
 	opts = append(opts, "-o", "ForwardAgent=no")
@@ -161,7 +161,7 @@ func (t sshTransport) rsyncMultiArgv(flags []string, dest string, srcs ...string
 	}
 	args = append(args, "-e", sshCommand, "--")
 	for _, src := range srcs {
-		local, err := rsyncLocalOperand(src)
+		local, err := pathmap.RsyncLocalOperand(src)
 		if err != nil {
 			return nil, err
 		}
@@ -190,7 +190,7 @@ func rsyncSSHCommand(options []string) (string, error) {
 // scpArgv is the scp argv: options, -P port, "--", local, host:dest. The
 // caller validates dest. local becomes absolute.
 func (t sshTransport) scpArgv(local, dest string) ([]string, error) {
-	abs, err := localOperand(local)
+	abs, err := pathmap.LocalOperand(local)
 	if err != nil {
 		return nil, err
 	}
@@ -214,18 +214,4 @@ func hostOperand(spec remote.HostSpec, path string) string {
 		host = spec.User + "@" + host
 	}
 	return host + ":" + path
-}
-
-// localOperand makes a relative p absolute, so scp and rsync never read it as
-// a "host:path" operand or an option. Absolute paths retain their native
-// form for scp; rsyncLocalOperand also maps Windows paths for POSIX rsync.
-// Empty paths, newlines and NUL are refused.
-func localOperand(p string) (string, error) {
-	if p == "" || strings.ContainsAny(p, "\n\x00") {
-		return "", fmt.Errorf("local path %q is empty or contains a newline or NUL", p)
-	}
-	if strings.HasPrefix(p, "/") || filepath.IsAbs(p) || windowsDrivePath(p) {
-		return p, nil
-	}
-	return filepath.Abs(p)
 }

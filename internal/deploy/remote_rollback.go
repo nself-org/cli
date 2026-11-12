@@ -89,7 +89,7 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 			return err
 		}
 	}
-	set, restored, err := restoredSet(ctx, o)
+	set, restored, err := HostComposeSet(ctx, o.Remote, o.RemotePath)
 	if err != nil {
 		return err
 	}
@@ -136,15 +136,10 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 	return ferr
 }
 
-// restoredSet reads the compose set the restored tree names. restored is false
-// for a host whose tar held no compose file (a first deploy): nothing to re-apply.
-func restoredSet(ctx context.Context, o RollbackOptions) (set ArtifactSet, restored bool, err error) {
-	return hostComposeSet(ctx, o.Remote, o.RemotePath)
-}
-
-// hostComposeSet reads the compose set the host's manifests under rp name;
-// found is false when the tree holds no compose file.
-func hostComposeSet(ctx context.Context, r Remote, rp string) (set ArtifactSet, found bool, err error) {
+// HostComposeSet reads the compose set the host's manifests under rp name;
+// found is false when the tree holds no compose file (a first deploy, nothing
+// to re-apply after a rollback).
+func HostComposeSet(ctx context.Context, r Remote, rp string) (set ArtifactSet, found bool, err error) {
 	compose, err := remoteLines(ctx, r, path.Join(rp, ".nself", "compose-files.txt"))
 	if err != nil {
 		return set, false, err
@@ -198,4 +193,31 @@ func remoteLines(ctx context.Context, r Remote, file string) ([]string, error) {
 		}
 	}
 	return lines, nil
+}
+
+// ReapplyRemote runs the pull and the service-by-service up with the health
+// gate over the manifests already on the host (rollback uses it after the files
+// are back in place), then validates the restored nginx config in a throwaway
+// container before reloading nginx, and applies the hasura metadata.
+func ReapplyRemote(ctx context.Context, o ApplyOptions) error {
+	if o.Out == nil {
+		o.Out = io.Discard
+	}
+	model, err := ReadComposeModel(ctx, o.Remote, o.RemotePath, o.Set.Compose, o.Set.EnvManifest)
+	if err != nil {
+		return err
+	}
+	if err = reapplyPull(ctx, o, model); err != nil {
+		return err
+	}
+	if err = applyServices(ctx, o, model); err != nil {
+		return err
+	}
+	if err = CheckNginx(ctx, o.Remote, o.RemotePath, model, o.Out); err != nil {
+		return fmt.Errorf("the restored nginx config does not pass nginx -t, nginx was not reloaded: %w", err)
+	}
+	if err = reloadNginx(ctx, o, model); err != nil {
+		return err
+	}
+	return applyHasuraMetadata(ctx, o)
 }

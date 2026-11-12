@@ -246,7 +246,7 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 	}
 	touched, res.Touched = true, true
 	if o.DeferHealth {
-		if err = upServices(ctx, o, model); err != nil {
+		if err = runServices(ctx, o, model, true, false); err != nil {
 			return res, err
 		}
 		if err = fa.reload(ctx, o.Out, r); err != nil {
@@ -270,33 +270,6 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 	// Fully successful: trim old pre-deploy tars, keeping this deploy's own (D-0421).
 	pruneOldTars(ctx, o, bk.Tar)
 	return res, nil
-}
-
-// ReapplyRemote runs the pull and the service-by-service up with the health
-// gate over the manifests already on the host (rollback uses it after the files
-// are back in place), then validates the restored nginx config in a throwaway
-// container before reloading nginx, and applies the hasura metadata.
-func ReapplyRemote(ctx context.Context, o ApplyOptions) error {
-	if o.Out == nil {
-		o.Out = io.Discard
-	}
-	model, err := ReadComposeModel(ctx, o.Remote, o.RemotePath, o.Set.Compose, o.Set.EnvManifest)
-	if err != nil {
-		return err
-	}
-	if err = reapplyPull(ctx, o, model); err != nil {
-		return err
-	}
-	if err = applyServices(ctx, o, model); err != nil {
-		return err
-	}
-	if err = CheckNginx(ctx, o.Remote, o.RemotePath, model, o.Out); err != nil {
-		return fmt.Errorf("the restored nginx config does not pass nginx -t, nginx was not reloaded: %w", err)
-	}
-	if err = reloadNginx(ctx, o, model); err != nil {
-		return err
-	}
-	return applyHasuraMetadata(ctx, o)
 }
 
 // shippedPaths are the set's relative paths plus the shipped list the sync writes.
