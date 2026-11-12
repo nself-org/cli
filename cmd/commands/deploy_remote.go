@@ -256,6 +256,7 @@ func legacyRemotePath(rp, target string) (string, error) {
 // runRemoteDeployHealthCheck gates a single-host deploy on the host, never this machine:
 // the v1.5 apply already gated each service (E250/E251); v1.4 runs nself doctor over the transport.
 func runRemoteDeployHealthCheck(ctx context.Context, workdir, host, target string, jsonOut bool) (deployStep, error) {
+	// compat.V15(P7-WIRE-21): single-host health ran nself doctor over the transport -> gated per service on the host by the apply
 	if compat.V15() {
 		announce(ctx, jsonOut, "Health checks", "  [done] Health checks (gated per service on the host by the apply)")
 		return deployStep{Name: "Health checks", Status: "done"}, nil
