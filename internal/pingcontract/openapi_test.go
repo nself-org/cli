@@ -245,10 +245,8 @@ var targets = []target{
 		KnownDrift: []string{"expires", "plugins", "reason"}},
 	{Name: "license.RevocationList", Method: "GET", Path: "/license/revocation-list", Schema: "RevocationListResponse",
 		Value: func() any { return &license.RevocationList{} },
-		// P7-PLUG-27/web gap: the CLI parses a signed list (issued_at, valid_until,
-		// kid, revoked, signature); the schema documents {revocations, count,
-		// fetched_at, poll_interval_seconds}. The two shapes do not overlap.
-		KnownDrift: []string{"issued_at", "kid", "revoked", "signature", "valid_until"}},
+		// The spec now matches the route (web 7b96054c): no drift.
+	},
 	{Name: "update pingVersionResponse", Method: "GET", Path: "/version", Schema: "VersionResponse",
 		SrcFile: "cmd/commands/update_release_api.go", SrcType: "pingVersionResponse"},
 }
