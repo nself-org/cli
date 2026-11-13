@@ -1,11 +1,13 @@
 module github.com/nself-org/cli
 
-// go 1.26.10 (full patch version, not bare "1.26"): workflows resolve the Go
+// go 1.26.11 (full patch version, not bare "1.26"): workflows resolve the Go
 // version via `go-version-file: go.mod`, and a bare "1.26" made setup-go pick a
 // cached 1.26.5, after which the `toolchain` directive forced a runtime
 // toolchain download that failed with tar "File exists" collisions. Pinning the
-// patch here makes every workflow resolve 1.26.10 directly.
+// patch here makes every workflow resolve 1.26.11 directly.
 //
+// 1.26.11 patches GO-2026-6859 (net/http: HTTP/1 server crash from a
+// MaxBytesReader header race).
 // 1.26.10 patches GO-2026-6809 (crypto/x509 Certificate.Verify: distrust of
 // compromised intermediate certificates).
 // 1.26.9 patches GO-2026-6599, GO-2026-6600, GO-2026-6603, GO-2026-6604,
@@ -19,7 +21,7 @@ module github.com/nself-org/cli
 // GO-2026-5856 (crypto/tls ECH privacy leak) and GO-2026-5026 (net/http idna
 // Punycode), plus the earlier GO-2026-5039 / GO-2026-5037 / GO-2026-4971 /
 // GO-2026-4918 stdlib fixes. Upgrade when rebuilding release artifacts.
-go 1.26.10
+go 1.26.11
 
 require (
 	github.com/bytecodealliance/wasmtime-go/v25 v25.0.0
