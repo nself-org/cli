@@ -55,10 +55,10 @@ Every step first checks whether GitHub already shows it finished. If so it print
 `.github/release-denylist.json` has five rules. S4 evaluates the three that can be decided at tag time:
 
 - DENY-003: at least one commit since the prior tag.
-- DENY-004: the newest `license-audit.yml` run on `main` succeeded. If it is still running (a merge to Go files starts one, about 20 minutes), S4 waits up to 30 minutes. S4 then reads the newest run on any branch, the exact query `pre-release-gate.yml` uses, and stops before tagging if the gate would fail (for example a newer failed PR-branch run). Messages: still running after 30 minutes (wait, `--from S4`); failed (fix the licenses, `gh workflow run license-audit.yml -R nself-org/cli --ref main`, `--from S4`); none on main (start one the same way). Do not dispatch a new run while one is in flight: it cancels the first.
+- DENY-004: the newest `license-audit.yml` run on `main` succeeded. If it is still running (a merge to Go files starts one, about 20 minutes), S4 waits up to 30 minutes. `release.sh` then also reads the newest run on any branch, because `pre-release-gate.yml` used to. The gate now runs `go run ./tools/releasectl gate`, which reads `main` only, so the Go port (`go run ./tools/releasectl run`) drops that second read. Messages: still running after 30 minutes (wait, `--from S4`); failed (fix the licenses, `gh workflow run license-audit.yml -R nself-org/cli --ref main`, `--from S4`); none on main (start one the same way). Do not dispatch a new run while one is in flight: it cancels the first.
 - DENY-005: a closed milestone titled exactly `vX.Y.Z`, as `pre-release-gate.yml` requires. A milestone named `X.Y.Z` does not count. S4 reads milestones of every state, as the gate does, and needs exactly one milestone with that title, closed; an open duplicate stops the run and is named.
 
-DENY-001 (cosign bundles) and DENY-002 (SBOMs) need the build output, so they are evaluated after the build by the Pre-Release Gate, the `denylist` job in `release.yml`. That job re-checks all five before anything is published. `scripts/release-create.sh` is not used by `release.sh`; run on its own before the build exists, it skips DENY-001 and DENY-002 with a note when `dist/` is absent and enforces them when `dist/` is present. Recovery for a refusal: close the milestone or fix `license-audit.yml`, then `--from S4`.
+DENY-001 (cosign bundles) and DENY-002 (SBOMs) need the build output, so they are evaluated after the build by the Pre-Release Gate, the `denylist` job in `release.yml`. That job re-checks all five before anything is published. `go run ./tools/releasectl create <tag>` (it replaced `scripts/release-create.sh`; `--dry-run` prints the `gh release create` line and calls nothing) is not used by `release.sh`; run on its own before the build exists, it skips DENY-001 and DENY-002 with a note when `dist/` is absent and enforces them when `dist/` is present. Recovery for a refusal: close the milestone or fix `license-audit.yml`, then `--from S4`.
 
 ## Merges are yours
 
@@ -70,7 +70,7 @@ S2, S3 and S6 merge PRs on protected repos. For each one the script polls the PR
 
 - Any step: fix the cause, then `release.sh --version X.Y.Z --from S<n>`.
 - Guard rules are in the exit-code paragraph above. A stale branch on the remote from an earlier attempt stops the run with the exact `gh api -X DELETE …/git/refs/heads/<branch>` command to clear it. A work directory that is not a clone is named in the message; delete it and re-run.
-- Wrong tag or broken release: use `scripts/release-retract.sh`, then start again with a new patch version.
+- Wrong tag or broken release: run `go run ./tools/releasectl retract <tag> --reason "<text>"` (add `--delete-tag` to remove the tag too; a tag that is not GitHub's latest release needs `--force`), then start again with a new patch version.
 - Artifacts expire after a day. Before the release is published there is no asset to fall back on, so S5 stops with the real recovery: re-run the whole `release.yml` run, wait for the build, `--from S5`. After publish, S6 and S7 use the published `checksums.txt`.
 - If the script cannot be used, P7-PROD-23 keeps a fallback token path for the old dispatch workflows. It is a fallback only; do not use it for a normal release.
 
