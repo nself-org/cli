@@ -118,6 +118,8 @@ type Manifest struct {
 	// name and type as v1.
 	Capabilities []string `json:"capabilities,omitempty"`
 	DocsURL      string   `json:"docs_url,omitempty"`
+	// Bundle is the optional bundle-plan metadata (bundle_fields.go); nil when absent.
+	Bundle *BundleProfile `json:"bundle,omitempty"`
 
 	Shared
 	Compat
