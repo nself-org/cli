@@ -4,7 +4,13 @@
 # Constraints: machine code stays intact; never commit the stripped archives.
 set -euo pipefail
 
-if command -v objcopy >/dev/null 2>&1; then
+if [ "$(uname -s)" = Darwin ]; then
+  if ! command -v llvm-objcopy >/dev/null 2>&1; then
+    echo "strip-lto: llvm-objcopy is required for Mach-O archives (brew install llvm)" >&2
+    exit 1
+  fi
+  OBJCOPY=llvm-objcopy
+elif command -v objcopy >/dev/null 2>&1; then
   OBJCOPY=objcopy
 elif command -v llvm-objcopy >/dev/null 2>&1; then
   OBJCOPY=llvm-objcopy
@@ -26,7 +32,13 @@ sha256() {
   fi
 }
 
-has_bitcode() { LC_ALL=C grep -aEq '\.llvmbc|\.llvmcmd' "$1"; }
+has_bitcode() {
+  if [ "$(uname -s)" = Darwin ]; then
+    LC_ALL=C grep -aEq '__bitcode|__cmdline' "$1"
+  else
+    LC_ALL=C grep -aEq '\.llvmbc|\.llvmcmd' "$1"
+  fi
+}
 
 for archive in "$@"; do
   if [ ! -f "$archive" ]; then
@@ -35,7 +47,11 @@ for archive in "$@"; do
   fi
   echo "before: $(sha256 "$archive")"
   if has_bitcode "$archive"; then
-    "$OBJCOPY" --remove-section=.llvmbc --remove-section=.llvmcmd "$archive"
+    if [ "$(uname -s)" = Darwin ]; then
+      "$OBJCOPY" --remove-section=__LLVM,__bitcode --remove-section=__LLVM,__cmdline "$archive"
+    else
+      "$OBJCOPY" --remove-section=.llvmbc --remove-section=.llvmcmd "$archive"
+    fi
   fi
   if has_bitcode "$archive"; then
     echo "strip-lto: bitcode section remains in $archive" >&2

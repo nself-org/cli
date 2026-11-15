@@ -1,6 +1,7 @@
 name: Embedded PG Integration
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -54,6 +55,19 @@ jobs:
           esac
           bash scripts/ci/strip-lto-bitcode.sh "vendor/github.com/bytecodealliance/wasmtime-go/v25/build/$arch/libwasmtime.a"
 
+      - name: Strip vendored LTO bitcode (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          if ! brew list llvm >/dev/null 2>&1; then brew install llvm; fi
+          export PATH="$(brew --prefix llvm)/bin:$PATH"
+          bash scripts/ci/strip-lto-bitcode_test.sh
+          case "$(uname -m)" in
+            x86_64) arch=macos-x86_64 ;;
+            arm64) arch=macos-aarch64 ;;
+            *) echo "Unsupported runner architecture" >&2; exit 1 ;;
+          esac
+          bash scripts/ci/strip-lto-bitcode.sh "vendor/github.com/bytecodealliance/wasmtime-go/v25/build/$arch/libwasmtime.a"
+
       - name: Unit tests (embedded package — CGO)
         env:
           CGO_ENABLED: 1
@@ -69,7 +83,7 @@ jobs:
     timeout-minutes: 45
     # Only run on push to main or when explicitly triggered; skip on PRs from
     # forks (no write access to cache).
-    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
 
     strategy:
       fail-fast: false
@@ -93,6 +107,19 @@ jobs:
           case "$(uname -m)" in
             x86_64) arch=linux-x86_64 ;;
             aarch64|arm64) arch=linux-aarch64 ;;
+            *) echo "Unsupported runner architecture" >&2; exit 1 ;;
+          esac
+          bash scripts/ci/strip-lto-bitcode.sh "vendor/github.com/bytecodealliance/wasmtime-go/v25/build/$arch/libwasmtime.a"
+
+      - name: Strip vendored LTO bitcode (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          if ! brew list llvm >/dev/null 2>&1; then brew install llvm; fi
+          export PATH="$(brew --prefix llvm)/bin:$PATH"
+          bash scripts/ci/strip-lto-bitcode_test.sh
+          case "$(uname -m)" in
+            x86_64) arch=macos-x86_64 ;;
+            arm64) arch=macos-aarch64 ;;
             *) echo "Unsupported runner architecture" >&2; exit 1 ;;
           esac
           bash scripts/ci/strip-lto-bitcode.sh "vendor/github.com/bytecodealliance/wasmtime-go/v25/build/$arch/libwasmtime.a"

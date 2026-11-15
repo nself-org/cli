@@ -16,15 +16,21 @@ import (
 
 const ltoChunkSize = 32 * 1024
 
-// scanLTO keeps enough overlap to find either section name across reads.
+var ltoSectionNames = []string{".llvmbc", ".llvmcmd", "__bitcode", "__cmdline"}
+
+const ltoOverlap = 9 // Longest section name, including Mach-O names.
+
+// scanLTO keeps enough overlap to find every section name across reads.
 func scanLTO(r io.Reader) (bool, error) {
-	buf := make([]byte, ltoChunkSize+8)
+	buf := make([]byte, ltoChunkSize+ltoOverlap)
 	keep := 0
 	for {
 		n, err := r.Read(buf[keep:])
 		data := buf[:keep+n]
-		if bytes.Contains(data, []byte(".llvmbc")) || bytes.Contains(data, []byte(".llvmcmd")) {
-			return true, nil
+		for _, name := range ltoSectionNames {
+			if bytes.Contains(data, []byte(name)) {
+				return true, nil
+			}
 		}
 		if err == io.EOF {
 			return false, nil
@@ -33,8 +39,8 @@ func scanLTO(r io.Reader) (bool, error) {
 			return false, err
 		}
 		keep = len(data)
-		if keep > 8 {
-			keep = 8
+		if keep > ltoOverlap {
+			keep = ltoOverlap
 		}
 		copy(buf, data[len(data)-keep:])
 	}
@@ -129,8 +135,8 @@ func TestLTOArchiveCheckFlagsUnlistedArchive(t *testing.T) {
 }
 
 func TestLTOScannerFindsNameAcrossChunkBorder(t *testing.T) {
-	for _, name := range []string{".llvmbc", ".llvmcmd"} {
-		data := append(bytes.Repeat([]byte{'x'}, ltoChunkSize+5), []byte(name)...)
+	for _, name := range ltoSectionNames {
+		data := append(bytes.Repeat([]byte{'x'}, ltoChunkSize+ltoOverlap-3), []byte(name)...)
 		for _, tc := range []struct {
 			data []byte
 			want bool

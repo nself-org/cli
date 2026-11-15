@@ -51,6 +51,19 @@ jobs:
           esac
           bash scripts/ci/strip-lto-bitcode.sh "vendor/github.com/bytecodealliance/wasmtime-go/v25/build/$arch/libwasmtime.a"
 
+      - name: Strip vendored LTO bitcode (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          if ! brew list llvm >/dev/null 2>&1; then brew install llvm; fi
+          export PATH="$(brew --prefix llvm)/bin:$PATH"
+          bash scripts/ci/strip-lto-bitcode_test.sh
+          case "$(uname -m)" in
+            x86_64) arch=macos-x86_64 ;;
+            arm64) arch=macos-aarch64 ;;
+            *) echo "Unsupported runner architecture" >&2; exit 1 ;;
+          esac
+          bash scripts/ci/strip-lto-bitcode.sh "vendor/github.com/bytecodealliance/wasmtime-go/v25/build/$arch/libwasmtime.a"
+
       - name: Cache pglite WASM
         uses: actions/cache@v6
         with:
