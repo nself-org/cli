@@ -40,6 +40,17 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
+      - name: Strip vendored LTO bitcode (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          bash scripts/ci/strip-lto-bitcode_test.sh
+          case "$(uname -m)" in
+            x86_64) arch=linux-x86_64 ;;
+            aarch64|arm64) arch=linux-aarch64 ;;
+            *) echo "Unsupported runner architecture" >&2; exit 1 ;;
+          esac
+          bash scripts/ci/strip-lto-bitcode.sh "vendor/github.com/bytecodealliance/wasmtime-go/v25/build/$arch/libwasmtime.a"
+
       - name: Cache pglite WASM
         uses: actions/cache@v6
         with:
