@@ -5,7 +5,7 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="${1:-$HERE/strip-lto-bitcode.sh}"
-WORK="$(mktemp -d "${TMPDIR:-${RUNNER_TEMP:-/Volumes/D5/tmp/cli-green-20261115}}/strip-lto-test.XXXXXX")"
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/strip-lto-test.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 if command -v objcopy >/dev/null 2>&1; then
   OBJCOPY=objcopy

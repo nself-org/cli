@@ -21,8 +21,8 @@ func signingFixture(t *testing.T) (string, string, string) {
 func trustedKeys(t *testing.T, keys ...string) {
 	t.Helper()
 	old := Keys
-	Keys = keys
 	t.Cleanup(func() { Keys = old })
+	Keys = keys
 	t.Setenv(KeyEnv, "")
 }
 

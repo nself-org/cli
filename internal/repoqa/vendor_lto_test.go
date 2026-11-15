@@ -2,12 +2,15 @@ package repoqa
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -108,16 +111,21 @@ func TestLTOArchiveCheckFlagsUnlistedArchive(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "new.a") || !strings.Contains(err.Error(), "clean.a") {
 		t.Fatalf("want both mismatched paths, got %v", err)
 	}
-	// A dangling archive symlink is unreadable even when tests run as root.
-	if err := os.Symlink(filepath.Join(root, "missing"), filepath.Join(root, "unreadable.a")); err != nil {
-		// Windows may lack symlink privilege; a directory passed as the root
-		// archive cannot exercise the read, so report fixture failure explicitly.
-		t.Fatal(err)
-	}
-	err = checkLTOArchives(root, nil)
-	if err == nil || !strings.Contains(err.Error(), "unreadable.a") {
-		t.Fatalf("unreadable archive must fail, got %v", err)
-	}
+	t.Run("unreadable symlink", func(t *testing.T) {
+		// A dangling archive symlink is unreadable even when tests run as root.
+		if err := os.Symlink(filepath.Join(root, "missing"), filepath.Join(root, "unreadable.a")); err != nil {
+			// Windows ERROR_PRIVILEGE_NOT_HELD is not os.ErrPermission.
+			if os.IsPermission(err) || errors.Is(err, errors.ErrUnsupported) ||
+				(runtime.GOOS == "windows" && errors.Is(err, syscall.Errno(1314))) {
+				t.Skipf("symlink fixture unavailable: %v", err)
+			}
+			t.Fatal(err)
+		}
+		err := checkLTOArchives(root, nil)
+		if err == nil || !strings.Contains(err.Error(), "unreadable.a") {
+			t.Fatalf("unreadable archive must fail, got %v", err)
+		}
+	})
 }
 
 func TestLTOScannerFindsNameAcrossChunkBorder(t *testing.T) {

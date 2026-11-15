@@ -13,11 +13,16 @@ import (
 // minimumGoRelease is the toolchain floor for GO-2026-6859 (net/http).
 const minimumGoRelease = "1.26.11"
 
-func goReleaseBelowFloor(version string) bool {
+func goReleaseBelowFloor(t *testing.T, version string) bool {
+	t.Helper()
 	var got [3]int
 	var minimum [3]int
 	for i, part := range strings.Split(minimumGoRelease, ".") {
-		minimum[i], _ = strconv.Atoi(part)
+		n, err := strconv.Atoi(part)
+		if err != nil {
+			t.Fatalf("invalid minimum Go release %q: part %q: %v", minimumGoRelease, part, err)
+		}
+		minimum[i] = n
 	}
 	for i, part := range strings.Split(version, ".") {
 		if i >= len(got) {
@@ -25,7 +30,7 @@ func goReleaseBelowFloor(version string) bool {
 		}
 		n, err := strconv.Atoi(part)
 		if err != nil {
-			return true
+			t.Fatalf("invalid Go release %q: part %q: %v", version, part, err)
 		}
 		got[i] = n
 	}
@@ -43,11 +48,11 @@ func TestGoDirectiveAtLeastPatchedRelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := regexp.MustCompile(`(?m)^go ([0-9]+\.[0-9]+\.[0-9]+)\s*$`).FindSubmatch(data)
-	if m == nil || goReleaseBelowFloor(string(m[1])) {
+	if m == nil || goReleaseBelowFloor(t, string(m[1])) {
 		t.Fatalf("go.mod needs a full Go release at least %v (GO-2026-6859)", minimumGoRelease)
 	}
 	for version, below := range map[string]bool{"1.26.10": true, "1.26.11": false, "1.27.0": false} {
-		if goReleaseBelowFloor(version) != below {
+		if goReleaseBelowFloor(t, version) != below {
 			t.Errorf("floor comparison for %s", version)
 		}
 	}
@@ -64,7 +69,7 @@ func TestWorkflowsDoNotPinOlderGo(t *testing.T) {
 			return err
 		}
 		for i, line := range strings.Split(string(data), "\n") {
-			if m := fullVersion.FindStringSubmatch(line); m != nil && goReleaseBelowFloor(m[1]) {
+			if m := fullVersion.FindStringSubmatch(line); m != nil && goReleaseBelowFloor(t, m[1]) {
 				t.Error(fmt.Sprintf("%s:%d: Go %s is below %v; use go-version-file: go.mod", path, i+1, m[1], minimumGoRelease))
 			}
 		}

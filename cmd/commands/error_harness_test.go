@@ -448,21 +448,41 @@ func runErrorHarnessCmd(t *testing.T, args []string) error {
 	return root.ExecuteContext(ctx)
 }
 
-// TestErrorHarnessRestoresCommandParents checks the shared tree after cleanup.
+// TestErrorHarnessRestoresCommandParents checks parents and order after cleanup.
 func TestErrorHarnessRestoresCommandParents(t *testing.T) {
 	reattachRealTree()
-	children := append([]*cobra.Command(nil), RootCmd.Commands()...)
+	type treeState struct {
+		parent   *cobra.Command
+		children []*cobra.Command
+	}
+	before := make(map[*cobra.Command]treeState)
+	var snapshot func(*cobra.Command)
+	snapshot = func(cmd *cobra.Command) {
+		children := append([]*cobra.Command(nil), cmd.Commands()...)
+		before[cmd] = treeState{cmd.Parent(), children}
+		for _, child := range children {
+			snapshot(child)
+		}
+	}
+	snapshot(RootCmd)
 	t.Run("invocation", func(t *testing.T) {
 		if err := runErrorHarnessCmd(t, []string{"unknown-harness-command"}); err == nil {
 			t.Fatal("unknown command accepted")
 		}
 	})
-	if got := len(RootCmd.Commands()); got != len(children) {
-		t.Fatalf("harness changed root child count: got %d, want %d", got, len(children))
-	}
-	for _, child := range children {
-		if child.Parent() != RootCmd {
-			t.Errorf("%s: harness did not restore root parent", child.Name())
+	for cmd, want := range before {
+		if cmd.Parent() != want.parent {
+			t.Errorf("%s: harness changed parent", cmd.Name())
+		}
+		got := cmd.Commands()
+		if len(got) != len(want.children) {
+			t.Errorf("%s: harness changed child count: got %d, want %d", cmd.Name(), len(got), len(want.children))
+			continue
+		}
+		for i, child := range want.children {
+			if got[i] != child {
+				t.Errorf("%s: harness changed child at index %d", cmd.Name(), i)
+			}
 		}
 	}
 }
