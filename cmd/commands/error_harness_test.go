@@ -410,16 +410,19 @@ func runErrorHarnessCmd(t *testing.T, args []string) error {
 	// Re-register all commands from the global root. AddCommand transfers the
 	// parent pointer, so the per-case ctx we set below will be inherited by
 	// every child command. On cleanup we restore a fresh Background context
-	// on every child so a deadline-cancelled ctx cannot leak into a
-	// subsequent test that invokes the command's RunE directly.
-	children := RootCmd.Commands()
+	// on every child and restore its original parent so subsequent registry
+	// builds see a consistent command tree on every platform.
+	children := append([]*cobra.Command(nil), RootCmd.Commands()...)
+	RootCmd.RemoveCommand(children...)
 	for _, c := range children {
 		root.AddCommand(c)
 	}
 	t.Cleanup(func() {
 		for _, c := range children {
 			c.SetContext(context.Background())
+			root.RemoveCommand(c)
 		}
+		RootCmd.AddCommand(children...)
 	})
 
 	var buf bytes.Buffer
@@ -443,6 +446,45 @@ func runErrorHarnessCmd(t *testing.T, args []string) error {
 	// happen here because we wait for ExecuteContext to return before this
 	// function exits.
 	return root.ExecuteContext(ctx)
+}
+
+// TestErrorHarnessRestoresCommandParents checks parents and order after cleanup.
+func TestErrorHarnessRestoresCommandParents(t *testing.T) {
+	reattachRealTree()
+	type treeState struct {
+		parent   *cobra.Command
+		children []*cobra.Command
+	}
+	before := make(map[*cobra.Command]treeState)
+	var snapshot func(*cobra.Command)
+	snapshot = func(cmd *cobra.Command) {
+		children := append([]*cobra.Command(nil), cmd.Commands()...)
+		before[cmd] = treeState{cmd.Parent(), children}
+		for _, child := range children {
+			snapshot(child)
+		}
+	}
+	snapshot(RootCmd)
+	t.Run("invocation", func(t *testing.T) {
+		if err := runErrorHarnessCmd(t, []string{"unknown-harness-command"}); err == nil {
+			t.Fatal("unknown command accepted")
+		}
+	})
+	for cmd, want := range before {
+		if cmd.Parent() != want.parent {
+			t.Errorf("%s: harness changed parent", cmd.Name())
+		}
+		got := cmd.Commands()
+		if len(got) != len(want.children) {
+			t.Errorf("%s: harness changed child count: got %d, want %d", cmd.Name(), len(got), len(want.children))
+			continue
+		}
+		for i, child := range want.children {
+			if got[i] != child {
+				t.Errorf("%s: harness changed child at index %d", cmd.Name(), i)
+			}
+		}
+	}
 }
 
 // TestErrorHarness_AllCommandsReturnError verifies that every entry in the
