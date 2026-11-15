@@ -1,5 +1,7 @@
 # Architecture guard coverage
 
+`TestGoDirectiveAtLeastPatchedRelease` and `TestWorkflowsDoNotPinOlderGo` enforce the Go toolchain floor for GO-2026-6859.
+
 `TestLayering` enforces D1 (L0 imports only L0) and D2 (internal never imports
 cmd) on imports parsed from every first-party Go source file. This includes
 Windows, Darwin, Linux, other platforms and architectures, arbitrary build tags
