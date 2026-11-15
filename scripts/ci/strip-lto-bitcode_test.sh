@@ -11,6 +11,7 @@ if [ "$(uname -s)" = Darwin ]; then
   OBJCOPY=llvm-objcopy
   OBJDUMP=llvm-objdump
   NM=llvm-nm
+  NM_INDEX=--print-armap
   BITCODE=__LLVM,__bitcode
   CMDLINE=__LLVM,__cmdline
   SECTIONS='__bitcode|__cmdline'
@@ -21,6 +22,7 @@ else
 fi
 OBJDUMP=${OBJDUMP:-objdump}
 NM=${NM:-nm}
+NM_INDEX=${NM_INDEX:--s}
 BITCODE=${BITCODE:-.llvmbc}
 CMDLINE=${CMDLINE:-.llvmcmd}
 SECTIONS=${SECTIONS:-'\.llvmbc|\.llvmcmd'}
@@ -35,10 +37,10 @@ for member in one two; do
 done
 ar rcs "$WORK/lto.a" "$WORK/one.o" "$WORK/two.o"
 ar t "$WORK/lto.a" > "$WORK/members-before"
-"$NM" -s "$WORK/lto.a" > "$WORK/symbols-before"
+"$NM" "$NM_INDEX" "$WORK/lto.a" > "$WORK/symbols-before"
 bash "$SCRIPT" "$WORK/lto.a" "$WORK/clean.a"
 ar t "$WORK/lto.a" > "$WORK/members-after"
-"$NM" -s "$WORK/lto.a" > "$WORK/symbols-after"
+"$NM" "$NM_INDEX" "$WORK/lto.a" > "$WORK/symbols-after"
 cmp "$WORK/members-before" "$WORK/members-after"
 cmp "$WORK/symbols-before" "$WORK/symbols-after"
 cmp "$WORK/clean-before.a" "$WORK/clean.a"
