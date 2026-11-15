@@ -410,16 +410,19 @@ func runErrorHarnessCmd(t *testing.T, args []string) error {
 	// Re-register all commands from the global root. AddCommand transfers the
 	// parent pointer, so the per-case ctx we set below will be inherited by
 	// every child command. On cleanup we restore a fresh Background context
-	// on every child so a deadline-cancelled ctx cannot leak into a
-	// subsequent test that invokes the command's RunE directly.
-	children := RootCmd.Commands()
+	// on every child and restore its original parent so subsequent registry
+	// builds see a consistent command tree on every platform.
+	children := append([]*cobra.Command(nil), RootCmd.Commands()...)
+	RootCmd.RemoveCommand(children...)
 	for _, c := range children {
 		root.AddCommand(c)
 	}
 	t.Cleanup(func() {
 		for _, c := range children {
 			c.SetContext(context.Background())
+			root.RemoveCommand(c)
 		}
+		RootCmd.AddCommand(children...)
 	})
 
 	var buf bytes.Buffer
@@ -443,6 +446,25 @@ func runErrorHarnessCmd(t *testing.T, args []string) error {
 	// happen here because we wait for ExecuteContext to return before this
 	// function exits.
 	return root.ExecuteContext(ctx)
+}
+
+// TestErrorHarnessRestoresCommandParents checks the shared tree after cleanup.
+func TestErrorHarnessRestoresCommandParents(t *testing.T) {
+	reattachRealTree()
+	children := append([]*cobra.Command(nil), RootCmd.Commands()...)
+	t.Run("invocation", func(t *testing.T) {
+		if err := runErrorHarnessCmd(t, []string{"unknown-harness-command"}); err == nil {
+			t.Fatal("unknown command accepted")
+		}
+	})
+	if got := len(RootCmd.Commands()); got != len(children) {
+		t.Fatalf("harness changed root child count: got %d, want %d", got, len(children))
+	}
+	for _, child := range children {
+		if child.Parent() != RootCmd {
+			t.Errorf("%s: harness did not restore root parent", child.Name())
+		}
+	}
 }
 
 // TestErrorHarness_AllCommandsReturnError verifies that every entry in the

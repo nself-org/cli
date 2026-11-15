@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -40,6 +41,9 @@ func TestWire18Child(t *testing.T) {
 // error (nil on exit 0), its stderr and the docker calls.
 func wire18Run(t *testing.T, argv ...string) (error, string, string) {
 	t.Helper()
+	if runtime.GOOS == "windows" { // the fake docker below is a /bin/sh script; Windows would find the runner's real docker.exe instead
+		t.Skip("wire18 fakes docker with a shell script, which Windows cannot run")
+	}
 	dir := t.TempDir()
 	write := func(p, body string, mode os.FileMode) {
 		t.Helper()
