@@ -1,3 +1,5 @@
 github.com/bytecodealliance/wasmtime-go/v25/build/linux-aarch64/libwasmtime.a
 github.com/bytecodealliance/wasmtime-go/v25/build/linux-x86_64/libwasmtime.a
+github.com/bytecodealliance/wasmtime-go/v25/build/macos-aarch64/libwasmtime.a
+github.com/bytecodealliance/wasmtime-go/v25/build/macos-x86_64/libwasmtime.a
 github.com/bytecodealliance/wasmtime-go/v25/build/windows-x86_64/libwasmtime.a
