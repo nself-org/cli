@@ -7,7 +7,7 @@ name: Pre-Release Gate
 # and no override is recorded.
 #
 # Source: .github/release-denylist.json
-# Wrapper: scripts/release-create.sh
+# Wrapper: tools/releasectl (go run ./tools/releasectl create)
 # Owner: P101 S8.T05
 
 on:
@@ -68,6 +68,11 @@ jobs:
           echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
           echo "Evaluating denylist for: ${TAG}"
 
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+
       - name: Verify denylist file exists
         run: |
           test -f .github/release-denylist.json || {
@@ -90,56 +95,15 @@ jobs:
           TAG: ${{ steps.resolve.outputs.tag }}
         run: |
           set -euo pipefail
-          TRIGGERED=()
-
-          # DENY-003: zero-commits-since-prior-tag
-          PRIOR_TAG=$(git tag --sort=-version:refname | grep -v "^${TAG}$" | head -1 || true)
-          if [ -n "${PRIOR_TAG}" ]; then
-            COUNT=$(git rev-list "${PRIOR_TAG}..${TAG}" --count 2>/dev/null || echo "0")
-            if [ "${COUNT}" -eq 0 ]; then
-              TRIGGERED+=("DENY-003 zero-commits-since-prior-tag (prior=${PRIOR_TAG})")
-            fi
-          else
-            echo "no prior tag; first release - DENY-003 skipped"
-          fi
-
-          # DENY-004: failed-license-scan
-          LIC_STATUS=$(gh run list --workflow license-audit.yml --limit 1 \
-            --json conclusion -q '.[0].conclusion' 2>/dev/null || echo "")
-          if [ "${LIC_STATUS}" != "success" ] && [ "${LIC_STATUS}" != "" ]; then
-            TRIGGERED+=("DENY-004 failed-license-scan (last=${LIC_STATUS})")
-          fi
-
-          # DENY-005: no-milestone-closed
-          # Paginated over every state: the default page size is 30, so a repo
-          # with more than 30 closed milestones lost the newest tag off page 1
-          # (v1.4.12, D-0013). An API error fails the step (set -euo pipefail).
-          MILESTONE=$(gh api --paginate "repos/${{ github.repository }}/milestones?state=all&per_page=100" \
-            --jq ".[] | select(.title==\"${TAG}\") | .state")
-          if [ "${MILESTONE}" != "closed" ]; then
-            TRIGGERED+=("DENY-005 no-milestone-closed")
-          fi
-
+          # The rules (DENY-003 + DENY-004 + DENY-005) live in tools/releasectl
+          # (rules.go) so CI and `releasectl create` cannot drift apart.
+          # DENY-005 pages through every milestone: the default page size is 30,
+          # so a repo with more than 30 closed milestones lost the newest tag
+          # off page 1 (v1.4.12, D-0013). An API error refuses the release.
           # DENY-001 + DENY-002 are evaluated post-build inside release.yml
-          # (artifacts don't exist at tag-push time). Recorded here as informational.
-
-          if [ ${#TRIGGERED[@]} -gt 0 ]; then
-            echo "::error::Denylist triggered ${#TRIGGERED[@]} rule(s):"
-            for r in "${TRIGGERED[@]}"; do
-              echo "::error::  - ${r}"
-            done
-            echo "## Pre-Release Gate: BLOCKED" >> "${GITHUB_STEP_SUMMARY}"
-            printf "Triggered rules:\n" >> "${GITHUB_STEP_SUMMARY}"
-            for r in "${TRIGGERED[@]}"; do
-              printf -- "- %s\n" "${r}" >> "${GITHUB_STEP_SUMMARY}"
-            done
-            printf "\nOverride via: \`bash scripts/release-create.sh %s --skip-denylist\`\n" "${TAG}" \
-              >> "${GITHUB_STEP_SUMMARY}"
-            exit 1
-          fi
-
-          echo "## Pre-Release Gate: PASS" >> "${GITHUB_STEP_SUMMARY}"
-          echo "All evaluable denylist rules passed for ${TAG}." >> "${GITHUB_STEP_SUMMARY}"
+          # (artifacts don't exist at tag-push time); the tool skips them
+          # while dist/ is absent. The tool writes the job summary.
+          go run ./tools/releasectl gate "${TAG}"
 
       - name: Check override audit log (informational)
         if: always()

@@ -1,0 +1,17 @@
+# Captured from scripts/release-create.sh at origin/main 72e2f6939 with a stub gh
+# on PATH: tag v1.0.0 one commit behind HEAD, no dist/, license-audit success, milestone closed.
+# args: v9.9.9 --generate-notes --title v9.9.9
+== exit
+0
+== stdout
+[release-create] evaluating denylist for tag: v9.9.9
+[release-create] no dist/ yet; skipping DENY-001 signature-check (enforced post-build by release.yml)
+[release-create] no dist/ yet; skipping DENY-002 missing-sbom (enforced post-build by release.yml)
+[release-create] denylist: PASS (0 rules triggered)
+[release-create] invoking: gh release create v9.9.9 --generate-notes --title v9.9.9
+https://github.com/nself-org/cli/releases/tag/v9.9.9
+== stderr
+== gh
+gh run list --workflow license-audit.yml --branch main --limit 1 --json conclusion -q .[0].conclusion
+gh api repos/{owner}/{repo}/milestones?state=closed --jq .[] | select(.title=="v9.9.9") | .state
+gh release create v9.9.9 --generate-notes --title v9.9.9
