@@ -18,11 +18,34 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
+// openAPIGenCmd returns the generator command with CGO_ENABLED=0 appended last,
+// which avoids the vendored wasmtime-go LTO section refusal on go1.27.4.
+func openAPIGenCmd(root string) *exec.Cmd {
+	cmd := exec.Command("go", "run", "-mod=vendor", "./tools/openapigen", "-check")
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
+	return cmd
+}
+
 func TestOpenAPIIsCurrent(t *testing.T) {
-	gen := exec.Command("go", "run", "-mod=vendor", "./tools/openapigen", "-check")
-	gen.Dir = repoRoot(t)
+	gen := openAPIGenCmd(repoRoot(t))
 	if out, err := gen.CombinedOutput(); err != nil {
 		t.Fatalf("OpenAPI drift: %v\n%s", err, out)
+	}
+}
+
+// TestOpenAPIGenCmdDisablesCgo ensures the override wins over a caller env (CGO_ENABLED=1).
+func TestOpenAPIGenCmdDisablesCgo(t *testing.T) {
+	t.Setenv("CGO_ENABLED", "1")
+	cmd := openAPIGenCmd(repoRoot(t))
+	var last string
+	for _, e := range cmd.Env {
+		if len(e) >= 12 && e[:12] == "CGO_ENABLED=" {
+			last = e
+		}
+	}
+	if last != "CGO_ENABLED=0" {
+		t.Fatalf("expected last CGO_ENABLED entry to be 0, got %q", last)
 	}
 }
 
